@@ -1,0 +1,37 @@
+export type Directory = "customers" | "suppliers" | "products";
+export const directories = ["customers", "suppliers", "products"] as const;
+export function isDirectory(value: string): value is Directory {
+  return (directories as readonly string[]).includes(value);
+}
+export function decimalInput(value: unknown, scale: number): string {
+  const s = String(value ?? "0")
+    .trim()
+    .replace(",", ".");
+  if (!new RegExp(`^\\d{1,${16 - scale}}(\\.\\d{1,${scale}})?$`).test(s))
+    throw new Error(
+      `Введите неотрицательное число, максимум ${scale} знака после запятой`,
+    );
+  const [whole, decimal = ""] = s.split(".");
+  return `${whole.replace(/^0+(?=\d)/, "")}.${decimal.padEnd(scale, "0")}`;
+}
+function text(value: unknown, max: number, required = false) {
+  const s = String(value ?? "").trim();
+  if ((required && !s) || s.length > max)
+    throw new Error(`Заполните поле (до ${max} символов)`);
+  return s;
+}
+export function directoryInput(kind: Directory, data: Record<string, unknown>) {
+  const name = text(data.name, 160, true);
+  if (kind === "products")
+    return {
+      name,
+      sku: text(data.sku, 80) || null,
+      unit: ["шт", "м", "кг", "упак", "л"].includes(String(data.unit))
+        ? String(data.unit)
+        : "шт",
+      purchase_price: decimalInput(data.purchase_price, 2),
+      sale_price: decimalInput(data.sale_price, 2),
+      min_stock: decimalInput(data.min_stock, 3),
+    };
+  return { name, phone: text(data.phone, 40), notes: text(data.notes, 2000) };
+}
