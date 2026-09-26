@@ -1316,6 +1316,32 @@ td small {
   color: var(--green);
   margin: 8px 0 4px;
 }
+.day-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.day-picker label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.day-picker input {
+  min-height: 42px;
+  padding: 8px 10px;
+}
+.day-history td,
+.day-history th {
+  white-space: nowrap;
+}
+.day-history-current td {
+  background: #edf4e9;
+  font-weight: 600;
+}
 .day-nav {
   display: flex;
   gap: 10px;
