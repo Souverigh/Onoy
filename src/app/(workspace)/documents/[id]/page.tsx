@@ -250,7 +250,7 @@ export default async function DocumentDetail({
                   return (
                     <tr
                       key={line.id}
-                      className={lineMismatch ? "reversed-row" : lowConfidence ? "warning" : ""}
+                      className={lineMismatch ? "line-mismatch" : lowConfidence ? "warning" : ""}
                     >
                       <td colSpan={7} className="document-line-cell">
                         <form action={updateLine} className="document-line-form">

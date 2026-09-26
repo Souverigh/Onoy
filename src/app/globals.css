@@ -1298,6 +1298,14 @@ td small {
 tr.warning td {
   background: #fff8e8;
 }
+/* Несовпадение qty×price в строке накладной — не то же самое, что сторно,
+   не должно выглядеть отменённым/зачёркнутым. */
+tr.line-mismatch td {
+  background: #fff1ec;
+}
+tr.line-mismatch {
+  color: #a34836;
+}
 .document-line-cell {
   padding: 0 !important;
 }
