@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getContext } from "@/lib/context";
 import { decimalInput } from "@/lib/validation";
 import { recognizeNotebook } from "@/lib/adre/recognize";
-import { MAX_PAGES } from "@/lib/pages";
+import { MAX_PAGES, isPdf } from "@/lib/pages";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -20,13 +20,15 @@ export async function recognizeNotebookPhotos(
     .filter((file): file is File => file instanceof File && file.size > 0);
   if (photos.length === 0) return { ok: false, error: "no_photo" };
   if (photos.length > MAX_PAGES) return { ok: false, error: "too_many" };
+  if (photos.some((file) => !(file.type.startsWith("image/") || isPdf(file))))
+    return { ok: false, error: "recognition_failed" };
   if (!process.env.GEMINI_API_KEY) return { ok: false, error: "no_provider" };
   await getContext(); // только участник магазина
   try {
     const pages = await Promise.all(
       photos.map(async (photo) => ({
         photo: Buffer.from(await photo.arrayBuffer()),
-        mimeType: photo.type || "image/jpeg",
+        mimeType: isPdf(photo) ? "application/pdf" : photo.type || "image/jpeg",
       })),
     );
     const result = await recognizeNotebook(pages);

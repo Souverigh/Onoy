@@ -29,7 +29,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 17);
+  assert.equal(rows.length, 18);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -1291,4 +1291,33 @@ test("import_opening_balance: notebook debts become ledger entries once per part
 
   await user(a);
   await assert.rejects(imp("customer", null, "Ноль", "0", "0c000000-0000-4000-8000-000000000007"), /invalid_opening/);
+});
+
+test("close_day: one immutable snapshot per shop and day, no future days", async () => {
+  await user(a);
+  const first = (
+    await db.query("select close_day($1,'2026-09-20',$2) as id", [orgA, JSON.stringify({ sold: "100.00" })])
+  ).rows[0].id;
+  // Повтор — тот же снимок, не перезаписывается.
+  const again = (
+    await db.query("select close_day($1,'2026-09-20',$2) as id", [orgA, JSON.stringify({ sold: "999.00" })])
+  ).rows[0].id;
+  assert.equal(again, first);
+  assert.equal(
+    (await db.query("select snapshot->>'sold' as sold from day_closures where id=$1", [first])).rows[0].sold,
+    "100.00",
+  );
+  await assert.rejects(
+    db.query("select close_day($1,(now() at time zone 'Asia/Bishkek')::date + 1,'{}')", [orgA]),
+    /invalid_day/,
+  );
+  await assert.rejects(db.query("select close_day($1,'2026-09-19','[]')", [orgA]), /invalid_day/);
+  await assert.rejects(
+    db.query("update day_closures set snapshot='{}' where id=$1", [first]),
+    /permission denied/,
+  );
+
+  await user(b);
+  assert.equal((await db.query("select * from day_closures")).rows.length, 0);
+  await assert.rejects(db.query("select close_day($1,'2026-09-21','{}')", [orgA]), /not_a_member/);
 });

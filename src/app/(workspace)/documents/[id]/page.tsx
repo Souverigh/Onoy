@@ -282,7 +282,13 @@ export default async function DocumentDetail({
 
       <div className="documents-layout">
         <section className="panel doc-photo-panel">
-          <DocumentPhotos urls={photoUrls.length ? photoUrls : [null]} />
+          <DocumentPhotos
+            pages={
+              photoUrls.length
+                ? photoUrls.map((url, i) => ({ url, mimeType: pages[i].mime_type }))
+                : [{ url: null, mimeType: "image/jpeg" }]
+            }
+          />
         </section>
 
         {doc.kind === "payment" ? (

@@ -12,7 +12,7 @@ import {
 import { Submit } from "./submit";
 import { money } from "@/lib/format";
 import { MULTI_PAGE_MAX_SIDE, shrinkImage, shrinkInputFile } from "@/lib/shrink-image";
-import { MAX_PAGES } from "@/lib/pages";
+import { DOCUMENT_ACCEPT, MAX_PAGES, MAX_UPLOAD_BYTES, isPdf } from "@/lib/pages";
 
 type Operation = "purchase" | "sale" | "payment";
 type Party = { id: string; name: string };
@@ -189,6 +189,11 @@ export function OperationForm({
         next.map((file) => shrinkImage(file, next.length > 1 ? MULTI_PAGE_MAX_SIDE : undefined)),
       );
       if (request !== photoRequest.current) return;
+      if (shrunk.reduce((size, file) => size + file.size, 0) > MAX_UPLOAD_BYTES) {
+        setCheckNote("Файлы слишком большие (больше 4 МБ вместе). Уберите страницу или приложите PDF поменьше.");
+        fillPagesInput([]);
+        return;
+      }
       fillPagesInput(shrunk);
       const fd = new FormData();
       shrunk.forEach((file) => fd.append("photo", file));
@@ -231,12 +236,11 @@ export function OperationForm({
       {kind === "payment" && !prefill && (
         <form action={prepareReceiptPayment} className="receipt-intake-form">
           <label className="photo-field">
-            Есть фото или скриншот квитанции? Сумму и клиента подставим сами.
+            Есть фото, скриншот или PDF квитанции? Сумму и клиента подставим сами.
             <input
               name="photo"
               type="file"
-              accept="image/*"
-              capture="environment"
+              accept={DOCUMENT_ACCEPT}
               onChange={async (e) => {
                 setShrinkingReceipt(true);
                 try {
@@ -427,12 +431,11 @@ export function OperationForm({
         )}
         {!prefill && kind === "payment" && (
           <label className="photo-field">
-            Фото чека
+            Фото или PDF чека
             <input
               name="photo"
               type="file"
-              accept="image/*"
-              capture="environment"
+              accept={DOCUMENT_ACCEPT}
               onChange={(e) => void shrinkInputFile(e.target)}
             />
           </label>
@@ -447,8 +450,15 @@ export function OperationForm({
               <ol className="page-thumbs">
                 {pages.map((file, i) => (
                   <li key={`${i}-${file.name}-${file.lastModified}`} className="page-thumb">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    {previews[i] && <img src={previews[i]} alt={`Страница ${i + 1}`} />}
+                    {isPdf(file) ? (
+                      <span className="page-thumb-pdf" title={file.name}>
+                        PDF
+                        <small>{file.name}</small>
+                      </span>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      previews[i] && <img src={previews[i]} alt={`Страница ${i + 1}`} />
+                    )}
                     <span className="page-thumb-n">{i + 1}</span>
                     <button
                       type="button"
@@ -463,20 +473,35 @@ export function OperationForm({
               </ol>
             )}
             {pages.length < MAX_PAGES && (
-              <label className="button page-add">
-                {pages.length ? "+ Добавить страницу" : "Сфотографировать или выбрать"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  multiple
-                  className="sr-only"
-                  onChange={addPages}
-                />
-              </label>
+              <div className="page-add-actions">
+                {/* Камера сразу — capture; файлом — фото из галереи или PDF. */}
+                <label className="button page-add">
+                  {pages.length ? "+ Сфотографировать ещё" : "Сфотографировать"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="sr-only"
+                    onChange={addPages}
+                  />
+                </label>
+                <label className="button page-add">
+                  {pages.length ? "+ Добавить файл" : "Выбрать фото или PDF"}
+                  <input
+                    type="file"
+                    accept={DOCUMENT_ACCEPT}
+                    multiple
+                    className="sr-only"
+                    onChange={addPages}
+                  />
+                </label>
+              </div>
             )}
             {pages.length === 0 && (
-              <small className="muted">Накладная на нескольких листах — добавьте страницы по порядку.</small>
+              <small className="muted">
+                Накладная на нескольких листах — добавьте страницы по порядку. PDF от поставщика
+                можно приложить целиком.
+              </small>
             )}
             <input
               ref={pagesInput}

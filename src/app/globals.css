@@ -2233,3 +2233,94 @@ tr.line-mismatch {
   gap: 8px;
   justify-content: flex-end;
 }
+.day-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.day-status > div:first-child {
+  flex: 1 1 320px;
+}
+.day-status p {
+  margin: 4px 0 0;
+}
+.day-status-closed {
+  background: #eaf4e5;
+  border-color: #cfe3c4;
+}
+.day-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.day-status-actions form {
+  margin: 0;
+}
+.day-after {
+  border-color: #f0dfb8;
+  background: #fffaf0;
+}
+.day-after-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.day-after-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.day-after-list strong {
+  white-space: nowrap;
+}
+.day-after-reversed strong {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.page-add-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.page-add-actions label.button {
+  margin-bottom: 0;
+  flex-direction: row;
+  color: inherit;
+  font-size: 15px;
+}
+.page-thumb-pdf {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 100%;
+  padding: 6px;
+  background: #fbeeee;
+  color: #a34836;
+  font-weight: 700;
+  font-size: 18px;
+}
+.page-thumb-pdf small {
+  font-size: 10px;
+  font-weight: 400;
+  color: #73807e;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.document-pdf {
+  display: block;
+  width: 100%;
+  height: 75vh;
+  min-height: 480px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 8px;
+}

@@ -2,16 +2,23 @@
 
 import { useState } from "react";
 
-/** Фото документа; у многостраничной накладной — переключатель «Стр. 1 · 2 · 3». */
-export function DocumentPhotos({ urls }: { urls: (string | null)[] }) {
+export type DocumentPageView = { url: string | null; mimeType: string };
+
+/**
+ * Страницы документа: фото или PDF. У многостраничной накладной —
+ * переключатель «Стр. 1 · 2 · 3»; PDF показывается встроенным просмотром
+ * со своей прокруткой (в нём самом может быть несколько страниц).
+ */
+export function DocumentPhotos({ pages }: { pages: DocumentPageView[] }) {
   const [current, setCurrent] = useState(0);
-  const url = urls[current];
+  const page = pages[current];
+  const pdf = page?.mimeType === "application/pdf";
   return (
     <>
-      {urls.length > 1 && (
+      {pages.length > 1 && (
         <div className="page-switcher" role="tablist" aria-label="Страницы документа">
           <span className="muted">Стр.</span>
-          {urls.map((_, i) => (
+          {pages.map((p, i) => (
             <button
               key={i}
               type="button"
@@ -21,20 +28,28 @@ export function DocumentPhotos({ urls }: { urls: (string | null)[] }) {
               onClick={() => setCurrent(i)}
             >
               {i + 1}
+              {p.mimeType === "application/pdf" ? " PDF" : ""}
             </button>
           ))}
-          <span className="muted page-switcher-total">из {urls.length}</span>
+          <span className="muted page-switcher-total">из {pages.length}</span>
         </div>
       )}
-      {url ? (
+      {!page?.url ? (
+        <p className="muted">Файл недоступен.</p>
+      ) : pdf ? (
+        <>
+          <iframe src={page.url} title="PDF документа" className="document-pdf" />
+          <a className="text-button" href={page.url} target="_blank" rel="noreferrer">
+            Открыть PDF отдельно
+          </a>
+        </>
+      ) : (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={url}
-          alt={urls.length > 1 ? `Страница ${current + 1}` : "Фото документа"}
+          src={page.url}
+          alt={pages.length > 1 ? `Страница ${current + 1}` : "Фото документа"}
           className="document-photo"
         />
-      ) : (
-        <p className="muted">Фото недоступно.</p>
       )}
     </>
   );

@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID, createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { MAX_PAGES } from "./pages";
+import { MAX_PAGES, isPdf } from "./pages";
 
 export type OperationKind = "purchase" | "sale" | "payment";
 
@@ -42,12 +42,15 @@ export async function uploadOperationPhotos(
   files: File[],
 ): Promise<string> {
   if (files.length === 0 || files.length > MAX_PAGES) throw new Error("upload_failed");
+  // Только фото и PDF: другой файл Gemini не прочитает, а в просмотре не покажется.
+  if (files.some((file) => !(file.type.startsWith("image/") || isPdf(file))))
+    throw new Error("upload_failed");
   const pages = await Promise.all(
     files.map(async (file) => {
       const buffer = Buffer.from(await file.arrayBuffer());
       const hash = createHash("sha256").update(buffer).digest("hex");
       const path = `${organizationId}/${kind}/${randomUUID()}.${extensionOf(file)}`;
-      const mimeType = file.type || "image/jpeg";
+      const mimeType = isPdf(file) ? "application/pdf" : file.type || "image/jpeg";
       const upload = await db.storage
         .from("receipts")
         .upload(path, buffer, { contentType: mimeType });
@@ -143,6 +146,7 @@ export async function uploadClaimPhoto(
 ): Promise<string> {
   const buffer = Buffer.from(await file.arrayBuffer());
   const hash = createHash("sha256").update(buffer).digest("hex");
+  if (!(file.type.startsWith("image/") || isPdf(file))) throw new Error("upload_failed");
   const path = `claims/${token}/${randomUUID()}.${extensionOf(file)}`;
   const upload = await anon.storage
     .from("receipts")

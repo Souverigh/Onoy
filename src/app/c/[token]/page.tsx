@@ -77,8 +77,8 @@ export default async function ClientPage({
             <input name="comment" maxLength={500} placeholder="Например: перевёл на карту" />
           </label>
           <label className="photo-field">
-            Фото квитанции (необязательно)
-            <input name="photo" type="file" accept="image/*" capture="environment" />
+            Фото, скриншот или PDF квитанции (необязательно)
+            <input name="photo" type="file" accept="image/*,application/pdf" />
           </label>
           <button className="button primary" type="submit">
             Отправить

@@ -10,7 +10,7 @@ import {
 import { bestMatches, similarity } from "@/lib/match";
 import { money } from "@/lib/format";
 import { MULTI_PAGE_MAX_SIDE, shrinkImage } from "@/lib/shrink-image";
-import { MAX_PAGES } from "@/lib/pages";
+import { DOCUMENT_ACCEPT, MAX_PAGES, MAX_UPLOAD_BYTES } from "@/lib/pages";
 
 export type ImportParty = {
   id: string;
@@ -93,6 +93,10 @@ export function NotebookImport({
       const shrunk = await Promise.all(
         files.map((file) => shrinkImage(file, files.length > 1 ? MULTI_PAGE_MAX_SIDE : undefined)),
       );
+      if (shrunk.reduce((size, file) => size + file.size, 0) > MAX_UPLOAD_BYTES) {
+        setNote("Файлы слишком большие (больше 4 МБ вместе) — выберите меньше страниц за раз.");
+        return;
+      }
       const fd = new FormData();
       shrunk.forEach((file) => fd.append("photo", file));
       const res = await recognizeNotebookPhotos(fd);
@@ -170,6 +174,16 @@ export function NotebookImport({
             type="file"
             accept="image/*"
             capture="environment"
+            className="sr-only"
+            disabled={recognizing}
+            onChange={recognize}
+          />
+        </label>
+        <label className="button">
+          Выбрать фото или PDF
+          <input
+            type="file"
+            accept={DOCUMENT_ACCEPT}
             multiple
             className="sr-only"
             disabled={recognizing}
