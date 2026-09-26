@@ -7,5 +7,14 @@ export default async function Layout({
   children: React.ReactNode;
 }) {
   const ctx = await getContext();
-  return <Shell name={ctx.organizationName}>{children}</Shell>;
+  const review = await ctx.db
+    .from("documents")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", ctx.organizationId)
+    .eq("status", "review");
+  return (
+    <Shell name={ctx.organizationName} reviewCount={review.count ?? 0}>
+      {children}
+    </Shell>
+  );
 }

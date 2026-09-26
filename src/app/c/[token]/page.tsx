@@ -1,0 +1,129 @@
+import { notFound } from "next/navigation";
+import { createAnonClient } from "@/lib/supabase/server";
+import { money } from "@/lib/format";
+import { submitClaim } from "./actions";
+
+type Statement = {
+  shop_name: string;
+  shop_phone: string;
+  customer_name: string;
+  balance: string;
+  entries: {
+    kind: "sale" | "payment";
+    amount: string;
+    occurred_at: string;
+    reversed: boolean;
+    status?: string;
+  }[];
+};
+
+export default async function ClientPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ token: string }>;
+  searchParams: Promise<{ claimed?: string; error?: string }>;
+}) {
+  const { token } = await params;
+  if (!/^[a-f0-9]{32}$/i.test(token)) notFound();
+  const anon = createAnonClient();
+  const { data, error } = await anon.rpc("get_statement_by_token", { p_token: token });
+  if (error || !data) notFound();
+  const statement = data as Statement;
+  const { claimed, error: submitError } = await searchParams;
+  const balance = Number(statement.balance);
+
+  return (
+    <main className="client-page">
+      <header className="client-header">
+        <strong>{statement.shop_name}</strong>
+        {statement.shop_phone && (
+          <a
+            href={`https://wa.me/${statement.shop_phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent("Здравствуйте, у меня вопрос по долгу")}`}
+            className="text-button"
+          >
+            Написать в WhatsApp
+          </a>
+        )}
+      </header>
+      <section className="client-balance">
+        <p className="muted">{statement.customer_name}, ваш долг</p>
+        <p className="client-balance-number">{money(Math.max(balance, 0))}</p>
+        {balance < 0 && <p className="muted">У вас аванс: {money(-balance)}</p>}
+      </section>
+      {claimed && (
+        <p className="notice success" role="status">
+          Заявка отправлена. Магазин подтвердит оплату — долг обновится после этого.
+        </p>
+      )}
+      {submitError && (
+        <p className="form-error" role="alert">
+          {submitError === "photo"
+            ? "Не удалось загрузить фото. Попробуйте без фото или другим файлом."
+            : "Проверьте сумму и попробуйте снова."}
+        </p>
+      )}
+      <section className="panel client-claim-panel">
+        <h2>Я оплатил</h2>
+        <form action={submitClaim} className="simple-operation-form">
+          <input type="hidden" name="token" value={token} />
+          <label className="amount-field">
+            Сколько сом?
+            <input name="amount" inputMode="decimal" required pattern="[0-9]+([.,][0-9]{1,2})?" placeholder="0" />
+          </label>
+          <label>
+            Комментарий (необязательно)
+            <input name="comment" maxLength={500} placeholder="Например: перевёл на карту" />
+          </label>
+          <label className="photo-field">
+            Фото квитанции (необязательно)
+            <input name="photo" type="file" accept="image/*" capture="environment" />
+          </label>
+          <button className="button primary" type="submit">
+            Отправить
+          </button>
+        </form>
+      </section>
+      <section className="panel">
+        <h2>История</h2>
+        {statement.entries.length ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Операция</th>
+                  <th>Сумма</th>
+                </tr>
+              </thead>
+              <tbody>
+                {statement.entries.map((entry, i) => (
+                  <tr key={i} className={entry.reversed ? "reversed-row" : ""}>
+                    <td>
+                      {new Intl.DateTimeFormat("ru-RU", {
+                        dateStyle: "medium",
+                        timeZone: "Asia/Bishkek",
+                      }).format(new Date(entry.occurred_at))}
+                    </td>
+                    <td>
+                      {entry.kind === "sale" ? "Продажа" : entry.status === "pending" ? "Заявка (ждёт)" : "Оплата"}
+                      {entry.reversed && <span className="tag reversed-tag">сторно</span>}
+                    </td>
+                    <td>{money(entry.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="muted">Операций пока нет.</p>
+        )}
+      </section>
+      <footer className="client-footer">
+        <a href="https://depter.kg" className="text-button">
+          Открыть свой Depter
+        </a>
+      </footer>
+    </main>
+  );
+}

@@ -11,10 +11,10 @@ export default async function Onboarding({
   return (
     <main className="center">
       <section className="panel onboarding">
-        <div className="brand">Oŋoy</div>
+        <div className="brand">Depter</div>
         <h1>Как называется ваш магазин?</h1>
         <p className="muted">
-          Начните с названия. Клиентов и товары можно добавить следующим шагом.
+          Начните с названия. Клиентов и поставщиков можно добавить следующим шагом.
         </p>
         <form action={createOrganization}>
           <input type="hidden" name="key" value={crypto.randomUUID()} />

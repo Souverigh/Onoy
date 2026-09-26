@@ -33,7 +33,8 @@ try {
     } catch {}
     await new Promise((r) => setTimeout(r, 100));
   }
-  if (!html.includes("Сначала фото")) throw Error("Preview did not render");
+  if (!html.includes("Перейти к операциям"))
+    throw Error("Preview did not render");
   html = html
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<link\b[^>]*>/gi, "")

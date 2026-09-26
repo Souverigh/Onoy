@@ -12,17 +12,17 @@ export default async function Login({
     <main className="auth">
       <section className="auth-intro">
         <a className="brand" href="/">
-          Oŋoy<span>учёт без лишнего</span>
+          Depter<span>учёт долгов без лишнего</span>
         </a>
         <div>
           <span className="eyebrow">ДЛЯ ВАШЕГО МАГАЗИНА</span>
           <h1>
-            Порядок в делах.
+            Порядок в долгах.
             <br />
             Свободная голова.
           </h1>
           <p>
-            Клиенты, товары и деньги.
+            Кто должен вам, кому должны вы.
             <br />
             Всё нужное в одном месте.
           </p>
@@ -37,7 +37,7 @@ export default async function Login({
           {!ready ? (
             <div className="notice">
               Приложение подготовлено к подключению. Для входа сначала настройте
-              отдельную базу Oŋoy по инструкции запуска.
+              отдельную базу Depter по инструкции запуска.
             </div>
           ) : (
             <>
@@ -68,7 +68,7 @@ export default async function Login({
                     попытку.
                   </p>
                 )}
-                <Submit>Войти в Oŋoy</Submit>
+                <Submit>Войти в Depter</Submit>
               </form>
               <small className="muted">
                 Доступ к пилоту выдаёт администратор вашего магазина.

@@ -49,6 +49,8 @@ try {
     "/",
     "/customers",
     "/products/new",
+    "/money",
+    "/money/new?type=sale",
     "/settings",
     "/documents",
     "/onboarding",
