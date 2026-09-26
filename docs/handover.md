@@ -27,7 +27,7 @@ security-definer RPC. Перед работой с API Next.js — читать
 - **Supabase**: проект `rcjnbmlxssvypcweumsb` — НЕ виден через подключённый
   здесь Supabase MCP-аккаунт (другой аккаунт/организация у пользователя).
   Миграции пользователь применяет сам через SQL Editor, по порядку файлов в
-  `supabase/migrations/`. **Все 11 применены на проде** (подтверждено
+  `supabase/migrations/`. **Все 12 применены на проде** (подтверждено
   пользователем 26.09.2026):
   1. `20260925034145_foundation.sql`
   2. `20260925100000_erp_commands.sql`
@@ -45,7 +45,7 @@ security-definer RPC. Перед работой с API Next.js — читать
       RPC `set_document_fingerprint`, `find_similar_records`, индексы
       контрагент+сумма.
   11. `20260926140000_document_pages.sql` — применена 26.09.2026.
-  12. `20260926150000_opening_balances.sql` — **НЕ ПОДТВЕРЖДЕНО, что применена.**
+  12. `20260926150000_opening_balances.sql` — применена 26.09.2026.
       `is_opening` у sales/purchases/payments (default false — старые строки не
       меняются), уникальные индексы «один перенос на контрагента», RPC
       `import_opening_balance`, `get_statement_by_token` отдаёт `opening`.
