@@ -857,3 +857,49 @@ test("document_lines RLS: only the owning organization can read or edit recogniz
     "Щит-4 (правка)",
   );
 });
+test("create_document reuses an existing document instead of failing on a repeat upload", async () => {
+  await owner();
+  const supplier = (
+    await db.query(
+      "insert into suppliers(organization_id,name) values ($1,'Повтор фото') returning id",
+      [orgA],
+    )
+  ).rows[0].id;
+  await user(a);
+  const first = (
+    await db.query(
+      "select create_document($1,$2,$3,$4,$5) as id",
+      [orgA, "purchase", "path/one.jpg", "same-hash-retry", "image/jpeg"],
+    )
+  ).rows[0].id;
+  const second = (
+    await db.query(
+      "select create_document($1,$2,$3,$4,$5) as id",
+      [orgA, "purchase", "path/two.jpg", "same-hash-retry", "image/jpeg"],
+    )
+  ).rows[0].id;
+  assert.equal(second, first);
+  assert.equal(
+    (
+      await db.query("select count(*)::int as count from documents where organization_id=$1 and file_hash=$2", [
+        orgA,
+        "same-hash-retry",
+      ])
+    ).rows[0].count,
+    1,
+  );
+  const purchase = (
+    await db.query("select commit_purchase($1,$2,$3,$4,$5) as id", [
+      orgA,
+      supplier,
+      "10.00",
+      "eeeeeeee-1111-4000-8000-000000000001",
+      first,
+    ])
+  ).rows[0].id;
+  assert.equal(
+    (await db.query("select document_id from purchases where id=$1", [purchase]))
+      .rows[0].document_id,
+    first,
+  );
+});
