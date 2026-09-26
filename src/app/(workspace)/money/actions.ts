@@ -24,6 +24,8 @@ function field(form: FormData, name: string) {
 
 function failureCode(message: string) {
   if (message.includes("idempotency_conflict")) return "retry";
+  // unique(organization_id,document_id): это фото уже основание другой записи.
+  if (message.includes("document_id")) return "photo_used";
   if (message.includes("invalid_") || message.includes("not_a_member"))
     return "invalid";
   if (message.includes("23505")) return "duplicate";
@@ -99,8 +101,9 @@ export async function commitOperation(form: FormData) {
   if (photo && !hasExistingDocument) {
     try {
       documentId = await uploadOperationPhoto(db, organizationId, operation, photo);
-    } catch {
-      redirect(`/money/new?type=${operation}&error=photo`);
+    } catch (error) {
+      const used = error instanceof Error && error.message === "document_in_use";
+      redirect(`/money/new?type=${operation}&error=${used ? "photo_used" : "photo_upload"}`);
     }
   }
   const result =
@@ -201,8 +204,9 @@ export async function recognizeInvoicePhoto(
   let documentId: string;
   try {
     documentId = await uploadOperationPhoto(db, organizationId, kind, photo);
-  } catch {
-    return { ok: false, error: "upload_failed" };
+  } catch (error) {
+    const used = error instanceof Error && error.message === "document_in_use";
+    return { ok: false, error: used ? "photo_used" : "upload_failed" };
   }
   try {
     const buffer = Buffer.from(await photo.arrayBuffer());
@@ -229,8 +233,9 @@ export async function prepareReceiptPayment(form: FormData) {
   let documentId: string;
   try {
     documentId = await uploadOperationPhoto(db, organizationId, "payment", photo);
-  } catch {
-    redirect("/money/new?type=payment&error=photo");
+  } catch (error) {
+    const used = error instanceof Error && error.message === "document_in_use";
+    redirect(`/money/new?type=payment&error=${used ? "photo_used" : "photo_upload"}`);
   }
 
   const params = new URLSearchParams({ type: "payment", documentId });

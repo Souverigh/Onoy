@@ -35,7 +35,9 @@ export async function uploadOperationPhoto(
   });
   if (error || !data) {
     console.error("uploadOperationPhoto: create_document failed", error);
-    throw new Error("document_failed");
+    throw new Error(
+      error?.message.includes("document_in_use") ? "document_in_use" : "document_failed",
+    );
   }
   return data as string;
 }

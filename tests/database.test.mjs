@@ -948,3 +948,39 @@ test("add_counterparty_alias learns a synonym once, isolated per organization", 
     /not_a_member/,
   );
 });
+test("create_document reuses a photo across kinds until it backs a record", async () => {
+  await owner();
+  const customer = (
+    await db.query(
+      "insert into customers(organization_id,name) values ($1,'Фото сменило вид') returning id",
+      [orgA],
+    )
+  ).rows[0].id;
+  await user(a);
+  const create = async (kind, path) =>
+    (
+      await db.query("select create_document($1,$2,$3,$4,$5) as id", [
+        orgA,
+        kind,
+        path,
+        "same-hash-kind-switch",
+        "image/jpeg",
+      ])
+    ).rows[0].id;
+  const asPurchase = await create("purchase", "path/p.jpg");
+  const asSale = await create("sale", "path/s.jpg");
+  assert.equal(asSale, asPurchase);
+  assert.equal(
+    (await db.query("select kind from documents where id=$1", [asSale])).rows[0].kind,
+    "sale",
+  );
+  await db.query("select commit_sale($1,$2,$3,$4,$5,$6)", [
+    orgA,
+    customer,
+    "54270.00",
+    false,
+    "eeeeeeee-2222-4000-8000-000000000001",
+    asSale,
+  ]);
+  await assert.rejects(create("purchase", "path/p2.jpg"), /document_in_use/);
+});

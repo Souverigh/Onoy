@@ -59,7 +59,14 @@ export function OperationForm({
   const [checkedPhoto, setCheckedPhoto] = useState<CheckedPhoto | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkNote, setCheckNote] = useState<string | null>(null);
-  const parties = direction === "incoming" ? customers : suppliers;
+  const parties =
+    kind === "purchase"
+      ? suppliers
+      : kind === "sale"
+        ? customers
+        : direction === "incoming"
+          ? customers
+          : suppliers;
   const confirmLabel =
     kind === "purchase"
       ? "Подтвердить приход"
@@ -73,6 +80,10 @@ export function OperationForm({
         ? "Такой номер перевода уже учтён."
         : error === "photo"
           ? "Приложите фото накладной — без него запись не сохранится."
+          : error === "photo_used"
+            ? "Это фото уже приложено к другой записи. Проверьте историю — возможно, запись уже есть."
+            : error === "photo_upload"
+              ? "Не удалось загрузить фото. Попробуйте ещё раз."
           : error === "invalid"
             ? "Проверьте сумму и выбранного контрагента."
             : error === "save"
@@ -91,6 +102,10 @@ export function OperationForm({
       const res = await recognizeInvoicePhoto(kind, fd);
       if (res.ok) {
         setCheckedPhoto({ documentId: res.documentId, result: res.result });
+      } else if (res.error === "photo_used") {
+        setCheckNote(
+          "Это фото уже приложено к другой записи. Проверьте историю — возможно, запись уже есть.",
+        );
       } else if ("documentId" in res && res.documentId) {
         setCheckedPhoto({ documentId: res.documentId, result: null });
         setCheckNote("Не удалось быстро сверить сумму — сверим после сохранения.");
