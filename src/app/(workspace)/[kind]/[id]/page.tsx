@@ -76,7 +76,7 @@ export default async function EntryPage({
     const [invoices, pays] = await Promise.all([
       db
         .from(invoiceTable)
-        .select("id,total,occurred_at,reversed_at,reversal_comment,document_id")
+        .select("id,total,occurred_at,reversed_at,reversal_comment,document_id,is_opening")
         .eq("organization_id", organizationId)
         .eq(partyColumn, entry.id)
         .eq("status", "posted")
@@ -84,7 +84,7 @@ export default async function EntryPage({
         .limit(20),
       db
         .from("payments")
-        .select("id,amount,occurred_at,reversed_at,reversal_comment,document_id,status")
+        .select("id,amount,occurred_at,reversed_at,reversal_comment,document_id,status,is_opening")
         .eq("organization_id", organizationId)
         .eq(partyColumn, entry.id)
         .eq("direction", kind === "customers" ? "incoming" : "outgoing")
@@ -96,7 +96,7 @@ export default async function EntryPage({
       ...(invoices.data ?? []).map((r) => ({
         kind: (kind === "customers" ? "sale" : "purchase") as HistoryRow["kind"],
         id: r.id,
-        label: kind === "customers" ? "Продажа" : "Приход",
+        label: r.is_opening ? "Долг из тетради" : kind === "customers" ? "Продажа" : "Приход",
         amount: r.total,
         occurred_at: r.occurred_at,
         reversed: Boolean(r.reversed_at),
@@ -107,7 +107,7 @@ export default async function EntryPage({
       ...(pays.data ?? []).map((p) => ({
         kind: "payment" as const,
         id: p.id,
-        label: p.status === "pending" ? "Заявка на оплату" : "Оплата",
+        label: p.is_opening ? "Аванс из тетради" : p.status === "pending" ? "Заявка на оплату" : "Оплата",
         amount: p.amount,
         occurred_at: p.occurred_at,
         reversed: Boolean(p.reversed_at),

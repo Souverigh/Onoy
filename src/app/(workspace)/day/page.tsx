@@ -54,6 +54,7 @@ export default async function DayClose({
         .eq("organization_id", organizationId)
         .eq("status", "posted")
         .is("reversed_at", null)
+        .eq("is_opening", false)
         .gte("occurred_at", start)
         .lt("occurred_at", end),
       db
@@ -62,6 +63,7 @@ export default async function DayClose({
         .eq("organization_id", organizationId)
         .eq("status", "confirmed")
         .is("reversed_at", null)
+        .eq("is_opening", false)
         .gte("occurred_at", start)
         .lt("occurred_at", end),
       db
@@ -70,6 +72,7 @@ export default async function DayClose({
         .eq("organization_id", organizationId)
         .eq("status", "posted")
         .is("reversed_at", null)
+        .eq("is_opening", false)
         .gte("occurred_at", start)
         .lt("occurred_at", end),
       db
@@ -330,6 +333,7 @@ async function dayHistory(db: Db, organizationId: string, from: string) {
       .eq("organization_id", organizationId)
       .eq("status", "posted")
       .is("reversed_at", null)
+      .eq("is_opening", false)
       .gte("occurred_at", from)
       .range(0, 4999),
     db
@@ -339,6 +343,7 @@ async function dayHistory(db: Db, organizationId: string, from: string) {
       .eq("status", "confirmed")
       .eq("direction", "incoming")
       .is("reversed_at", null)
+      .eq("is_opening", false)
       .gte("occurred_at", from)
       .range(0, 4999),
     db
@@ -347,6 +352,7 @@ async function dayHistory(db: Db, organizationId: string, from: string) {
       .eq("organization_id", organizationId)
       .eq("status", "posted")
       .is("reversed_at", null)
+      .eq("is_opening", false)
       .gte("occurred_at", from)
       .range(0, 4999),
   ]);

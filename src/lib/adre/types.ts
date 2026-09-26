@@ -34,6 +34,15 @@ export type ReceiptResult = {
   confidence: number;
 };
 
+/** Страница тетради долгов при переносе: «имя — сумма», сумма со знаком. */
+export type NotebookRow = {
+  name_raw: string;
+  phone: string | null;
+  amount: number;
+  confidence: number;
+};
+export type NotebookResult = { rows: NotebookRow[]; warnings: string[] };
+
 export type RawCall<T> = { result: T; raw: unknown; costUsd: number | null };
 
 /** Страница документа: у многостраничной накладной их несколько, по порядку. */
@@ -44,4 +53,5 @@ export interface RecognitionProvider {
   model: string;
   recognizeInvoice(pages: PhotoPage[]): Promise<RawCall<InvoiceResult>>;
   recognizeReceipt(photo: Buffer, mimeType: string): Promise<RawCall<ReceiptResult>>;
+  recognizeNotebook(pages: PhotoPage[]): Promise<RawCall<NotebookResult>>;
 }

@@ -44,10 +44,17 @@ export default async function DirectoryPage({
           </h1>
           <p className="muted">{meta.description}</p>
         </div>
-        <Link className="button primary" href={`/${kind}/new`}>
-          <Icon name="plus" />
-          Добавить
-        </Link>
+        <div className="heading-actions">
+          {kind !== "products" && (
+            <Link className="button" href={`/import?kind=${kind}`}>
+              Из тетради
+            </Link>
+          )}
+          <Link className="button primary" href={`/${kind}/new`}>
+            <Icon name="plus" />
+            Добавить
+          </Link>
+        </div>
       </div>
       {kind !== "products" && (
         <div className="tabs">

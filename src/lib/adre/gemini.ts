@@ -1,5 +1,12 @@
 import "server-only";
-import type { InvoiceResult, ReceiptResult, RecognitionProvider, RawCall, PhotoPage } from "./types";
+import type {
+  InvoiceResult,
+  ReceiptResult,
+  NotebookResult,
+  RecognitionProvider,
+  RawCall,
+  PhotoPage,
+} from "./types";
 
 const invoiceSchema = {
   type: "object",
@@ -40,6 +47,27 @@ const invoiceSchema = {
   required: ["document_type", "counterparty", "lines", "total_computed", "currency", "warnings"],
 };
 
+const notebookSchema = {
+  type: "object",
+  properties: {
+    rows: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name_raw: { type: "string" },
+          phone: { type: "string", nullable: true },
+          amount: { type: "number" },
+          confidence: { type: "number" },
+        },
+        required: ["name_raw", "amount", "confidence"],
+      },
+    },
+    warnings: { type: "array", items: { type: "string" } },
+  },
+  required: ["rows", "warnings"],
+};
+
 const receiptSchema = {
   type: "object",
   properties: {
@@ -60,6 +88,8 @@ const invoicePrompt = `Ты распознаёшь рукописную или �
 
 // Добавляется, только когда страниц больше одной — запрос для одного фото не меняется.
 const multiPagePrompt = `Фото несколько — это страницы одной накладной по порядку. Объедини позиции всех страниц в один список со сквозной нумерацией n; если строка повторяется на стыке страниц (перенос), учти её один раз. Контрагент, дата, номер и итог по бумаге обычно на первой или последней странице.`;
+
+const notebookPrompt = `Это страницы тетради долгов магазина стройматериалов в Кыргызстане (рукописная кириллица, кыргызские и узбекские имена). Нужен текущий долг каждого человека на сегодня: имя (как написано), телефон, если записан, и сумма в сомах. Если у человека несколько записей (долг, частичные оплаты, зачёркнутые суммы) — верни один итоговый остаток: зачёркнутое не считай, оплаты вычти. Сумма положительная — человек должен; отрицательная — аванс (заплатил больше, чем должен). Одно имя — одна строка. Уверенность 0-1 по каждой строке. Если что-то неразборчиво или неоднозначно — опиши в warnings. Отвечай только JSON по заданной схеме.`;
 
 const receiptPrompt = `Ты распознаёшь чек или скриншот перевода банка MBank (Кыргызстан). Извлеки банк, номер операции, дату и время, сумму, имя отправителя, имя и телефон получателя, назначение платежа, и уверенность 0-1. Отвечай только JSON по заданной схеме.`;
 
@@ -157,6 +187,10 @@ export function createGeminiProvider(apiKey: string, model: string): Recognition
       const prompt = pages.length > 1 ? `${invoicePrompt}\n\n${multiPagePrompt}` : invoicePrompt;
       const { json, raw } = await callGemini(model, apiKey, prompt, invoiceSchema, pages);
       return { result: json as InvoiceResult, raw, costUsd: estimateCost(raw) };
+    },
+    async recognizeNotebook(pages): Promise<RawCall<NotebookResult>> {
+      const { json, raw } = await callGemini(model, apiKey, notebookPrompt, notebookSchema, pages);
+      return { result: json as NotebookResult, raw, costUsd: estimateCost(raw) };
     },
     async recognizeReceipt(photo, mimeType): Promise<RawCall<ReceiptResult>> {
       const { json, raw } = await callGemini(model, apiKey, receiptPrompt, receiptSchema, [

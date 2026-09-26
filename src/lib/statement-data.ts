@@ -22,7 +22,14 @@ export type StatementEntry = {
   amount: number;
   occurred_at: string;
   reversed: boolean;
+  /** Долг или аванс, перенесённый из бумажной тетради. */
+  opening: boolean;
 };
+export function statementEntryLabel(entry: Pick<StatementEntry, "kind" | "opening">) {
+  if (entry.opening) return entry.kind === "payment" ? "Аванс из тетради" : "Долг из тетради";
+  return entry.kind === "sale" ? "Продажа" : entry.kind === "purchase" ? "Приход" : "Оплата";
+}
+
 export type StatementData = {
   partyName: string;
   shopName: string;
@@ -59,8 +66,8 @@ export async function getStatementData(
   const [docsBefore, paymentsBefore, docsInPeriod, paymentsInPeriod] = await Promise.all([
     db.from(docTable).select("total,reversed_at").eq("organization_id", organizationId).eq(partyColumn, id).eq("status", "posted").lt("occurred_at", fromIso),
     db.from("payments").select("amount,reversed_at").eq("organization_id", organizationId).eq(partyColumn, id).eq("direction", paymentDirection).eq("status", "confirmed").lt("occurred_at", fromIso),
-    db.from(docTable).select("id,total,occurred_at,reversed_at").eq("organization_id", organizationId).eq(partyColumn, id).eq("status", "posted").gte("occurred_at", fromIso).lt("occurred_at", toIsoEnd).order("occurred_at"),
-    db.from("payments").select("id,amount,occurred_at,reversed_at,status").eq("organization_id", organizationId).eq(partyColumn, id).eq("direction", paymentDirection).neq("status", "rejected").gte("occurred_at", fromIso).lt("occurred_at", toIsoEnd).order("occurred_at"),
+    db.from(docTable).select("id,total,occurred_at,reversed_at,is_opening").eq("organization_id", organizationId).eq(partyColumn, id).eq("status", "posted").gte("occurred_at", fromIso).lt("occurred_at", toIsoEnd).order("occurred_at"),
+    db.from("payments").select("id,amount,occurred_at,reversed_at,status,is_opening").eq("organization_id", organizationId).eq(partyColumn, id).eq("direction", paymentDirection).neq("status", "rejected").gte("occurred_at", fromIso).lt("occurred_at", toIsoEnd).order("occurred_at"),
   ]);
 
   const sum = (rows: { amount?: string; total?: string; reversed_at: string | null }[]) =>
@@ -73,6 +80,7 @@ export async function getStatementData(
       amount: Number(d.total),
       occurred_at: d.occurred_at,
       reversed: Boolean(d.reversed_at),
+      opening: Boolean(d.is_opening),
     })),
     ...(paymentsInPeriod.data ?? [])
       .filter((p) => p.status !== "pending")
@@ -81,6 +89,7 @@ export async function getStatementData(
         amount: -Number(p.amount),
         occurred_at: p.occurred_at,
         reversed: Boolean(p.reversed_at),
+        opening: Boolean(p.is_opening),
       })),
   ].sort((a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime());
 

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
 import { money } from "@/lib/format";
 import { PrintButton } from "@/components/print-button";
-import { getStatementData } from "@/lib/statement-data";
+import { getStatementData, statementEntryLabel } from "@/lib/statement-data";
 
 export default async function Statement({
   params,
@@ -79,7 +79,7 @@ export default async function Statement({
                     )}
                   </td>
                   <td>
-                    {entry.kind === "sale" ? "Продажа" : entry.kind === "purchase" ? "Приход" : "Оплата"}
+                    {statementEntryLabel(entry)}
                     {entry.reversed && <span className="tag reversed-tag">отменена</span>}
                   </td>
                   <td>{money(entry.amount)}</td>

@@ -2144,3 +2144,92 @@ tr.line-mismatch {
     min-width: 0;
   }
 }
+
+/* Перенос тетради */
+.notebook-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.notebook-actions label.button {
+  cursor: pointer;
+}
+.notebook-rows {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.notebook-row {
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.notebook-row.doubt {
+  background: #fff8e8;
+}
+.notebook-row.done {
+  opacity: 0.75;
+}
+.notebook-row-fields {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 10px;
+}
+.notebook-row-fields label {
+  display: flex;
+  flex-direction: column;
+  color: #536457;
+  margin-bottom: 0;
+  font-size: 12px;
+  gap: 4px;
+}
+.notebook-row-fields input {
+  min-height: 42px;
+  padding: 8px 10px;
+}
+.notebook-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+.notebook-row-meta .form-error {
+  margin: 0;
+}
+.notebook-row-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.notebook-save {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px 0;
+  background: #fff;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 560px) {
+  .notebook-row-fields {
+    grid-template-columns: 1fr 1fr;
+  }
+  .notebook-row-fields label:first-child {
+    grid-column: 1 / -1;
+  }
+  .notebook-save {
+    bottom: 72px;
+  }
+}
+.heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}

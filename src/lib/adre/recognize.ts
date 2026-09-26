@@ -169,6 +169,27 @@ async function saveFingerprint(
   if (error) console.error("saveFingerprint: set_document_fingerprint failed", error);
 }
 
+/**
+ * Страницы тетради при переносе долгов — разовая операция, фото не
+ * сохраняются как документы и не кешируются.
+ */
+export async function recognizeNotebook(pages: PhotoPage[]) {
+  const provider = getProvider();
+  if (!provider) throw new Error("no_provider_configured");
+  const { result } = await provider.recognizeNotebook(pages);
+  return {
+    rows: (result.rows ?? [])
+      .map((row) => ({
+        name: String(row.name_raw ?? "").trim().replace(/\s+/g, " ").slice(0, 160),
+        phone: String(row.phone ?? "").trim().slice(0, 40),
+        amount: Math.round(Number(row.amount) * 100) / 100,
+        confidence: Number(row.confidence) || 0,
+      }))
+      .filter((row) => row.name && Number.isFinite(row.amount) && row.amount !== 0),
+    warnings: (result.warnings ?? []).map(String),
+  };
+}
+
 export function recognizeReceiptCached(args: CachedArgs) {
   return recognizeWithCache<ReceiptResult>({ ...args, kind: "receipt", normalize: (r) => r });
 }

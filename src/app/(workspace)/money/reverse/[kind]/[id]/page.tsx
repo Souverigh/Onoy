@@ -58,7 +58,14 @@ export default async function ReverseOperation({
         ← {back ? "Назад" : "Деньги"}
       </Link>
       <div className="page-heading">
-        <h1>Отменить запись: {meta.label.toLowerCase()}</h1>
+        <h1>
+          Отменить запись:{" "}
+          {data.is_opening
+            ? kind === "payment"
+              ? "аванс из тетради"
+              : "долг из тетради"
+            : meta.label.toLowerCase()}
+        </h1>
       </div>
       <section className="panel simple-operation-panel">
         <p>

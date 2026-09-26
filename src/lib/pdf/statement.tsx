@@ -1,7 +1,7 @@
 import "server-only";
 import { Document, Page, Text, View, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import { ensureFontsRegistered } from "./fonts";
-import type { StatementEntry } from "../statement-data";
+import { statementEntryLabel, type StatementEntry } from "../statement-data";
 
 const styles = StyleSheet.create({
   page: { fontFamily: "PT Sans", fontSize: 11, padding: 36, color: "#1d2a2a" },
@@ -20,11 +20,6 @@ const styles = StyleSheet.create({
   reversed: { color: "#a4762f" },
 });
 
-const kindLabel: Record<StatementEntry["kind"], string> = {
-  sale: "Продажа",
-  purchase: "Приход",
-  payment: "Оплата",
-};
 
 export type StatementPdfData = {
   shopName: string;
@@ -63,7 +58,7 @@ function StatementDocument({ data }: { data: StatementPdfData }) {
                 )}
               </Text>
               <Text style={entry.reversed ? [styles.kindCell, styles.reversed] : styles.kindCell}>
-                {kindLabel[entry.kind]}
+                {statementEntryLabel(entry)}
                 {entry.reversed ? " (отменена)" : ""}
               </Text>
               <Text style={entry.reversed ? [styles.sum, styles.reversed] : styles.sum}>

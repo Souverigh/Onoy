@@ -12,6 +12,7 @@ type Activity = {
   occurred_at: string;
   direction?: "incoming" | "outgoing";
   reversed: boolean;
+  opening?: boolean;
   reversalComment?: string;
 };
 
@@ -44,21 +45,21 @@ export default async function Money({
         .limit(8),
       db
         .from("purchases")
-        .select("id,supplier_id,total,occurred_at,reversed_at,reversal_comment")
+        .select("id,supplier_id,total,occurred_at,reversed_at,reversal_comment,is_opening")
         .eq("organization_id", organizationId)
         .eq("status", "posted")
         .order("occurred_at", { ascending: false })
         .limit(8),
       db
         .from("sales")
-        .select("id,customer_id,total,occurred_at,reversed_at,reversal_comment")
+        .select("id,customer_id,total,occurred_at,reversed_at,reversal_comment,is_opening")
         .eq("organization_id", organizationId)
         .eq("status", "posted")
         .order("occurred_at", { ascending: false })
         .limit(8),
       db
         .from("payments")
-        .select("id,customer_id,supplier_id,direction,amount,occurred_at,reversed_at,reversal_comment")
+        .select("id,customer_id,supplier_id,direction,amount,occurred_at,reversed_at,reversal_comment,is_opening")
         .eq("organization_id", organizationId)
         .eq("status", "confirmed")
         .order("occurred_at", { ascending: false })
@@ -87,6 +88,7 @@ export default async function Money({
     total: string;
     occurred_at: string;
     reversed_at: string | null;
+    is_opening?: boolean;
     reversal_comment: string | null;
   }[];
   const sales = (saleResult.data ?? []) as {
@@ -95,6 +97,7 @@ export default async function Money({
     total: string;
     occurred_at: string;
     reversed_at: string | null;
+    is_opening?: boolean;
     reversal_comment: string | null;
   }[];
   const payments = (paymentResult.data ?? []) as {
@@ -105,6 +108,7 @@ export default async function Money({
     amount: string;
     occurred_at: string;
     reversed_at: string | null;
+    is_opening?: boolean;
     reversal_comment: string | null;
   }[];
   const customerIds = [
@@ -162,6 +166,7 @@ export default async function Money({
       occurred_at: row.occurred_at,
       reversed: Boolean(row.reversed_at),
       reversalComment: row.reversal_comment ?? undefined,
+      opening: Boolean(row.is_opening),
     })),
     ...sales.map((row) => ({
       id: row.id,
@@ -171,6 +176,7 @@ export default async function Money({
       occurred_at: row.occurred_at,
       reversed: Boolean(row.reversed_at),
       reversalComment: row.reversal_comment ?? undefined,
+      opening: Boolean(row.is_opening),
     })),
     ...payments.map((row) => ({
       id: row.id,
@@ -184,6 +190,7 @@ export default async function Money({
       direction: row.direction,
       reversed: Boolean(row.reversed_at),
       reversalComment: row.reversal_comment ?? undefined,
+      opening: Boolean(row.is_opening),
     })),
   ].sort(
     (a, b) =>
@@ -337,13 +344,17 @@ export default async function Money({
                     className={activity.reversed ? "reversed-row" : ""}
                   >
                     <td>
-                      {activity.kind === "purchase"
-                        ? "Приход"
-                        : activity.kind === "sale"
-                          ? "Продажа"
-                          : activity.direction === "incoming"
-                            ? "Получена оплата"
-                            : "Оплата поставщику"}
+                      {activity.opening
+                        ? activity.kind === "payment"
+                          ? "Аванс из тетради"
+                          : "Долг из тетради"
+                        : activity.kind === "purchase"
+                          ? "Приход"
+                          : activity.kind === "sale"
+                            ? "Продажа"
+                            : activity.direction === "incoming"
+                              ? "Получена оплата"
+                              : "Оплата поставщику"}
                       {activity.reversed && (
                         <span className="tag reversed-tag">отменена</span>
                       )}

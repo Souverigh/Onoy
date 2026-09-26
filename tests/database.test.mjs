@@ -1227,3 +1227,68 @@ test("document_pages: extra pages belong to one shop, attach once, never touch e
     /permission denied/,
   );
 });
+
+test("import_opening_balance: notebook debts become ledger entries once per party, per shop", async () => {
+  await user(a);
+  const imp = (kind, party, name, amount, key) =>
+    db.query("select import_opening_balance($1,$2,$3,$4,'',$5,$6) as id", [orgA, kind, party, name, amount, key]);
+  const balance = async (view, id) =>
+    Number((await db.query(`select balance from ${view} where id=$1`, [id])).rows[0].balance);
+
+  // Новый клиент по имени — создаётся, долг из тетради сразу в балансе.
+  const customer = (await imp("customer", null, "Тетрадь Асан", "12500.50", "0c000000-0000-4000-8000-000000000001")).rows[0].id;
+  assert.equal(await balance("customer_balances", customer), 12500.5);
+  // Повтор с тем же ключом — тот же результат, без задвоения.
+  assert.equal(
+    (await imp("customer", null, "Тетрадь Асан", "12500.50", "0c000000-0000-4000-8000-000000000001")).rows[0].id,
+    customer,
+  );
+  assert.equal(await balance("customer_balances", customer), 12500.5);
+  // Тот же клиент (имя без учёта регистра) вторым переносом — отказ.
+  await assert.rejects(
+    imp("customer", null, "тетрадь асан", "100", "0c000000-0000-4000-8000-000000000002"),
+    /opening_exists/,
+  );
+  const sale = (
+    await db.query("select id,is_opening,document_id from sales where customer_id=$1", [customer])
+  ).rows[0];
+  assert.equal(sale.is_opening, true);
+  assert.equal(sale.document_id, null);
+
+  // Аванс поставщику (отрицательная сумма) — оплата с пометкой.
+  const supplier = (await imp("supplier", null, "Тетрадь Склад", "-3000", "0c000000-0000-4000-8000-000000000003")).rows[0].id;
+  assert.equal(await balance("supplier_balances", supplier), -3000);
+
+  // После отмены переноса можно внести правильную сумму.
+  await db.query("select reverse_sale($1,$2,'ошибся суммой')", [orgA, sale.id]);
+  await imp("customer", customer, null, "9000", "0c000000-0000-4000-8000-000000000004");
+  assert.equal(await balance("customer_balances", customer), 9000);
+
+  // Обычные записи не помечены.
+  assert.equal(
+    (await db.query("select count(*)::int as n from sales where is_opening and customer_id<>$1", [customer])).rows[0].n,
+    0,
+  );
+
+  // Другой магазин: не может писать в чужой и не видит чужого.
+  await user(b);
+  await assert.rejects(
+    db.query("select import_opening_balance($1,'customer',null,'Чужой','','100',$2)", [
+      orgA,
+      "0c000000-0000-4000-8000-000000000005",
+    ]),
+    /not_a_member/,
+  );
+  await assert.rejects(
+    db.query("select import_opening_balance($1,'customer',$2,null,'','100',$3)", [
+      orgB,
+      customer,
+      "0c000000-0000-4000-8000-000000000006",
+    ]),
+    /invalid_party/,
+  );
+  assert.equal((await db.query("select * from sales where customer_id=$1", [customer])).rows.length, 0);
+
+  await user(a);
+  await assert.rejects(imp("customer", null, "Ноль", "0", "0c000000-0000-4000-8000-000000000007"), /invalid_opening/);
+});

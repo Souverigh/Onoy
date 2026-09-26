@@ -13,6 +13,7 @@ type Statement = {
     amount: string;
     occurred_at: string;
     reversed: boolean;
+    opening?: boolean;
     status?: string;
   }[];
 };
@@ -106,7 +107,15 @@ export default async function ClientPage({
                       }).format(new Date(entry.occurred_at))}
                     </td>
                     <td>
-                      {entry.kind === "sale" ? "Продажа" : entry.status === "pending" ? "Заявка (ждёт)" : "Оплата"}
+                      {entry.opening
+                        ? entry.kind === "sale"
+                          ? "Долг из тетради"
+                          : "Аванс из тетради"
+                        : entry.kind === "sale"
+                          ? "Продажа"
+                          : entry.status === "pending"
+                            ? "Заявка (ждёт)"
+                            : "Оплата"}
                       {entry.reversed && <span className="tag reversed-tag">отменена</span>}
                     </td>
                     <td>{money(entry.amount)}</td>
