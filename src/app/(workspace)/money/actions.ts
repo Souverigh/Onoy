@@ -82,8 +82,15 @@ export async function commitOperation(form: FormData) {
       error instanceof Error &&
       (error.message === "invalid_input" ||
         error.message.startsWith("Введите неотрицательное число"))
-    )
+    ) {
+      console.error("commitOperation: field validation failed", {
+        operation,
+        reason: error.message,
+        hasParty: uuidPattern.test(party),
+        rawAmount: operation === "payment" ? form.get("amount") : form.get("total"),
+      });
       redirect(`/money/new?type=${operation}&error=invalid`);
+    }
     throw error;
   }
 
@@ -123,10 +130,16 @@ export async function commitOperation(form: FormData) {
             p_idempotency_key: idempotencyKey,
             p_document: documentId,
           });
-  if (result.error || !result.data)
+  if (result.error || !result.data) {
+    console.error("commitOperation: RPC failed", {
+      operation,
+      amount,
+      message: result.error?.message,
+    });
     redirect(
       `/money/new?type=${operation}&error=${failureCode(result.error?.message ?? "save")}`,
     );
+  }
   if (documentId) {
     const declaredTotal = operation === "payment" ? null : Number(amount);
     const recognizedRaw = form.get("recognized_result");

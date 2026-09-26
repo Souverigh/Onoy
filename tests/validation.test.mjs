@@ -13,6 +13,15 @@ test("prices preserve decimals without allowing negative, exponent or overflow",
   ])
     assert.throws(() => decimalInput(v, 2));
 });
+test("decimalInput accepts space-grouped thousands, as shown by money()", () => {
+  assert.equal(decimalInput("54 270", 2), "54270.00");
+  assert.equal(decimalInput(" 1 234 567 ", 2), "1234567.00");
+  assert.equal(decimalInput("1 234,50", 2), "1234.50");
+});
+test("decimalInput disambiguates thousands vs decimal when both , and . appear", () => {
+  assert.equal(decimalInput("54.270,00", 2), "54270.00");
+  assert.equal(decimalInput("54,270.00", 2), "54270.00");
+});
 test("directory input strips whitespace and enforces meaningful name", () => {
   assert.equal(
     directoryInput("customers", { name: "  Асан  ", phone: "0555123456" }).name,

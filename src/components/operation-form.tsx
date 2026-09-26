@@ -210,7 +210,7 @@ export function OperationForm({
             inputMode="decimal"
             autoComplete="off"
             required
-            pattern="[0-9]+([.,][0-9]{1,2})?"
+            pattern="[0-9 ]+([.,][0-9]{1,2})?"
             placeholder="0"
             value={amountValue}
             onChange={(e) => setAmountValue(e.target.value)}

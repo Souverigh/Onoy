@@ -4,9 +4,21 @@ export function isDirectory(value: string): value is Directory {
   return (directories as readonly string[]).includes(value);
 }
 export function decimalInput(value: unknown, scale: number): string {
-  const s = String(value ?? "0")
+  // Продавцы группируют суммы пробелом ("54 270", как отображает money() —
+  // src/lib/format.ts), и это не то же самое, что 3 цифры после запятой.
+  let s = String(value ?? "0")
     .trim()
-    .replace(",", ".");
+    .replace(/[\s ']/g, "");
+  const lastComma = s.lastIndexOf(",");
+  const lastDot = s.lastIndexOf(".");
+  if (lastComma !== -1 && lastDot !== -1) {
+    // Оба разделителя — последний из них десятичный, остальные разделяли тысячи.
+    s = lastComma > lastDot
+      ? s.replaceAll(".", "").replace(",", ".")
+      : s.replaceAll(",", "");
+  } else if (lastComma !== -1) {
+    s = s.replace(",", ".");
+  }
   if (!new RegExp(`^\\d{1,${16 - scale}}(\\.\\d{1,${scale}})?$`).test(s))
     throw new Error(
       `Введите неотрицательное число, максимум ${scale} знака после запятой`,
