@@ -168,11 +168,11 @@ export default async function DayClose({
       </div>
       <form className="day-picker" action="/day">
         <label>
-          Показать день
+          Итог за другой день
           <input type="date" name="date" defaultValue={date} max={today} />
         </label>
         <button className="button" type="submit">
-          Открыть
+          Показать итог за эту дату
         </button>
         {!isToday && (
           <Link className="text-button" href="/day">

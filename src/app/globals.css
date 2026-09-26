@@ -1326,13 +1326,20 @@ td small {
 .day-picker label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
+  gap: 6px;
+  font-size: 13px;
   color: var(--muted);
+  margin-bottom: 0;
 }
 .day-picker input {
-  min-height: 42px;
-  padding: 8px 10px;
+  width: auto;
+  height: 48px;
+  box-sizing: border-box;
+}
+.day-picker .text-button {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
 }
 .day-history td,
 .day-history th {
