@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon, type IconName } from "./icon";
 import { logout } from "@/app/auth/actions";
 // Товары/склад — Этап 2 по ТЗ, из навигации Этапа 1 скрыты (код и таблицы не убраны).
@@ -20,6 +20,7 @@ const mobileNav: [string, string, IconName][] = [
   ["/customers", "Клиенты", "people"],
   ["/suppliers", "Поставщики", "truck"],
 ];
+// На телефоне внизу — только основные разделы, остальные — в меню-бургере сверху.
 const moreNav: [string, string, IconName][] = [
   ["/money", "Деньги", "wallet"],
   ["/day", "Итог дня", "file"],
@@ -39,7 +40,15 @@ export function Shell({
   reviewCount?: number;
 }) {
   const path = usePathname();
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // Переход по ссылке или Esc закрывают меню.
+  useEffect(() => setMenuOpen(false), [path]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
   const pageTitle =
     nav.find((n) => n[0] === path)?.[1] ??
     (preview ? "Главная" : "Справочники");
@@ -98,42 +107,6 @@ export function Shell({
             </Link>
           ))}
         </nav>
-        {!preview && (
-          <div className={`mobile-more${moreOpen ? " is-open" : ""}`}>
-            {moreOpen && (
-              <nav aria-label="Ещё разделы" className="mobile-more-menu">
-                {moreNav.map(([href, label, icon]) => (
-                  <Link
-                    href={href}
-                    key={href}
-                    className={
-                      path === href || path.startsWith(href + "/")
-                        ? "active"
-                        : ""
-                    }
-                    onClick={() => setMoreOpen(false)}
-                  >
-                    <Icon name={icon} />
-                    <span>{label}</span>
-                    {href === "/documents" && reviewCount > 0 && (
-                      <span className="nav-badge">{reviewCount}</span>
-                    )}
-                  </Link>
-                ))}
-              </nav>
-            )}
-            <button
-              className={`mobile-more-button${moreActive ? " active" : ""}`}
-              type="button"
-              aria-expanded={moreOpen}
-              aria-label={moreOpen ? "Закрыть дополнительные разделы" : "Ещё разделы"}
-              onClick={() => setMoreOpen((current) => !current)}
-            >
-              <Icon name="settings" />
-              <span>Ещё</span>
-            </button>
-          </div>
-        )}
         <div className="sidebar-bottom">
           <div className="status-dot" />
           Пилотная версия<span>Depter / 0.3</span>
@@ -152,8 +125,47 @@ export function Shell({
                 <button className="text-button topbar-logout">Выйти</button>
               </form>
             )}
+            <button
+              className={`menu-toggle${moreActive ? " active" : ""}`}
+              type="button"
+              aria-expanded={menuOpen}
+              aria-controls="mobile-menu"
+              aria-label={menuOpen ? "Закрыть меню" : "Открыть меню"}
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              <Icon name={menuOpen ? "close" : "menu"} />
+              {!menuOpen && reviewCount > 0 && (
+                <span className="nav-badge menu-toggle-badge">{reviewCount}</span>
+              )}
+            </button>
           </div>
         </header>
+        {menuOpen && (
+          <>
+            <div className="mobile-menu-backdrop" onClick={() => setMenuOpen(false)} />
+            <nav id="mobile-menu" aria-label="Разделы" className="mobile-menu">
+              {moreNav.map(([href, label, icon]) => (
+                <Link
+                  href={preview ? "/preview" : href}
+                  key={href}
+                  className={path === href || path.startsWith(href + "/") ? "active" : ""}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <Icon name={icon} />
+                  <span>{label}</span>
+                  {href === "/documents" && reviewCount > 0 && (
+                    <span className="nav-badge">{reviewCount}</span>
+                  )}
+                </Link>
+              ))}
+              {!preview && (
+                <form action={logout} className="mobile-menu-logout">
+                  <button type="submit">Выйти</button>
+                </form>
+              )}
+            </nav>
+          </>
+        )}
         {preview && (
           <div className="preview-banner">
             Предпросмотр интерфейса · данные не подключены

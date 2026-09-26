@@ -9,7 +9,9 @@ export type IconName =
   | "plus"
   | "arrow"
   | "truck"
-  | "check";
+  | "check"
+  | "menu"
+  | "close";
 const paths: Record<IconName, string> = {
   home: "M3 10 12 3l9 7v10H3V10Zm6 10v-7h6v7",
   people:
@@ -25,6 +27,8 @@ const paths: Record<IconName, string> = {
   truck:
     "M1 3h14v13H1V3Zm14 6h4l3 4v3h-7M5 16a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm13 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z",
   check: "M5 13l4 4L19 7",
+  menu: "M4 6h16M4 12h16M4 18h16",
+  close: "M6 6l12 12M18 6 6 18",
 };
 export function Icon({ name }: { name: IconName }) {
   return (
