@@ -1392,6 +1392,14 @@ tr.line-mismatch {
 .counterparty-mismatch p {
   margin-bottom: 14px;
 }
+.doc-party {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.doc-party small {
+  font-size: 12px;
+}
 .invoice-lines {
   list-style: none;
   margin: 0;

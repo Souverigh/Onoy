@@ -34,6 +34,7 @@ export default async function Documents() {
     .limit(50);
   if (error) throw new Error("Не удалось загрузить документы");
   const documents = (data ?? []) as DocRow[];
+  const parties = await partiesOf(db, organizationId, documents.map((d) => d.id));
 
   return (
     <>
@@ -54,6 +55,7 @@ export default async function Documents() {
               <thead>
                 <tr>
                   <th>Тип</th>
+                  <th>Кто</th>
                   <th>Статус</th>
                   <th>Загружен</th>
                   <th>
@@ -67,6 +69,18 @@ export default async function Documents() {
                   return (
                     <tr key={doc.id}>
                       <td>{doc.kind ? kindLabel[doc.kind] : "—"}</td>
+                      <td>
+                        {parties.get(doc.id) ? (
+                          <span className="doc-party">
+                            {parties.get(doc.id)!.name}
+                            <small className="muted">
+                              {parties.get(doc.id)!.role === "customer" ? "клиент" : "поставщик"}
+                            </small>
+                          </span>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
                       <td>
                         <span className={status.className}>{status.label}</span>
                         {doc.status === "failed" && doc.error_message && (
@@ -106,4 +120,49 @@ export default async function Documents() {
       )}
     </>
   );
+}
+
+type Party = { name: string; role: "customer" | "supplier" };
+
+/** Контрагент записи, к которой приложен документ, — одним запросом на таблицу. */
+async function partiesOf(
+  db: Awaited<ReturnType<typeof getContext>>["db"],
+  organizationId: string,
+  documentIds: string[],
+): Promise<Map<string, Party>> {
+  const result = new Map<string, Party>();
+  if (!documentIds.length) return result;
+  const [purchases, sales, payments] = await Promise.all([
+    db.from("purchases").select("document_id,supplier_id").eq("organization_id", organizationId).in("document_id", documentIds),
+    db.from("sales").select("document_id,customer_id").eq("organization_id", organizationId).in("document_id", documentIds),
+    db
+      .from("payments")
+      .select("document_id,customer_id,supplier_id")
+      .eq("organization_id", organizationId)
+      .in("document_id", documentIds),
+  ]);
+  const links: { documentId: string; id: string; role: Party["role"] }[] = [];
+  for (const r of purchases.data ?? []) links.push({ documentId: r.document_id, id: r.supplier_id, role: "supplier" });
+  for (const r of sales.data ?? []) links.push({ documentId: r.document_id, id: r.customer_id, role: "customer" });
+  for (const r of payments.data ?? []) {
+    if (r.customer_id) links.push({ documentId: r.document_id, id: r.customer_id, role: "customer" });
+    else if (r.supplier_id) links.push({ documentId: r.document_id, id: r.supplier_id, role: "supplier" });
+  }
+  const ids = (role: Party["role"]) => [...new Set(links.filter((l) => l.role === role).map((l) => l.id))];
+  const [customers, suppliers] = await Promise.all([
+    ids("customer").length
+      ? db.from("customers").select("id,name").eq("organization_id", organizationId).in("id", ids("customer"))
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    ids("supplier").length
+      ? db.from("suppliers").select("id,name").eq("organization_id", organizationId).in("id", ids("supplier"))
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+  ]);
+  const names = new Map<string, string>();
+  for (const c of customers.data ?? []) names.set("customer:" + c.id, c.name);
+  for (const c of suppliers.data ?? []) names.set("supplier:" + c.id, c.name);
+  for (const l of links) {
+    const name = names.get(l.role + ":" + l.id);
+    if (name) result.set(l.documentId, { name, role: l.role });
+  }
+  return result;
 }
