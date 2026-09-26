@@ -69,3 +69,35 @@ test("normalizeInvoiceResult keeps model total when there are no lines", () => {
   const result = normalizeInvoiceResult({ ...invoiceWith([]), total_computed: 500 });
   assert.equal(result.total_computed, 500);
 });
+
+test("normalizeInvoiceResult restores abbreviated names from the line above", () => {
+  const names = (raw) =>
+    normalizeInvoiceResult(
+      invoiceWith(raw.map((name_raw, i) => ({ n: i + 1, name_raw, qty: "1", unit: "шт", price: "1", sum: "1", confidence: 1 }))),
+    ).lines.map((l) => l.name_raw);
+  assert.deepEqual(names(["Щит - 4", "-8", "- 12", "Огнетушитель АВТ", "Хомуты 150", "200", "〃 250"]), [
+    "Щит - 4",
+    "Щит - 8",
+    "Щит - 12",
+    "Огнетушитель АВТ",
+    "Хомуты 150",
+    "Хомуты 200",
+    "Хомуты 250",
+  ]);
+  assert.deepEqual(names(["Колодка ок 3й", "2й", "4й", "Удлинитель 3/3", "3/5"]), [
+    "Колодка ок 3й",
+    "Колодка ок 2й",
+    "Колодка ок 4й",
+    "Удлинитель 3/3",
+    "Удлинитель 3/5",
+  ]);
+  // Уже полные названия и строка без группы выше не меняются.
+  assert.deepEqual(names(["-5", "Щит - 8", "Щит - 12", "-//-", '"', '"Кнауф" гипс']), [
+    "-5",
+    "Щит - 8",
+    "Щит - 12",
+    "Щит",
+    "Щит",
+    '"Кнауф" гипс',
+  ]);
+});

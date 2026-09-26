@@ -30,6 +30,49 @@ function normalizeName(raw: string): string {
   return raw.trim().replace(/\s+/g, " ");
 }
 
+// Знаки повтора в начале строки: 〃, -//-, «то же». Кавычки (" или '')
+// тоже бывают повтором, но с них может начинаться и название («"Кнауф"
+// гипс») — их снимаем, только когда слова в строке нет.
+const DITTO = /^(?:〃|[-–—]*\s*\/\/\s*[-–—]*|то\s*же)\s*/i;
+const QUOTES = /^["'“”«»]+\s*/;
+const WORD = /[a-zа-яё]{3,}/i;
+
+/**
+ * Основа названия и разделитель до размера: «Щит - 4» → { base: "Щит",
+ * separator: " - " }, «Хомуты 150» → { base: "Хомуты", separator: " " }.
+ * Основа — слова до первого токена с цифрой.
+ */
+function nameBase(name: string): { base: string; separator: string } | null {
+  const match = name.match(/^(.*?[a-zа-яё].*?)(\s*[-–—]?\s*)(?=\S*\d)/i);
+  if (!match) return { base: name, separator: " " };
+  const base = match[1].trim();
+  return base ? { base, separator: match[2] || " " } : null;
+}
+
+/**
+ * Рукописная накладная: название пишут один раз, ниже — только размер
+ * («-8», «200», «3/5», «2й») или знак повтора. Такой строке возвращаем
+ * название из строки выше: «Щит - 8». Страховка на случай, если модель не
+ * выполнила это правило из промпта. Строка с настоящим словом (3+ буквы
+ * подряд) считается полным названием и начинает новую группу.
+ */
+function expandAbbreviatedNames<T extends { name_raw: string }>(lines: T[]): T[] {
+  let group: { base: string; separator: string } | null = null;
+  return lines.map((line) => {
+    const hadDitto = DITTO.test(line.name_raw);
+    const rest = line.name_raw.replace(DITTO, "").replace(/^[-–—]\s*/, "").trim();
+    if (!WORD.test(rest)) {
+      if (!group) return line;
+      const size = rest.replace(QUOTES, "").trim();
+      const name = size ? `${group.base}${group.separator}${size}` : group.base;
+      return { ...line, name_raw: name };
+    }
+    if (hadDitto && group) return { ...line, name_raw: `${group.base} ${rest}` };
+    group = nameBase(line.name_raw);
+    return line;
+  });
+}
+
 /**
  * Итог по строкам считаем сами: модель (особенно с thinkingLevel=low) ошибается
  * в сложении длинных накладных, а qty×price — простая арифметика. Строка без
@@ -54,14 +97,16 @@ function computeTotal(result: InvoiceResult): number {
 export function normalizeInvoiceResult(result: InvoiceResult): InvoiceResult {
   const normalized = {
     ...result,
-    lines: result.lines.map((line) => ({
-      ...line,
-      name_raw: normalizeName(line.name_raw),
-      unit: normalizeUnit(line.unit),
-      qty: normalizeDecimalString(line.qty),
-      price: normalizeDecimalString(line.price),
-      sum: normalizeDecimalString(line.sum),
-    })),
+    lines: expandAbbreviatedNames(
+      result.lines.map((line) => ({
+        ...line,
+        name_raw: normalizeName(line.name_raw),
+        unit: normalizeUnit(line.unit),
+        qty: normalizeDecimalString(line.qty),
+        price: normalizeDecimalString(line.price),
+        sum: normalizeDecimalString(line.sum),
+      })),
+    ),
   };
   return { ...normalized, total_computed: computeTotal(normalized) };
 }
