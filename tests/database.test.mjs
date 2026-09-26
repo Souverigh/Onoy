@@ -1018,3 +1018,142 @@ test("cache_extraction stores a Gemini result without touching document status, 
     /not_a_member/,
   );
 });
+test("duplicate photos: blocked by default, allowed with a warning when the shop opts in, freed by reversal", async () => {
+  await owner();
+  const customer = (
+    await db.query(
+      "insert into customers(organization_id,name) values ($1,'Дубликаты фото') returning id",
+      [orgA],
+    )
+  ).rows[0].id;
+  await user(a);
+  const create = async (path) =>
+    (
+      await db.query("select create_document($1,$2,$3,$4,$5) as id", [
+        orgA,
+        "sale",
+        path,
+        "dup-hash-1",
+        "image/jpeg",
+      ])
+    ).rows[0].id;
+  const sale = async (doc, key) =>
+    (
+      await db.query("select commit_sale($1,$2,$3,$4,$5,$6) as id", [
+        orgA,
+        customer,
+        "100.00",
+        false,
+        key,
+        doc,
+      ])
+    ).rows[0].id;
+  const isDuplicate = async (doc) =>
+    (await db.query("select document_is_duplicate($1,$2) as dup", [orgA, doc])).rows[0].dup;
+
+  const first = await create("dup/1.jpg");
+  assert.equal(await isDuplicate(first), false);
+  const firstSale = await sale(first, "dddddddd-0000-4000-8000-000000000001");
+
+  // По умолчанию — запрет.
+  await assert.rejects(create("dup/2.jpg"), /document_in_use/);
+
+  // Магазин разрешил повторы — новый документ, запись проходит, флаг дубликата.
+  await db.query("update organizations set block_duplicate_photos=false where id=$1", [orgA]);
+  const second = await create("dup/2.jpg");
+  assert.notEqual(second, first);
+  assert.equal(await isDuplicate(second), true);
+  await sale(second, "dddddddd-0000-4000-8000-000000000002");
+
+  // Снова запрет; после сторно обеих записей фото свободно.
+  await db.query("update organizations set block_duplicate_photos=true where id=$1", [orgA]);
+  await assert.rejects(create("dup/3.jpg"), /document_in_use/);
+  const secondSale = (
+    await db.query("select id from sales where organization_id=$1 and document_id=$2", [
+      orgA,
+      second,
+    ])
+  ).rows[0].id;
+  for (const id of [firstSale, secondSale])
+    await db.query("select reverse_sale($1,$2,$3)", [orgA, id, "Задвоили"]);
+  const third = await create("dup/3.jpg");
+  assert.equal(await isDuplicate(third), false);
+  await sale(third, "dddddddd-0000-4000-8000-000000000003");
+});
+test("find_similar_records: same invoice content or same party+amount within 30 days, via fingerprint", async () => {
+  await owner();
+  const customer = (
+    await db.query(
+      "insert into customers(organization_id,name) values ($1,'Похожие записи') returning id",
+      [orgA],
+    )
+  ).rows[0].id;
+  await user(a);
+  const fp = "a".repeat(64);
+  const doc = async (hash) =>
+    (
+      await db.query("select create_document($1,'sale',$2,$3,'image/jpeg') as id", [
+        orgA,
+        "similar/" + hash,
+        hash,
+      ])
+    ).rows[0].id;
+  const similar = async (document, party, amount) =>
+    (
+      await db.query("select * from find_similar_records($1,'sale',$2,$3,$4)", [
+        orgA,
+        document,
+        party,
+        amount,
+      ])
+    ).rows;
+
+  // Первая продажа с отпечатком.
+  const firstDoc = await doc("similar-hash-1");
+  await db.query("select set_document_fingerprint($1,$2,$3)", [orgA, firstDoc, fp]);
+  const firstSale = (
+    await db.query("select commit_sale($1,$2,'777.00',false,$3,$4) as id", [
+      orgA,
+      customer,
+      "5e5e5e5e-0000-4000-8000-000000000001",
+      firstDoc,
+    ])
+  ).rows[0].id;
+
+  // Та же накладная, другой файл фото — совпадение по содержимому.
+  const rephoto = await doc("similar-hash-2");
+  await db.query("select set_document_fingerprint($1,$2,$3)", [orgA, rephoto, fp]);
+  let rows = await similar(rephoto, null, null);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].r_id, firstSale);
+  assert.equal(rows[0].r_reason, "content");
+  assert.equal(rows[0].r_party, "Похожие записи");
+
+  // Другое фото, но тот же клиент и сумма.
+  const other = await doc("similar-hash-3");
+  rows = await similar(other, customer, "777.00");
+  assert.deepEqual(
+    rows.map((r) => r.r_reason),
+    ["party_amount"],
+  );
+  assert.equal((await similar(other, customer, "778.00")).length, 0);
+
+  // Старше 30 дней — не похожа по сумме, но по содержимому находится всегда.
+  await owner();
+  await db.query("update sales set occurred_at=now()-interval '31 days' where id=$1", [firstSale]);
+  await user(a);
+  assert.equal((await similar(other, customer, "777.00")).length, 0);
+  assert.equal((await similar(rephoto, null, null)).length, 1);
+
+  // Сторнированная запись не считается.
+  await db.query("select reverse_sale($1,$2,'Ошибка')", [orgA, firstSale]);
+  assert.equal((await similar(rephoto, null, null)).length, 0);
+
+  // Чужой магазин — нет доступа.
+  await user(b);
+  await assert.rejects(similar(rephoto, null, null), /not_a_member/);
+  await assert.rejects(
+    db.query("select set_document_fingerprint($1,$2,$3)", [orgA, rephoto, fp]),
+    /not_a_member/,
+  );
+});

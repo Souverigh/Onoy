@@ -25,7 +25,7 @@ const dateTime = (value: string) =>
 export default async function Money({
   searchParams,
 }: {
-  searchParams: Promise<{ created?: string; error?: string }>;
+  searchParams: Promise<{ created?: string; error?: string; duplicate?: string }>;
 }) {
   const { db, organizationId } = await getContext();
   const [customerResult, supplierResult, purchaseResult, saleResult, paymentResult, claimsResult] =
@@ -215,6 +215,12 @@ export default async function Money({
       {successText && (
         <p className="notice success" role="status">
           {successText}
+        </p>
+      )}
+      {successText && params.duplicate === "1" && (
+        <p className="notice" role="status">
+          Внимание: это фото накладной уже приложено к другой записи. Если запись
+          задвоилась — сделайте сторно.
         </p>
       )}
       {params.error === "invalid" && (

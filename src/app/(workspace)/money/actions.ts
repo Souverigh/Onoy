@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getContext } from "@/lib/context";
 import { decimalInput } from "@/lib/validation";
-import { uploadOperationPhoto } from "@/lib/storage";
+import { isDuplicatePhoto, uploadOperationPhoto } from "@/lib/storage";
 import {
   recognizeDocument,
   finalizeInvoiceRecognition,
@@ -181,8 +181,11 @@ export async function commitOperation(form: FormData) {
       );
     }
   }
+  // Повторы фото разрешены в настройках — запись прошла, но предупреждаем.
+  const duplicate =
+    documentId !== null && (await isDuplicatePhoto(db, organizationId, documentId));
   revalidatePath("/", "layout");
-  redirect(`/money?created=${operation}`);
+  redirect(`/money?created=${operation}${duplicate ? "&duplicate=1" : ""}`);
 }
 
 /**
@@ -195,8 +198,8 @@ export async function recognizeInvoicePhoto(
   kind: "purchase" | "sale",
   form: FormData,
 ): Promise<
-  | { ok: true; documentId: string; result: InvoiceResult }
-  | { ok: false; error: string; documentId?: string }
+  | { ok: true; documentId: string; result: InvoiceResult; duplicate: boolean }
+  | { ok: false; error: string; documentId?: string; duplicate?: boolean }
 > {
   const photo = form.get("photo");
   if (!(photo instanceof File) || photo.size === 0) return { ok: false, error: "no_photo" };
@@ -211,6 +214,7 @@ export async function recognizeInvoicePhoto(
     const used = error instanceof Error && error.message === "document_in_use";
     return { ok: false, error: used ? "photo_used" : "upload_failed" };
   }
+  const duplicate = await isDuplicatePhoto(db, organizationId, documentId);
   try {
     const { result } = await recognizeInvoiceCached({
       db,
@@ -221,11 +225,78 @@ export async function recognizeInvoicePhoto(
         mimeType: photo.type || "image/jpeg",
       }),
     });
-    return { ok: true, documentId, result };
+    return { ok: true, documentId, result, duplicate };
   } catch (error) {
     console.error("recognizeInvoicePhoto: recognition failed", error);
-    return { ok: false, error: "recognition_failed", documentId };
+    return { ok: false, error: "recognition_failed", documentId, duplicate };
   }
+}
+
+export type SimilarRecord = {
+  kind: "purchase" | "sale";
+  id: string;
+  occurredAt: string;
+  total: string;
+  party: string;
+  documentId: string | null;
+  reason: "content" | "party_amount";
+};
+
+/**
+ * Похожие действующие записи — только для предупреждения, не блокирует.
+ * Вызывается из формы, когда известно фото (та же накладная) или выбраны
+ * контрагент и сумма (то же за 30 дней). Поиск по индексам в базе, без
+ * перебора записей.
+ */
+export async function findSimilarRecords(
+  kind: "purchase" | "sale",
+  documentId: string | null,
+  partyId: string | null,
+  rawAmount: string | null,
+): Promise<SimilarRecord[]> {
+  if (kind !== "purchase" && kind !== "sale") return [];
+  const document = documentId && uuidPattern.test(documentId) ? documentId : null;
+  const party = partyId && uuidPattern.test(partyId) ? partyId : null;
+  let amount: string | null = null;
+  if (rawAmount) {
+    try {
+      amount = decimalInput(rawAmount, 2);
+    } catch {
+      amount = null;
+    }
+  }
+  if (!document && !(party && amount)) return [];
+  const { db, organizationId } = await getContext();
+  const { data, error } = await db.rpc("find_similar_records", {
+    p_org: organizationId,
+    p_kind: kind,
+    p_document: document,
+    p_party: party,
+    p_amount: amount,
+  });
+  if (error) {
+    console.error("findSimilarRecords: RPC failed", error);
+    return [];
+  }
+  return (
+    (data ?? []) as {
+      r_kind: "purchase" | "sale";
+      r_id: string;
+      r_occurred_at: string;
+      r_total: string;
+      r_party: string;
+      r_document: string | null;
+      r_reason: "content" | "party_amount";
+    }[]
+  ).map((row) => ({
+    kind: row.r_kind,
+    id: row.r_id,
+    occurredAt: row.r_occurred_at,
+    total: String(row.r_total),
+    party: row.r_party,
+    documentId: row.r_document,
+    reason: row.r_reason,
+  }));
 }
 
 /**

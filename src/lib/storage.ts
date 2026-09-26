@@ -42,6 +42,27 @@ export async function uploadOperationPhoto(
   return data as string;
 }
 
+/**
+ * Фото этого документа уже стоит за действующей записью — возможно только
+ * когда магазин разрешил повторы (organizations.block_duplicate_photos=false);
+ * запись не блокируется, продавцу показываем предупреждение.
+ */
+export async function isDuplicatePhoto(
+  db: SupabaseClient,
+  organizationId: string,
+  documentId: string,
+): Promise<boolean> {
+  const { data, error } = await db.rpc("document_is_duplicate", {
+    p_org: organizationId,
+    p_document: documentId,
+  });
+  if (error) {
+    console.error("isDuplicatePhoto: check failed", error);
+    return false;
+  }
+  return data === true;
+}
+
 /** Клиент прикладывает фото квитанции к заявке «Я оплатил» без входа в систему. */
 export async function uploadClaimPhoto(
   anon: SupabaseClient,

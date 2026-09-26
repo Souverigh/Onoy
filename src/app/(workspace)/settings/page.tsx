@@ -11,7 +11,7 @@ export default async function Settings({
   const { saved, error } = await searchParams;
   const org = await db
     .from("organizations")
-    .select("phone")
+    .select("phone,block_duplicate_photos")
     .eq("id", organizationId)
     .maybeSingle();
 
@@ -49,6 +49,18 @@ export default async function Settings({
               defaultValue={org.data?.phone ?? ""}
             />
           </label>
+          <label className="cash-toggle">
+            <input
+              type="checkbox"
+              name="block_duplicate_photos"
+              defaultChecked={org.data?.block_duplicate_photos ?? true}
+            />
+            Не принимать одно фото накладной дважды
+          </label>
+          <p className="muted">
+            Если выключить — запись с уже использованным фото сохранится, но
+            приложение предупредит о дубликате.
+          </p>
           <div className="actions">
             <Submit>Сохранить</Submit>
           </div>

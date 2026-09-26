@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   commitOperation,
+  findSimilarRecords,
   prepareReceiptPayment,
   recognizeInvoicePhoto,
+  type SimilarRecord,
 } from "@/app/(workspace)/money/actions";
 import { Submit } from "./submit";
 import { money } from "@/lib/format";
@@ -30,9 +32,12 @@ type InvoiceCheckResult = {
 type CheckedPhoto = {
   documentId: string;
   result: InvoiceCheckResult | null;
+  duplicate: boolean;
 };
 
 const TOLERANCE = 1;
+const PHOTO_USED_TEXT =
+  "Это фото уже приложено к другой записи. Проверьте историю — возможно, запись уже есть. Разрешить повторное использование фото можно в настройках.";
 
 export function OperationForm({
   kind,
@@ -64,6 +69,30 @@ export function OperationForm({
   // Номер последнего выбранного фото: ответ по старому фото, пришедший позже,
   // не должен перезаписать результат по новому.
   const photoRequest = useRef(0);
+  const [similar, setSimilar] = useState<SimilarRecord[]>([]);
+  const similarRequest = useRef(0);
+  const checkedDocumentId = checkedPhoto?.documentId ?? null;
+
+  // Похожие записи — пока продавец заполняет форму, до подтверждения. Пауза,
+  // чтобы не спрашивать базу на каждую цифру суммы.
+  useEffect(() => {
+    if (kind !== "purchase" && kind !== "sale") return;
+    const request = ++similarRequest.current;
+    const timer = setTimeout(async () => {
+      try {
+        const found = await findSimilarRecords(
+          kind,
+          checkedDocumentId,
+          selectedParty || null,
+          amountValue || null,
+        );
+        if (request === similarRequest.current) setSimilar(found);
+      } catch (err) {
+        console.error("findSimilarRecords failed", err);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [kind, checkedDocumentId, selectedParty, amountValue]);
   const parties =
     kind === "purchase"
       ? suppliers
@@ -86,7 +115,7 @@ export function OperationForm({
         : error === "photo"
           ? "Приложите фото накладной — без него запись не сохранится."
           : error === "photo_used"
-            ? "Это фото уже приложено к другой записи. Проверьте историю — возможно, запись уже есть."
+            ? PHOTO_USED_TEXT
             : error === "photo_upload"
               ? "Не удалось загрузить фото. Попробуйте ещё раз."
           : error === "invalid"
@@ -117,13 +146,19 @@ export function OperationForm({
       const res = await recognizeInvoicePhoto(kind, fd);
       if (request !== photoRequest.current) return;
       if (res.ok) {
-        setCheckedPhoto({ documentId: res.documentId, result: res.result });
+        setCheckedPhoto({
+          documentId: res.documentId,
+          result: res.result,
+          duplicate: res.duplicate,
+        });
       } else if (res.error === "photo_used") {
-        setCheckNote(
-          "Это фото уже приложено к другой записи. Проверьте историю — возможно, запись уже есть.",
-        );
+        setCheckNote(PHOTO_USED_TEXT);
       } else if ("documentId" in res && res.documentId) {
-        setCheckedPhoto({ documentId: res.documentId, result: null });
+        setCheckedPhoto({
+          documentId: res.documentId,
+          result: null,
+          duplicate: res.duplicate ?? false,
+        });
         setCheckNote("Не удалось быстро сверить сумму — сверим после сохранения.");
       }
       // no_provider/no_photo/upload_failed без documentId — фото загрузится при подтверждении.
@@ -269,6 +304,38 @@ export function OperationForm({
           <div className="photo-check">
             {checking && <p className="muted">Проверяем фото…</p>}
             {checkNote && <p className="muted">{checkNote}</p>}
+            {similar.length > 0 && (
+              <div className="photo-check-mismatch" role="status">
+                Похоже, такая запись уже есть:
+                <ul>
+                  {similar.map((record) => (
+                    <li key={record.id}>
+                      {new Date(record.occurredAt).toLocaleDateString("ru-RU", {
+                        timeZone: "Asia/Bishkek",
+                      })}{" "}
+                      · {record.party} · {money(record.total)}
+                      {record.reason === "content"
+                        ? " — те же позиции в накладной"
+                        : " — тот же контрагент и сумма"}
+                      {record.documentId && (
+                        <>
+                          {" · "}
+                          <Link href={`/documents/${record.documentId}`} target="_blank">
+                            открыть
+                          </Link>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                Если это новая запись — просто подтвердите.
+              </div>
+            )}
+            {checkedPhoto?.duplicate && (
+              <p className="photo-check-mismatch">
+                Это фото уже приложено к другой записи — сохранится как дубликат.
+              </p>
+            )}
             {checkedPhoto?.result && (
               <p className={checkMismatch ? "photo-check-mismatch" : "photo-check-ok"}>
                 По фото распознано: {money(checkedPhoto.result.total_computed)}

@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createGeminiProvider } from "./gemini";
 import type { RecognitionProvider, InvoiceResult, ReceiptResult } from "./types";
 import { normalizeInvoiceResult } from "./normalize";
+import { contentFingerprint } from "./fingerprint";
 
 const PROMPT_VERSION = "v1";
 const TOLERANCE = 1; // сом, как в ТЗ §6
@@ -44,11 +45,30 @@ async function cachedExtraction<T>(
   documentId: string,
   kind: ExtractionKind,
 ): Promise<T | null> {
+  // Ищем по самому фото, а не по документу: когда повторы фото разрешены,
+  // у одной накладной может быть несколько документов — распознаём один раз.
+  const self = await db
+    .from("documents")
+    .select("file_hash")
+    .eq("organization_id", organizationId)
+    .eq("id", documentId)
+    .maybeSingle();
+  if (self.error || !self.data) return null;
+  const siblings = await db
+    .from("documents")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("file_hash", self.data.file_hash)
+    .limit(50);
+  if (siblings.error || !siblings.data?.length) return null;
   const { data, error } = await db
     .from("document_extractions")
     .select("payload")
     .eq("organization_id", organizationId)
-    .eq("document_id", documentId)
+    .in(
+      "document_id",
+      siblings.data.map((d: { id: string }) => d.id),
+    )
     .eq("prompt_version", PROMPT_VERSION)
     .eq("payload->>kind", kind)
     .order("created_at", { ascending: false })
@@ -118,12 +138,32 @@ type CachedArgs = {
   loadPhoto: PhotoSource;
 };
 
-export function recognizeInvoiceCached(args: CachedArgs) {
-  return recognizeWithCache<InvoiceResult>({
+export async function recognizeInvoiceCached(args: CachedArgs) {
+  const recognized = await recognizeWithCache<InvoiceResult>({
     ...args,
     kind: "invoice",
     normalize: normalizeInvoiceResult,
   });
+  await saveFingerprint(args.db, args.organizationId, args.documentId, recognized.result);
+  return recognized;
+}
+
+/** Отпечаток содержимого — для поиска похожих записей (find_similar_records). */
+async function saveFingerprint(
+  db: SupabaseClient,
+  organizationId: string,
+  documentId: string,
+  result: InvoiceResult,
+) {
+  const fingerprint = contentFingerprint(result);
+  if (!fingerprint) return;
+  const { error } = await db.rpc("set_document_fingerprint", {
+    p_org: organizationId,
+    p_document: documentId,
+    p_fingerprint: fingerprint,
+  });
+  // Без отпечатка просто не будет предупреждения о похожей записи.
+  if (error) console.error("saveFingerprint: set_document_fingerprint failed", error);
 }
 
 export function recognizeReceiptCached(args: CachedArgs) {
@@ -242,6 +282,7 @@ export async function finalizeInvoiceRecognition({
   // Результат мог побывать в браузере (JSON в скрытом поле формы) — нормализуем
   // ещё раз, это идемпотентно и дёшево, зато не полагается на чужой ввод.
   const result = normalizeInvoiceResult(rawResult);
+  await saveFingerprint(db, organizationId, documentId, result);
   const status = invoiceMatches(result, declaredTotal) ? "digitized" : "review";
   const save = await db.rpc("save_recognition", {
     p_org: organizationId,
