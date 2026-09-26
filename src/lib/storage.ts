@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID, createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { MAX_PAGES, isPdf } from "./pages";
+import { MAX_PAGES, documentMimeType, isAcceptedDocument } from "./pages";
 
 export type OperationKind = "purchase" | "sale" | "payment";
 
@@ -43,14 +43,14 @@ export async function uploadOperationPhotos(
 ): Promise<string> {
   if (files.length === 0 || files.length > MAX_PAGES) throw new Error("upload_failed");
   // Только фото и PDF: другой файл Gemini не прочитает, а в просмотре не покажется.
-  if (files.some((file) => !(file.type.startsWith("image/") || isPdf(file))))
+  if (files.some((file) => !isAcceptedDocument(file)))
     throw new Error("upload_failed");
   const pages = await Promise.all(
     files.map(async (file) => {
       const buffer = Buffer.from(await file.arrayBuffer());
       const hash = createHash("sha256").update(buffer).digest("hex");
       const path = `${organizationId}/${kind}/${randomUUID()}.${extensionOf(file)}`;
-      const mimeType = isPdf(file) ? "application/pdf" : file.type || "image/jpeg";
+      const mimeType = documentMimeType(file);
       const upload = await db.storage
         .from("receipts")
         .upload(path, buffer, { contentType: mimeType });
@@ -146,11 +146,11 @@ export async function uploadClaimPhoto(
 ): Promise<string> {
   const buffer = Buffer.from(await file.arrayBuffer());
   const hash = createHash("sha256").update(buffer).digest("hex");
-  if (!(file.type.startsWith("image/") || isPdf(file))) throw new Error("upload_failed");
+  if (!isAcceptedDocument(file)) throw new Error("upload_failed");
   const path = `claims/${token}/${randomUUID()}.${extensionOf(file)}`;
   const upload = await anon.storage
     .from("receipts")
-    .upload(path, buffer, { contentType: file.type || "image/jpeg" });
+    .upload(path, buffer, { contentType: documentMimeType(file) });
   if (upload.error) {
     console.error("uploadClaimPhoto: storage upload failed", upload.error);
     throw new Error("upload_failed");
@@ -159,7 +159,7 @@ export async function uploadClaimPhoto(
     p_token: token,
     p_storage_path: path,
     p_file_hash: hash,
-    p_mime_type: file.type || "image/jpeg",
+    p_mime_type: documentMimeType(file),
   });
   if (error || !data) {
     console.error("uploadClaimPhoto: create_claim_document failed", error);

@@ -259,6 +259,10 @@ security-definer RPC. Перед работой с API Next.js — читать
     добавляется `multiPagePrompt`. Просмотр `/documents/[id]`: PDF во
     `<iframe>` + «Открыть PDF отдельно» (мобильный Chrome PDF во фрейме не
     рисует). **Живым вызовом Gemini с PDF не проверено.**
+    `DOCUMENT_ACCEPT` — явный список (application/pdf, image/jpeg/png/webp/
+    heic/heif + расширения), **без `image/*`**: с ним Android открывал только
+    камеру/галерею и PDF было не выбрать. Тип файла без MIME (HEIC) —
+    `documentMimeType` по расширению, проверка — `isAcceptedDocument`.
 
 ### Этап 1 — что ещё осталось по ТЗ (решено идти по порядку, 26.09.2026)
 

@@ -7,7 +7,7 @@ import { getContext } from "@/lib/context";
 import { decimalInput } from "@/lib/validation";
 import { safeBackPath } from "@/lib/back-path";
 import { isDuplicatePhoto, uploadOperationPhoto, uploadOperationPhotos } from "@/lib/storage";
-import { MAX_PAGES } from "@/lib/pages";
+import { MAX_PAGES, documentMimeType } from "@/lib/pages";
 import {
   recognizeDocument,
   finalizeInvoiceRecognition,
@@ -235,7 +235,7 @@ export async function recognizeInvoicePhoto(
         Promise.all(
           photos.map(async (photo) => ({
             photo: Buffer.from(await photo.arrayBuffer()),
-            mimeType: photo.type || "image/jpeg",
+            mimeType: documentMimeType(photo),
           })),
         ),
     });
@@ -344,7 +344,7 @@ export async function prepareReceiptPayment(form: FormData) {
         organizationId,
         documentId,
         loadPhoto: async () => [
-          { photo: Buffer.from(await photo.arrayBuffer()), mimeType: photo.type || "image/jpeg" },
+          { photo: Buffer.from(await photo.arrayBuffer()), mimeType: documentMimeType(photo) },
         ],
       });
       if (result.amount) params.set("amount", String(result.amount));

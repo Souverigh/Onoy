@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { DOCUMENT_ACCEPT } from "@/lib/pages";
 import { createAnonClient } from "@/lib/supabase/server";
 import { money } from "@/lib/format";
 import { submitClaim } from "./actions";
@@ -78,7 +79,7 @@ export default async function ClientPage({
           </label>
           <label className="photo-field">
             Фото, скриншот или PDF квитанции (необязательно)
-            <input name="photo" type="file" accept="image/*,application/pdf" />
+            <input name="photo" type="file" accept={DOCUMENT_ACCEPT} />
           </label>
           <button className="button primary" type="submit">
             Отправить
