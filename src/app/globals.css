@@ -1144,6 +1144,64 @@ td small {
   text-align: center;
   width: 100%;
 }
+.receipt-intake-form {
+  max-width: 480px;
+  margin: 0 auto 20px;
+  padding: 16px;
+  background: #f2f6ed;
+  border: 1px dashed #b7cda3;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.receipt-intake-form label {
+  margin-bottom: 0;
+  font-size: 14px;
+}
+.party-suggestions {
+  max-width: 480px;
+  margin: 0 auto 16px;
+}
+.party-suggestions-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.party-suggestion {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: white;
+  font-size: 14px;
+  min-height: 44px;
+}
+.party-suggestion.active {
+  border-color: var(--green);
+  background: #edf4e9;
+  color: var(--green);
+  font-weight: 600;
+}
+.photo-check {
+  max-width: 480px;
+  margin: -8px auto 8px;
+}
+.photo-check-ok,
+.photo-check-mismatch {
+  font-size: 14px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin: 0;
+}
+.photo-check-ok {
+  background: #eaf4e5;
+  color: #315b3a;
+}
+.photo-check-mismatch {
+  background: #fff8e8;
+  color: #a4762f;
+}
 
 /* Заявки, сторно, ссылка клиента */
 .claims-notice {
@@ -1305,6 +1363,13 @@ tr.line-mismatch td {
 }
 tr.line-mismatch {
   color: #a34836;
+}
+.counterparty-mismatch {
+  background: #fff8e8;
+  border-color: #f0dfb8;
+}
+.counterparty-mismatch p {
+  margin-bottom: 14px;
 }
 .document-line-cell {
   padding: 0 !important;

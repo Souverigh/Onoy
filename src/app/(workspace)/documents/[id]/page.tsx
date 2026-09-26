@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
 import { money } from "@/lib/format";
 import { signedPhotoUrl } from "@/lib/storage";
-import { retryRecognition, confirmDocument, updateLine } from "../actions";
+import { retryRecognition, confirmDocument, updateLine, saveAlias } from "../actions";
+import { similarity } from "@/lib/match";
 
 type DocRow = {
   id: string;
@@ -39,7 +40,13 @@ export default async function DocumentDetail({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ saved?: string; confirmed?: string; retried?: string; error?: string }>;
+  searchParams: Promise<{
+    saved?: string;
+    confirmed?: string;
+    retried?: string;
+    aliasSaved?: string;
+    error?: string;
+  }>;
 }) {
   const { id } = await params;
   if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
@@ -75,6 +82,7 @@ export default async function DocumentDetail({
   const extraction = extractionResult.data as Extraction | null;
 
   let declaredTotal: number | null = null;
+  let party: { id: string; name: string; aliases: string[]; kind: "customer" | "supplier" } | null = null;
   if (doc.kind === "purchase") {
     const row = await db
       .from("purchases")
@@ -83,6 +91,16 @@ export default async function DocumentDetail({
       .eq("document_id", id)
       .maybeSingle();
     declaredTotal = row.data ? Number(row.data.total) : null;
+    if (row.data) {
+      const supplier = await db
+        .from("suppliers")
+        .select("id,name,aliases")
+        .eq("organization_id", organizationId)
+        .eq("id", row.data.supplier_id)
+        .maybeSingle();
+      if (supplier.data)
+        party = { id: supplier.data.id, name: supplier.data.name, aliases: supplier.data.aliases ?? [], kind: "supplier" };
+    }
   } else if (doc.kind === "sale") {
     const row = await db
       .from("sales")
@@ -91,6 +109,16 @@ export default async function DocumentDetail({
       .eq("document_id", id)
       .maybeSingle();
     declaredTotal = row.data ? Number(row.data.total) : null;
+    if (row.data) {
+      const customer = await db
+        .from("customers")
+        .select("id,name,aliases")
+        .eq("organization_id", organizationId)
+        .eq("id", row.data.customer_id)
+        .maybeSingle();
+      if (customer.data)
+        party = { id: customer.data.id, name: customer.data.name, aliases: customer.data.aliases ?? [], kind: "customer" };
+    }
   }
 
   const photoUrl = await signedPhotoUrl(db, doc.storage_path);
@@ -109,6 +137,27 @@ export default async function DocumentDetail({
         confidence?: number;
       }
     | undefined;
+  const invoiceFields = extraction?.payload?.extracted as
+    | { counterparty?: { name_raw?: string }; document_type?: "invoice_in" | "invoice_out" }
+    | undefined;
+  const recognizedCounterparty = invoiceFields?.counterparty?.name_raw?.trim();
+  const counterpartyMismatch =
+    party && recognizedCounterparty
+      ? Math.max(
+          similarity(recognizedCounterparty, party.name),
+          ...party.aliases.map((alias) => similarity(recognizedCounterparty, alias)),
+          0,
+        ) < 0.5
+      : false;
+
+  const documentTypeLabel: Record<"invoice_in" | "invoice_out", string> = {
+    invoice_in: "Накладная от поставщика (приход)",
+    invoice_out: "Накладная клиенту (продажа)",
+  };
+  const expectedDocumentType = doc.kind === "purchase" ? "invoice_in" : doc.kind === "sale" ? "invoice_out" : null;
+  const recognizedDocumentType = invoiceFields?.document_type;
+  const documentTypeMismatch =
+    !!recognizedDocumentType && !!expectedDocumentType && recognizedDocumentType !== expectedDocumentType;
 
   return (
     <>
@@ -122,6 +171,11 @@ export default async function DocumentDetail({
           </span>
           <h1>Документ</h1>
         </div>
+        {(doc.kind === "purchase" || doc.kind === "sale") && (
+          <a className="button" href={`/documents/${doc.id}/pdf`}>
+            Скачать PDF
+          </a>
+        )}
       </div>
       {params2.saved && (
         <p className="notice success" role="status">
@@ -136,6 +190,11 @@ export default async function DocumentDetail({
       {params2.retried && (
         <p className="notice success" role="status">
           Запустили распознавание заново — обновите страницу через несколько секунд.
+        </p>
+      )}
+      {params2.aliasSaved && (
+        <p className="notice success" role="status">
+          Синоним сохранён — в следующий раз это имя узнается сразу.
         </p>
       )}
       {params2.error && (
@@ -175,6 +234,12 @@ export default async function DocumentDetail({
                       : "Ошибка"}
             </span>
           </div>
+          {recognizedDocumentType && (
+            <p className={documentTypeMismatch ? "photo-check-mismatch" : "muted"}>
+              ADRE увидел: {documentTypeLabel[recognizedDocumentType]}
+              {documentTypeMismatch && ' — не похоже на "' + (expectedDocumentType && documentTypeLabel[expectedDocumentType]) + '", проверьте фото'}
+            </p>
+          )}
           {doc.error_message && <p className="muted">{doc.error_message}</p>}
           {(doc.status === "failed" || doc.status === "uploaded") && doc.kind && (
             <form action={retryRecognition} className="simple-operation-actions">
@@ -214,6 +279,24 @@ export default async function DocumentDetail({
             <dt>Получатель</dt>
             <dd>{receiptFields.receiver_name ?? "—"}</dd>
           </dl>
+        </section>
+      )}
+
+      {counterpartyMismatch && party && recognizedCounterparty && (
+        <section className="panel counterparty-mismatch">
+          <p>
+            На фото написано «{recognizedCounterparty}», а выбран(а) «{party.name}». Долг это не
+            меняет — только пометка.
+          </p>
+          <form action={saveAlias} className="simple-operation-actions">
+            <input type="hidden" name="kind" value={party.kind} />
+            <input type="hidden" name="party_id" value={party.id} />
+            <input type="hidden" name="alias" value={recognizedCounterparty} />
+            <input type="hidden" name="document_id" value={doc.id} />
+            <button className="button" type="submit">
+              Это точно «{party.name}», запомнить как синоним
+            </button>
+          </form>
         </section>
       )}
 

@@ -903,3 +903,48 @@ test("create_document reuses an existing document instead of failing on a repeat
     first,
   );
 });
+test("add_counterparty_alias learns a synonym once, isolated per organization", async () => {
+  await owner();
+  const customer = (
+    await db.query(
+      "insert into customers(organization_id,name) values ($1,'Медербек уулу') returning id",
+      [orgA],
+    )
+  ).rows[0].id;
+  await user(a);
+  await db.query("select add_counterparty_alias($1,$2,$3,$4)", [
+    orgA,
+    "customer",
+    customer,
+    "Медербек",
+  ]);
+  await db.query("select add_counterparty_alias($1,$2,$3,$4)", [
+    orgA,
+    "customer",
+    customer,
+    "Медербек",
+  ]);
+  assert.deepEqual(
+    (await db.query("select aliases from customers where id=$1", [customer])).rows[0].aliases,
+    ["Медербек"],
+  );
+  await assert.rejects(
+    db.query("select add_counterparty_alias($1,$2,$3,$4)", [
+      orgA,
+      "customer",
+      "00000000-0000-4000-8000-000000000001",
+      "Кто-то",
+    ]),
+    /invalid_customer/,
+  );
+  await user(b);
+  await assert.rejects(
+    db.query("select add_counterparty_alias($1,$2,$3,$4)", [
+      orgA,
+      "customer",
+      customer,
+      "Чужой",
+    ]),
+    /not_a_member/,
+  );
+});

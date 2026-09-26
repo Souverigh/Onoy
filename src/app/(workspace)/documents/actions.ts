@@ -70,3 +70,27 @@ export async function updateLine(form: FormData) {
   revalidatePath(`/documents/${documentId}`);
   redirect(`/documents/${documentId}?saved=1`);
 }
+
+export async function saveAlias(form: FormData) {
+  const kind = String(form.get("kind") ?? "");
+  const partyId = String(form.get("party_id") ?? "");
+  const alias = String(form.get("alias") ?? "").trim();
+  const documentId = String(form.get("document_id") ?? "");
+  if (
+    !["customer", "supplier"].includes(kind) ||
+    !uuidPattern.test(partyId) ||
+    !uuidPattern.test(documentId) ||
+    !alias
+  )
+    redirect(`/documents/${documentId}?error=alias`);
+  const { db, organizationId } = await getContext();
+  const result = await db.rpc("add_counterparty_alias", {
+    p_org: organizationId,
+    p_kind: kind,
+    p_id: partyId,
+    p_alias: alias,
+  });
+  if (result.error) redirect(`/documents/${documentId}?error=alias`);
+  revalidatePath(`/documents/${documentId}`);
+  redirect(`/documents/${documentId}?aliasSaved=1`);
+}

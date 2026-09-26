@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createGeminiProvider } from "./gemini";
 import type { RecognitionProvider, InvoiceResult } from "./types";
+import { normalizeInvoiceResult } from "./normalize";
 
 const PROMPT_VERSION = "v1";
 const TOLERANCE = 1; // сом, как в ТЗ §6
@@ -93,7 +94,8 @@ export async function recognizeDocument({
       return;
     }
 
-    const { result, costUsd, raw } = await provider.recognizeInvoice(photo, mimeType);
+    const { result: rawResult, costUsd, raw } = await provider.recognizeInvoice(photo, mimeType);
+    const result = normalizeInvoiceResult(rawResult);
     const latencyMs = Date.now() - startedAt;
     const status = invoiceMatches(result, declaredTotal) ? "digitized" : "review";
     const lines = result.lines.map((line) => ({
@@ -122,6 +124,63 @@ export async function recognizeDocument({
       p_org: organizationId,
       p_document: documentId,
       p_error: error instanceof Error ? error.message : "unknown_error",
+    });
+  }
+}
+
+/**
+ * Итог распознавания уже известен (продавец проверил фото до подтверждения
+ * прихода/продажи, см. `recognizeInvoicePhoto` в money/actions.ts) — здесь
+ * только записываем результат, повторный вызов Gemini не нужен.
+ */
+export async function finalizeInvoiceRecognition({
+  db,
+  organizationId,
+  documentId,
+  result: rawResult,
+  declaredTotal,
+}: {
+  db: SupabaseClient;
+  organizationId: string;
+  documentId: string;
+  result: InvoiceResult;
+  declaredTotal: number | null;
+}): Promise<void> {
+  const started = await db.rpc("start_recognition", {
+    p_org: organizationId,
+    p_document: documentId,
+  });
+  if (started.error) return;
+
+  // Результат мог побывать в браузере (JSON в скрытом поле формы) — нормализуем
+  // ещё раз, это идемпотентно и дёшево, зато не полагается на чужой ввод.
+  const result = normalizeInvoiceResult(rawResult);
+  const status = invoiceMatches(result, declaredTotal) ? "digitized" : "review";
+  const lines = result.lines.map((line) => ({
+    n: line.n,
+    name_raw: line.name_raw,
+    qty: line.qty,
+    unit: line.unit,
+    price: line.price,
+    confidence: line.confidence,
+  }));
+  const save = await db.rpc("save_recognition", {
+    p_org: organizationId,
+    p_document: documentId,
+    p_provider: "gemini",
+    p_model: process.env.GEMINI_MODEL || "gemini-3.8-flash",
+    p_prompt_version: PROMPT_VERSION,
+    p_raw_json: { extracted: result, response: null },
+    p_lines: lines,
+    p_status: status,
+    p_latency_ms: null,
+    p_cost: null,
+  });
+  if (save.error) {
+    await db.rpc("fail_recognition", {
+      p_org: organizationId,
+      p_document: documentId,
+      p_error: save.error.message,
     });
   }
 }

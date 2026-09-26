@@ -10,7 +10,14 @@ type Party = { id: string; name: string };
 export default async function NewOperation({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string; error?: string }>;
+  searchParams: Promise<{
+    type?: string;
+    error?: string;
+    documentId?: string;
+    amount?: string;
+    bankRef?: string;
+    suggest?: string;
+  }>;
 }) {
   const params = await searchParams;
   if (!["purchase", "sale", "payment"].includes(params.type ?? ""))
@@ -19,8 +26,8 @@ export default async function NewOperation({
   const { db, organizationId } = await getContext();
   const [customerResult, supplierResult] = await Promise.all([
     db
-      .from("customers")
-      .select("id,name")
+      .from("customer_balances")
+      .select("id,name,balance")
       .eq("organization_id", organizationId)
       .order("name")
       .range(0, 999),
@@ -34,8 +41,21 @@ export default async function NewOperation({
   if (customerResult.error || supplierResult.error)
     throw new Error("Не удалось подготовить форму операции");
 
-  const customers = (customerResult.data ?? []) as Party[];
+  const customers = (customerResult.data ?? []) as (Party & { balance: string })[];
   const suppliers = (supplierResult.data ?? []) as Party[];
+  const suggestedIds = params.suggest ? params.suggest.split(",").filter(Boolean) : [];
+  const suggestions = suggestedIds
+    .map((id) => customers.find((c) => c.id === id))
+    .filter((c): c is Party & { balance: string } => Boolean(c));
+  const prefill =
+    kind === "payment" && params.documentId && /^[a-f0-9-]{36}$/i.test(params.documentId)
+      ? {
+          documentId: params.documentId,
+          amount: params.amount,
+          bankRef: params.bankRef,
+          suggestions,
+        }
+      : undefined;
   const needsParty =
     kind === "purchase"
       ? suppliers.length > 0
@@ -94,6 +114,7 @@ export default async function NewOperation({
             customers={customers}
             suppliers={suppliers}
             error={params.error}
+            prefill={prefill}
           />
         </section>
       )}

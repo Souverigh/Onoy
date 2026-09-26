@@ -1,0 +1,98 @@
+import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+export function bishkekToday() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bishkek",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+export function monthStart() {
+  const today = bishkekToday();
+  return `${today.slice(0, 7)}-01`;
+}
+function toIso(date: string) {
+  return new Date(`${date}T00:00:00+06:00`).toISOString();
+}
+
+export type StatementEntry = {
+  kind: "sale" | "purchase" | "payment";
+  amount: number;
+  occurred_at: string;
+  reversed: boolean;
+};
+export type StatementData = {
+  partyName: string;
+  shopName: string;
+  from: string;
+  to: string;
+  opening: number;
+  closing: number;
+  entries: StatementEntry[];
+} | null;
+
+export async function getStatementData(
+  db: SupabaseClient,
+  organizationId: string,
+  kind: "customers" | "suppliers",
+  id: string,
+  rawFrom?: string,
+  rawTo?: string,
+): Promise<StatementData> {
+  const partyTable = kind;
+  const partyColumn = kind === "customers" ? "customer_id" : "supplier_id";
+  const docTable = kind === "customers" ? "sales" : "purchases";
+  const from = rawFrom && /^\d{4}-\d{2}-\d{2}$/.test(rawFrom) ? rawFrom : monthStart();
+  const to = rawTo && /^\d{4}-\d{2}-\d{2}$/.test(rawTo) ? rawTo : bishkekToday();
+  const fromIso = toIso(from);
+  const toIsoEnd = new Date(new Date(toIso(to)).getTime() + 86400000).toISOString();
+
+  const [party, shop] = await Promise.all([
+    db.from(partyTable).select("id,name,phone").eq("organization_id", organizationId).eq("id", id).maybeSingle(),
+    db.from("organizations").select("name").eq("id", organizationId).maybeSingle(),
+  ]);
+  if (party.error || !party.data) return null;
+
+  const paymentDirection = kind === "customers" ? "incoming" : "outgoing";
+  const [docsBefore, paymentsBefore, docsInPeriod, paymentsInPeriod] = await Promise.all([
+    db.from(docTable).select("total,reversed_at").eq("organization_id", organizationId).eq(partyColumn, id).eq("status", "posted").lt("occurred_at", fromIso),
+    db.from("payments").select("amount,reversed_at").eq("organization_id", organizationId).eq(partyColumn, id).eq("direction", paymentDirection).eq("status", "confirmed").lt("occurred_at", fromIso),
+    db.from(docTable).select("id,total,occurred_at,reversed_at").eq("organization_id", organizationId).eq(partyColumn, id).eq("status", "posted").gte("occurred_at", fromIso).lt("occurred_at", toIsoEnd).order("occurred_at"),
+    db.from("payments").select("id,amount,occurred_at,reversed_at,status").eq("organization_id", organizationId).eq(partyColumn, id).eq("direction", paymentDirection).neq("status", "rejected").gte("occurred_at", fromIso).lt("occurred_at", toIsoEnd).order("occurred_at"),
+  ]);
+
+  const sum = (rows: { amount?: string; total?: string; reversed_at: string | null }[]) =>
+    rows.filter((r) => !r.reversed_at).reduce((s, r) => s + Number(r.amount ?? r.total ?? 0), 0);
+  const opening = sum(docsBefore.data ?? []) - sum(paymentsBefore.data ?? []);
+
+  const entries: StatementEntry[] = [
+    ...(docsInPeriod.data ?? []).map((d) => ({
+      kind: (kind === "customers" ? "sale" : "purchase") as StatementEntry["kind"],
+      amount: Number(d.total),
+      occurred_at: d.occurred_at,
+      reversed: Boolean(d.reversed_at),
+    })),
+    ...(paymentsInPeriod.data ?? [])
+      .filter((p) => p.status !== "pending")
+      .map((p) => ({
+        kind: "payment" as const,
+        amount: -Number(p.amount),
+        occurred_at: p.occurred_at,
+        reversed: Boolean(p.reversed_at),
+      })),
+  ].sort((a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime());
+
+  const closing = entries.reduce((s, e) => s + (e.reversed ? 0 : e.amount), opening);
+
+  return {
+    partyName: party.data.name,
+    shopName: shop.data?.name ?? "Магазин",
+    from,
+    to,
+    opening,
+    closing,
+    entries,
+  };
+}
