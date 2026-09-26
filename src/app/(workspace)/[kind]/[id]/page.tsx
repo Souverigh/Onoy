@@ -15,12 +15,18 @@ export default async function EntryPage({
   searchParams,
 }: {
   params: Promise<{ kind: string; id: string }>;
-  searchParams: Promise<{ error?: string; saved?: string; linked?: string; revoked?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    saved?: string;
+    linked?: string;
+    revoked?: string;
+    reversed?: string;
+  }>;
 }) {
   const { kind, id } = await params;
   if (!isDirectory(kind)) notFound();
   const { db, organizationId } = await getContext();
-  const { error, saved, linked, revoked } = await searchParams;
+  const { error, saved, linked, revoked, reversed } = await searchParams;
   let entry: Entry | undefined;
   if (id !== "new") {
     if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
@@ -52,78 +58,70 @@ export default async function EntryPage({
     origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
   }
 
-  let history: { kind: string; amount: string; occurred_at: string; reversed: boolean }[] = [];
+  type HistoryRow = {
+    kind: "sale" | "purchase" | "payment";
+    id: string;
+    label: string;
+    amount: string;
+    occurred_at: string;
+    reversed: boolean;
+    reversalComment: string | null;
+    documentId: string | null;
+    pending: boolean;
+  };
+  let history: HistoryRow[] = [];
   if (entry && isParty) {
     const partyColumn = kind === "customers" ? "customer_id" : "supplier_id";
-    if (kind === "customers") {
-      const [sales, pays] = await Promise.all([
-        db
-          .from("sales")
-          .select("total,occurred_at,reversed_at")
-          .eq("organization_id", organizationId)
-          .eq(partyColumn, entry.id)
-          .eq("status", "posted")
-          .order("occurred_at", { ascending: false })
-          .limit(10),
-        db
-          .from("payments")
-          .select("amount,occurred_at,reversed_at,status")
-          .eq("organization_id", organizationId)
-          .eq(partyColumn, entry.id)
-          .eq("direction", "incoming")
-          .neq("status", "rejected")
-          .order("occurred_at", { ascending: false })
-          .limit(10),
-      ]);
-      history = [
-        ...(sales.data ?? []).map((s) => ({
-          kind: "Продажа",
-          amount: s.total,
-          occurred_at: s.occurred_at,
-          reversed: Boolean(s.reversed_at),
-        })),
-        ...(pays.data ?? []).map((p) => ({
-          kind: p.status === "pending" ? "Заявка (ждёт)" : "Оплата",
-          amount: p.amount,
-          occurred_at: p.occurred_at,
-          reversed: Boolean(p.reversed_at),
-        })),
-      ].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
-    } else {
-      const [purchases, pays] = await Promise.all([
-        db
-          .from("purchases")
-          .select("total,occurred_at,reversed_at")
-          .eq("organization_id", organizationId)
-          .eq(partyColumn, entry.id)
-          .eq("status", "posted")
-          .order("occurred_at", { ascending: false })
-          .limit(10),
-        db
-          .from("payments")
-          .select("amount,occurred_at,reversed_at")
-          .eq("organization_id", organizationId)
-          .eq(partyColumn, entry.id)
-          .eq("direction", "outgoing")
-          .order("occurred_at", { ascending: false })
-          .limit(10),
-      ]);
-      history = [
-        ...(purchases.data ?? []).map((p) => ({
-          kind: "Приход",
-          amount: p.total,
-          occurred_at: p.occurred_at,
-          reversed: Boolean(p.reversed_at),
-        })),
-        ...(pays.data ?? []).map((p) => ({
-          kind: "Оплата",
-          amount: p.amount,
-          occurred_at: p.occurred_at,
-          reversed: Boolean(p.reversed_at),
-        })),
-      ].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
-    }
+    const invoiceTable = kind === "customers" ? "sales" : "purchases";
+    const [invoices, pays] = await Promise.all([
+      db
+        .from(invoiceTable)
+        .select("id,total,occurred_at,reversed_at,reversal_comment,document_id")
+        .eq("organization_id", organizationId)
+        .eq(partyColumn, entry.id)
+        .eq("status", "posted")
+        .order("occurred_at", { ascending: false })
+        .limit(20),
+      db
+        .from("payments")
+        .select("id,amount,occurred_at,reversed_at,reversal_comment,document_id,status")
+        .eq("organization_id", organizationId)
+        .eq(partyColumn, entry.id)
+        .eq("direction", kind === "customers" ? "incoming" : "outgoing")
+        .neq("status", "rejected")
+        .order("occurred_at", { ascending: false })
+        .limit(20),
+    ]);
+    history = [
+      ...(invoices.data ?? []).map((r) => ({
+        kind: (kind === "customers" ? "sale" : "purchase") as HistoryRow["kind"],
+        id: r.id,
+        label: kind === "customers" ? "Продажа" : "Приход",
+        amount: r.total,
+        occurred_at: r.occurred_at,
+        reversed: Boolean(r.reversed_at),
+        reversalComment: r.reversal_comment,
+        documentId: r.document_id,
+        pending: false,
+      })),
+      ...(pays.data ?? []).map((p) => ({
+        kind: "payment" as const,
+        id: p.id,
+        label: p.status === "pending" ? "Заявка на оплату" : "Оплата",
+        amount: p.amount,
+        occurred_at: p.occurred_at,
+        reversed: Boolean(p.reversed_at),
+        reversalComment: p.reversal_comment,
+        documentId: p.document_id,
+        pending: p.status === "pending",
+      })),
+    ]
+      .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime())
+      .slice(0, 20);
   }
+
+  const newOperationHref = (type: string) =>
+    `/money/new?type=${["sale", "purchase", "payment"].includes(type) ? type : "payment"}&party=${entry?.id ?? ""}`;
 
   const reminderText =
     entry && kind === "customers" && activeLink
@@ -171,6 +169,19 @@ export default async function EntryPage({
           Ссылка отозвана, старая ссылка больше не откроется.
         </p>
       )}
+      {entry && isParty && reversed && (
+        <div className="notice success" role="status">
+          <p>Запись отменена. Долг пересчитан, история сохранена.</p>
+          <Link className="button" href={newOperationHref(reversed)}>
+            Записать правильно
+          </Link>
+        </div>
+      )}
+      {entry && isParty && error === "reversal" && (
+        <p className="form-error" role="alert">
+          Не удалось отменить запись. Возможно, она уже отменена.
+        </p>
+      )}
       {error === "link" && (
         <p className="form-error" role="alert">
           Не удалось выполнить действие со ссылкой.
@@ -186,7 +197,10 @@ export default async function EntryPage({
           <Link className="button" href={`/${kind}/${entry.id}/statement`}>
             Акт сверки
           </Link>
-          <Link className="button" href={`/money/new?type=payment`}>
+          <Link className="button" href={newOperationHref(kind === "customers" ? "sale" : "purchase")}>
+            {kind === "customers" ? "Продажа" : "Приход"}
+          </Link>
+          <Link className="button" href={newOperationHref("payment")}>
             Оплата
           </Link>
         </section>
@@ -221,42 +235,63 @@ export default async function EntryPage({
         <section className="panel">
           <h2>История</h2>
           {history.length ? (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Операция</th>
-                    <th>Сумма</th>
-                    <th>Дата</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((row, i) => (
-                    <tr key={i} className={row.reversed ? "reversed-row" : ""}>
-                      <td>
-                        {row.kind}
-                        {row.reversed && <span className="tag reversed-tag">сторно</span>}
-                      </td>
-                      <td>{money(row.amount)}</td>
-                      <td>
-                        {new Intl.DateTimeFormat("ru-RU", {
-                          dateStyle: "medium",
-                          timeStyle: "short",
-                          timeZone: "Asia/Bishkek",
-                        }).format(new Date(row.occurred_at))}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ul className="history-list">
+              {history.map((row) => (
+                <li key={row.kind + row.id} className={row.reversed ? "history-item reversed-row" : "history-item"}>
+                  <div className="history-main">
+                    <span className="history-kind">
+                      {row.label}
+                      {row.reversed && <span className="tag reversed-tag">отменена</span>}
+                    </span>
+                    <strong className="history-amount">{money(row.amount)}</strong>
+                  </div>
+                  <div className="history-meta">
+                    <span className="muted">
+                      {new Intl.DateTimeFormat("ru-RU", {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                        timeZone: "Asia/Bishkek",
+                      }).format(new Date(row.occurred_at))}
+                    </span>
+                    <span className="history-actions">
+                      {row.documentId && (
+                        <Link className="text-button" href={`/documents/${row.documentId}`}>
+                          Фото
+                        </Link>
+                      )}
+                      {row.pending ? (
+                        <Link className="text-button" href="/claims">
+                          Рассмотреть
+                        </Link>
+                      ) : (
+                        !row.reversed && (
+                          <Link
+                            className="text-button"
+                            href={`/money/reverse/${row.kind}/${row.id}?back=${encodeURIComponent(`/${kind}/${entry.id}`)}`}
+                          >
+                            Отменить
+                          </Link>
+                        )
+                      )}
+                    </span>
+                  </div>
+                  {row.reversed && row.reversalComment && (
+                    <p className="history-comment muted">Причина отмены: {row.reversalComment}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
           ) : (
             <p className="muted">Операций пока нет.</p>
           )}
         </section>
       )}
       <section className="panel form-panel">
-        <EntryForm kind={kind} entry={entry} error={error === "link" ? undefined : error} />
+        <EntryForm
+          kind={kind}
+          entry={entry}
+          error={error === "link" || error === "reversal" ? undefined : error}
+        />
       </section>
     </>
   );

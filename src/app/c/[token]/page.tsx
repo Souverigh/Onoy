@@ -107,7 +107,7 @@ export default async function ClientPage({
                     </td>
                     <td>
                       {entry.kind === "sale" ? "Продажа" : entry.status === "pending" ? "Заявка (ждёт)" : "Оплата"}
-                      {entry.reversed && <span className="tag reversed-tag">сторно</span>}
+                      {entry.reversed && <span className="tag reversed-tag">отменена</span>}
                     </td>
                     <td>{money(entry.amount)}</td>
                   </tr>

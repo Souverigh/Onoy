@@ -64,7 +64,7 @@ function StatementDocument({ data }: { data: StatementPdfData }) {
               </Text>
               <Text style={entry.reversed ? [styles.kindCell, styles.reversed] : styles.kindCell}>
                 {kindLabel[entry.kind]}
-                {entry.reversed ? " (сторно)" : ""}
+                {entry.reversed ? " (отменена)" : ""}
               </Text>
               <Text style={entry.reversed ? [styles.sum, styles.reversed] : styles.sum}>
                 {entry.amount.toFixed(2)}

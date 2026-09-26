@@ -80,7 +80,7 @@ export default async function Statement({
                   </td>
                   <td>
                     {entry.kind === "sale" ? "Продажа" : entry.kind === "purchase" ? "Приход" : "Оплата"}
-                    {entry.reversed && <span className="tag reversed-tag">сторно</span>}
+                    {entry.reversed && <span className="tag reversed-tag">отменена</span>}
                   </td>
                   <td>{money(entry.amount)}</td>
                 </tr>

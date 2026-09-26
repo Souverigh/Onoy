@@ -318,52 +318,65 @@ export default async function DocumentDetail({
               </span>
             )}
           </div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>№</th>
-                  <th>Название</th>
-                  <th>Кол-во</th>
-                  <th>Ед.</th>
-                  <th>Цена</th>
-                  <th>Сумма</th>
-                  <th>
-                    <span className="sr-only">Сохранить</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((line) => {
-                  const lineMismatch =
-                    Math.abs(Number(line.qty) * Number(line.price) - Number(line.sum)) > TOLERANCE;
-                  const lowConfidence = line.confidence != null && line.confidence < 0.8;
-                  return (
-                    <tr
-                      key={line.id}
-                      className={lineMismatch ? "line-mismatch" : lowConfidence ? "warning" : ""}
-                    >
-                      <td colSpan={7} className="document-line-cell">
-                        <form action={updateLine} className="document-line-form">
-                          <input type="hidden" name="line_id" value={line.id} />
-                          <input type="hidden" name="document_id" value={doc.id} />
-                          <span className="line-n">{line.n}</span>
-                          <input name="name_raw" defaultValue={line.name_raw} maxLength={200} />
-                          <input name="qty" defaultValue={line.qty} inputMode="decimal" />
-                          <input name="unit" defaultValue={line.unit} />
-                          <input name="price" defaultValue={line.price} inputMode="decimal" />
-                          <span className="line-sum">{money(line.sum)}</span>
-                          <button className="text-button" type="submit">
-                            Сохранить
-                          </button>
-                        </form>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <ol className="invoice-lines">
+            {lines.map((line) => {
+              const computed = Number(line.qty) * Number(line.price);
+              const lineMismatch = Math.abs(computed - Number(line.sum)) > TOLERANCE;
+              const lowConfidence = line.confidence != null && line.confidence < 0.8;
+              return (
+                <li
+                  key={line.id}
+                  className={`invoice-line${lineMismatch ? " line-mismatch" : lowConfidence ? " line-doubt" : ""}`}
+                >
+                  <details>
+                    <summary>
+                      <span className="invoice-line-n">{line.n}</span>
+                      <span className="invoice-line-body">
+                        <span className="invoice-line-name">{line.name_raw}</span>
+                        <span className="invoice-line-calc">
+                          <span className="nowrap">
+                            {line.qty} {line.unit} × {money(line.price)}
+                          </span>
+                          {lineMismatch && (
+                            <>
+                              {" "}· по бумаге <span className="nowrap">{money(line.sum)}</span>, должно
+                              быть <span className="nowrap">{money(computed)}</span>
+                            </>
+                          )}
+                          {!lineMismatch && lowConfidence && <> · проверьте, плохо читается</>}
+                        </span>
+                      </span>
+                      <span className="invoice-line-sum">{money(line.sum)}</span>
+                    </summary>
+                    <form action={updateLine} className="invoice-line-form">
+                      <input type="hidden" name="line_id" value={line.id} />
+                      <input type="hidden" name="document_id" value={doc.id} />
+                      <label className="invoice-line-field-name">
+                        Название
+                        <input name="name_raw" defaultValue={line.name_raw} maxLength={200} />
+                      </label>
+                      <label>
+                        Кол-во
+                        <input name="qty" defaultValue={line.qty} inputMode="decimal" />
+                      </label>
+                      <label>
+                        Ед.
+                        <input name="unit" defaultValue={line.unit} />
+                      </label>
+                      <label>
+                        Цена
+                        <input name="price" defaultValue={line.price} inputMode="decimal" />
+                      </label>
+                      <button className="button primary" type="submit">
+                        Сохранить
+                      </button>
+                    </form>
+                  </details>
+                </li>
+              );
+            })}
+          </ol>
+          <p className="muted invoice-lines-hint">Нажмите на строку, чтобы исправить.</p>
           {doc.status === "review" && (
             <form action={confirmDocument} className="simple-operation-actions">
               <input type="hidden" name="id" value={doc.id} />

@@ -30,8 +30,29 @@ function normalizeName(raw: string): string {
   return raw.trim().replace(/\s+/g, " ");
 }
 
+/**
+ * Итог по строкам считаем сами: модель (особенно с thinkingLevel=low) ошибается
+ * в сложении длинных накладных, а qty×price — простая арифметика. Строка без
+ * читаемых qty/price берёт свою сумму с бумаги. В тийынах — без ошибок float.
+ */
+function computeTotal(result: InvoiceResult): number {
+  if (result.lines.length === 0) return Number(result.total_computed) || 0;
+  let cents = 0;
+  for (const line of result.lines) {
+    const qty = Number(line.qty);
+    const price = Number(line.price);
+    const sum = Number(line.sum);
+    if (line.qty !== "" && line.price !== "" && Number.isFinite(qty) && Number.isFinite(price)) {
+      cents += Math.round(qty * price * 100);
+    } else if (line.sum !== "" && Number.isFinite(sum)) {
+      cents += Math.round(sum * 100);
+    }
+  }
+  return cents / 100;
+}
+
 export function normalizeInvoiceResult(result: InvoiceResult): InvoiceResult {
-  return {
+  const normalized = {
     ...result,
     lines: result.lines.map((line) => ({
       ...line,
@@ -42,4 +63,5 @@ export function normalizeInvoiceResult(result: InvoiceResult): InvoiceResult {
       sum: normalizeDecimalString(line.sum),
     })),
   };
+  return { ...normalized, total_computed: computeTotal(normalized) };
 }

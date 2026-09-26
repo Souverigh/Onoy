@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getContext } from "@/lib/context";
 import { decimalInput } from "@/lib/validation";
+import { safeBackPath } from "@/lib/back-path";
 import { isDuplicatePhoto, uploadOperationPhoto } from "@/lib/storage";
 import {
   recognizeDocument,
@@ -360,6 +361,8 @@ export async function reverseOperation(form: FormData) {
   const kind = String(form.get("kind"));
   const id = String(form.get("id") ?? "");
   const comment = String(form.get("comment") ?? "").trim();
+  // Отмена из карточки клиента/поставщика возвращает туда же.
+  const back = safeBackPath(String(form.get("back") ?? ""));
   if (!["sale", "purchase", "payment"].includes(kind) || !uuidPattern.test(id))
     redirect("/money?error=invalid");
   const { db, organizationId } = await getContext();
@@ -376,7 +379,7 @@ export async function reverseOperation(form: FormData) {
     [paramName]: id,
     p_comment: comment,
   });
-  if (result.error) redirect("/money?error=reversal");
+  if (result.error) redirect(back ? `${back}?error=reversal` : "/money?error=reversal");
   revalidatePath("/", "layout");
-  redirect("/money?created=reversed");
+  redirect(back ? `${back}?reversed=${kind}` : "/money?created=reversed");
 }

@@ -198,7 +198,7 @@ export default async function Money({
         : params.created === "payment"
           ? "Оплата подтверждена. Долг пересчитан."
           : params.created === "reversed"
-            ? "Запись сторнирована. Долг пересчитан, история сохранена."
+            ? "Запись отменена. Долг пересчитан, история сохранена."
             : undefined;
 
   return (
@@ -220,7 +220,7 @@ export default async function Money({
       {successText && params.duplicate === "1" && (
         <p className="notice" role="status">
           Внимание: это фото накладной уже приложено к другой записи. Если запись
-          задвоилась — сделайте сторно.
+          задвоилась — отмените лишнюю.
         </p>
       )}
       {params.error === "invalid" && (
@@ -230,7 +230,7 @@ export default async function Money({
       )}
       {params.error === "reversal" && (
         <p className="form-error" role="alert">
-          Не удалось сделать сторно. Возможно, запись уже сторнирована.
+          Не удалось отменить запись. Возможно, она уже отменена.
         </p>
       )}
       {pendingClaims > 0 && (
@@ -345,7 +345,7 @@ export default async function Money({
                             ? "Получена оплата"
                             : "Оплата поставщику"}
                       {activity.reversed && (
-                        <span className="tag reversed-tag">сторно</span>
+                        <span className="tag reversed-tag">отменена</span>
                       )}
                     </td>
                     <td>{activity.party}</td>

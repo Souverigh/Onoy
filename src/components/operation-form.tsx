@@ -46,6 +46,7 @@ export function OperationForm({
   suppliers,
   error,
   prefill,
+  initialParty,
 }: {
   kind: Operation;
   idempotencyKey: string;
@@ -53,13 +54,19 @@ export function OperationForm({
   suppliers: Party[];
   error?: string;
   prefill?: Prefill;
+  /** Открыто из карточки клиента/поставщика — он уже выбран. */
+  initialParty?: string;
 }) {
   const hasCustomers = customers.length > 0;
   const [direction, setDirection] = useState<"incoming" | "outgoing">(
-    hasCustomers ? "incoming" : "outgoing",
+    initialParty && suppliers.some((s) => s.id === initialParty)
+      ? "outgoing"
+      : hasCustomers
+        ? "incoming"
+        : "outgoing",
   );
   const [selectedParty, setSelectedParty] = useState(
-    prefill?.suggestions[0]?.id ?? "",
+    prefill?.suggestions[0]?.id ?? initialParty ?? "",
   );
   const [amountValue, setAmountValue] = useState(prefill?.amount ?? "");
   const [checkedPhoto, setCheckedPhoto] = useState<CheckedPhoto | null>(null);

@@ -52,3 +52,20 @@ test("normalizeInvoiceResult trims and collapses whitespace in names", () => {
   );
   assert.equal(result.lines[0].name_raw, "Кабель ВВГ");
 });
+
+test("normalizeInvoiceResult computes total_computed from qty*price instead of trusting the model", () => {
+  const result = normalizeInvoiceResult({
+    ...invoiceWith([
+      { n: 1, name_raw: "a", qty: "3", unit: "шт", price: "0,1", sum: "0.3", confidence: 1 },
+      { n: 2, name_raw: "b", qty: "4", unit: "шт", price: "240", sum: "999", confidence: 1 },
+      { n: 3, name_raw: "c", qty: "", unit: "шт", price: "", sum: "50", confidence: 0.5 },
+    ]),
+    total_computed: 12345,
+  });
+  assert.equal(result.total_computed, 0.3 + 960 + 50);
+});
+
+test("normalizeInvoiceResult keeps model total when there are no lines", () => {
+  const result = normalizeInvoiceResult({ ...invoiceWith([]), total_computed: 500 });
+  assert.equal(result.total_computed, 500);
+});

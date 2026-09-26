@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
 import { money } from "@/lib/format";
 import { reverseOperation } from "@/app/(workspace)/money/actions";
+import { safeBackPath } from "@/lib/back-path";
 import { Submit } from "@/components/submit";
 
 type Kind = "purchase" | "sale" | "payment";
@@ -14,10 +15,14 @@ const tables: Record<Kind, { table: string; amountField: string; partyTable: str
 
 export default async function ReverseOperation({
   params,
+  searchParams,
 }: {
   params: Promise<{ kind: string; id: string }>;
+  searchParams: Promise<{ back?: string }>;
 }) {
   const { kind: rawKind, id } = await params;
+  const { back: rawBack } = await searchParams;
+  const back = safeBackPath(rawBack);
   if (!["purchase", "sale", "payment"].includes(rawKind)) notFound();
   const kind = rawKind as Kind;
   if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
@@ -49,30 +54,31 @@ export default async function ReverseOperation({
 
   return (
     <>
-      <Link className="back-link" href="/money">
-        ← Деньги
+      <Link className="back-link" href={back ?? "/money"}>
+        ← {back ? "Назад" : "Деньги"}
       </Link>
       <div className="page-heading">
-        <h1>Отменить: {meta.label.toLowerCase()}</h1>
+        <h1>Отменить запись: {meta.label.toLowerCase()}</h1>
       </div>
       <section className="panel simple-operation-panel">
         <p>
           {party} · {money(String(data[meta.amountField]))}
         </p>
         <p className="operation-hint">
-          Запись не удаляется. Появится сторнирующая запись — обе видны в истории,
+          Запись не удаляется — она останется в истории с пометкой «отменена»,
           долг пересчитается сразу.
         </p>
         <form action={reverseOperation} className="simple-operation-form">
           <input type="hidden" name="kind" value={kind} />
           <input type="hidden" name="id" value={id} />
+          {back && <input type="hidden" name="back" value={back} />}
           <label>
             Почему отменяем?
             <textarea name="comment" required maxLength={500} rows={3} placeholder="Например: ошиблись суммой" />
           </label>
           <div className="simple-operation-actions">
-            <Submit>Да, сторно</Submit>
-            <Link className="text-button" href="/money">
+            <Submit>Да, отменить запись</Submit>
+            <Link className="text-button" href={back ?? "/money"}>
               Не отменять
             </Link>
           </div>

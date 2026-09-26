@@ -17,6 +17,7 @@ export default async function NewOperation({
     amount?: string;
     bankRef?: string;
     suggest?: string;
+    party?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -56,6 +57,12 @@ export default async function NewOperation({
           suggestions,
         }
       : undefined;
+  // Из карточки клиента/поставщика: берём, только если он из подходящего списка.
+  const initialParty = [...(kind === "purchase" ? [] : customers), ...(kind === "sale" ? [] : suppliers)].some(
+    (p) => p.id === params.party,
+  )
+    ? params.party
+    : undefined;
   const needsParty =
     kind === "purchase"
       ? suppliers.length > 0
@@ -115,6 +122,7 @@ export default async function NewOperation({
             suppliers={suppliers}
             error={params.error}
             prefill={prefill}
+            initialParty={initialParty}
           />
         </section>
       )}
