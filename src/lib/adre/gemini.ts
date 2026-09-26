@@ -61,14 +61,37 @@ const invoicePrompt = `Ты распознаёшь рукописную или �
 const receiptPrompt = `Ты распознаёшь чек или скриншот перевода банка MBank (Кыргызстан). Извлеки банк, номер операции, дату и время, сумму, имя отправителя, имя и телефон получателя, назначение платежа, и уверенность 0-1. Отвечай только JSON по заданной схеме.`;
 
 function estimateCost(raw: unknown): number | null {
-  const usage = (raw as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } })
-    ?.usageMetadata;
+  const usage = (
+    raw as {
+      usageMetadata?: {
+        promptTokenCount?: number;
+        candidatesTokenCount?: number;
+        thoughtsTokenCount?: number;
+      };
+    }
+  )?.usageMetadata;
   if (!usage) return null;
   const priceIn = Number(process.env.GEMINI_PRICE_PER_1K_INPUT ?? "0.0003");
   const priceOut = Number(process.env.GEMINI_PRICE_PER_1K_OUTPUT ?? "0.0025");
   const input = (usage.promptTokenCount ?? 0) / 1000;
-  const output = (usage.candidatesTokenCount ?? 0) / 1000;
+  // Токены рассуждения оплачиваются как выходные.
+  const output = ((usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0)) / 1000;
   return Number((input * priceIn + output * priceOut).toFixed(4));
+}
+
+/**
+ * Скорость и цена: по умолчанию Gemini 3 рассуждает на уровне high (токены
+ * рассуждения оплачиваются как выходные и дают основную задержку), а фото
+ * обрабатывает в высоком разрешении (1120 токенов). Для извлечения полей из
+ * накладной достаточно low и medium (560 токенов) — по документации Google
+ * качество распознавания документов на medium уже не растёт.
+ * Настраивается через GEMINI_THINKING_LEVEL / GEMINI_MEDIA_RESOLUTION.
+ */
+function tuningConfig() {
+  return {
+    thinkingConfig: { thinkingLevel: process.env.GEMINI_THINKING_LEVEL || "low" },
+    mediaResolution: process.env.GEMINI_MEDIA_RESOLUTION || "MEDIA_RESOLUTION_MEDIUM",
+  };
 }
 
 async function callGemini(
@@ -80,23 +103,38 @@ async function callGemini(
   mimeType: string,
 ): Promise<{ json: unknown; raw: unknown }> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  const body = {
-    contents: [
-      {
-        role: "user",
-        parts: [{ text: prompt }, { inline_data: { mime_type: mimeType, data: photo.toString("base64") } }],
-      },
-    ],
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: schema,
-    },
-  };
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const request = (tuned: boolean) =>
+    fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: mimeType, data: photo.toString("base64") } },
+            ],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: schema,
+          ...(tuned ? tuningConfig() : {}),
+        },
+      }),
+    });
+  let response = await request(true);
+  if (response.status === 400) {
+    // Модель из GEMINI_MODEL может не поддерживать уровень рассуждения или
+    // разрешение — лучше распознать дороже, чем не распознать вовсе.
+    const text = await response.text().catch(() => "");
+    console.warn("callGemini: tuned request rejected, retrying without tuning", {
+      model,
+      error: text.slice(0, 300),
+    });
+    response = await request(false);
+  }
   if (!response.ok) {
     const text = await response.text().catch(() => "");
     throw new Error(`gemini_http_${response.status}: ${text.slice(0, 300)}`);

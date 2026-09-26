@@ -6,9 +6,12 @@ import { redirect } from "next/navigation";
 import { getContext } from "@/lib/context";
 import { decimalInput } from "@/lib/validation";
 import { uploadOperationPhoto } from "@/lib/storage";
-import { recognizeDocument, finalizeInvoiceRecognition } from "@/lib/adre/recognize";
-import { createGeminiProvider } from "@/lib/adre/gemini";
-import { normalizeInvoiceResult } from "@/lib/adre/normalize";
+import {
+  recognizeDocument,
+  finalizeInvoiceRecognition,
+  recognizeInvoiceCached,
+  recognizeReceiptCached,
+} from "@/lib/adre/recognize";
 import type { InvoiceResult } from "@/lib/adre/types";
 import { bestMatches } from "@/lib/match";
 
@@ -209,11 +212,18 @@ export async function recognizeInvoicePhoto(
     return { ok: false, error: used ? "photo_used" : "upload_failed" };
   }
   try {
-    const buffer = Buffer.from(await photo.arrayBuffer());
-    const provider = createGeminiProvider(key, process.env.GEMINI_MODEL || "gemini-3.8-flash");
-    const { result } = await provider.recognizeInvoice(buffer, photo.type || "image/jpeg");
-    return { ok: true, documentId, result: normalizeInvoiceResult(result) };
-  } catch {
+    const { result } = await recognizeInvoiceCached({
+      db,
+      organizationId,
+      documentId,
+      loadPhoto: async () => ({
+        photo: Buffer.from(await photo.arrayBuffer()),
+        mimeType: photo.type || "image/jpeg",
+      }),
+    });
+    return { ok: true, documentId, result };
+  } catch (error) {
+    console.error("recognizeInvoicePhoto: recognition failed", error);
     return { ok: false, error: "recognition_failed", documentId };
   }
 }
@@ -242,9 +252,17 @@ export async function prepareReceiptPayment(form: FormData) {
   const key = process.env.GEMINI_API_KEY;
   if (key) {
     try {
-      const buffer = Buffer.from(await photo.arrayBuffer());
-      const provider = createGeminiProvider(key, process.env.GEMINI_MODEL || "gemini-3.8-flash");
-      const { result } = await provider.recognizeReceipt(buffer, photo.type || "image/jpeg");
+      // Результат кешируется: фоновая оцифровка после подтверждения оплаты
+      // возьмёт его отсюда, а не вызовет Gemini второй раз.
+      const { result } = await recognizeReceiptCached({
+        db,
+        organizationId,
+        documentId,
+        loadPhoto: async () => ({
+          photo: Buffer.from(await photo.arrayBuffer()),
+          mimeType: photo.type || "image/jpeg",
+        }),
+      });
       if (result.amount) params.set("amount", String(result.amount));
       if (result.operation_id) params.set("bankRef", result.operation_id);
       if (result.sender_name) {
@@ -259,7 +277,8 @@ export async function prepareReceiptPayment(form: FormData) {
         if (suggestions.length)
           params.set("suggest", suggestions.map((s) => s.candidate.id).join(","));
       }
-    } catch {
+    } catch (error) {
+      console.error("prepareReceiptPayment: recognition failed", error);
       // Распознавание не удалось — продавец заполнит форму вручную, фото уже приложено.
     }
   }

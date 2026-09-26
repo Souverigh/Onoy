@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 const config: NextConfig = {
   poweredByHeader: false,
+  experimental: {
+    serverActions: {
+      // Фото ужимаются в браузере (src/lib/shrink-image.ts) до ~0.5 МБ; запас —
+      // на случай, когда браузер не смог их ужать (HEIC и т.п.). Выше 4.5 МБ
+      // тело запроса всё равно не пропустит Vercel.
+      bodySizeLimit: "4mb",
+    },
+  },
   async headers() {
     return [
       {

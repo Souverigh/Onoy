@@ -1,16 +1,18 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createGeminiProvider } from "./gemini";
-import type { RecognitionProvider, InvoiceResult } from "./types";
+import type { RecognitionProvider, InvoiceResult, ReceiptResult } from "./types";
 import { normalizeInvoiceResult } from "./normalize";
 
 const PROMPT_VERSION = "v1";
 const TOLERANCE = 1; // сом, как в ТЗ §6
 
+const MODEL = () => process.env.GEMINI_MODEL || "gemini-3.8-flash";
+
 function getProvider(): RecognitionProvider | null {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
-  return createGeminiProvider(key, process.env.GEMINI_MODEL || "gemini-3.8-flash");
+  return createGeminiProvider(key, MODEL());
 }
 
 function invoiceMatches(result: InvoiceResult, declaredTotal: number | null): boolean {
@@ -20,6 +22,112 @@ function invoiceMatches(result: InvoiceResult, declaredTotal: number | null): bo
   if (!linesOk) return false;
   if (declaredTotal == null) return true;
   return Math.abs(result.total_computed - declaredTotal) <= TOLERANCE;
+}
+
+function linesOf(result: InvoiceResult) {
+  return result.lines.map((line) => ({
+    n: line.n,
+    name_raw: line.name_raw,
+    qty: line.qty,
+    unit: line.unit,
+    price: line.price,
+    confidence: line.confidence,
+  }));
+}
+
+type PhotoSource = () => Promise<{ photo: Buffer; mimeType: string }>;
+type ExtractionKind = "invoice" | "receipt";
+
+async function cachedExtraction<T>(
+  db: SupabaseClient,
+  organizationId: string,
+  documentId: string,
+  kind: ExtractionKind,
+): Promise<T | null> {
+  const { data, error } = await db
+    .from("document_extractions")
+    .select("payload")
+    .eq("organization_id", organizationId)
+    .eq("document_id", documentId)
+    .eq("prompt_version", PROMPT_VERSION)
+    .eq("payload->>kind", kind)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.error("cachedExtraction: lookup failed", error);
+    return null;
+  }
+  return ((data?.payload as { extracted?: T } | undefined)?.extracted ?? null) as T | null;
+}
+
+/**
+ * Один вызов Gemini на одно фото: одинаковое фото create_document сводит к
+ * одному документу, а готовый ответ лежит в document_extractions. Повторный
+ * выбор того же фото, фоновая оцифровка после подтверждения и квитанция,
+ * распознанная до оплаты, берут результат отсюда.
+ */
+async function recognizeWithCache<T>({
+  db,
+  organizationId,
+  documentId,
+  kind,
+  loadPhoto,
+  normalize,
+}: {
+  db: SupabaseClient;
+  organizationId: string;
+  documentId: string;
+  kind: ExtractionKind;
+  loadPhoto: PhotoSource;
+  normalize: (result: T) => T;
+}): Promise<{ result: T; cached: boolean }> {
+  const cached = await cachedExtraction<T>(db, organizationId, documentId, kind);
+  if (cached) return { result: normalize(cached), cached: true };
+
+  const provider = getProvider();
+  if (!provider) throw new Error("no_provider_configured");
+  const { photo, mimeType } = await loadPhoto();
+  const startedAt = Date.now();
+  const call =
+    kind === "invoice"
+      ? await provider.recognizeInvoice(photo, mimeType)
+      : await provider.recognizeReceipt(photo, mimeType);
+  const latencyMs = Date.now() - startedAt;
+  const result = normalize(call.result as T);
+  const save = await db.rpc("cache_extraction", {
+    p_org: organizationId,
+    p_document: documentId,
+    p_provider: provider.name,
+    p_model: provider.model,
+    p_prompt_version: PROMPT_VERSION,
+    p_raw_json: { kind, extracted: result, response: call.raw },
+    p_latency_ms: latencyMs,
+    p_cost: call.costUsd,
+  });
+  // Не удалось закешировать — результат всё равно отдаём, в худшем случае
+  // следующий раз заплатим за повторный вызов.
+  if (save.error) console.error("recognizeWithCache: cache_extraction failed", save.error);
+  return { result, cached: false };
+}
+
+type CachedArgs = {
+  db: SupabaseClient;
+  organizationId: string;
+  documentId: string;
+  loadPhoto: PhotoSource;
+};
+
+export function recognizeInvoiceCached(args: CachedArgs) {
+  return recognizeWithCache<InvoiceResult>({
+    ...args,
+    kind: "invoice",
+    normalize: normalizeInvoiceResult,
+  });
+}
+
+export function recognizeReceiptCached(args: CachedArgs) {
+  return recognizeWithCache<ReceiptResult>({ ...args, kind: "receipt", normalize: (r) => r });
 }
 
 /**
@@ -49,17 +157,7 @@ export async function recognizeDocument({
   });
   if (started.error) return; // уже обрабатывается или недоступен — не мешаем
 
-  const provider = getProvider();
-  if (!provider) {
-    await db.rpc("fail_recognition", {
-      p_org: organizationId,
-      p_document: documentId,
-      p_error: "no_provider_configured",
-    });
-    return;
-  }
-
-  try {
+  const loadPhoto: PhotoSource = async () => {
     const doc = await db
       .from("documents")
       .select("storage_path,mime_type")
@@ -67,56 +165,45 @@ export async function recognizeDocument({
       .eq("id", documentId)
       .single();
     if (doc.error || !doc.data) throw new Error("document_not_found");
-
     const download = await db.storage.from("receipts").download(doc.data.storage_path);
     if (download.error || !download.data) throw new Error("photo_download_failed");
-    const photo = Buffer.from(await download.data.arrayBuffer());
-    const mimeType = doc.data.mime_type || "image/jpeg";
+    return {
+      photo: Buffer.from(await download.data.arrayBuffer()),
+      mimeType: doc.data.mime_type || "image/jpeg",
+    };
+  };
 
-    const startedAt = Date.now();
+  try {
+    // Стоимость и задержка уже записаны в строке кеша (cache_extraction) —
+    // здесь их не дублируем, чтобы сумма cost по document_extractions
+    // оставалась реальными расходами.
+    const common = {
+      p_org: organizationId,
+      p_document: documentId,
+      p_provider: "gemini",
+      p_model: MODEL(),
+      p_prompt_version: PROMPT_VERSION,
+      p_latency_ms: null,
+      p_cost: null,
+    };
     if (kind === "payment") {
-      const { result, costUsd, raw } = await provider.recognizeReceipt(photo, mimeType);
-      const latencyMs = Date.now() - startedAt;
-      const status = result.confidence >= 0.8 ? "digitized" : "review";
+      const { result } = await recognizeReceiptCached({ db, organizationId, documentId, loadPhoto });
       const save = await db.rpc("save_recognition", {
-        p_org: organizationId,
-        p_document: documentId,
-        p_provider: provider.name,
-        p_model: provider.model,
-        p_prompt_version: PROMPT_VERSION,
-        p_raw_json: { extracted: result, response: raw },
+        ...common,
+        p_raw_json: { kind: "receipt", extracted: result, response: null },
         p_lines: [],
-        p_status: status,
-        p_latency_ms: latencyMs,
-        p_cost: costUsd,
+        p_status: result.confidence >= 0.8 ? "digitized" : "review",
       });
       if (save.error) throw new Error(save.error.message);
       return;
     }
 
-    const { result: rawResult, costUsd, raw } = await provider.recognizeInvoice(photo, mimeType);
-    const result = normalizeInvoiceResult(rawResult);
-    const latencyMs = Date.now() - startedAt;
-    const status = invoiceMatches(result, declaredTotal) ? "digitized" : "review";
-    const lines = result.lines.map((line) => ({
-      n: line.n,
-      name_raw: line.name_raw,
-      qty: line.qty,
-      unit: line.unit,
-      price: line.price,
-      confidence: line.confidence,
-    }));
+    const { result } = await recognizeInvoiceCached({ db, organizationId, documentId, loadPhoto });
     const save = await db.rpc("save_recognition", {
-      p_org: organizationId,
-      p_document: documentId,
-      p_provider: provider.name,
-      p_model: provider.model,
-      p_prompt_version: PROMPT_VERSION,
-      p_raw_json: { extracted: result, response: raw },
-      p_lines: lines,
-      p_status: status,
-      p_latency_ms: latencyMs,
-      p_cost: costUsd,
+      ...common,
+      p_raw_json: { kind: "invoice", extracted: result, response: null },
+      p_lines: linesOf(result),
+      p_status: invoiceMatches(result, declaredTotal) ? "digitized" : "review",
     });
     if (save.error) throw new Error(save.error.message);
   } catch (error) {
@@ -156,22 +243,14 @@ export async function finalizeInvoiceRecognition({
   // ещё раз, это идемпотентно и дёшево, зато не полагается на чужой ввод.
   const result = normalizeInvoiceResult(rawResult);
   const status = invoiceMatches(result, declaredTotal) ? "digitized" : "review";
-  const lines = result.lines.map((line) => ({
-    n: line.n,
-    name_raw: line.name_raw,
-    qty: line.qty,
-    unit: line.unit,
-    price: line.price,
-    confidence: line.confidence,
-  }));
   const save = await db.rpc("save_recognition", {
     p_org: organizationId,
     p_document: documentId,
     p_provider: "gemini",
-    p_model: process.env.GEMINI_MODEL || "gemini-3.8-flash",
+    p_model: MODEL(),
     p_prompt_version: PROMPT_VERSION,
-    p_raw_json: { extracted: result, response: null },
-    p_lines: lines,
+    p_raw_json: { kind: "invoice", extracted: result, response: null },
+    p_lines: linesOf(result),
     p_status: status,
     p_latency_ms: null,
     p_cost: null,

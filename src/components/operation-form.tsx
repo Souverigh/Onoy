@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   commitOperation,
   prepareReceiptPayment,
@@ -9,6 +9,7 @@ import {
 } from "@/app/(workspace)/money/actions";
 import { Submit } from "./submit";
 import { money } from "@/lib/format";
+import { shrinkInputFile } from "@/lib/shrink-image";
 
 type Operation = "purchase" | "sale" | "payment";
 type Party = { id: string; name: string };
@@ -58,7 +59,11 @@ export function OperationForm({
   const [amountValue, setAmountValue] = useState(prefill?.amount ?? "");
   const [checkedPhoto, setCheckedPhoto] = useState<CheckedPhoto | null>(null);
   const [checking, setChecking] = useState(false);
+  const [shrinkingReceipt, setShrinkingReceipt] = useState(false);
   const [checkNote, setCheckNote] = useState<string | null>(null);
+  // Номер последнего выбранного фото: ответ по старому фото, пришедший позже,
+  // не должен перезаписать результат по новому.
+  const photoRequest = useRef(0);
   const parties =
     kind === "purchase"
       ? suppliers
@@ -91,15 +96,26 @@ export function OperationForm({
               : undefined;
 
   async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const request = ++photoRequest.current;
     setCheckedPhoto(null);
     setCheckNote(null);
-    if (!file || (kind !== "purchase" && kind !== "sale")) return;
+    if (!input.files?.[0]) {
+      setChecking(false);
+      return;
+    }
+    // Пока фото ужимается, загружается и распознаётся, подтверждение
+    // заблокировано: иначе запись уходит без document_id и то же фото
+    // грузится второй раз.
     setChecking(true);
     try {
+      const file = await shrinkInputFile(input);
+      if (request !== photoRequest.current) return;
+      if (!file || (kind !== "purchase" && kind !== "sale")) return;
       const fd = new FormData();
       fd.set("photo", file);
       const res = await recognizeInvoicePhoto(kind, fd);
+      if (request !== photoRequest.current) return;
       if (res.ok) {
         setCheckedPhoto({ documentId: res.documentId, result: res.result });
       } else if (res.error === "photo_used") {
@@ -110,9 +126,13 @@ export function OperationForm({
         setCheckedPhoto({ documentId: res.documentId, result: null });
         setCheckNote("Не удалось быстро сверить сумму — сверим после сохранения.");
       }
-      // no_provider/no_photo/upload_failed без documentId — просто продолжаем как обычно.
+      // no_provider/no_photo/upload_failed без documentId — фото загрузится при подтверждении.
+    } catch (err) {
+      console.error("recognizeInvoicePhoto failed", err);
+      if (request === photoRequest.current)
+        setCheckNote("Не удалось быстро сверить сумму — сверим после сохранения.");
     } finally {
-      setChecking(false);
+      if (request === photoRequest.current) setChecking(false);
     }
   }
 
@@ -128,10 +148,23 @@ export function OperationForm({
         <form action={prepareReceiptPayment} className="receipt-intake-form">
           <label className="photo-field">
             Есть фото или скриншот квитанции? Сумму и клиента подставим сами.
-            <input name="photo" type="file" accept="image/*" capture="environment" />
+            <input
+              name="photo"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={async (e) => {
+                setShrinkingReceipt(true);
+                try {
+                  await shrinkInputFile(e.target);
+                } finally {
+                  setShrinkingReceipt(false);
+                }
+              }}
+            />
           </label>
-          <button className="button" type="submit">
-            Распознать квитанцию
+          <button className="button" type="submit" disabled={shrinkingReceipt}>
+            {shrinkingReceipt ? "Готовим фото…" : "Распознать квитанцию"}
           </button>
         </form>
       )}
@@ -280,11 +313,13 @@ export function OperationForm({
           <label className="photo-field">
             Фото накладной{kind === "payment" ? " или чека" : ""}
             <input
-              name="photo"
+              // Фото уже загружено при проверке — второй раз его не отправляем,
+              // сервер возьмёт document_id.
+              name={checkedPhoto ? undefined : "photo"}
               type="file"
               accept="image/*"
               capture="environment"
-              required={kind !== "payment"}
+              required={kind !== "payment" && !checkedPhoto}
               onChange={handlePhotoChange}
             />
           </label>
@@ -300,7 +335,7 @@ export function OperationForm({
               : "Оплата сразу уменьшит долг контрагента. Если платили переводом — приложите чек."}
         </p>
         <div className="simple-operation-actions">
-          <Submit>{confirmLabel}</Submit>
+          <Submit disabled={checking}>{checking ? "Проверяем фото…" : confirmLabel}</Submit>
           <Link className="text-button" href="/money">
             Отмена
           </Link>

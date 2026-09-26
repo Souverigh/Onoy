@@ -984,3 +984,37 @@ test("create_document reuses a photo across kinds until it backs a record", asyn
   ]);
   await assert.rejects(create("purchase", "path/p2.jpg"), /document_in_use/);
 });
+test("cache_extraction stores a Gemini result without touching document status, members only", async () => {
+  await user(a);
+  const doc = (
+    await db.query("select create_document($1,$2,$3,$4,$5) as id", [
+      orgA,
+      "sale",
+      "path/cache.jpg",
+      "cache-hash-1",
+      "image/jpeg",
+    ])
+  ).rows[0].id;
+  const args = (org, payload) => [org, doc, "gemini", "gemini-3.8-flash", "v1", payload, 1200, 0.0012];
+  const sql = "select cache_extraction($1,$2,$3,$4,$5,$6,$7,$8)";
+  await db.query(sql, args(orgA, { kind: "invoice", extracted: { total_computed: 54270 } }));
+  await assert.rejects(db.query(sql, args(orgA, { extracted: {} })), /invalid_extraction/);
+  assert.equal(
+    (await db.query("select status from documents where id=$1", [doc])).rows[0].status,
+    "uploaded",
+  );
+  assert.equal(
+    (
+      await db.query(
+        "select payload->'extracted'->>'total_computed' as total from document_extractions where document_id=$1 and payload->>'kind'='invoice'",
+        [doc],
+      )
+    ).rows[0].total,
+    "54270",
+  );
+  await user(b);
+  await assert.rejects(
+    db.query(sql, args(orgA, { kind: "invoice", extracted: {} })),
+    /not_a_member/,
+  );
+});

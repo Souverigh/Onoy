@@ -75,11 +75,19 @@ export default async function DocumentDetail({
       .eq("organization_id", organizationId)
       .eq("document_id", id)
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+      .limit(10),
   ]);
   const lines = (linesResult.data ?? []) as Line[];
-  const extraction = extractionResult.data as Extraction | null;
+  // Последняя строка — итог оцифровки; задержка вызова Gemini записана в
+  // строке кеша (cache_extraction), поэтому берём её из последней, где она есть.
+  const extractions = (extractionResult.data ?? []) as Extraction[];
+  const extraction: Extraction | null = extractions[0]
+    ? {
+        ...extractions[0],
+        latency_ms:
+          extractions.find((e) => e.latency_ms != null)?.latency_ms ?? null,
+      }
+    : null;
 
   let declaredTotal: number | null = null;
   let party: { id: string; name: string; aliases: string[]; kind: "customer" | "supplier" } | null = null;
