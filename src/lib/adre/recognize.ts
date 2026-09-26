@@ -1,7 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createGeminiProvider } from "./gemini";
-import type { RecognitionProvider, InvoiceResult, ReceiptResult } from "./types";
+import type { RecognitionProvider, InvoiceResult, ReceiptResult, PhotoPage } from "./types";
+import { documentPages } from "@/lib/storage";
 import { normalizeInvoiceResult } from "./normalize";
 import { contentFingerprint } from "./fingerprint";
 
@@ -36,7 +37,8 @@ function linesOf(result: InvoiceResult) {
   }));
 }
 
-type PhotoSource = () => Promise<{ photo: Buffer; mimeType: string }>;
+/** Страницы документа по порядку; у чека и обычной накладной — одна. */
+type PhotoSource = () => Promise<PhotoPage[]>;
 type ExtractionKind = "invoice" | "receipt";
 
 async function cachedExtraction<T>(
@@ -107,12 +109,13 @@ async function recognizeWithCache<T>({
 
   const provider = getProvider();
   if (!provider) throw new Error("no_provider_configured");
-  const { photo, mimeType } = await loadPhoto();
+  const pages = await loadPhoto();
+  if (pages.length === 0) throw new Error("document_not_found");
   const startedAt = Date.now();
   const call =
     kind === "invoice"
-      ? await provider.recognizeInvoice(photo, mimeType)
-      : await provider.recognizeReceipt(photo, mimeType);
+      ? await provider.recognizeInvoice(pages)
+      : await provider.recognizeReceipt(pages[0].photo, pages[0].mimeType);
   const latencyMs = Date.now() - startedAt;
   const result = normalize(call.result as T);
   const save = await db.rpc("cache_extraction", {
@@ -198,19 +201,18 @@ export async function recognizeDocument({
   if (started.error) return; // уже обрабатывается или недоступен — не мешаем
 
   const loadPhoto: PhotoSource = async () => {
-    const doc = await db
-      .from("documents")
-      .select("storage_path,mime_type")
-      .eq("organization_id", organizationId)
-      .eq("id", documentId)
-      .single();
-    if (doc.error || !doc.data) throw new Error("document_not_found");
-    const download = await db.storage.from("receipts").download(doc.data.storage_path);
-    if (download.error || !download.data) throw new Error("photo_download_failed");
-    return {
-      photo: Buffer.from(await download.data.arrayBuffer()),
-      mimeType: doc.data.mime_type || "image/jpeg",
-    };
+    const pages = await documentPages(db, organizationId, documentId);
+    if (pages.length === 0) throw new Error("document_not_found");
+    return Promise.all(
+      pages.map(async (page) => {
+        const download = await db.storage.from("receipts").download(page.storage_path);
+        if (download.error || !download.data) throw new Error("photo_download_failed");
+        return {
+          photo: Buffer.from(await download.data.arrayBuffer()),
+          mimeType: page.mime_type || "image/jpeg",
+        };
+      }),
+    );
   };
 
   try {

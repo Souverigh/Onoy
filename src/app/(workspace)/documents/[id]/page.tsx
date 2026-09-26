@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
 import { money } from "@/lib/format";
-import { signedPhotoUrl } from "@/lib/storage";
+import { documentPages, signedPhotoUrl } from "@/lib/storage";
+import { DocumentPhotos } from "@/components/document-photos";
 import { retryRecognition, confirmDocument, updateLine, saveAlias } from "../actions";
 import { similarity } from "@/lib/match";
 
@@ -129,7 +130,8 @@ export default async function DocumentDetail({
     }
   }
 
-  const photoUrl = await signedPhotoUrl(db, doc.storage_path);
+  const pages = await documentPages(db, organizationId, doc.id);
+  const photoUrls = await Promise.all(pages.map((page) => signedPhotoUrl(db, page.storage_path)));
   const linesTotal = lines.reduce((sum, line) => sum + Number(line.sum), 0);
   const totalsMismatch =
     declaredTotal != null && Math.abs(linesTotal - declaredTotal) > TOLERANCE;
@@ -210,47 +212,36 @@ export default async function DocumentDetail({
           Не удалось выполнить действие. Проверьте значения и попробуйте снова.
         </p>
       )}
-      <div className="documents-layout">
-        <section className="panel">
-          {photoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={photoUrl} alt="Фото документа" className="document-photo" />
-          ) : (
-            <p className="muted">Фото недоступно.</p>
-          )}
-        </section>
-        <section className="panel">
-          <div className="section-title">
-            <h2>Статус</h2>
-            <span
-              className={
-                doc.status === "digitized"
-                  ? "tag green"
-                  : doc.status === "review" || doc.status === "failed"
-                    ? "tag reversed-tag"
-                    : "tag"
-              }
-            >
-              {doc.status === "uploaded"
-                ? "Ожидает"
-                : doc.status === "processing"
-                  ? "Распознаём…"
-                  : doc.status === "digitized"
-                    ? "Оцифрована"
-                    : doc.status === "review"
-                      ? "Расхождение"
-                      : "Ошибка"}
+      {/* Сначала — всё, что требует внимания; ниже фото и позиции рядом. */}
+      <section className="panel doc-status">
+        <div className="doc-status-row">
+          <span
+            className={
+              doc.status === "digitized"
+                ? "tag green"
+                : doc.status === "review" || doc.status === "failed"
+                  ? "tag reversed-tag"
+                  : "tag"
+            }
+          >
+            {doc.status === "uploaded"
+              ? "Ожидает"
+              : doc.status === "processing"
+                ? "Распознаём…"
+                : doc.status === "digitized"
+                  ? "Оцифрована"
+                  : doc.status === "review"
+                    ? "Расхождение"
+                    : "Ошибка"}
+          </span>
+          {extraction && (
+            <span className="muted doc-status-model">
+              {extraction.provider} · {extraction.model_version}
+              {extraction.latency_ms != null ? ` · ${extraction.latency_ms} мс` : ""}
             </span>
-          </div>
-          {recognizedDocumentType && (
-            <p className={documentTypeMismatch ? "photo-check-mismatch" : "muted"}>
-              ADRE увидел: {documentTypeLabel[recognizedDocumentType]}
-              {documentTypeMismatch && ' — не похоже на "' + (expectedDocumentType && documentTypeLabel[expectedDocumentType]) + '", проверьте фото'}
-            </p>
           )}
-          {doc.error_message && <p className="muted">{doc.error_message}</p>}
           {(doc.status === "failed" || doc.status === "uploaded") && doc.kind && (
-            <form action={retryRecognition} className="simple-operation-actions">
+            <form action={retryRecognition} className="doc-status-retry">
               <input type="hidden" name="id" value={doc.id} />
               <input type="hidden" name="kind" value={doc.kind} />
               {declaredTotal != null && (
@@ -261,34 +252,15 @@ export default async function DocumentDetail({
               </button>
             </form>
           )}
-          {extraction && (
-            <p className="muted">
-              {extraction.provider} · {extraction.model_version}
-              {extraction.latency_ms != null ? ` · ${extraction.latency_ms} мс` : ""}
-            </p>
-          )}
-        </section>
-      </div>
-
-      {doc.kind === "payment" && receiptFields && (
-        <section className="panel">
-          <h2>Распознанные данные чека</h2>
-          <dl className="details">
-            <dt>Банк</dt>
-            <dd>{receiptFields.bank ?? "—"}</dd>
-            <dt>Номер операции</dt>
-            <dd>{receiptFields.operation_id ?? "—"}</dd>
-            <dt>Дата и время</dt>
-            <dd>{receiptFields.datetime ?? "—"}</dd>
-            <dt>Сумма</dt>
-            <dd>{receiptFields.amount != null ? money(receiptFields.amount) : "—"}</dd>
-            <dt>Отправитель</dt>
-            <dd>{receiptFields.sender_name ?? "—"}</dd>
-            <dt>Получатель</dt>
-            <dd>{receiptFields.receiver_name ?? "—"}</dd>
-          </dl>
-        </section>
-      )}
+        </div>
+        {doc.error_message && <p className="muted">{doc.error_message}</p>}
+        {recognizedDocumentType && documentTypeMismatch && (
+          <p className="photo-check-mismatch">
+            ADRE увидел: {documentTypeLabel[recognizedDocumentType]} — не похоже на «
+            {expectedDocumentType && documentTypeLabel[expectedDocumentType]}», проверьте фото
+          </p>
+        )}
+      </section>
 
       {counterpartyMismatch && party && recognizedCounterparty && (
         <section className="panel counterparty-mismatch">
@@ -308,85 +280,125 @@ export default async function DocumentDetail({
         </section>
       )}
 
-      {(doc.kind === "purchase" || doc.kind === "sale") && lines.length > 0 && (
-        <section className="panel">
-          <div className="section-title">
-            <h2>Позиции</h2>
-            {declaredTotal != null && (
-              <span className={totalsMismatch ? "tag reversed-tag" : "tag green"}>
-                Строки: {money(linesTotal)} · В накладной: {money(declaredTotal)}
-              </span>
+      <div className="documents-layout">
+        <section className="panel doc-photo-panel">
+          <DocumentPhotos urls={photoUrls.length ? photoUrls : [null]} />
+        </section>
+
+        {doc.kind === "payment" ? (
+          <section className="panel">
+            <h2>Распознанные данные чека</h2>
+            {receiptFields ? (
+              <dl className="details">
+                <dt>Банк</dt>
+                <dd>{receiptFields.bank ?? "—"}</dd>
+                <dt>Номер операции</dt>
+                <dd>{receiptFields.operation_id ?? "—"}</dd>
+                <dt>Дата и время</dt>
+                <dd>{receiptFields.datetime ?? "—"}</dd>
+                <dt>Сумма</dt>
+                <dd>{receiptFields.amount != null ? money(receiptFields.amount) : "—"}</dd>
+                <dt>Отправитель</dt>
+                <dd>{receiptFields.sender_name ?? "—"}</dd>
+                <dt>Получатель</dt>
+                <dd>{receiptFields.receiver_name ?? "—"}</dd>
+              </dl>
+            ) : (
+              <p className="muted">Данные появятся после распознавания.</p>
             )}
-          </div>
-          <ol className="invoice-lines">
-            {lines.map((line) => {
-              const computed = Number(line.qty) * Number(line.price);
-              const lineMismatch = Math.abs(computed - Number(line.sum)) > TOLERANCE;
-              const lowConfidence = line.confidence != null && line.confidence < 0.8;
-              return (
-                <li
-                  key={line.id}
-                  className={`invoice-line${lineMismatch ? " line-mismatch" : lowConfidence ? " line-doubt" : ""}`}
-                >
-                  <details>
-                    <summary>
-                      <span className="invoice-line-n">{line.n}</span>
-                      <span className="invoice-line-body">
-                        <span className="invoice-line-name">{line.name_raw}</span>
-                        <span className="invoice-line-calc">
-                          <span className="nowrap">
-                            {line.qty} {line.unit} × {money(line.price)}
+          </section>
+        ) : (
+          // Высоту ряда задаёт фото; позиции подстраиваются под неё и
+          // прокручиваются, если не помещаются.
+          <section className="panel doc-lines-panel">
+            <div className="doc-lines-inner">
+              <div className="section-title">
+                <h2>Позиции</h2>
+                {declaredTotal != null && lines.length > 0 && (
+                  <span className={totalsMismatch ? "tag reversed-tag" : "tag green"}>
+                    Строки: {money(linesTotal)} · В записи: {money(declaredTotal)}
+                  </span>
+                )}
+              </div>
+              {lines.length > 0 ? (
+                <>
+                  <div className="doc-lines-scroll">
+              <ol className="invoice-lines">
+                {lines.map((line) => {
+                  const computed = Number(line.qty) * Number(line.price);
+                  const lineMismatch = Math.abs(computed - Number(line.sum)) > TOLERANCE;
+                  const lowConfidence = line.confidence != null && line.confidence < 0.8;
+                  return (
+                    <li
+                      key={line.id}
+                      className={`invoice-line${lineMismatch ? " line-mismatch" : lowConfidence ? " line-doubt" : ""}`}
+                    >
+                      <details>
+                        <summary>
+                          <span className="invoice-line-n">{line.n}</span>
+                          <span className="invoice-line-body">
+                            <span className="invoice-line-name">{line.name_raw}</span>
+                            <span className="invoice-line-calc">
+                              <span className="nowrap">
+                                {line.qty} {line.unit} × {money(line.price)}
+                              </span>
+                              {lineMismatch && (
+                                <>
+                                  {" "}· по бумаге <span className="nowrap">{money(line.sum)}</span>, должно
+                                  быть <span className="nowrap">{money(computed)}</span>
+                                </>
+                              )}
+                              {!lineMismatch && lowConfidence && <> · проверьте, плохо читается</>}
+                            </span>
                           </span>
-                          {lineMismatch && (
-                            <>
-                              {" "}· по бумаге <span className="nowrap">{money(line.sum)}</span>, должно
-                              быть <span className="nowrap">{money(computed)}</span>
-                            </>
-                          )}
-                          {!lineMismatch && lowConfidence && <> · проверьте, плохо читается</>}
-                        </span>
-                      </span>
-                      <span className="invoice-line-sum">{money(line.sum)}</span>
-                    </summary>
-                    <form action={updateLine} className="invoice-line-form">
-                      <input type="hidden" name="line_id" value={line.id} />
-                      <input type="hidden" name="document_id" value={doc.id} />
-                      <label className="invoice-line-field-name">
-                        Название
-                        <input name="name_raw" defaultValue={line.name_raw} maxLength={200} />
-                      </label>
-                      <label>
-                        Кол-во
-                        <input name="qty" defaultValue={line.qty} inputMode="decimal" />
-                      </label>
-                      <label>
-                        Ед.
-                        <input name="unit" defaultValue={line.unit} />
-                      </label>
-                      <label>
-                        Цена
-                        <input name="price" defaultValue={line.price} inputMode="decimal" />
-                      </label>
+                          <span className="invoice-line-sum">{money(line.sum)}</span>
+                        </summary>
+                        <form action={updateLine} className="invoice-line-form">
+                          <input type="hidden" name="line_id" value={line.id} />
+                          <input type="hidden" name="document_id" value={doc.id} />
+                          <label className="invoice-line-field-name">
+                            Название
+                            <input name="name_raw" defaultValue={line.name_raw} maxLength={200} />
+                          </label>
+                          <label>
+                            Кол-во
+                            <input name="qty" defaultValue={line.qty} inputMode="decimal" />
+                          </label>
+                          <label>
+                            Ед.
+                            <input name="unit" defaultValue={line.unit} />
+                          </label>
+                          <label>
+                            Цена
+                            <input name="price" defaultValue={line.price} inputMode="decimal" />
+                          </label>
+                          <button className="button primary" type="submit">
+                            Сохранить
+                          </button>
+                        </form>
+                      </details>
+                    </li>
+                  );
+                })}
+              </ol>
+                  </div>
+                  <p className="muted invoice-lines-hint">Нажмите на строку, чтобы исправить.</p>
+                  {doc.status === "review" && (
+                    <form action={confirmDocument} className="simple-operation-actions">
+                      <input type="hidden" name="id" value={doc.id} />
                       <button className="button primary" type="submit">
-                        Сохранить
+                        Подтвердить оцифровку
                       </button>
                     </form>
-                  </details>
-                </li>
-              );
-            })}
-          </ol>
-          <p className="muted invoice-lines-hint">Нажмите на строку, чтобы исправить.</p>
-          {doc.status === "review" && (
-            <form action={confirmDocument} className="simple-operation-actions">
-              <input type="hidden" name="id" value={doc.id} />
-              <button className="button primary" type="submit">
-                Подтвердить оцифровку
-              </button>
-            </form>
-          )}
-        </section>
-      )}
+                  )}
+                </>
+              ) : (
+                <p className="muted">Позиции появятся после распознавания.</p>
+              )}
+            </div>
+          </section>
+        )}
+      </div>
     </>
   );
 }

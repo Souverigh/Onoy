@@ -1,5 +1,5 @@
 import "server-only";
-import type { InvoiceResult, ReceiptResult, RecognitionProvider, RawCall } from "./types";
+import type { InvoiceResult, ReceiptResult, RecognitionProvider, RawCall, PhotoPage } from "./types";
 
 const invoiceSchema = {
   type: "object",
@@ -58,6 +58,9 @@ const receiptSchema = {
 
 const invoicePrompt = `Ты распознаёшь рукописную или печатную накладную магазина стройматериалов в Кыргызстане (кириллица, могут быть кыргызские и узбекские имена, сокращения названий товаров). Извлеки контрагента, дату, номер накладной, все позиции (номер строки, название как написано, количество, единицу, цену за единицу, сумму строки, уверенность 0-1 по каждой позиции), итог по бумаге (total_declared, если виден) и посчитанный тобой итог по сумме строк (total_computed). Валюта всегда KGS. Числа (qty, price, sum) — только с точкой как разделителем дробной части, без пробелов и разделителей тысяч, например "1234.50", никогда "1 234,50". Единицу измерения приводи к одному из: шт, м, кг, упак, л (если не подходит ни одна — оставь как есть). Если строка вызывает сомнение (зачёркнуто, неразборчиво) — опиши это в warnings. Отвечай только JSON по заданной схеме, ничего лишнего.`;
 
+// Добавляется, только когда страниц больше одной — запрос для одного фото не меняется.
+const multiPagePrompt = `Фото несколько — это страницы одной накладной по порядку. Объедини позиции всех страниц в один список со сквозной нумерацией n; если строка повторяется на стыке страниц (перенос), учти её один раз. Контрагент, дата, номер и итог по бумаге обычно на первой или последней странице.`;
+
 const receiptPrompt = `Ты распознаёшь чек или скриншот перевода банка MBank (Кыргызстан). Извлеки банк, номер операции, дату и время, сумму, имя отправителя, имя и телефон получателя, назначение платежа, и уверенность 0-1. Отвечай только JSON по заданной схеме.`;
 
 function estimateCost(raw: unknown): number | null {
@@ -99,8 +102,7 @@ async function callGemini(
   apiKey: string,
   prompt: string,
   schema: object,
-  photo: Buffer,
-  mimeType: string,
+  pages: PhotoPage[],
 ): Promise<{ json: unknown; raw: unknown }> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const request = (tuned: boolean) =>
@@ -113,7 +115,9 @@ async function callGemini(
             role: "user",
             parts: [
               { text: prompt },
-              { inline_data: { mime_type: mimeType, data: photo.toString("base64") } },
+              ...pages.map((page) => ({
+                inline_data: { mime_type: page.mimeType, data: page.photo.toString("base64") },
+              })),
             ],
           },
         ],
@@ -149,12 +153,15 @@ export function createGeminiProvider(apiKey: string, model: string): Recognition
   return {
     name: "gemini",
     model,
-    async recognizeInvoice(photo, mimeType): Promise<RawCall<InvoiceResult>> {
-      const { json, raw } = await callGemini(model, apiKey, invoicePrompt, invoiceSchema, photo, mimeType);
+    async recognizeInvoice(pages): Promise<RawCall<InvoiceResult>> {
+      const prompt = pages.length > 1 ? `${invoicePrompt}\n\n${multiPagePrompt}` : invoicePrompt;
+      const { json, raw } = await callGemini(model, apiKey, prompt, invoiceSchema, pages);
       return { result: json as InvoiceResult, raw, costUsd: estimateCost(raw) };
     },
     async recognizeReceipt(photo, mimeType): Promise<RawCall<ReceiptResult>> {
-      const { json, raw } = await callGemini(model, apiKey, receiptPrompt, receiptSchema, photo, mimeType);
+      const { json, raw } = await callGemini(model, apiKey, receiptPrompt, receiptSchema, [
+        { photo, mimeType },
+      ]);
       return { result: json as ReceiptResult, raw, costUsd: estimateCost(raw) };
     },
   };

@@ -11,7 +11,8 @@ import {
 } from "@/app/(workspace)/money/actions";
 import { Submit } from "./submit";
 import { money } from "@/lib/format";
-import { shrinkInputFile } from "@/lib/shrink-image";
+import { MULTI_PAGE_MAX_SIDE, shrinkImage, shrinkInputFile } from "@/lib/shrink-image";
+import { MAX_PAGES } from "@/lib/pages";
 
 type Operation = "purchase" | "sale" | "payment";
 type Party = { id: string; name: string };
@@ -76,6 +77,16 @@ export function OperationForm({
   // Номер последнего выбранного фото: ответ по старому фото, пришедший позже,
   // не должен перезаписать результат по новому.
   const photoRequest = useRef(0);
+  // Страницы накладной по порядку добавления. Исходные файлы — ужимаем при
+  // каждой проверке, потому что степень сжатия зависит от числа страниц.
+  const [pages, setPages] = useState<File[]>([]);
+  const pagesInput = useRef<HTMLInputElement>(null);
+  const [previews, setPreviews] = useState<string[]>([]);
+  useEffect(() => {
+    const urls = pages.map((file) => URL.createObjectURL(file));
+    setPreviews(urls);
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, [pages]);
   const [similar, setSimilar] = useState<SimilarRecord[]>([]);
   const similarRequest = useRef(0);
   const checkedDocumentId = checkedPhoto?.documentId ?? null;
@@ -131,25 +142,56 @@ export function OperationForm({
               ? "Не удалось сохранить запись. Проверьте данные и попробуйте снова."
               : undefined;
 
-  async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const input = e.target;
+  function addPages(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (!picked.length) return;
+    const next = [...pages, ...picked].slice(0, MAX_PAGES);
+    setPages(next);
+    void checkPages(next);
+    if (pages.length + picked.length > MAX_PAGES)
+      setCheckNote(`Не больше ${MAX_PAGES} страниц в одной накладной — лишние не добавлены.`);
+  }
+
+  function removePage(index: number) {
+    const next = pages.filter((_, i) => i !== index);
+    setPages(next);
+    void checkPages(next);
+  }
+
+  /** Страницы — в скрытое поле формы: если проверка не успела загрузить их, уйдут при подтверждении. */
+  function fillPagesInput(files: File[]) {
+    if (!pagesInput.current) return;
+    try {
+      const transfer = new DataTransfer();
+      files.forEach((file) => transfer.items.add(file));
+      pagesInput.current.files = transfer.files;
+    } catch {
+      // Старый браузер без DataTransfer — останется только проверка до подтверждения.
+    }
+  }
+
+  async function checkPages(next: File[]) {
     const request = ++photoRequest.current;
     setCheckedPhoto(null);
     setCheckNote(null);
-    if (!input.files?.[0]) {
+    if (!next.length || (kind !== "purchase" && kind !== "sale")) {
+      fillPagesInput([]);
       setChecking(false);
       return;
     }
-    // Пока фото ужимается, загружается и распознаётся, подтверждение
-    // заблокировано: иначе запись уходит без document_id и то же фото
-    // грузится второй раз.
+    // Пока фото ужимаются, загружаются и распознаются, подтверждение
+    // заблокировано: иначе запись уходит без document_id и те же фото
+    // грузятся второй раз.
     setChecking(true);
     try {
-      const file = await shrinkInputFile(input);
+      const shrunk = await Promise.all(
+        next.map((file) => shrinkImage(file, next.length > 1 ? MULTI_PAGE_MAX_SIDE : undefined)),
+      );
       if (request !== photoRequest.current) return;
-      if (!file || (kind !== "purchase" && kind !== "sale")) return;
+      fillPagesInput(shrunk);
       const fd = new FormData();
-      fd.set("photo", file);
+      shrunk.forEach((file) => fd.append("photo", file));
       const res = await recognizeInvoicePhoto(kind, fd);
       if (request !== photoRequest.current) return;
       if (res.ok) {
@@ -168,7 +210,7 @@ export function OperationForm({
         });
         setCheckNote("Не удалось быстро сверить сумму — сверим после сохранения.");
       }
-      // no_provider/no_photo/upload_failed без documentId — фото загрузится при подтверждении.
+      // upload_failed без documentId — страницы уйдут при подтверждении из скрытого поля.
     } catch (err) {
       console.error("recognizeInvoicePhoto failed", err);
       if (request === photoRequest.current)
@@ -383,20 +425,69 @@ export function OperationForm({
             />
           </label>
         )}
-        {!prefill && (
+        {!prefill && kind === "payment" && (
           <label className="photo-field">
-            Фото накладной{kind === "payment" ? " или чека" : ""}
+            Фото чека
             <input
-              // Фото уже загружено при проверке — второй раз его не отправляем,
-              // сервер возьмёт document_id.
-              name={checkedPhoto ? undefined : "photo"}
+              name="photo"
               type="file"
               accept="image/*"
               capture="environment"
-              required={kind !== "payment" && !checkedPhoto}
-              onChange={handlePhotoChange}
+              onChange={(e) => void shrinkInputFile(e.target)}
             />
           </label>
+        )}
+        {kind !== "payment" && (
+          <div className="photo-field">
+            <span>
+              Фото накладной
+              {pages.length > 0 && <span className="muted"> · страниц: {pages.length}</span>}
+            </span>
+            {pages.length > 0 && (
+              <ol className="page-thumbs">
+                {pages.map((file, i) => (
+                  <li key={`${i}-${file.name}-${file.lastModified}`} className="page-thumb">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    {previews[i] && <img src={previews[i]} alt={`Страница ${i + 1}`} />}
+                    <span className="page-thumb-n">{i + 1}</span>
+                    <button
+                      type="button"
+                      className="page-thumb-remove"
+                      aria-label={`Убрать страницу ${i + 1}`}
+                      onClick={() => removePage(i)}
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {pages.length < MAX_PAGES && (
+              <label className="button page-add">
+                {pages.length ? "+ Добавить страницу" : "Сфотографировать или выбрать"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  multiple
+                  className="sr-only"
+                  onChange={addPages}
+                />
+              </label>
+            )}
+            {pages.length === 0 && (
+              <small className="muted">Накладная на нескольких листах — добавьте страницы по порядку.</small>
+            )}
+            <input
+              ref={pagesInput}
+              // Фото уже загружены при проверке — второй раз не отправляем,
+              // сервер возьмёт document_id.
+              name={checkedPhoto ? undefined : "photo"}
+              type="file"
+              multiple
+              hidden
+            />
+          </div>
         )}
         {prefill && (
           <p className="muted">Фото квитанции уже приложено — распознаём в фоне.</p>
@@ -409,7 +500,13 @@ export function OperationForm({
               : "Оплата сразу уменьшит долг контрагента. Если платили переводом — приложите чек."}
         </p>
         <div className="simple-operation-actions">
-          <Submit disabled={checking}>{checking ? "Проверяем фото…" : confirmLabel}</Submit>
+          <Submit disabled={checking || (kind !== "payment" && pages.length === 0)}>
+            {checking
+              ? "Проверяем фото…"
+              : kind !== "payment" && pages.length === 0
+                ? "Приложите фото накладной"
+                : confirmLabel}
+          </Submit>
           <Link className="text-button" href="/money">
             Отмена
           </Link>

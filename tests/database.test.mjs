@@ -29,7 +29,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 16);
+  assert.equal(rows.length, 17);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -1155,5 +1155,75 @@ test("find_similar_records: same invoice content or same party+amount within 30 
   await assert.rejects(
     db.query("select set_document_fingerprint($1,$2,$3)", [orgA, rephoto, fp]),
     /not_a_member/,
+  );
+});
+
+test("document_pages: extra pages belong to one shop, attach once, never touch existing documents", async () => {
+  await user(a);
+  const before = (
+    await db.query("select id,storage_path,file_hash from documents order by id")
+  ).rows;
+  const doc = (
+    await db.query("select create_document($1,'purchase',$2,'pages-set-hash','image/jpeg') as id", [
+      orgA,
+      `${orgA}/purchase/p1.jpg`,
+    ])
+  ).rows[0].id;
+  const pages = [
+    { storage_path: `${orgA}/purchase/p2.jpg`, file_hash: "h2", mime_type: "image/jpeg" },
+    { storage_path: `${orgA}/purchase/p3.jpg`, file_hash: "h3", mime_type: "image/jpeg" },
+  ];
+  await db.query("select add_document_pages($1,$2,$3)", [orgA, doc, JSON.stringify(pages)]);
+  // Повтор (create_document вернул тот же документ) — ничего не добавляет.
+  await db.query("select add_document_pages($1,$2,$3)", [orgA, doc, JSON.stringify(pages)]);
+  assert.deepEqual(
+    (
+      await db.query("select page_no,storage_path from document_pages where document_id=$1 order by page_no", [doc])
+    ).rows,
+    [
+      { page_no: 2, storage_path: `${orgA}/purchase/p2.jpg` },
+      { page_no: 3, storage_path: `${orgA}/purchase/p3.jpg` },
+    ],
+  );
+  // Существующие документы не изменились — добавился только новый.
+  const after = (await db.query("select id,storage_path,file_hash from documents order by id")).rows;
+  assert.deepEqual(
+    after.filter((d) => d.id !== doc),
+    before,
+  );
+
+  // Файл страницы из чужой папки не принимается.
+  const other = (
+    await db.query("select create_document($1,'purchase',$2,'pages-foreign','image/jpeg') as id", [
+      orgA,
+      `${orgA}/purchase/q1.jpg`,
+    ])
+  ).rows[0].id;
+  await assert.rejects(
+    db.query("select add_document_pages($1,$2,$3)", [
+      orgA,
+      other,
+      JSON.stringify([{ storage_path: `${orgB}/purchase/x.jpg`, file_hash: "x", mime_type: "image/jpeg" }]),
+    ]),
+    /invalid_pages/,
+  );
+
+  // Другой магазин не видит страниц и не может их добавить.
+  await user(b);
+  assert.equal((await db.query("select * from document_pages")).rows.length, 0);
+  await assert.rejects(
+    db.query("select add_document_pages($1,$2,$3)", [orgA, other, JSON.stringify(pages)]),
+    /not_a_member/,
+  );
+  await assert.rejects(
+    db.query("select add_document_pages($1,$2,$3)", [orgB, doc, JSON.stringify(pages)]),
+    /invalid_document|invalid_pages/,
+  );
+  await assert.rejects(
+    db.query(
+      "insert into document_pages(organization_id,document_id,page_no,storage_path,file_hash,mime_type) values($1,$2,2,'x','x','image/jpeg')",
+      [orgA, doc],
+    ),
+    /permission denied/,
   );
 });

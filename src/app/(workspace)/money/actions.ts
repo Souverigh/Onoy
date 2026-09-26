@@ -6,7 +6,8 @@ import { redirect } from "next/navigation";
 import { getContext } from "@/lib/context";
 import { decimalInput } from "@/lib/validation";
 import { safeBackPath } from "@/lib/back-path";
-import { isDuplicatePhoto, uploadOperationPhoto } from "@/lib/storage";
+import { isDuplicatePhoto, uploadOperationPhoto, uploadOperationPhotos } from "@/lib/storage";
+import { MAX_PAGES } from "@/lib/pages";
 import {
   recognizeDocument,
   finalizeInvoiceRecognition,
@@ -36,9 +37,11 @@ function failureCode(message: string) {
   return "save";
 }
 
-function photoOf(form: FormData) {
-  const file = form.get("photo");
-  return file instanceof File && file.size > 0 ? file : null;
+/** Страницы накладной по порядку (одно фото — одна страница). */
+function photosOf(form: FormData) {
+  return form
+    .getAll("photo")
+    .filter((file): file is File => file instanceof File && file.size > 0);
 }
 
 export async function commitOperation(form: FormData) {
@@ -54,11 +57,15 @@ export async function commitOperation(form: FormData) {
   let amount = "";
   let bankReference = "";
   let paidImmediately = false;
-  const photo = photoOf(form);
+  const photos = photosOf(form);
+  const photo = photos.length > 0;
   const existingDocumentId = String(form.get("document_id") ?? "").trim();
   const hasExistingDocument = uuidPattern.test(existingDocumentId);
   if (operation !== "payment" && !photo && !hasExistingDocument)
     redirect(`/money/new?type=${operation}&error=photo`);
+  // Чек оплаты — всегда одно фото; накладная — до MAX_PAGES страниц.
+  if (photos.length > (operation === "payment" ? 1 : MAX_PAGES))
+    redirect(`/money/new?type=${operation}&error=photo_upload`);
   try {
     idempotencyKey = field(form, "idempotency_key");
     if (!uuidPattern.test(idempotencyKey)) throw new Error("invalid_input");
@@ -104,7 +111,7 @@ export async function commitOperation(form: FormData) {
   let documentId: string | null = hasExistingDocument ? existingDocumentId : null;
   if (photo && !hasExistingDocument) {
     try {
-      documentId = await uploadOperationPhoto(db, organizationId, operation, photo);
+      documentId = await uploadOperationPhotos(db, organizationId, operation, photos);
     } catch (error) {
       const used = error instanceof Error && error.message === "document_in_use";
       redirect(`/money/new?type=${operation}&error=${used ? "photo_used" : "photo_upload"}`);
@@ -202,29 +209,35 @@ export async function recognizeInvoicePhoto(
   | { ok: true; documentId: string; result: InvoiceResult; duplicate: boolean }
   | { ok: false; error: string; documentId?: string; duplicate?: boolean }
 > {
-  const photo = form.get("photo");
-  if (!(photo instanceof File) || photo.size === 0) return { ok: false, error: "no_photo" };
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) return { ok: false, error: "no_provider" };
+  const photos = photosOf(form);
+  if (photos.length === 0) return { ok: false, error: "no_photo" };
+  if (photos.length > MAX_PAGES) return { ok: false, error: "upload_failed" };
 
   const { db, organizationId } = await getContext();
   let documentId: string;
   try {
-    documentId = await uploadOperationPhoto(db, organizationId, kind, photo);
+    documentId = await uploadOperationPhotos(db, organizationId, kind, photos);
   } catch (error) {
     const used = error instanceof Error && error.message === "document_in_use";
     return { ok: false, error: used ? "photo_used" : "upload_failed" };
   }
   const duplicate = await isDuplicatePhoto(db, organizationId, documentId);
+  // Без ключа распознавания фото всё равно уже загружены — форма отправит
+  // document_id, и страницы не придётся грузить ещё раз.
+  if (!process.env.GEMINI_API_KEY)
+    return { ok: false, error: "no_provider", documentId, duplicate };
   try {
     const { result } = await recognizeInvoiceCached({
       db,
       organizationId,
       documentId,
-      loadPhoto: async () => ({
-        photo: Buffer.from(await photo.arrayBuffer()),
-        mimeType: photo.type || "image/jpeg",
-      }),
+      loadPhoto: async () =>
+        Promise.all(
+          photos.map(async (photo) => ({
+            photo: Buffer.from(await photo.arrayBuffer()),
+            mimeType: photo.type || "image/jpeg",
+          })),
+        ),
     });
     return { ok: true, documentId, result, duplicate };
   } catch (error) {
@@ -330,10 +343,9 @@ export async function prepareReceiptPayment(form: FormData) {
         db,
         organizationId,
         documentId,
-        loadPhoto: async () => ({
-          photo: Buffer.from(await photo.arrayBuffer()),
-          mimeType: photo.type || "image/jpeg",
-        }),
+        loadPhoto: async () => [
+          { photo: Buffer.from(await photo.arrayBuffer()), mimeType: photo.type || "image/jpeg" },
+        ],
       });
       if (result.amount) params.set("amount", String(result.amount));
       if (result.operation_id) params.set("bankRef", result.operation_id);

@@ -1143,6 +1143,66 @@ td small {
   font-size: 14px;
   min-height: 48px;
 }
+div.photo-field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+  font-size: 14px;
+  color: #536457;
+}
+.page-thumbs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.page-thumb {
+  position: relative;
+  width: 84px;
+  height: 110px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+.page-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.page-thumb-n {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(20, 30, 25, 0.75);
+  color: #fff;
+  font-size: 12px;
+  text-align: center;
+}
+.page-thumb-remove {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(20, 30, 25, 0.75);
+  color: #fff;
+  font-size: 17px;
+  line-height: 1;
+}
+.page-add {
+  align-self: flex-start;
+  cursor: pointer;
+}
 .operation-hint {
   color: var(--muted);
   font-size: 14px;
@@ -1400,7 +1460,83 @@ td small {
   grid-template-columns: 1fr 1fr;
   gap: 16px;
   margin-bottom: 16px;
-  align-items: start;
+  align-items: stretch;
+}
+.doc-photo-panel {
+  align-self: start;
+}
+.page-switcher {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.page-switch {
+  min-width: 40px;
+  height: 40px;
+  border: 1px solid #dbe1da;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-weight: 600;
+}
+.page-switch.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+.page-switcher-total {
+  margin-left: 4px;
+}
+.doc-status {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.doc-status p {
+  margin: 0;
+}
+.doc-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.doc-status-model {
+  font-size: 13px;
+}
+.doc-status-retry {
+  margin-left: auto;
+}
+/* Позиции не растягивают ряд: высота — по фото, остальное прокручивается. */
+.doc-lines-panel {
+  position: relative;
+  min-height: 320px;
+}
+.doc-lines-inner {
+  position: absolute;
+  inset: 0;
+  padding: inherit;
+  display: flex;
+  flex-direction: column;
+}
+.doc-lines-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+}
+.doc-lines-scroll .invoice-lines {
+  border-top: 0;
+}
+.doc-lines-scroll .invoice-line summary {
+  padding: 8px 4px;
+}
+.doc-status,
+.counterparty-mismatch {
+  margin-bottom: 16px;
 }
 .document-photo {
   max-width: 100%;
@@ -1561,6 +1697,16 @@ tr.line-mismatch {
 @media (max-width: 900px) {
   .documents-layout {
     grid-template-columns: 1fr;
+  }
+  .doc-lines-panel {
+    min-height: 0;
+  }
+  .doc-lines-inner {
+    position: static;
+    padding: 0;
+  }
+  .doc-lines-scroll {
+    max-height: 70vh;
   }
   .invoice-line-form {
     grid-template-columns: 1fr 1fr;

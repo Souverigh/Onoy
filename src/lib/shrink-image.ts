@@ -10,7 +10,7 @@ const MAX_SIDE = 2000;
 const QUALITY = 0.85;
 const SMALL_ENOUGH = 700 * 1024;
 
-export async function shrinkImage(file: File): Promise<File> {
+export async function shrinkImage(file: File, maxSide = MAX_SIDE): Promise<File> {
   if (!file.type.startsWith("image/")) return file;
   let bitmap: ImageBitmap;
   try {
@@ -19,7 +19,7 @@ export async function shrinkImage(file: File): Promise<File> {
     return file;
   }
   try {
-    const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
     if (scale === 1 && file.size <= SMALL_ENOUGH) return file;
     const width = Math.round(bitmap.width * scale);
     const height = Math.round(bitmap.height * scale);
@@ -44,6 +44,13 @@ export async function shrinkImage(file: File): Promise<File> {
  * Подменяет файл в самом <input type="file">, чтобы при отправке формы ушла
  * уже ужатая версия — и хеш совпал с тем, что загружали при проверке фото.
  */
+/**
+ * Страницы многостраничной накладной уходят одним запросом (лимит тела
+ * server action — 4 МБ), поэтому при нескольких страницах ужимаем сильнее.
+ * Gemini всё равно читает документ в среднем разрешении.
+ */
+export const MULTI_PAGE_MAX_SIDE = 1600;
+
 export async function shrinkInputFile(input: HTMLInputElement): Promise<File | null> {
   const original = input.files?.[0];
   if (!original) return null;

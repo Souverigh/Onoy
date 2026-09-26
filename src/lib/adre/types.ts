@@ -36,9 +36,12 @@ export type ReceiptResult = {
 
 export type RawCall<T> = { result: T; raw: unknown; costUsd: number | null };
 
+/** Страница документа: у многостраничной накладной их несколько, по порядку. */
+export type PhotoPage = { photo: Buffer; mimeType: string };
+
 export interface RecognitionProvider {
   name: string;
   model: string;
-  recognizeInvoice(photo: Buffer, mimeType: string): Promise<RawCall<InvoiceResult>>;
+  recognizeInvoice(pages: PhotoPage[]): Promise<RawCall<InvoiceResult>>;
   recognizeReceipt(photo: Buffer, mimeType: string): Promise<RawCall<ReceiptResult>>;
 }
