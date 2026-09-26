@@ -22,7 +22,10 @@ export async function uploadOperationPhoto(
   const upload = await db.storage
     .from("receipts")
     .upload(path, buffer, { contentType: file.type || "image/jpeg" });
-  if (upload.error) throw new Error("upload_failed");
+  if (upload.error) {
+    console.error("uploadOperationPhoto: storage upload failed", upload.error);
+    throw new Error("upload_failed");
+  }
   const { data, error } = await db.rpc("create_document", {
     p_org: organizationId,
     p_kind: kind,
@@ -30,7 +33,10 @@ export async function uploadOperationPhoto(
     p_file_hash: hash,
     p_mime_type: file.type || "image/jpeg",
   });
-  if (error || !data) throw new Error("document_failed");
+  if (error || !data) {
+    console.error("uploadOperationPhoto: create_document failed", error);
+    throw new Error("document_failed");
+  }
   return data as string;
 }
 
@@ -46,14 +52,20 @@ export async function uploadClaimPhoto(
   const upload = await anon.storage
     .from("receipts")
     .upload(path, buffer, { contentType: file.type || "image/jpeg" });
-  if (upload.error) throw new Error("upload_failed");
+  if (upload.error) {
+    console.error("uploadClaimPhoto: storage upload failed", upload.error);
+    throw new Error("upload_failed");
+  }
   const { data, error } = await anon.rpc("create_claim_document", {
     p_token: token,
     p_storage_path: path,
     p_file_hash: hash,
     p_mime_type: file.type || "image/jpeg",
   });
-  if (error || !data) throw new Error("document_failed");
+  if (error || !data) {
+    console.error("uploadClaimPhoto: create_claim_document failed", error);
+    throw new Error("document_failed");
+  }
   return data as string;
 }
 
