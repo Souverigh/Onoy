@@ -1,11 +1,33 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createGeminiProvider } from "./gemini";
+import type { RecognitionProvider, InvoiceResult } from "./types";
+
+const PROMPT_VERSION = "v1";
+const TOLERANCE = 1; // сом, как в ТЗ §6
+
+function getProvider(): RecognitionProvider | null {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return null;
+  return createGeminiProvider(key, process.env.GEMINI_MODEL || "gemini-3.8-flash");
+}
+
+function invoiceMatches(result: InvoiceResult, declaredTotal: number | null): boolean {
+  const linesOk = result.lines.every(
+    (line) => Math.abs(Number(line.qty) * Number(line.price) - Number(line.sum)) <= TOLERANCE,
+  );
+  if (!linesOk) return false;
+  if (declaredTotal == null) return true;
+  return Math.abs(result.total_computed - declaredTotal) <= TOLERANCE;
+}
 
 /**
- * Фоновая оцифровка уже проведённого документа — не меняет долг. Сам вызов
- * Gemini живёт в Supabase Edge Function `recognize-document` (ключ там же, в
- * секретах Supabase — Next.js его не видит); здесь только дёргаем функцию и
- * не даём ошибке всплыть в ответ пользователю (вызывается из `after()`).
+ * Фоновая оцифровка уже проведённого документа — не меняет долг. Вызывается
+ * из `after()`, поэтому ошибки не должны всплывать в ответ пользователю; все
+ * пути заканчиваются либо save_recognition, либо fail_recognition.
+ *
+ * GEMINI_API_KEY читается из окружения процесса Next.js (в проде — Vercel
+ * Environment Variables, локально — .env.local, который не в git).
  */
 export async function recognizeDocument({
   db,
@@ -20,12 +42,86 @@ export async function recognizeDocument({
   kind: "purchase" | "sale" | "payment";
   declaredTotal: number | null;
 }): Promise<void> {
-  try {
-    await db.functions.invoke("recognize-document", {
-      body: { organizationId, documentId, kind, declaredTotal },
+  const started = await db.rpc("start_recognition", {
+    p_org: organizationId,
+    p_document: documentId,
+  });
+  if (started.error) return; // уже обрабатывается или недоступен — не мешаем
+
+  const provider = getProvider();
+  if (!provider) {
+    await db.rpc("fail_recognition", {
+      p_org: organizationId,
+      p_document: documentId,
+      p_error: "no_provider_configured",
     });
-  } catch {
-    // Сеть/функция недоступны — документ останется «uploaded», кнопка
-    // «Распознать сейчас» на /documents/[id] позволит повторить вручную.
+    return;
+  }
+
+  try {
+    const doc = await db
+      .from("documents")
+      .select("storage_path,mime_type")
+      .eq("organization_id", organizationId)
+      .eq("id", documentId)
+      .single();
+    if (doc.error || !doc.data) throw new Error("document_not_found");
+
+    const download = await db.storage.from("receipts").download(doc.data.storage_path);
+    if (download.error || !download.data) throw new Error("photo_download_failed");
+    const photo = Buffer.from(await download.data.arrayBuffer());
+    const mimeType = doc.data.mime_type || "image/jpeg";
+
+    const startedAt = Date.now();
+    if (kind === "payment") {
+      const { result, costUsd, raw } = await provider.recognizeReceipt(photo, mimeType);
+      const latencyMs = Date.now() - startedAt;
+      const status = result.confidence >= 0.8 ? "digitized" : "review";
+      const save = await db.rpc("save_recognition", {
+        p_org: organizationId,
+        p_document: documentId,
+        p_provider: provider.name,
+        p_model: provider.model,
+        p_prompt_version: PROMPT_VERSION,
+        p_raw_json: { extracted: result, response: raw },
+        p_lines: [],
+        p_status: status,
+        p_latency_ms: latencyMs,
+        p_cost: costUsd,
+      });
+      if (save.error) throw new Error(save.error.message);
+      return;
+    }
+
+    const { result, costUsd, raw } = await provider.recognizeInvoice(photo, mimeType);
+    const latencyMs = Date.now() - startedAt;
+    const status = invoiceMatches(result, declaredTotal) ? "digitized" : "review";
+    const lines = result.lines.map((line) => ({
+      n: line.n,
+      name_raw: line.name_raw,
+      qty: line.qty,
+      unit: line.unit,
+      price: line.price,
+      confidence: line.confidence,
+    }));
+    const save = await db.rpc("save_recognition", {
+      p_org: organizationId,
+      p_document: documentId,
+      p_provider: provider.name,
+      p_model: provider.model,
+      p_prompt_version: PROMPT_VERSION,
+      p_raw_json: { extracted: result, response: raw },
+      p_lines: lines,
+      p_status: status,
+      p_latency_ms: latencyMs,
+      p_cost: costUsd,
+    });
+    if (save.error) throw new Error(save.error.message);
+  } catch (error) {
+    await db.rpc("fail_recognition", {
+      p_org: organizationId,
+      p_document: documentId,
+      p_error: error instanceof Error ? error.message : "unknown_error",
+    });
   }
 }

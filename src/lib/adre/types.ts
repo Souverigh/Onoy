@@ -39,6 +39,6 @@ export type RawCall<T> = { result: T; raw: unknown; costUsd: number | null };
 export interface RecognitionProvider {
   name: string;
   model: string;
-  recognizeInvoice(photo: Uint8Array, mimeType: string): Promise<RawCall<InvoiceResult>>;
-  recognizeReceipt(photo: Uint8Array, mimeType: string): Promise<RawCall<ReceiptResult>>;
+  recognizeInvoice(photo: Buffer, mimeType: string): Promise<RawCall<InvoiceResult>>;
+  recognizeReceipt(photo: Buffer, mimeType: string): Promise<RawCall<ReceiptResult>>;
 }

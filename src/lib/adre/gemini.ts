@@ -1,4 +1,5 @@
-import type { InvoiceResult, ReceiptResult, RecognitionProvider, RawCall } from "./types.ts";
+import "server-only";
+import type { InvoiceResult, ReceiptResult, RecognitionProvider, RawCall } from "./types";
 
 const invoiceSchema = {
   type: "object",
@@ -59,15 +60,15 @@ const invoicePrompt = `Ты распознаёшь рукописную или �
 
 const receiptPrompt = `Ты распознаёшь чек или скриншот перевода банка MBank (Кыргызстан). Извлеки банк, номер операции, дату и время, сумму, имя отправителя, имя и телефон получателя, назначение платежа, и уверенность 0-1. Отвечай только JSON по заданной схеме.`;
 
-// Кодируем без Buffer (портируемо между Deno и Node) — по частям, чтобы не
-// упереться в лимит аргументов String.fromCharCode на больших фото.
-function toBase64(bytes: Uint8Array): string {
-  const chunkSize = 0x8000;
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-  return btoa(binary);
+function estimateCost(raw: unknown): number | null {
+  const usage = (raw as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } })
+    ?.usageMetadata;
+  if (!usage) return null;
+  const priceIn = Number(process.env.GEMINI_PRICE_PER_1K_INPUT ?? "0.0003");
+  const priceOut = Number(process.env.GEMINI_PRICE_PER_1K_OUTPUT ?? "0.0025");
+  const input = (usage.promptTokenCount ?? 0) / 1000;
+  const output = (usage.candidatesTokenCount ?? 0) / 1000;
+  return Number((input * priceIn + output * priceOut).toFixed(4));
 }
 
 async function callGemini(
@@ -75,7 +76,7 @@ async function callGemini(
   apiKey: string,
   prompt: string,
   schema: object,
-  photo: Uint8Array,
+  photo: Buffer,
   mimeType: string,
 ): Promise<{ json: unknown; raw: unknown }> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -83,7 +84,7 @@ async function callGemini(
     contents: [
       {
         role: "user",
-        parts: [{ text: prompt }, { inline_data: { mime_type: mimeType, data: toBase64(photo) } }],
+        parts: [{ text: prompt }, { inline_data: { mime_type: mimeType, data: photo.toString("base64") } }],
       },
     ],
     generationConfig: {
@@ -104,19 +105,6 @@ async function callGemini(
   const text = raw?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (typeof text !== "string") throw new Error("gemini_empty_response");
   return { json: JSON.parse(text), raw };
-}
-
-// Грубая оценка стоимости для метрик пилота (не биллинг) — цены меняются,
-// уточняются через GEMINI_PRICE_PER_1K_INPUT/OUTPUT (USD) при необходимости.
-function estimateCost(raw: unknown): number | null {
-  const usage = (raw as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } })
-    ?.usageMetadata;
-  if (!usage) return null;
-  const priceIn = Number(Deno.env.get("GEMINI_PRICE_PER_1K_INPUT") ?? "0.0003");
-  const priceOut = Number(Deno.env.get("GEMINI_PRICE_PER_1K_OUTPUT") ?? "0.0025");
-  const input = (usage.promptTokenCount ?? 0) / 1000;
-  const output = (usage.candidatesTokenCount ?? 0) / 1000;
-  return Number((input * priceIn + output * priceOut).toFixed(4));
 }
 
 export function createGeminiProvider(apiKey: string, model: string): RecognitionProvider {

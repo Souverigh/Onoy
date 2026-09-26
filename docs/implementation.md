@@ -59,26 +59,22 @@ Supabase Auth и PostgreSQL; русский интерфейс, KGS, Asia/Bishke
   товарно-складского учёта (создаёт товары, списывает склад) — это устарело
   вместе с остальной item-based моделью. Реализовано **по обновлённому ТЗ §6**:
   ADRE только оцифровывает уже проведённый документ, долг не трогает.
-- **Ключ Gemini живёт только в Supabase**, не в коде и не в `.env.local`
-  Next.js. Сам вызов Gemini — в Supabase Edge Function
-  `supabase/functions/recognize-document` (+ `_shared/gemini.ts`,
-  `_shared/types.ts` с `RecognitionProvider` и JSON-схемами `InvoiceResult`/
-  `ReceiptResult` из ТЗ §6, структурированный вывод через `responseSchema`).
-  `src/lib/adre/recognize.ts` в Next.js — тонкий прокси:
-  `db.functions.invoke("recognize-document", {...})`, дальше вся логика
-  (скачать фото из Storage, вызвать провайдера, сверить `qty×price=sum` и
-  сумму строк с итогом операции с допуском 1 сом, поставить `digitized`
-  либо `review`) — внутри функции. Второй провайдер (Claude) не подключён —
-  интерфейс уже это позволяет без изменений в вызывающем коде.
-- Деплой: `supabase functions deploy recognize-document --project-ref <ref>`,
-  секреты — `supabase secrets set GEMINI_API_KEY=... GEMINI_MODEL=gemini-2.5-flash
-  --project-ref <ref>` (или через Dashboard → Edge Functions → Secrets).
-  `SUPABASE_URL`/`SUPABASE_ANON_KEY` внутри функции подставляет сама
-  платформа — задавать вручную не нужно.
+- `src/lib/adre/`: `types.ts` — `RecognitionProvider` и JSON-схемы
+  `InvoiceResult`/`ReceiptResult` из ТЗ §6; `gemini.ts` — единственная сейчас
+  реализация, структурированный вывод через `responseSchema` (Gemini
+  гарантирует форму JSON); `recognize.ts` — оркестратор: скачивает фото из
+  Storage, вызывает провайдера, сверяет `qty×price=sum` и сумму строк с
+  итогом операции (допуск 1 сом, как в ТЗ), ставит `digitized` либо `review`.
+  Второй провайдер (Claude) не подключён — интерфейс уже это позволяет без
+  изменений в вызывающем коде.
+- `GEMINI_API_KEY`/`GEMINI_MODEL` — переменные окружения процесса Next.js:
+  локально в `.env.local` (не в git), на проде — Vercel → Project → Settings
+  → Environment Variables, а не файл в репозитории. В Supabase этот ключ не
+  хранится — вызов Gemini делает сам Next.js-сервер.
 - Без очереди (Redis+BullMQ из ТЗ §9 не поднимали для пилота): триггер — `after()`
-  из `next/server` в `commitOperation`, планирует вызов Edge Function после
-  ответа пользователю, не блокируя запись долга. Next.js должен работать на
-  Node.js-сервере (не static export) — сознательное упрощение для пилота.
+  из `next/server` в `commitOperation`, планирует распознавание после ответа
+  пользователю, не блокируя запись долга. Работает только на Node.js-сервере
+  (не static export) — сознательное упрощение для пилота.
 - Экран `/documents`: список со статусами («Ожидает» / «Распознаём…» /
   «Оцифрована» / «Расхождение» / «Ошибка» с кнопкой «Повторить»);
   `/documents/[id]`: фото + строки накладной (редактируемые, `confidence<0.8`
@@ -99,9 +95,9 @@ isolation, запрет прямой записи в регистры, атом�
 сторно, заявки на оплату (pending → confirmed/rejected), доступ по токену,
 привязку фото к операции (в том числе межорганизационную защиту) и SQL-слой
 ADRE (`start_recognition`/`save_recognition`/`fail_recognition`/
-`confirm_document_lines`, RLS на `document_lines`). Сама Edge Function и вызовы
-Gemini тестами не покрыты (Deno-рантайм, отдельный от Next.js/PGlite) —
-проверено вручную деплоем на реальный Supabase-проект. Блок Storage
+`confirm_document_lines`, RLS на `document_lines`). Сетевые вызовы Gemini
+тестами не покрыты — `recognize.ts` изолирует вызов провайдера в одну функцию,
+проверено вручную с реальным `GEMINI_API_KEY`. Блок Storage
 в миграции (bucket + RLS-политики) — no-op под PGlite (в тестовой схеме нет
 `storage`), поэтому применение этой части миграции нужно один раз проверить
 руками на реальном Supabase-проекте перед пилотом. `npm run typecheck`,
