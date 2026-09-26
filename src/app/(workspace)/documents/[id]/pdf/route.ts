@@ -101,7 +101,8 @@ export async function GET(
   return new NextResponse(new Uint8Array(pdf), {
     headers: {
       "content-type": "application/pdf",
-      "content-disposition": `attachment; filename="накладная-${id.slice(0, 8)}.pdf"`,
+      // Заголовки HTTP — только latin-1: кириллица идёт через filename* (RFC 5987).
+      "content-disposition": `attachment; filename="nakladnaya-${id.slice(0, 8)}.pdf"; filename*=UTF-8''${encodeURIComponent(`накладная-${id.slice(0, 8)}.pdf`)}`,
     },
   });
 }
