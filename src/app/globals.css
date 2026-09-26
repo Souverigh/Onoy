@@ -159,7 +159,7 @@ small {
 .sidebar nav a:hover {
   background: #f3f6f1;
 }
-.nav-compact,
+.sidebar nav.nav-compact,
 .mobile-more {
   display: none;
 }
@@ -1506,7 +1506,7 @@ tr.warning td {
   .sidebar > .brand {
     display: none;
   }
-  .nav-full {
+  .sidebar nav.nav-full {
     display: none;
   }
   .sidebar nav.nav-compact {
