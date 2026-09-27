@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { paymentLabelWithSide } from "./entry-labels";
+import { memberLabels } from "./members";
 
 /** День по Бишкеку (YYYY-MM-DD): сменяется в 00:00 UTC+6. */
 export function bishkekDate(value: string | Date = new Date()) {
@@ -35,7 +36,10 @@ export type DaySummary = {
   receivable: { morning: number; evening: number };
   suppliers: { purchased: number; paid: number; morning: number; evening: number };
   pendingClaims: number;
+  /** По продавцам (тариф «Бизнес»): кто сколько оформил. В старых снимках нет. */
+  bySeller?: SellerTotal[];
 };
+export type SellerTotal = { id: string | null; name: string; role: "owner" | "staff" | null; sold: number; collected: number; count: number };
 
 const sum = <T>(rows: T[], pick: (row: T) => string | number) =>
   Math.round(rows.reduce((s, r) => s + Number(pick(r)), 0) * 100) / 100;
@@ -56,7 +60,7 @@ export async function computeDaySummary(
     await Promise.all([
       db
         .from("sales")
-        .select("customer_id,total,paid_immediately")
+        .select("customer_id,total,paid_immediately,created_by")
         .eq("organization_id", organizationId)
         .eq("status", "posted")
         .is("reversed_at", null)
@@ -65,7 +69,7 @@ export async function computeDaySummary(
         .lt("occurred_at", end),
       db
         .from("payments")
-        .select("customer_id,direction,amount,bank_reference")
+        .select("customer_id,direction,amount,bank_reference,created_by")
         .eq("organization_id", organizationId)
         .eq("status", "confirmed")
         .eq("kind", "payment") // скидки и возвраты — не деньги
@@ -131,6 +135,27 @@ export async function computeDaySummary(
   const purchased = sum(purchases.data ?? [], (p) => p.total);
   const paidSuppliers = sum(outgoing, (p) => p.amount);
 
+  // Кто сколько оформил: продажи и собранные оплаты по автору записи.
+  const members = await memberLabels(db, organizationId);
+  const sellers = new Map<string, SellerTotal>();
+  const seller = (id: string | null) => {
+    const key = id ?? "";
+    if (!sellers.has(key)) {
+      const m = id ? members.get(id) : undefined;
+      sellers.set(key, { id, name: m?.name ?? "Без автора (до сотрудников)", role: m?.role ?? null, sold: 0, collected: 0, count: 0 });
+    }
+    return sellers.get(key)!;
+  };
+  for (const r of saleRows) {
+    const t = seller(r.created_by);
+    t.sold = Math.round((t.sold + Number(r.total)) * 100) / 100;
+    t.count += 1;
+  }
+  for (const p of incoming) {
+    const t = seller(p.created_by);
+    t.collected = Math.round((t.collected + Number(p.amount)) * 100) / 100;
+  }
+
   const receivableEvening = sum(customerBalances.data ?? [], (c) => c.balance) - (later?.receivable ?? 0);
   const payableEvening = sum(supplierBalances.data ?? [], (c) => c.balance) - (later?.payable ?? 0);
   const round = (n: number) => Math.round(n * 100) / 100;
@@ -154,6 +179,7 @@ export async function computeDaySummary(
       evening: round(payableEvening),
     },
     pendingClaims: pending.count ?? 0,
+    bySeller: [...sellers.values()].sort((a, b) => b.sold - a.sold),
   };
 }
 

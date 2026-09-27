@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getContext } from "@/lib/context";
+import { requireOwner } from "@/lib/context";
 import { money } from "@/lib/format";
 import { Submit } from "@/components/submit";
 import {
@@ -36,7 +36,7 @@ export default async function DayClose({
 }: {
   searchParams: Promise<{ date?: string; closed?: string; error?: string }>;
 }) {
-  const { db, organizationId } = await getContext();
+  const { db, organizationId } = await requireOwner();
   const { date: rawDate, closed, error } = await searchParams;
   const today = bishkekDate();
   // Будущие дни не показываем — сразу сегодняшний.
@@ -220,6 +220,35 @@ export default async function DayClose({
           <PartyList items={summary.paidByCustomer} empty="Оплат от клиентов не было." />
         </section>
       </div>
+
+      {/* По продавцам — когда в магазине работают сотрудники. */}
+      {summary.bySeller?.some((s) => s.role === "staff") && (
+        <section className="panel">
+          <h2>По продавцам</h2>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Кто</th>
+                  <th>Продаж</th>
+                  <th>Продано</th>
+                  <th>Собрано</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.bySeller.map((s) => (
+                  <tr key={s.id ?? "none"}>
+                    <td>{s.name}</td>
+                    <td>{s.count}</td>
+                    <td>{money(s.sold)}</td>
+                    <td>{money(s.collected)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {after && afterCount > 0 && (
         <section className="panel day-after">

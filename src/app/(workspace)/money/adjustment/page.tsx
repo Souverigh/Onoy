@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
-import { getContext } from "@/lib/context";
+import { requireOwner } from "@/lib/context";
 import { money } from "@/lib/format";
 import { Submit } from "@/components/submit";
 import { commitAdjustment } from "../actions";
@@ -15,7 +15,7 @@ export default async function AdjustmentPage({
   searchParams: Promise<{ party?: string; error?: string }>;
 }) {
   const { party, error } = await searchParams;
-  const { db, organizationId } = await getContext();
+  const { db, organizationId } = await requireOwner();
   const [customers, suppliers] = await Promise.all([
     db.from("customer_balances").select("id,name,balance").eq("organization_id", organizationId).order("name").range(0, 999),
     db.from("supplier_balances").select("id,name,balance").eq("organization_id", organizationId).order("name").range(0, 999),

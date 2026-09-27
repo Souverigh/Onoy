@@ -1,4 +1,4 @@
-import { getContext } from "@/lib/context";
+import { requireOwner } from "@/lib/context";
 import { money } from "@/lib/format";
 import { signedPhotoUrl } from "@/lib/storage";
 import { confirmClaim, rejectClaim } from "./actions";
@@ -18,7 +18,7 @@ export default async function Claims({
 }: {
   searchParams: Promise<{ error?: string; done?: string }>;
 }) {
-  const { db, organizationId } = await getContext();
+  const { db, organizationId } = await requireOwner();
   const { error, done } = await searchParams;
   const { data, error: loadError } = await db
     .from("payments")

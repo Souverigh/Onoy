@@ -2662,3 +2662,155 @@ tr.line-mismatch {
   display: block;
   margin-bottom: 12px;
 }
+
+/* Сотрудники (настройки). */
+.staff-panel {
+  display: grid;
+  gap: 12px;
+}
+.staff-panel h2,
+.staff-panel h3,
+.staff-panel p {
+  margin: 0;
+}
+.staff-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.staff-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.staff-rename {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.staff-rename input {
+  max-width: 200px;
+}
+.staff-link {
+  flex-basis: 100%;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+.staff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.staff-invite {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+.danger-text {
+  color: #a34836;
+}
+
+/* Магазин приостановлен админом. */
+.shop-blocked {
+  margin-bottom: 16px;
+}
+
+/* Админ-панель Depter. */
+.admin {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px 16px 60px;
+}
+.admin-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.admin-header .pill-switch {
+  margin: 0;
+}
+.admin-logout {
+  display: inline;
+  margin-left: 10px;
+}
+.admin-shops {
+  display: grid;
+  gap: 14px;
+}
+.admin-shop {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+.admin-shop.blocked {
+  border-color: #f3d3c8;
+}
+.admin-shop h2,
+.admin-shop p {
+  margin: 0;
+}
+.admin-shop-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+.admin-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
+}
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.admin-stats div {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.admin-stats dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.admin-stats dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+}
+.admin-forms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+}
+.admin-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+.admin-new-code {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.admin-new-code p {
+  margin: 0;
+}
+.admin-code {
+  font-family: monospace;
+  font-size: 20px;
+  letter-spacing: 2px;
+}

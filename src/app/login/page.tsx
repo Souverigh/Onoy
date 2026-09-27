@@ -71,7 +71,8 @@ export default async function Login({
                 <Submit>Войти в Depter</Submit>
               </form>
               <small className="muted">
-                Доступ к пилоту выдаёт администратор вашего магазина.
+                Новый магазин? <a href="/signup">Зарегистрироваться</a> — понадобится код доступа от Depter.
+                Продавцы входят по ссылке-приглашению от владельца.
               </small>
             </>
           )}

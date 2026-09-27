@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getContext } from "@/lib/context";
+import { requireOwner } from "@/lib/context";
 import { afterClosing, bishkekDate, computeDaySummary, dayClosure } from "@/lib/day-summary";
 import { renderDayPdf } from "@/lib/pdf/day";
 
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const raw = url.searchParams.get("date") ?? "";
   const today = bishkekDate();
   const date = /^\d{4}-\d{2}-\d{2}$/.test(raw) && raw <= today ? raw : today;
-  const { db, organizationId } = await getContext();
+  const { db, organizationId } = await requireOwner();
   const [closure, shop] = await Promise.all([
     dayClosure(db, organizationId, date),
     db.from("organizations").select("name").eq("id", organizationId).maybeSingle(),

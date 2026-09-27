@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getContext } from "@/lib/context";
+import { requireOwner } from "@/lib/context";
 import { bishkekDate } from "@/lib/day-summary";
 import { EXPORT_TABLES, exportSheets, isExportTable, type ExportTable } from "@/lib/export-data";
 import { buildXlsx } from "@/lib/xlsx";
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   if (table !== "all" && !isExportTable(table))
     return NextResponse.json({ error: "invalid_table" }, { status: 400 });
   const tables: ExportTable[] = table === "all" ? (Object.keys(EXPORT_TABLES) as ExportTable[]) : [table];
-  const { db, organizationId } = await getContext();
+  const { db, organizationId } = await requireOwner();
   const xlsx = buildXlsx(await exportSheets(db, organizationId, tables));
   const day = bishkekDate();
   const latin = `depter-${table}-${day}.xlsx`;

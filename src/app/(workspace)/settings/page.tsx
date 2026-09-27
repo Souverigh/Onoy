@@ -1,4 +1,6 @@
+import { headers } from "next/headers";
 import { getContext } from "@/lib/context";
+import { StaffPanel, type Invite, type Member } from "@/components/staff-panel";
 import { Submit } from "@/components/submit";
 import { updateShop } from "./actions";
 import { EXPORT_TABLES } from "@/lib/export-data";
@@ -6,10 +8,35 @@ import { EXPORT_TABLES } from "@/lib/export-data";
 export default async function Settings({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string; staff?: string }>;
 }) {
-  const { db, organizationId, organizationName, user } = await getContext();
-  const { saved, error } = await searchParams;
+  const { db, organizationId, organizationName, user, isOwner, plan, paidUntil } = await getContext();
+  const { saved, error, staff } = await searchParams;
+  // Сотрудники и приглашения — только владельцу (RLS тоже не отдаст продавцу).
+  let members: Member[] = [];
+  let invites: Invite[] = [];
+  let origin = "";
+  if (isOwner) {
+    const [m, i] = await Promise.all([
+      db
+        .from("organization_members")
+        .select("user_id,role,display_name,email")
+        .eq("organization_id", organizationId)
+        .order("created_at"),
+      db
+        .from("organization_invites")
+        .select("id,token,display_name,expires_at")
+        .eq("organization_id", organizationId)
+        .is("accepted_at", null)
+        .is("revoked_at", null)
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false }),
+    ]);
+    members = (m.data ?? []) as Member[];
+    invites = (i.data ?? []) as Invite[];
+    const h = await headers();
+    origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
+  }
   const org = await db
     .from("organizations")
     .select("phone,block_duplicate_photos")
@@ -67,6 +94,18 @@ export default async function Settings({
           </div>
         </form>
       </section>
+      {isOwner && (
+        <StaffPanel
+          members={members}
+          invites={invites}
+          origin={origin}
+          shopName={organizationName}
+          currentUserId={user.id}
+          status={staff}
+          businessPlan={plan === "business"}
+        />
+      )}
+      {isOwner && (
       <section className="panel export-panel">
         <h2>Выгрузка в Excel</h2>
         <p className="muted">
@@ -83,10 +122,18 @@ export default async function Settings({
           ))}
         </div>
       </section>
+      )}
       <section className="panel">
         <dl className="details">
           <dt>Пользователь</dt>
           <dd>{user.email}</dd>
+          <dt>Тариф</dt>
+          <dd>
+            {plan === "business" ? "Бизнес" : "Базовый"}
+            {paidUntil
+              ? ` · оплачено до ${new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" }).format(new Date(`${paidUntil}T12:00:00+06:00`))}`
+              : ""}
+          </dd>
           <dt>Валюта</dt>
           <dd>Кыргызский сом (KGS)</dd>
           <dt>Часовой пояс</dt>

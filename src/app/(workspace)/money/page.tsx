@@ -30,7 +30,7 @@ export default async function Money({
 }: {
   searchParams: Promise<{ created?: string; error?: string; duplicate?: string; sale?: string; part?: string }>;
 }) {
-  const { db, organizationId } = await getContext();
+  const { db, organizationId, isOwner } = await getContext();
   const [customerResult, supplierResult, purchaseResult, saleResult, paymentResult, claimsResult] =
     await Promise.all([
       db
@@ -262,7 +262,7 @@ export default async function Money({
           Не удалось отменить запись. Возможно, она уже отменена.
         </p>
       )}
-      {pendingClaims > 0 && (
+      {isOwner && pendingClaims > 0 && (
         <Link className="notice claims-notice" href="/claims">
           Ждут подтверждения: {pendingClaims} заявка(и) на оплату →
         </Link>
@@ -289,13 +289,15 @@ export default async function Money({
             <small>От клиента или поставщику</small>
           </div>
         </Link>
-        <Link className="operation-action" href="/money/adjustment">
-          <span>%</span>
-          <div>
-            <strong>Скидка / возврат</strong>
-            <small>Уменьшить долг, с комментарием</small>
-          </div>
-        </Link>
+        {isOwner && (
+          <Link className="operation-action" href="/money/adjustment">
+            <span>%</span>
+            <div>
+              <strong>Скидка / возврат</strong>
+              <small>Уменьшить долг, с комментарием</small>
+            </div>
+          </Link>
+        )}
       </section>
       <div className="money-columns">
         <section className="panel">
@@ -394,14 +396,14 @@ export default async function Money({
                         <span className="muted" title={activity.reversalComment}>
                           {activity.reversalComment}
                         </span>
-                      ) : (
+                      ) : isOwner ? (
                         <Link
                           className="text-button"
                           href={`/money/reverse/${activity.kind}/${activity.id}`}
                         >
                           Отменить
                         </Link>
-                      )}
+                      ) : null}
                     </td>
                   </tr>
                 ))}

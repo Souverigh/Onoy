@@ -16,6 +16,8 @@ const nav: [string, string, IconName][] = [
   ["/documents", "Документы", "camera"],
   ["/settings", "Настройки", "settings"],
 ];
+/** Разделы только для владельца (итоги, заявки клиентов). */
+const OWNER_ONLY = new Set(["/day", "/reports", "/claims"]);
 const mobileNav: [string, string, IconName][] = [
   ["/", "Главная", "home"],
   ["/customers", "Клиенты", "people"],
@@ -35,13 +37,16 @@ export function Shell({
   children,
   preview = false,
   reviewCount = 0,
+  isOwner = true,
 }: {
   name: string;
   children: React.ReactNode;
   preview?: boolean;
   reviewCount?: number;
+  isOwner?: boolean;
 }) {
   const path = usePathname();
+  const allowed = ([href]: [string, string, IconName]) => isOwner || !OWNER_ONLY.has(href);
   const [menuOpen, setMenuOpen] = useState(false);
   // Переход по ссылке или Esc закрывают меню.
   useEffect(() => setMenuOpen(false), [path]);
@@ -71,7 +76,7 @@ export function Shell({
           </div>
         </div>
         <nav aria-label="Основная навигация" className="nav-full">
-          {nav.map(([href, label, icon]) => (
+          {nav.filter(allowed).map(([href, label, icon]) => (
             <Link
               href={preview ? "/preview" : href}
               key={href}
@@ -146,7 +151,7 @@ export function Shell({
           <>
             <div className="mobile-menu-backdrop" onClick={() => setMenuOpen(false)} />
             <nav id="mobile-menu" aria-label="Разделы" className="mobile-menu">
-              {moreNav.map(([href, label, icon]) => (
+              {moreNav.filter(allowed).map(([href, label, icon]) => (
                 <Link
                   href={preview ? "/preview" : href}
                   key={href}

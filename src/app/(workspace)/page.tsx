@@ -1,8 +1,11 @@
 import { getContext } from "@/lib/context";
 import { Dashboard, type Summary } from "@/components/dashboard";
 import { unclosedDays } from "@/lib/day-summary";
-export default async function Home() {
-  const { db, organizationId } = await getContext();
+export default async function Home({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const { db, organizationId, isOwner } = await getContext();
+  const { error } = await searchParams;
+  // Продавцу итоги магазина не показываем (ТЗ) — и не считаем.
+  if (!isOwner) return <Dashboard summary={null} staff ownerOnlyNotice={error === "owner"} />;
   const [stats, events, unclosed, late] = await Promise.all([
     db.rpc("dashboard_summary", { org: organizationId }),
     db

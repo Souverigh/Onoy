@@ -8,13 +8,16 @@ const a = "11111111-1111-4111-8111-111111111111",
 let orgA, orgB, productA;
 before(async () => {
   await db.exec(
-    `CREATE ROLE anon; CREATE ROLE authenticated; CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid primary key); CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; GRANT USAGE ON SCHEMA auth TO authenticated; GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated; INSERT INTO auth.users VALUES ('${a}'),('${b}');`,
+    `CREATE ROLE anon; CREATE ROLE authenticated; CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid primary key, email text); CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; GRANT USAGE ON SCHEMA auth TO authenticated; GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated; INSERT INTO auth.users VALUES ('${a}'),('${b}');`,
   );
   if (existsSync("supabase/migrations"))
     for (const f of readdirSync("supabase/migrations")
       .filter((x) => x.endsWith(".sql"))
       .sort())
       await db.exec(readFileSync("supabase/migrations/" + f, "utf8"));
+  await db.exec(
+    "insert into private.shop_signup_codes(code,note) values ('CODEA00001','A'),('CODEB00001','B'),('CODEA00002','A2')",
+  );
 });
 after(() => db.close());
 async function user(id) {
@@ -29,19 +32,19 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 18);
+  assert.equal(rows.length, 19);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
   await user(a);
   orgA = (
     await db.query(
-      `select public.create_organization('Магазин A','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa') as id`,
+      `select public.create_organization('Магазин A','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','codea00001') as id`,
     )
   ).rows[0].id;
   const retry = (
     await db.query(
-      `select public.create_organization('Магазин A','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa') as id`,
+      `select public.create_organization('Магазин A','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','codea00001') as id`,
     )
   ).rows[0].id;
   assert.equal(retry, orgA);
@@ -55,7 +58,7 @@ test("organization creation is idempotent and cannot enroll another user", async
   await user(b);
   orgB = (
     await db.query(
-      `select public.create_organization('Магазин B','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb') as id`,
+      `select public.create_organization('Магазин B','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','CODEB00001') as id`,
     )
   ).rows[0].id;
 });
@@ -205,7 +208,7 @@ test("a member of two shops cannot move a directory record between them", async 
   await user(a);
   const other = (
     await db.query(
-      `select public.create_organization('Магазин A2','98765432-aaaa-4aaa-8aaa-aaaaaaaaaaaa') as id`,
+      `select public.create_organization('Магазин A2','98765432-aaaa-4aaa-8aaa-aaaaaaaaaaaa','CODEA00002') as id`,
     )
   ).rows[0].id;
   const product = (
@@ -287,7 +290,7 @@ test("anonymous callers cannot create or read a store", async () => {
     `SET ROLE anon;SELECT set_config('request.jwt.claim.sub','',false)`,
   );
   await assert.rejects(
-    db.query(`select create_organization('Attacker',gen_random_uuid())`),
+    db.query(`select create_organization('Attacker',gen_random_uuid(),'CODEA00001')`),
     /permission denied/,
   );
   await assert.rejects(
@@ -1319,7 +1322,8 @@ test("close_day: one immutable snapshot per shop and day, no future days", async
 
   await user(b);
   assert.equal((await db.query("select * from day_closures")).rows.length, 0);
-  await assert.rejects(db.query("select close_day($1,'2026-09-21','{}')", [orgA]), /not_a_member/);
+  // Чужой магазин: не хозяин — отказ.
+  await assert.rejects(db.query("select close_day($1,'2026-09-21','{}')", [orgA]), /owner_only/);
 });
 test("get_invoice_by_token: only a digitized, active sale of the link's own customer", async () => {
   await owner();
@@ -1566,4 +1570,155 @@ test("commit_adjustment: discount/return lower the debt like a payment, need a n
     db.query("select commit_adjustment($1,'incoming',$2,'discount','1.00','x','ffffffff-1111-4000-8000-000000000009')", [orgA, customer]),
     /not_a_member/,
   );
+});
+test("staff roles: invite link, seller can sell but not reverse/discount/close day, owner manages staff", async () => {
+  const c = "33333333-3333-4333-8333-333333333333";
+  await owner();
+  await db.query("insert into auth.users values ($1) on conflict do nothing", [c]);
+  const customer = (
+    await db.query("insert into customers(organization_id,name) values ($1,'Клиент продавца') returning id", [orgA])
+  ).rows[0].id;
+
+  await user(a);
+  // Сотрудники — только на тарифе «Бизнес».
+  await assert.rejects(db.query("select create_invite($1,'Айбек')", [orgA]), /business_plan/);
+  await owner();
+  await db.query("update organizations set plan='business' where id=$1", [orgA]);
+  await user(a);
+  const token = (await db.query("select create_invite($1,'Айбек') as t", [orgA])).rows[0].t;
+  assert.equal(token.length, 32);
+
+  await owner();
+  await db.exec("SET ROLE anon;");
+  assert.deepEqual((await db.query("select get_invite($1) as v", [token])).rows[0].v, {
+    shop_name: "Магазин A",
+    display_name: "Айбек",
+  });
+
+  await user(c);
+  await db.exec(`SELECT set_config('request.jwt.claims','{"email":"aibek@example.com"}',false);`);
+  assert.equal((await db.query("select accept_invite($1) as org", [token])).rows[0].org, orgA);
+  await assert.rejects(db.query("select accept_invite($1)", [token]), /invalid_invite/);
+  const mine = (await db.query("select role,display_name,email from organization_members")).rows;
+  assert.deepEqual(mine, [{ role: "staff", display_name: "Айбек", email: "aibek@example.com" }]);
+
+  // Продавец оформляет — запись помечена автором.
+  const sale = (
+    await db.query("select commit_sale($1,$2,'700.00',false,'abababab-0000-4000-8000-000000000001') as id", [orgA, customer])
+  ).rows[0].id;
+  // …но хозяйские действия ему закрыты.
+  await assert.rejects(db.query("select reverse_sale($1,$2,'x')", [orgA, sale]), /owner_only/);
+  await assert.rejects(
+    db.query("select commit_adjustment($1,'incoming',$2,'discount','10.00','x','abababab-0000-4000-8000-000000000002')", [orgA, customer]),
+    /owner_only/,
+  );
+  await assert.rejects(db.query("select close_day($1,'2026-09-22','{}')", [orgA]), /owner_only/);
+  await assert.rejects(db.query("select create_invite($1,'Ещё')", [orgA]), /owner_only/);
+  await assert.rejects(db.query("select remove_member($1,$2)", [orgA, a]), /owner_only/);
+
+  await owner();
+  assert.equal((await db.query("select created_by from sales where id=$1", [sale])).rows[0].created_by, c);
+
+  await user(a);
+  assert.equal((await db.query("select * from organization_members where organization_id=$1", [orgA])).rows.length, 2);
+  await assert.rejects(db.query("select accept_invite($1)", [(await db.query("select create_invite($1,'Сам') as t", [orgA])).rows[0].t]), /already_member/);
+  // Лимит 5: продавец Айбек + «Сам» (приглашение) + ещё 3 — шестое нельзя.
+  for (const name of ["П1", "П2", "П3"]) await db.query("select create_invite($1,$2)", [orgA, name]);
+  await assert.rejects(db.query("select create_invite($1,'П4')", [orgA]), /staff_limit/);
+  await assert.rejects(db.query("select remove_member($1,$2)", [orgA, a]), /cannot_remove_self/);
+  await db.query("select remove_member($1,$2)", [orgA, c]);
+
+  await user(c);
+  assert.equal((await db.query("select * from organization_members")).rows.length, 0);
+  await assert.rejects(db.query("select commit_sale($1,$2,'1.00',false,'abababab-0000-4000-8000-000000000003')", [orgA, customer]), /not_a_member/);
+});
+
+test("create_organization: a new shop needs an unused signup code; retries and old shops don't", async () => {
+  await owner();
+  const code = (await db.query("insert into private.shop_signup_codes(note) values ('тест') returning code")).rows[0].code;
+  assert.match(code, /^[0-9A-F]{10}$/);
+  await user(b);
+  await assert.rejects(
+    db.query("select create_organization('Без кода','cccccccc-0000-4000-8000-000000000001','')"),
+    /invalid_code/,
+  );
+  await assert.rejects(
+    db.query("select create_organization('Чужой код','cccccccc-0000-4000-8000-000000000002','CODEA00001')"),
+    /invalid_code/, // уже погашен магазином A
+  );
+  const id = (
+    await db.query("select create_organization('С кодом','cccccccc-0000-4000-8000-000000000003',$1) as id", [code.toLowerCase()])
+  ).rows[0].id;
+  // Повтор того же запроса — тот же магазин, код не нужен.
+  assert.equal(
+    (await db.query("select create_organization('С кодом','cccccccc-0000-4000-8000-000000000003','') as id")).rows[0].id,
+    id,
+  );
+  await assert.rejects(
+    db.query("select create_organization('Ещё раз','cccccccc-0000-4000-8000-000000000004',$1)", [code]),
+    /invalid_code/,
+  );
+  await assert.rejects(db.query("select * from private.shop_signup_codes"), /permission denied/);
+  await owner();
+  assert.equal((await db.query("select organization_id from private.shop_signup_codes where code=$1", [code])).rows[0].organization_id, id);
+});
+
+test("platform admin: codes, shop overview without money data, plan, block stops writes and the client page", async () => {
+  await owner();
+  await db.query("update auth.users set email='owner-a@example.com' where id=$1", [a]);
+  await user(a);
+  await assert.rejects(db.query("select * from admin_shops()"), /admin_only/);
+  assert.equal((await db.query("select am_i_platform_admin() as v")).rows[0].v, false);
+  await owner();
+  await db.query("insert into private.platform_admins(user_id) values ($1)", [b]);
+
+  await user(b);
+  assert.equal((await db.query("select am_i_platform_admin() as v")).rows[0].v, true);
+  const code = (await db.query("select admin_create_code('Малик, Манас') as c")).rows[0].c;
+  const codes = (await db.query("select * from admin_codes()")).rows;
+  assert.ok(codes.some((c) => c.code === code && c.note === "Малик, Манас" && c.used_at === null));
+  await db.query("select admin_delete_code($1)", [code]);
+  await assert.rejects(db.query("select admin_delete_code('CODEA00001')"), /invalid_code/); // использованный не удалить
+
+  const shopA = (await db.query("select * from admin_shops() where id=$1", [orgA])).rows[0];
+  assert.equal(shopA.owner_email, "owner-a@example.com");
+  assert.equal(shopA.signup_code, "CODEA00001");
+  assert.ok(shopA.customers > 0 && shopA.records_30d > 0);
+  // Денежные данные магазина админу не видны напрямую.
+  assert.equal((await db.query("select * from customers where organization_id=$1", [orgA])).rows.length, 0);
+
+  await owner();
+  const customer = (await db.query("select id from customers where organization_id=$1 limit 1", [orgA])).rows[0].id;
+  await user(a);
+  const link = (await db.query("select create_share_link($1,$2) as t", [orgA, customer])).rows[0].t;
+  await owner();
+  await db.exec("SET ROLE anon;");
+  assert.ok((await db.query("select get_statement_by_token($1) as d", [link])).rows[0].d);
+
+  await user(b);
+  await db.query("select admin_set_plan($1,'basic','2026-12-31')", [orgA]);
+  await db.query("select admin_set_blocked($1,true,'Не оплачено')", [orgA]);
+
+  await owner();
+  await db.exec("SET ROLE anon;");
+  await assert.rejects(db.query("select get_statement_by_token($1)", [link]), /shop_blocked/);
+  await user(a);
+  await assert.rejects(
+    db.query("select commit_sale($1,$2,'1.00',false,'bbbbbbbb-9999-4000-8000-000000000001')", [orgA, customer]),
+    /shop_blocked/,
+  );
+  await assert.rejects(db.query("insert into customers(organization_id,name) values ($1,'Новый')", [orgA]), /shop_blocked/);
+  assert.ok((await db.query("select * from customers where organization_id=$1", [orgA])).rows.length > 0); // читать можно
+  // Владелец не может сам снять блокировку или сменить тариф.
+  await user(a);
+  await assert.rejects(db.query("update organizations set blocked_at=null where id=$1", [orgA]), /permission denied/);
+  await assert.rejects(db.query("select admin_set_blocked($1,false,null)", [orgA]), /admin_only/);
+
+  await user(b);
+  await db.query("select admin_set_blocked($1,false,null)", [orgA]);
+  await db.query("select admin_set_plan($1,'business',null)", [orgA]);
+  await user(a);
+  await db.query("insert into customers(organization_id,name) values ($1,'После разблокировки')", [orgA]);
+  await owner();
+  await db.query("delete from private.platform_admins where user_id=$1", [b]);
 });

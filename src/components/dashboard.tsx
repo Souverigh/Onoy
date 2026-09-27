@@ -15,40 +15,57 @@ export function Dashboard({
   preview = false,
   unclosedDays = [],
   overdue,
+  staff = false,
+  ownerOnlyNotice = false,
 }: {
-  summary: Summary;
+  summary: Summary | null;
   events?: { id: string; action: string; created_at: string }[];
   preview?: boolean;
   /** Прошлые дни с записями, которые не закрыли (напоминание). */
   unclosedDays?: string[];
   /** Клиенты с неоплаченными продажами старше 30 дней и сумма этой части долга. */
   overdue?: { count: number; amount: number };
+  /** Продавец: итогов магазина не видит (ТЗ), только действия. */
+  staff?: boolean;
+  /** Продавец открыл хозяйскую страницу — объясняем, почему вернули сюда. */
+  ownerOnlyNotice?: boolean;
 }) {
   const href = (url: string) => (preview ? "/preview" : url);
   return (
     <div className="simple-dashboard">
       <header className="simple-dashboard-heading">
-        <h1>Долги магазина</h1>
-        <p>Все записи — только после вашего подтверждения.</p>
+        <h1>{staff ? "Новая запись" : "Долги магазина"}</h1>
+        <p>
+          {staff
+            ? "Продажи, приходы и оплаты. Отменить запись или сделать скидку может владелец."
+            : "Все записи — только после вашего подтверждения."}
+        </p>
       </header>
-      <UnclosedDays days={unclosedDays} />
-      {overdue && overdue.count > 0 && (
+      {ownerOnlyNotice && (
+        <p className="notice" role="status">
+          Этот раздел доступен только владельцу магазина.
+        </p>
+      )}
+      {!staff && <UnclosedDays days={unclosedDays} />}
+      {!staff && overdue && overdue.count > 0 && (
         <Link className="notice claims-notice" href={href("/customers?overdue=30")}>
           Просрочено больше 30 дней: {overdue.count} клиент(ов), {money(overdue.amount)} →
         </Link>
       )}
-      <section className="debt-cards" aria-label="Долги">
-        <article className="debt-card">
-          <span>Мне должны</span>
-          <strong>{money(summary.receivable)}</strong>
-          <small>Клиенты</small>
-        </article>
-        <article className="debt-card supplier-debt">
-          <span>Я должен</span>
-          <strong>{money(summary.payable)}</strong>
-          <small>Поставщикам</small>
-        </article>
-      </section>
+      {!staff && summary && (
+        <section className="debt-cards" aria-label="Долги">
+          <article className="debt-card">
+            <span>Мне должны</span>
+            <strong>{money(summary.receivable)}</strong>
+            <small>Клиенты</small>
+          </article>
+          <article className="debt-card supplier-debt">
+            <span>Я должен</span>
+            <strong>{money(summary.payable)}</strong>
+            <small>Поставщикам</small>
+          </article>
+        </section>
+      )}
       <section className="quick-actions" aria-label="Добавить запись">
         <Link
           className="quick-action"

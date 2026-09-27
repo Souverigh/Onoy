@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getContext } from "@/lib/context";
+import { requireOwner } from "@/lib/context";
 import { money } from "@/lib/format";
 import { bishkekDate } from "@/lib/day-summary";
 import { change, period, type PeriodKind } from "@/lib/periods";
@@ -41,7 +41,7 @@ export default async function Reports({
   const offset = Math.min(0, Math.max(-120, parseInt(params.offset ?? "0") || 0));
   const today = bishkekDate();
   const p = period(kind, today, offset);
-  const { db, organizationId } = await getContext();
+  const { db, organizationId } = await requireOwner();
   const report = await periodReport(db, organizationId, p);
 
   const title =

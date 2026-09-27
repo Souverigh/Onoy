@@ -16,6 +16,9 @@ export default async function Onboarding({
         <p className="muted">
           Начните с названия. Клиентов и поставщиков можно добавить следующим шагом.
         </p>
+        <p className="muted">
+          Продавцу магазина здесь ничего создавать не нужно — откройте ссылку-приглашение от владельца.
+        </p>
         <form action={createOrganization}>
           <input type="hidden" name="key" value={crypto.randomUUID()} />
           <label>
@@ -27,9 +30,23 @@ export default async function Onboarding({
               maxLength={120}
             />
           </label>
+          <label>
+            Код доступа
+            <input
+              name="code"
+              required
+              maxLength={40}
+              autoComplete="off"
+              autoCapitalize="characters"
+              placeholder="Например, 7F3A9C21B0"
+            />
+            <small className="muted">Код выдаёт Depter при подключении магазина.</small>
+          </label>
           {error && (
             <p role="alert" className="form-error">
-              Не удалось создать магазин. Проверьте название и подключение базы.
+              {error === "code"
+                ? "Код доступа не подошёл или уже использован. Попросите новый у Depter."
+                : "Не удалось создать магазин. Проверьте название и подключение базы."}
             </p>
           )}
           <Submit>Открыть магазин</Submit>

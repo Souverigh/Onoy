@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getContext } from "@/lib/context";
+import { requireOwner } from "@/lib/context";
 import { money } from "@/lib/format";
 import { reverseOperation } from "@/app/(workspace)/money/actions";
 import { safeBackPath } from "@/lib/back-path";
@@ -27,7 +27,7 @@ export default async function ReverseOperation({
   if (!["purchase", "sale", "payment"].includes(rawKind)) notFound();
   const kind = rawKind as Kind;
   if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
-  const { db, organizationId } = await getContext();
+  const { db, organizationId } = await requireOwner();
   const meta = tables[kind];
   const row = await db
     .from(meta.table)

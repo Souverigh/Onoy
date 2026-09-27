@@ -10,6 +10,7 @@ import { creditLimitExceeded } from "@/lib/credit-limit";
 import { createLink, revokeLink, setPromisedDate } from "@/app/(workspace)/[kind]/actions";
 import { dayMonth, promiseStatus } from "@/lib/promise";
 import { paymentLabel } from "@/lib/entry-labels";
+import { memberLabels } from "@/lib/members";
 import { bishkekDate } from "@/lib/day-summary";
 
 type ShareLink = { id: string; token: string; revoked_at: string | null };
@@ -38,7 +39,7 @@ export default async function EntryPage({
 }) {
   const { kind, id } = await params;
   if (!isDirectory(kind)) notFound();
-  const { db, organizationId } = await getContext();
+  const { db, organizationId, isOwner } = await getContext();
   const { error, saved, linked, revoked, reversed, promised, adjusted } = await searchParams;
   let entry: Entry | undefined;
   if (id !== "new") {
@@ -92,6 +93,9 @@ export default async function EntryPage({
     opening: boolean;
     /** Комментарий скидки/возврата. */
     note?: string | null;
+    /** Кто внёс и кто отменил (журнал для владельца). */
+    createdBy: string | null;
+    reversedBy: string | null;
   };
   let history: HistoryRow[] = [];
   if (entry && isParty) {
@@ -100,7 +104,7 @@ export default async function EntryPage({
     const [invoices, pays] = await Promise.all([
       db
         .from(invoiceTable)
-        .select("id,total,occurred_at,reversed_at,reversal_comment,document_id,is_opening")
+        .select("id,total,occurred_at,reversed_at,reversal_comment,document_id,is_opening,created_by,reversed_by")
         .eq("organization_id", organizationId)
         .eq(partyColumn, entry.id)
         .eq("status", "posted")
@@ -108,7 +112,7 @@ export default async function EntryPage({
         .limit(20),
       db
         .from("payments")
-        .select("id,amount,occurred_at,reversed_at,reversal_comment,document_id,status,is_opening,kind,note")
+        .select("id,amount,occurred_at,reversed_at,reversal_comment,document_id,status,is_opening,kind,note,created_by,reversed_by")
         .eq("organization_id", organizationId)
         .eq(partyColumn, entry.id)
         .eq("direction", kind === "customers" ? "incoming" : "outgoing")
@@ -128,6 +132,8 @@ export default async function EntryPage({
         documentId: r.document_id,
         pending: false,
         opening: Boolean(r.is_opening),
+        createdBy: r.created_by,
+        reversedBy: r.reversed_by,
       })),
       ...(pays.data ?? []).map((p) => ({
         kind: "payment" as const,
@@ -141,6 +147,8 @@ export default async function EntryPage({
         documentId: p.document_id,
         pending: p.status === "pending",
         opening: Boolean(p.is_opening),
+        createdBy: p.created_by,
+        reversedBy: p.reversed_by,
       })),
     ]
       .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime())
@@ -151,6 +159,11 @@ export default async function EntryPage({
     entry && kind === "customers"
       ? creditLimitExceeded(entry.balance ?? 0, entry.credit_limit, 0, false)
       : null;
+
+  // Журнал «кто внёс, кто отменил» — владельцу, когда есть сотрудники.
+  const members = isOwner && entry && isParty ? await memberLabels(db, organizationId) : new Map();
+  const showAuthors = [...members.values()].some((m) => m.role === "staff");
+  const who = (id: string | null) => (id ? (members.get(id)?.name ?? "бывший сотрудник") : null);
 
   const newOperationHref = (type: string) =>
     `/money/new?type=${["sale", "purchase", "payment"].includes(type) ? type : "payment"}&party=${entry?.id ?? ""}`;
@@ -263,9 +276,11 @@ export default async function EntryPage({
           <Link className="button" href={newOperationHref("payment")}>
             Оплата
           </Link>
-          <Link className="button" href={`/money/adjustment?party=${entry.id}`}>
-            Скидка / возврат
-          </Link>
+          {isOwner && (
+            <Link className="button" href={`/money/adjustment?party=${entry.id}`}>
+              Скидка / возврат
+            </Link>
+          )}
         </section>
       )}
       {entry && kind === "customers" && (
@@ -381,7 +396,7 @@ export default async function EntryPage({
                           Фото
                         </Link>
                       )}
-                      {row.pending ? (
+                      {!isOwner ? null : row.pending ? (
                         <Link className="text-button" href="/claims">
                           Рассмотреть
                         </Link>
@@ -398,6 +413,12 @@ export default async function EntryPage({
                     </span>
                   </div>
                   {row.note && <p className="history-comment muted">{row.note}</p>}
+                  {showAuthors && (who(row.createdBy) || (row.reversed && who(row.reversedBy))) && (
+                    <p className="history-comment muted">
+                      {who(row.createdBy) && <>Внёс: {who(row.createdBy)}</>}
+                      {row.reversed && who(row.reversedBy) && <> · отменил: {who(row.reversedBy)}</>}
+                    </p>
+                  )}
                   {row.reversed && row.reversalComment && (
                     <p className="history-comment muted">Причина отмены: {row.reversalComment}</p>
                   )}
