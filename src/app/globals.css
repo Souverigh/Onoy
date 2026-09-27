@@ -2649,3 +2649,16 @@ tr.line-mismatch {
   align-items: center;
   gap: 6px;
 }
+
+/* Клиент из контактов телефона. */
+.contact-picker,
+.contact-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.contact-fill {
+  display: block;
+  margin-bottom: 12px;
+}

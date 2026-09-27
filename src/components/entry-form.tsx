@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Directory } from "@/lib/validation";
 import type { Entry } from "@/lib/directory";
 import { Submit } from "./submit";
+import { ContactFill } from "./contact-fill";
 import { saveEntry } from "@/app/(workspace)/[kind]/actions";
 export function EntryForm({
   kind,
@@ -16,6 +17,7 @@ export function EntryForm({
     <form action={saveEntry} className="entry-form">
       <input type="hidden" name="kind" value={kind} />
       {entry && <input type="hidden" name="id" value={entry.id} />}
+      {!entry && kind !== "products" && <ContactFill />}
       <label>
         Название / имя
         <input

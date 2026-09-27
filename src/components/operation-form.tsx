@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
   commitOperation,
+  customerFromContact,
   findSimilarRecords,
   prepareReceiptPayment,
   recognizeInvoicePhoto,
   type SimilarRecord,
 } from "@/app/(workspace)/money/actions";
 import { Submit } from "./submit";
+import { ContactPicker } from "./contact-picker";
 import { money } from "@/lib/format";
 import { amountFromInput, creditLimitExceeded } from "@/lib/credit-limit";
 import { TOLERANCE } from "@/lib/adre/reconcile";
@@ -79,6 +81,10 @@ export function OperationForm({
   );
   const [amountValue, setAmountValue] = useState(prefill?.amount ?? "");
   const [paidNow, setPaidNow] = useState(false);
+  // Клиенты, добавленные из контактов прямо в форме (без перезагрузки).
+  const [contactCustomers, setContactCustomers] = useState<Customer[]>([]);
+  const [contactNote, setContactNote] = useState<string | null>(null);
+  const allCustomers = [...customers, ...contactCustomers.filter((c) => !customers.some((x) => x.id === c.id))];
   const [checkedPhoto, setCheckedPhoto] = useState<CheckedPhoto | null>(null);
   const [checking, setChecking] = useState(false);
   const [shrinkingReceipt, setShrinkingReceipt] = useState(false);
@@ -124,12 +130,12 @@ export function OperationForm({
     kind === "purchase"
       ? suppliers
       : kind === "sale"
-        ? customers
+        ? allCustomers
         : direction === "incoming"
           ? customers
           : suppliers;
   // Лимит долга — только для продажи: предупреждаем, но не блокируем.
-  const saleCustomer = kind === "sale" ? customers.find((c) => c.id === selectedParty) : undefined;
+  const saleCustomer = kind === "sale" ? allCustomers.find((c) => c.id === selectedParty) : undefined;
   const overLimit = saleCustomer
     ? creditLimitExceeded(
         saleCustomer.balance ?? 0,
@@ -372,6 +378,33 @@ export function OperationForm({
             ))}
           </select>
         </label>
+        {kind === "sale" && (
+          <div className="contact-row">
+            <ContactPicker
+              label="Клиент из контактов"
+              onPick={async ({ name, phone }) => {
+                setContactNote("Ищем клиента…");
+                const found = await customerFromContact(name, phone);
+                if ("error" in found) {
+                  setContactNote(
+                    found.error === "name"
+                      ? "У контакта нет имени — добавьте клиента вручную."
+                      : "Не удалось добавить клиента. Попробуйте ещё раз.",
+                  );
+                  return;
+                }
+                setContactCustomers((list) =>
+                  list.some((c) => c.id === found.id) ? list : [...list, { id: found.id, name: found.name, balance: found.balance }],
+                );
+                setSelectedParty(found.id);
+                setContactNote(
+                  found.created ? `Добавили нового клиента: ${found.name}.` : `Уже есть в списке: ${found.name}.`,
+                );
+              }}
+            />
+            {contactNote && <small className="muted">{contactNote}</small>}
+          </div>
+        )}
         <label className="amount-field">
           Сколько сом?
           <input

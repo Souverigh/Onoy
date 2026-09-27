@@ -18,6 +18,7 @@ import type { InvoiceResult } from "@/lib/adre/types";
 import { bestMatches } from "@/lib/match";
 import { bishkekDateTime, receiptDateTime } from "@/lib/receipt-date";
 import { isAdjustmentKind } from "@/lib/entry-labels";
+import { normalizePhone, phoneKey } from "@/lib/contacts";
 
 type Operation = "purchase" | "sale" | "payment";
 const uuidPattern =
@@ -480,4 +481,39 @@ export async function commitAdjustment(form: FormData) {
   }
   revalidatePath("/", "layout");
   redirect(`/${side}/${party}?adjusted=${kind}`);
+}
+
+/**
+ * Клиент из контактов телефона для формы продажи (ТЗ §4 Б: «из списка,
+ * контактов телефона или новый в одно касание»). Есть клиент с тем же
+ * номером — возвращаем его; нет — создаём. Без перезагрузки формы.
+ */
+export async function customerFromContact(
+  rawName: string,
+  rawPhone: string,
+): Promise<{ id: string; name: string; balance: string; created: boolean } | { error: string }> {
+  const name = String(rawName ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
+  const phone = normalizePhone(String(rawPhone ?? "")).slice(0, 40);
+  const key = phoneKey(phone);
+  if (!name && !key) return { error: "empty" };
+  const { db, organizationId } = await getContext();
+  if (key) {
+    const existing = await db
+      .from("customer_balances")
+      .select("id,name,phone,balance")
+      .eq("organization_id", organizationId)
+      .neq("phone", "")
+      .range(0, 999); // номер хранится как ввели («0555 12-34-56») — сравниваем нормализованно
+    const match = (existing.data ?? []).find((c) => phoneKey(c.phone) === key);
+    if (match) return { id: match.id, name: match.name, balance: String(match.balance), created: false };
+  }
+  if (!name) return { error: "name" };
+  const inserted = await db
+    .from("customers")
+    .insert({ organization_id: organizationId, name, phone })
+    .select("id,name")
+    .single();
+  if (inserted.error || !inserted.data) return { error: "save" };
+  revalidatePath("/customers");
+  return { id: inserted.data.id, name: inserted.data.name, balance: "0.00", created: true };
 }
