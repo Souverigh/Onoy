@@ -12,6 +12,7 @@ import {
 import { Submit } from "./submit";
 import { money } from "@/lib/format";
 import { amountFromInput, creditLimitExceeded } from "@/lib/credit-limit";
+import { TOLERANCE } from "@/lib/adre/reconcile";
 import { MULTI_PAGE_MAX_SIDE, shrinkImage, shrinkInputFile } from "@/lib/shrink-image";
 import { DOCUMENT_ACCEPT, MAX_PAGES, MAX_UPLOAD_BYTES, isPdf } from "@/lib/pages";
 
@@ -41,7 +42,6 @@ type CheckedPhoto = {
   duplicate: boolean;
 };
 
-const TOLERANCE = 1;
 const PHOTO_USED_TEXT =
   "Это фото уже приложено к другой записи. Проверьте историю — возможно, запись уже есть. Разрешить повторное использование фото можно в настройках.";
 
@@ -248,11 +248,18 @@ export function OperationForm({
     }
   }
 
+  // Три суммы: строки (наш итог), «Итого» на бумаге, введённая продавцом.
+  const enteredAmount = amountFromInput(amountValue);
   const checkMismatch =
-    checkedPhoto?.result && amountValue
-      ? Math.abs(checkedPhoto.result.total_computed - Number(amountValue.replace(",", "."))) >
-        TOLERANCE
+    checkedPhoto?.result && enteredAmount
+      ? Math.abs(checkedPhoto.result.total_computed - enteredAmount) > TOLERANCE
       : false;
+  const paperTotal =
+    checkedPhoto?.result?.total_declared != null && checkedPhoto.result.total_declared > 0
+      ? checkedPhoto.result.total_declared
+      : null;
+  const paperMismatch =
+    paperTotal != null && Math.abs(checkedPhoto!.result!.total_computed - paperTotal) > TOLERANCE;
 
   return (
     <>
@@ -416,9 +423,14 @@ export function OperationForm({
               </p>
             )}
             {checkedPhoto?.result && (
-              <p className={checkMismatch ? "photo-check-mismatch" : "photo-check-ok"}>
-                По фото распознано: {money(checkedPhoto.result.total_computed)}
-                {checkMismatch && amountValue ? " — отличается от введённой суммы" : " — совпадает"}
+              <p className={checkMismatch || paperMismatch ? "photo-check-mismatch" : "photo-check-ok"}>
+                По строкам: {money(checkedPhoto.result.total_computed)}
+                {paperTotal != null && <> · «Итого» на бумаге: {money(paperTotal)}</>}
+                {enteredAmount
+                  ? checkMismatch
+                    ? " — отличается от введённой суммы"
+                    : " — совпадает с введённой суммой"
+                  : ""}
                 {!amountValue && (
                   <>
                     {" · "}
@@ -433,6 +445,12 @@ export function OperationForm({
                     </button>
                   </>
                 )}
+              </p>
+            )}
+            {paperMismatch && (
+              <p className="photo-check-mismatch" role="status">
+                Итог на бумаге не равен сумме строк: возможно, какая-то строка не распозналась
+                или в накладной ошибка в сложении. Проверьте фото и сумму.
               </p>
             )}
           </div>

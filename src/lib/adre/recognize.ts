@@ -5,9 +5,9 @@ import type { RecognitionProvider, InvoiceResult, ReceiptResult, PhotoPage } fro
 import { documentPages } from "@/lib/storage";
 import { normalizeInvoiceResult } from "./normalize";
 import { contentFingerprint } from "./fingerprint";
+import { reconcileInvoice } from "./reconcile";
 
 const PROMPT_VERSION = "v1";
-const TOLERANCE = 1; // сом, как в ТЗ §6
 
 const MODEL = () => process.env.GEMINI_MODEL || "gemini-3.8-flash";
 
@@ -17,13 +17,9 @@ function getProvider(): RecognitionProvider | null {
   return createGeminiProvider(key, MODEL());
 }
 
+/** Строки, итог на бумаге и сумма в записи сошлись — см. reconcile.ts. */
 function invoiceMatches(result: InvoiceResult, declaredTotal: number | null): boolean {
-  const linesOk = result.lines.every(
-    (line) => Math.abs(Number(line.qty) * Number(line.price) - Number(line.sum)) <= TOLERANCE,
-  );
-  if (!linesOk) return false;
-  if (declaredTotal == null) return true;
-  return Math.abs(result.total_computed - declaredTotal) <= TOLERANCE;
+  return reconcileInvoice(result, declaredTotal).ok;
 }
 
 function linesOf(result: InvoiceResult) {

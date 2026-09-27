@@ -6,6 +6,7 @@ import { documentPages, signedPhotoUrl } from "@/lib/storage";
 import { DocumentPhotos } from "@/components/document-photos";
 import { retryRecognition, confirmDocument, updateLine, saveAlias } from "../actions";
 import { similarity } from "@/lib/match";
+import { TOLERANCE } from "@/lib/adre/reconcile";
 
 type DocRow = {
   id: string;
@@ -34,7 +35,6 @@ type Extraction = {
   created_at: string;
 };
 
-const TOLERANCE = 1;
 
 export default async function DocumentDetail({
   params,
@@ -150,8 +150,19 @@ export default async function DocumentDetail({
       }
     | undefined;
   const invoiceFields = extraction?.payload?.extracted as
-    | { counterparty?: { name_raw?: string }; document_type?: "invoice_in" | "invoice_out" }
+    | {
+        counterparty?: { name_raw?: string };
+        document_type?: "invoice_in" | "invoice_out";
+        total_declared?: number | null;
+      }
     | undefined;
+  // «Итого», написанное на бумаге, — третья сумма сверки (см. reconcile.ts).
+  const paperTotal =
+    doc.kind !== "payment" && Number(invoiceFields?.total_declared) > 0
+      ? Number(invoiceFields!.total_declared)
+      : null;
+  const paperMismatch =
+    paperTotal != null && lines.length > 0 && Math.abs(linesTotal - paperTotal) > TOLERANCE;
   const recognizedCounterparty = invoiceFields?.counterparty?.name_raw?.trim();
   const counterpartyMismatch =
     party && recognizedCounterparty
@@ -329,12 +340,20 @@ export default async function DocumentDetail({
             <div className="doc-lines-inner">
               <div className="section-title">
                 <h2>Позиции</h2>
-                {declaredTotal != null && lines.length > 0 && (
-                  <span className={totalsMismatch ? "tag reversed-tag" : "tag green"}>
-                    Строки: {money(linesTotal)} · В записи: {money(declaredTotal)}
+                {lines.length > 0 && (declaredTotal != null || paperTotal != null) && (
+                  <span className={totalsMismatch || paperMismatch ? "tag reversed-tag" : "tag green"}>
+                    Строки: {money(linesTotal)}
+                    {paperTotal != null && <> · На бумаге: {money(paperTotal)}</>}
+                    {declaredTotal != null && <> · В записи: {money(declaredTotal)}</>}
                   </span>
                 )}
               </div>
+              {paperMismatch && (
+                <p className="photo-check-mismatch">
+                  «Итого» на бумаге не равно сумме строк — возможно, строка не распозналась или в
+                  накладной ошибка в сложении. Сверьте строки с фото.
+                </p>
+              )}
               {lines.length > 0 ? (
                 <>
                   <div className="doc-lines-scroll">
