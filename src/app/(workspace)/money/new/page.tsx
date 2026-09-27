@@ -29,7 +29,7 @@ export default async function NewOperation({
   const [customerResult, supplierResult] = await Promise.all([
     db
       .from("customer_balances")
-      .select("id,name,balance")
+      .select("id,name,balance,credit_limit")
       .eq("organization_id", organizationId)
       .order("name")
       .range(0, 999),
@@ -43,12 +43,13 @@ export default async function NewOperation({
   if (customerResult.error || supplierResult.error)
     throw new Error("Не удалось подготовить форму операции");
 
-  const customers = (customerResult.data ?? []) as (Party & { balance: string })[];
+  type Customer = Party & { balance: string; credit_limit: string | null };
+  const customers = (customerResult.data ?? []) as Customer[];
   const suppliers = (supplierResult.data ?? []) as Party[];
   const suggestedIds = params.suggest ? params.suggest.split(",").filter(Boolean) : [];
   const suggestions = suggestedIds
     .map((id) => customers.find((c) => c.id === id))
-    .filter((c): c is Party & { balance: string } => Boolean(c));
+    .filter((c): c is Customer => Boolean(c));
   const prefill =
     kind === "payment" && params.documentId && /^[a-f0-9-]{36}$/i.test(params.documentId)
       ? {

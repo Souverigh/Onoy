@@ -90,6 +90,20 @@ export function EntryForm({
               defaultValue={entry?.phone ?? ""}
             />
           </label>
+          {kind === "customers" && (
+            <label>
+              Лимит долга, сом (необязательно)
+              <input
+                name="credit_limit"
+                inputMode="decimal"
+                placeholder="Без лимита"
+                defaultValue={entry?.credit_limit ?? ""}
+              />
+              <small className="muted">
+                Если долг после продажи станет больше — форма продажи предупредит.
+              </small>
+            </label>
+          )}
           <label>
             Заметка
             <textarea
@@ -106,7 +120,7 @@ export function EntryForm({
           {error === "duplicate"
             ? "Товар с таким артикулом уже существует."
             : error === "invalid"
-              ? "Проверьте заполнение полей. Цены должны быть неотрицательными, до 2 знаков после запятой."
+              ? "Проверьте заполнение полей. Суммы — неотрицательные числа, до 2 знаков после запятой."
               : "Не удалось сохранить запись. Повторите попытку."}
         </p>
       )}

@@ -1446,3 +1446,24 @@ test("commit_payment keeps the receipt date, rejects future or year-old dates", 
     true,
   );
 });
+test("customers.credit_limit: optional, non-negative, editable by members and shown with the balance", async () => {
+  await owner();
+  const customer = (
+    await db.query("insert into customers(organization_id,name) values ($1,'С лимитом') returning id", [orgA])
+  ).rows[0].id;
+  await user(a);
+  assert.equal(
+    (await db.query("select credit_limit from customer_balances where id=$1", [customer])).rows[0].credit_limit,
+    null,
+  );
+  await db.query("update customers set credit_limit='50000.00' where id=$1", [customer]);
+  const row = (await db.query("select credit_limit,balance from customer_balances where id=$1", [customer])).rows[0];
+  assert.equal(row.credit_limit, "50000.00");
+  assert.equal(row.balance, "0.00");
+  await assert.rejects(
+    db.query("update customers set credit_limit='-1' where id=$1", [customer]),
+    /credit_limit_check/,
+  );
+  await user(b);
+  assert.equal((await db.query("select * from customer_balances where id=$1", [customer])).rows.length, 0);
+});

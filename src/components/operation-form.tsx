@@ -11,11 +11,14 @@ import {
 } from "@/app/(workspace)/money/actions";
 import { Submit } from "./submit";
 import { money } from "@/lib/format";
+import { amountFromInput, creditLimitExceeded } from "@/lib/credit-limit";
 import { MULTI_PAGE_MAX_SIDE, shrinkImage, shrinkInputFile } from "@/lib/shrink-image";
 import { DOCUMENT_ACCEPT, MAX_PAGES, MAX_UPLOAD_BYTES, isPdf } from "@/lib/pages";
 
 type Operation = "purchase" | "sale" | "payment";
 type Party = { id: string; name: string };
+/** Клиент с долгом и лимитом — для предупреждения в форме продажи. */
+type Customer = Party & { balance?: string; credit_limit?: string | null };
 type Suggestion = Party & { balance: string };
 type Prefill = {
   documentId: string;
@@ -53,7 +56,7 @@ export function OperationForm({
 }: {
   kind: Operation;
   idempotencyKey: string;
-  customers: Party[];
+  customers: Customer[];
   suppliers: Party[];
   error?: string;
   prefill?: Prefill;
@@ -72,6 +75,7 @@ export function OperationForm({
     prefill?.suggestions[0]?.id ?? initialParty ?? "",
   );
   const [amountValue, setAmountValue] = useState(prefill?.amount ?? "");
+  const [paidNow, setPaidNow] = useState(false);
   const [checkedPhoto, setCheckedPhoto] = useState<CheckedPhoto | null>(null);
   const [checking, setChecking] = useState(false);
   const [shrinkingReceipt, setShrinkingReceipt] = useState(false);
@@ -121,6 +125,16 @@ export function OperationForm({
         : direction === "incoming"
           ? customers
           : suppliers;
+  // Лимит долга — только для продажи: предупреждаем, но не блокируем.
+  const saleCustomer = kind === "sale" ? customers.find((c) => c.id === selectedParty) : undefined;
+  const overLimit = saleCustomer
+    ? creditLimitExceeded(
+        saleCustomer.balance ?? 0,
+        saleCustomer.credit_limit,
+        amountFromInput(amountValue),
+        paidNow,
+      )
+    : null;
   const confirmLabel =
     kind === "purchase"
       ? "Подтвердить приход"
@@ -417,9 +431,23 @@ export function OperationForm({
         )}
         {kind === "sale" && (
           <label className="cash-toggle">
-            <input type="checkbox" name="paid_immediately" value="true" />
+            <input
+              type="checkbox"
+              name="paid_immediately"
+              value="true"
+              checked={paidNow}
+              onChange={(e) => setPaidNow(e.target.checked)}
+            />
             Клиент оплатил наличными
           </label>
+        )}
+        {overLimit && (
+          <p className="form-error limit-warning" role="alert">
+            {overLimit.alreadyOver && !amountFromInput(amountValue)
+              ? `Долг клиента уже ${money(overLimit.debtAfter)} — больше лимита ${money(overLimit.limit)}.`
+              : `Долг станет ${money(overLimit.debtAfter)} — больше лимита ${money(overLimit.limit)}.`}{" "}
+            Продать можно, но проверьте, стоит ли давать в долг.
+          </p>
         )}
         {kind === "payment" && (
           <label>

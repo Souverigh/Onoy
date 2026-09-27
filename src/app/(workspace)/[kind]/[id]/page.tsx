@@ -6,6 +6,7 @@ import { isDirectory } from "@/lib/validation";
 import { directoryMeta, type Entry } from "@/lib/directory";
 import { EntryForm } from "@/components/entry-form";
 import { money, quantity } from "@/lib/format";
+import { creditLimitExceeded } from "@/lib/credit-limit";
 import { createLink, revokeLink } from "@/app/(workspace)/[kind]/actions";
 
 type ShareLink = { id: string; token: string; revoked_at: string | null };
@@ -123,6 +124,11 @@ export default async function EntryPage({
       .slice(0, 20);
   }
 
+  const overLimit =
+    entry && kind === "customers"
+      ? creditLimitExceeded(entry.balance ?? 0, entry.credit_limit, 0, false)
+      : null;
+
   const newOperationHref = (type: string) =>
     `/money/new?type=${["sale", "purchase", "payment"].includes(type) ? type : "payment"}&party=${entry?.id ?? ""}`;
 
@@ -154,6 +160,8 @@ export default async function EntryPage({
                 ? `Остаток: ${quantity(entry.stock ?? 0)} ${entry.unit}`
                 : `Долг / аванс: ${money(entry.balance ?? 0)}`
               : "Заполните основные данные."}
+            {entry?.credit_limit != null && ` · лимит ${money(entry.credit_limit)}`}
+            {overLimit && <span className="tag reversed-tag">больше лимита</span>}
           </p>
         </div>
       </div>

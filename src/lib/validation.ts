@@ -45,5 +45,9 @@ export function directoryInput(kind: Directory, data: Record<string, unknown>) {
       sale_price: decimalInput(data.sale_price, 2),
       min_stock: decimalInput(data.min_stock, 3),
     };
-  return { name, phone: text(data.phone, 40), notes: text(data.notes, 2000) };
+  const base = { name, phone: text(data.phone, 40), notes: text(data.notes, 2000) };
+  if (kind === "suppliers") return base;
+  // Лимит долга: пусто — без лимита.
+  const limit = String(data.credit_limit ?? "").trim();
+  return { ...base, credit_limit: limit ? decimalInput(limit, 2) : null };
 }
