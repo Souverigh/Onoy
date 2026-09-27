@@ -26,7 +26,7 @@ const dateTime = (value: string) =>
 export default async function Money({
   searchParams,
 }: {
-  searchParams: Promise<{ created?: string; error?: string; duplicate?: string }>;
+  searchParams: Promise<{ created?: string; error?: string; duplicate?: string; sale?: string }>;
 }) {
   const { db, organizationId } = await getContext();
   const [customerResult, supplierResult, purchaseResult, saleResult, paymentResult, claimsResult] =
@@ -222,6 +222,14 @@ export default async function Money({
       {successText && (
         <p className="notice success" role="status">
           {successText}
+          {params.created === "sale" && params.sale && /^[a-f0-9-]{36}$/i.test(params.sale) && (
+            <>
+              {" "}
+              <Link className="text-button" href={`/money/send/${params.sale}`}>
+                Отправить клиенту в WhatsApp →
+              </Link>
+            </>
+          )}
         </p>
       )}
       {successText && params.duplicate === "1" && (

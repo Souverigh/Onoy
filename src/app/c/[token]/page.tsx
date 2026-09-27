@@ -11,11 +11,14 @@ type Statement = {
   balance: string;
   entries: {
     kind: "sale" | "payment";
+    id: string;
     amount: string;
     occurred_at: string;
     reversed: boolean;
     opening?: boolean;
     status?: string;
+    /** Есть сверенная накладная — можно открыть PDF. */
+    invoice?: boolean;
   }[];
 };
 
@@ -118,6 +121,14 @@ export default async function ClientPage({
                             ? "Заявка (ждёт)"
                             : "Оплата"}
                       {entry.reversed && <span className="tag reversed-tag">отменена</span>}
+                      {entry.invoice && !entry.reversed && !entry.opening && (
+                        <>
+                          {" "}
+                          <a className="text-button" href={`/c/${token}/invoice/${entry.id}`}>
+                            Накладная PDF
+                          </a>
+                        </>
+                      )}
                     </td>
                     <td>{money(entry.amount)}</td>
                   </tr>

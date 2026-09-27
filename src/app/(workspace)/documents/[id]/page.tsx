@@ -91,6 +91,7 @@ export default async function DocumentDetail({
     : null;
 
   let declaredTotal: number | null = null;
+  let saleId: string | null = null;
   let party: { id: string; name: string; aliases: string[]; kind: "customer" | "supplier" } | null = null;
   if (doc.kind === "purchase") {
     const row = await db
@@ -113,11 +114,12 @@ export default async function DocumentDetail({
   } else if (doc.kind === "sale") {
     const row = await db
       .from("sales")
-      .select("total,customer_id")
+      .select("id,total,customer_id")
       .eq("organization_id", organizationId)
       .eq("document_id", id)
       .maybeSingle();
     declaredTotal = row.data ? Number(row.data.total) : null;
+    saleId = row.data?.id ?? null;
     if (row.data) {
       const customer = await db
         .from("customers")
@@ -182,9 +184,16 @@ export default async function DocumentDetail({
           <h1>Документ</h1>
         </div>
         {(doc.kind === "purchase" || doc.kind === "sale") && (
-          <a className="button" href={`/documents/${doc.id}/pdf`}>
-            Скачать PDF
-          </a>
+          <div className="page-heading-actions">
+            {saleId && (
+              <Link className="button primary" href={`/money/send/${saleId}`}>
+                Отправить клиенту
+              </Link>
+            )}
+            <a className="button" href={`/documents/${doc.id}/pdf`}>
+              Скачать PDF
+            </a>
+          </div>
         )}
       </div>
       {params2.saved && (

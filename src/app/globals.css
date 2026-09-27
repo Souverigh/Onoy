@@ -1354,6 +1354,40 @@ div.photo-field {
 .share-link-panel h2 {
   margin-bottom: 10px;
 }
+.page-heading-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+/* Отправка накладной клиенту: превью текста и кнопки. */
+.send-invoice-panel {
+  display: grid;
+  gap: 14px;
+}
+.send-invoice-panel .notice {
+  margin: 0;
+}
+.send-invoice-preview {
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  font: inherit;
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.send-invoice {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.send-invoice .form-error {
+  flex-basis: 100%;
+  margin: 0;
+}
 .share-link-panel p {
   word-break: break-all;
   background: #f7f8f4;
@@ -2018,7 +2052,8 @@ tr.line-mismatch {
     gap: 10px;
     align-items: flex-start;
   }
-  .page-heading > .button {
+  .page-heading > .button,
+  .page-heading-actions .button {
     padding: 9px;
     font-size: 10px;
   }

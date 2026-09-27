@@ -1321,3 +1321,60 @@ test("close_day: one immutable snapshot per shop and day, no future days", async
   assert.equal((await db.query("select * from day_closures")).rows.length, 0);
   await assert.rejects(db.query("select close_day($1,'2026-09-21','{}')", [orgA]), /not_a_member/);
 });
+test("get_invoice_by_token: only a digitized, active sale of the link's own customer", async () => {
+  await owner();
+  const customer = (
+    await db.query("insert into customers(organization_id,name) values ($1,'Клиент с накладной') returning id", [orgA])
+  ).rows[0].id;
+  const other = (
+    await db.query("insert into customers(organization_id,name) values ($1,'Другой клиент') returning id", [orgA])
+  ).rows[0].id;
+  const newSale = async (party, key, status) => {
+    const doc = (
+      await db.query(
+        "insert into documents(organization_id,storage_path,file_hash,mime_type,kind,status) values ($1,$2,$2,'image/jpeg','sale',$3) returning id",
+        [orgA, "inv-" + key, status],
+      )
+    ).rows[0].id;
+    const sale = (
+      await db.query(
+        "insert into sales(organization_id,customer_id,total,status,idempotency_key,document_id) values ($1,$2,960.00,'posted',$3,$4) returning id",
+        [orgA, party, `cccccccc-7777-4000-8000-00000000000${key}`, doc],
+      )
+    ).rows[0].id;
+    return { doc, sale };
+  };
+  const ok = await newSale(customer, 1, "digitized");
+  await db.query(
+    "insert into document_lines(organization_id,document_id,n,name_raw,qty,unit,price) values ($1,$2,1,'Щит-4',4,'шт',240)",
+    [orgA, ok.doc],
+  );
+  const review = await newSale(customer, 2, "review");
+  const foreign = await newSale(other, 3, "digitized");
+  const reversed = await newSale(customer, 4, "digitized");
+  await user(a);
+  await db.query("select reverse_sale($1,$2,$3)", [orgA, reversed.sale, "Ошибка"]);
+  const token = (await db.query("select create_share_link($1,$2) as token", [orgA, customer])).rows[0].token;
+
+  await owner();
+  await db.exec("SET ROLE anon;");
+  const invoice = (await db.query("select get_invoice_by_token($1,$2) as data", [token, ok.sale])).rows[0].data;
+  assert.equal(invoice.customer_name, "Клиент с накладной");
+  assert.equal(invoice.total, "960.00");
+  assert.equal(invoice.lines.length, 1);
+  assert.equal(invoice.lines[0].sum, "960.00");
+  for (const sale of [review.sale, foreign.sale, reversed.sale])
+    await assert.rejects(db.query("select get_invoice_by_token($1,$2)", [token, sale]), /invalid_invoice/);
+
+  const statement = (await db.query("select get_statement_by_token($1) as data", [token])).rows[0].data;
+  const flags = Object.fromEntries(statement.entries.map((e) => [e.id, e.invoice]));
+  assert.equal(flags[ok.sale], true);
+  assert.equal(flags[review.sale], false);
+
+  await owner();
+  await user(a);
+  const linkId = (await db.query("select id from share_links where token=$1", [token])).rows[0].id;
+  await db.query("select revoke_share_link($1,$2)", [orgA, linkId]);
+  await owner();
+  await assert.rejects(db.query("select get_invoice_by_token($1,$2)", [token, ok.sale]), /invalid_token/);
+});

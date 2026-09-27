@@ -68,6 +68,7 @@ export default async function EntryPage({
     reversalComment: string | null;
     documentId: string | null;
     pending: boolean;
+    opening: boolean;
   };
   let history: HistoryRow[] = [];
   if (entry && isParty) {
@@ -103,6 +104,7 @@ export default async function EntryPage({
         reversalComment: r.reversal_comment,
         documentId: r.document_id,
         pending: false,
+        opening: Boolean(r.is_opening),
       })),
       ...(pays.data ?? []).map((p) => ({
         kind: "payment" as const,
@@ -114,6 +116,7 @@ export default async function EntryPage({
         reversalComment: p.reversal_comment,
         documentId: p.document_id,
         pending: p.status === "pending",
+        opening: Boolean(p.is_opening),
       })),
     ]
       .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime())
@@ -254,6 +257,11 @@ export default async function EntryPage({
                       }).format(new Date(row.occurred_at))}
                     </span>
                     <span className="history-actions">
+                      {row.kind === "sale" && !row.reversed && !row.opening && (
+                        <Link className="text-button" href={`/money/send/${row.id}`}>
+                          Отправить
+                        </Link>
+                      )}
                       {row.documentId && (
                         <Link className="text-button" href={`/documents/${row.documentId}`}>
                           Фото

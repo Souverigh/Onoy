@@ -193,7 +193,9 @@ export async function commitOperation(form: FormData) {
   const duplicate =
     documentId !== null && (await isDuplicatePhoto(db, organizationId, documentId));
   revalidatePath("/", "layout");
-  redirect(`/money?created=${operation}${duplicate ? "&duplicate=1" : ""}`);
+  // После продажи — ссылка «Отправить клиенту» (накладная и долг в WhatsApp).
+  const sent = operation === "sale" ? `&sale=${result.data}` : "";
+  redirect(`/money?created=${operation}${sent}${duplicate ? "&duplicate=1" : ""}`);
 }
 
 /**
