@@ -389,3 +389,44 @@ export async function dayClosure(
   }
   return data ? { closedAt: data.closed_at, snapshot: data.snapshot as DaySummary } : null;
 }
+
+/** Сколько прошлых дней проверяем на «не закрыт» — старее не напоминаем. */
+export const UNCLOSED_LOOKBACK_DAYS = 7;
+
+/**
+ * Прошлые дни (не сегодня) за последнюю неделю, в которые были записи, но
+ * день не закрыт — от нового к старому. Дни без записей (выходной) не в счёт.
+ */
+export async function unclosedDays(db: SupabaseClient, organizationId: string): Promise<string[]> {
+  const today = bishkekDate();
+  const todayStart = dayBounds(today).start;
+  const from = new Date(new Date(todayStart).getTime() - UNCLOSED_LOOKBACK_DAYS * 86400000);
+  const range = (table: "sales" | "purchases" | "payments") =>
+    db
+      .from(table)
+      .select("occurred_at")
+      .eq("organization_id", organizationId)
+      .eq("status", table === "payments" ? "confirmed" : "posted")
+      .eq("is_opening", false)
+      .gte("occurred_at", from.toISOString())
+      .lt("occurred_at", todayStart)
+      .range(0, 4999);
+  const [sales, purchases, payments, closures] = await Promise.all([
+    range("sales"),
+    range("purchases"),
+    range("payments"),
+    db
+      .from("day_closures")
+      .select("day")
+      .eq("organization_id", organizationId)
+      .gte("day", bishkekDate(from)),
+  ]);
+  if (sales.error || purchases.error || payments.error || closures.error) return [];
+  const closed = new Set((closures.data ?? []).map((row) => row.day as string));
+  const active = new Set(
+    [...(sales.data ?? []), ...(purchases.data ?? []), ...(payments.data ?? [])].map((row) =>
+      bishkekDate(row.occurred_at),
+    ),
+  );
+  return [...active].filter((day) => !closed.has(day)).sort().reverse();
+}

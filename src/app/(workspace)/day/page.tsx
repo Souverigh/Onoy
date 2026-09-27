@@ -10,8 +10,10 @@ import {
   dayClosure,
   dayHistory,
   type PartyAmount,
+  unclosedDays,
 } from "@/lib/day-summary";
 import { closeDay } from "./actions";
+import { UnclosedDays } from "@/components/unclosed-days";
 
 const HISTORY_DAYS = 14;
 
@@ -45,7 +47,7 @@ export default async function DayClose({
   const historyFrom = new Date(
     new Date(dayBounds(today).start).getTime() - (HISTORY_DAYS - 1) * 86400000,
   );
-  const [closure, history, closedDays, pending] = await Promise.all([
+  const [closure, history, closedDays, pending, unclosed] = await Promise.all([
     dayClosure(db, organizationId, date),
     dayHistory(db, organizationId, HISTORY_DAYS),
     db
@@ -58,6 +60,7 @@ export default async function DayClose({
       .select("id", { count: "exact", head: true })
       .eq("organization_id", organizationId)
       .eq("status", "pending"),
+    unclosedDays(db, organizationId),
   ]);
   // Закрытый день — снимок на момент закрытия; открытый — считаем сейчас.
   const summary = closure?.snapshot ?? (await computeDaySummary(db, organizationId, date));
@@ -131,6 +134,8 @@ export default async function DayClose({
         )}
       </form>
 
+      {/* Открытый сейчас день и так помечен «День не закрыт» ниже. */}
+      <UnclosedDays days={unclosed.filter((day) => day !== date)} />
       {closed && (
         <p className="notice success" role="status">
           День закрыт. Итоги сохранены — PDF можно скачать и отправить.

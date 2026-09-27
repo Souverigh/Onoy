@@ -1285,6 +1285,10 @@ div.photo-field {
 }
 
 /* Заявки, сторно, ссылка клиента */
+.unclosed-days a {
+  color: inherit;
+  text-decoration: underline;
+}
 .claims-notice {
   display: block;
   background: #fff4d8;
