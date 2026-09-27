@@ -61,7 +61,7 @@ export async function periodReport(
   const [sales, purchases, payments, customers, aging] = await Promise.all([
     rows("sales", "total,paid_immediately,occurred_at"),
     rows("purchases", "total,occurred_at"),
-    rows("payments", "amount,direction,occurred_at"),
+    rows("payments", "amount,direction,occurred_at,kind"),
     db
       .from("customer_balances")
       .select("id,name,balance")
@@ -101,7 +101,13 @@ export async function periodReport(
     const t = bucket(bishkekDate(r.occurred_at));
     if (t) t.purchased += cents(r.total);
   }
-  for (const r of (payments.data ?? []) as unknown as { amount: string; direction: string; occurred_at: string }[]) {
+  for (const r of (payments.data ?? []) as unknown as {
+    amount: string;
+    direction: string;
+    occurred_at: string;
+    kind: string;
+  }[]) {
+    if (r.kind !== "payment") continue; // скидки и возвраты — не деньги
     const date = bishkekDate(r.occurred_at);
     const t = bucket(date);
     if (!t) continue;

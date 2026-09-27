@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { paymentLabel, type PaymentKind } from "./entry-labels";
 
 export function bishkekToday() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -19,15 +20,18 @@ function toIso(date: string) {
 
 export type StatementEntry = {
   kind: "sale" | "purchase" | "payment";
+  /** Для kind="payment": оплата, скидка или возврат. */
+  paymentKind?: PaymentKind;
   amount: number;
   occurred_at: string;
   reversed: boolean;
   /** Долг или аванс, перенесённый из бумажной тетради. */
   opening: boolean;
 };
-export function statementEntryLabel(entry: Pick<StatementEntry, "kind" | "opening">) {
-  if (entry.opening) return entry.kind === "payment" ? "Аванс из тетради" : "Долг из тетради";
-  return entry.kind === "sale" ? "Продажа" : entry.kind === "purchase" ? "Приход" : "Оплата";
+export function statementEntryLabel(entry: Pick<StatementEntry, "kind" | "opening" | "paymentKind">) {
+  if (entry.kind === "payment") return paymentLabel(entry.paymentKind, { opening: entry.opening });
+  if (entry.opening) return "Долг из тетради";
+  return entry.kind === "sale" ? "Продажа" : "Приход";
 }
 
 export type StatementData = {
@@ -63,11 +67,21 @@ export async function getStatementData(
   if (party.error || !party.data) return null;
 
   const paymentDirection = kind === "customers" ? "incoming" : "outgoing";
+  // Продажа за наличные долг не меняет (как в customer_balances) — в акт не идёт.
+  const docs = () => {
+    const q = db
+      .from(docTable)
+      .select("id,total,occurred_at,reversed_at,is_opening")
+      .eq("organization_id", organizationId)
+      .eq(partyColumn, id)
+      .eq("status", "posted");
+    return kind === "customers" ? q.eq("paid_immediately", false) : q;
+  };
   const [docsBefore, paymentsBefore, docsInPeriod, paymentsInPeriod] = await Promise.all([
-    db.from(docTable).select("total,reversed_at").eq("organization_id", organizationId).eq(partyColumn, id).eq("status", "posted").lt("occurred_at", fromIso),
+    docs().lt("occurred_at", fromIso),
     db.from("payments").select("amount,reversed_at").eq("organization_id", organizationId).eq(partyColumn, id).eq("direction", paymentDirection).eq("status", "confirmed").lt("occurred_at", fromIso),
-    db.from(docTable).select("id,total,occurred_at,reversed_at,is_opening").eq("organization_id", organizationId).eq(partyColumn, id).eq("status", "posted").gte("occurred_at", fromIso).lt("occurred_at", toIsoEnd).order("occurred_at"),
-    db.from("payments").select("id,amount,occurred_at,reversed_at,status,is_opening").eq("organization_id", organizationId).eq(partyColumn, id).eq("direction", paymentDirection).neq("status", "rejected").gte("occurred_at", fromIso).lt("occurred_at", toIsoEnd).order("occurred_at"),
+    docs().gte("occurred_at", fromIso).lt("occurred_at", toIsoEnd).order("occurred_at"),
+    db.from("payments").select("id,amount,occurred_at,reversed_at,status,is_opening,kind").eq("organization_id", organizationId).eq(partyColumn, id).eq("direction", paymentDirection).neq("status", "rejected").gte("occurred_at", fromIso).lt("occurred_at", toIsoEnd).order("occurred_at"),
   ]);
 
   const sum = (rows: { amount?: string; total?: string; reversed_at: string | null }[]) =>
@@ -86,6 +100,7 @@ export async function getStatementData(
       .filter((p) => p.status !== "pending")
       .map((p) => ({
         kind: "payment" as const,
+        paymentKind: p.kind as PaymentKind,
         amount: -Number(p.amount),
         occurred_at: p.occurred_at,
         reversed: Boolean(p.reversed_at),

@@ -9,6 +9,7 @@ import { money, quantity } from "@/lib/format";
 import { creditLimitExceeded } from "@/lib/credit-limit";
 import { createLink, revokeLink, setPromisedDate } from "@/app/(workspace)/[kind]/actions";
 import { dayMonth, promiseStatus } from "@/lib/promise";
+import { paymentLabel } from "@/lib/entry-labels";
 import { bishkekDate } from "@/lib/day-summary";
 
 type ShareLink = { id: string; token: string; revoked_at: string | null };
@@ -32,12 +33,13 @@ export default async function EntryPage({
     revoked?: string;
     reversed?: string;
     promised?: string;
+    adjusted?: string;
   }>;
 }) {
   const { kind, id } = await params;
   if (!isDirectory(kind)) notFound();
   const { db, organizationId } = await getContext();
-  const { error, saved, linked, revoked, reversed, promised } = await searchParams;
+  const { error, saved, linked, revoked, reversed, promised, adjusted } = await searchParams;
   let entry: Entry | undefined;
   if (id !== "new") {
     if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
@@ -88,6 +90,8 @@ export default async function EntryPage({
     documentId: string | null;
     pending: boolean;
     opening: boolean;
+    /** Комментарий скидки/возврата. */
+    note?: string | null;
   };
   let history: HistoryRow[] = [];
   if (entry && isParty) {
@@ -104,7 +108,7 @@ export default async function EntryPage({
         .limit(20),
       db
         .from("payments")
-        .select("id,amount,occurred_at,reversed_at,reversal_comment,document_id,status,is_opening")
+        .select("id,amount,occurred_at,reversed_at,reversal_comment,document_id,status,is_opening,kind,note")
         .eq("organization_id", organizationId)
         .eq(partyColumn, entry.id)
         .eq("direction", kind === "customers" ? "incoming" : "outgoing")
@@ -128,7 +132,8 @@ export default async function EntryPage({
       ...(pays.data ?? []).map((p) => ({
         kind: "payment" as const,
         id: p.id,
-        label: p.is_opening ? "Аванс из тетради" : p.status === "pending" ? "Заявка на оплату" : "Оплата",
+        label: paymentLabel(p.kind, { opening: p.is_opening, pending: p.status === "pending" }),
+        note: p.note,
         amount: p.amount,
         occurred_at: p.occurred_at,
         reversed: Boolean(p.reversed_at),
@@ -222,6 +227,11 @@ export default async function EntryPage({
           Не удалось отменить запись. Возможно, она уже отменена.
         </p>
       )}
+      {adjusted && (
+        <p className="notice success" role="status">
+          {adjusted === "return" ? "Возврат товара записан" : "Скидка записана"} — долг уменьшен.
+        </p>
+      )}
       {promised && (
         <p className="notice success" role="status">
           {promised === "1" ? "Обещанная дата сохранена." : "Обещанная дата убрана."}
@@ -252,6 +262,9 @@ export default async function EntryPage({
           </Link>
           <Link className="button" href={newOperationHref("payment")}>
             Оплата
+          </Link>
+          <Link className="button" href={`/money/adjustment?party=${entry.id}`}>
+            Скидка / возврат
           </Link>
         </section>
       )}
@@ -384,6 +397,7 @@ export default async function EntryPage({
                       )}
                     </span>
                   </div>
+                  {row.note && <p className="history-comment muted">{row.note}</p>}
                   {row.reversed && row.reversalComment && (
                     <p className="history-comment muted">Причина отмены: {row.reversalComment}</p>
                   )}

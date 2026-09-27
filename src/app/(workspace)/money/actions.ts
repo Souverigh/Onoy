@@ -17,6 +17,7 @@ import {
 import type { InvoiceResult } from "@/lib/adre/types";
 import { bestMatches } from "@/lib/match";
 import { bishkekDateTime, receiptDateTime } from "@/lib/receipt-date";
+import { isAdjustmentKind } from "@/lib/entry-labels";
 
 type Operation = "purchase" | "sale" | "payment";
 const uuidPattern =
@@ -437,4 +438,46 @@ export async function reverseOperation(form: FormData) {
   if (result.error) redirect(back ? `${back}?error=reversal` : "/money?error=reversal");
   revalidatePath("/", "layout");
   redirect(back ? `${back}?reversed=${kind}` : "/money?created=reversed");
+}
+
+/** Скидка или возврат товара — уменьшает долг, только с комментарием. */
+export async function commitAdjustment(form: FormData) {
+  const [side, party] = String(form.get("party") ?? "").split(":");
+  const kind = String(form.get("kind") ?? "");
+  const note = String(form.get("note") ?? "").trim();
+  const idempotencyKey = String(form.get("idempotency_key") ?? "");
+  const back = `/money/adjustment?party=${uuidPattern.test(party ?? "") ? party : ""}`;
+  if (
+    (side !== "customers" && side !== "suppliers") ||
+    !uuidPattern.test(party ?? "") ||
+    !isAdjustmentKind(kind) ||
+    !uuidPattern.test(idempotencyKey)
+  )
+    redirect(`${back}&error=invalid`);
+  if (!note || note.length > 500) redirect(`${back}&error=note`);
+  let amount: string;
+  try {
+    amount = decimalInput(form.get("amount"), 2);
+  } catch {
+    redirect(`${back}&error=invalid`);
+  }
+  if (Number(amount) <= 0) redirect(`${back}&error=invalid`);
+  const { db, organizationId } = await getContext();
+  const result = await db.rpc("commit_adjustment", {
+    p_org: organizationId,
+    p_direction: side === "customers" ? "incoming" : "outgoing",
+    p_party: party,
+    p_kind: kind,
+    p_amount: amount,
+    p_note: note,
+    p_idempotency_key: idempotencyKey,
+  });
+  if (result.error) {
+    const message = result.error.message;
+    redirect(
+      `${back}&error=${message.includes("idempotency_conflict") ? "retry" : message.includes("invalid_note") ? "note" : "invalid"}`,
+    );
+  }
+  revalidatePath("/", "layout");
+  redirect(`/${side}/${party}?adjusted=${kind}`);
 }

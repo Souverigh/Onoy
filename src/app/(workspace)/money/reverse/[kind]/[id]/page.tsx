@@ -5,6 +5,7 @@ import { money } from "@/lib/format";
 import { reverseOperation } from "@/app/(workspace)/money/actions";
 import { safeBackPath } from "@/lib/back-path";
 import { Submit } from "@/components/submit";
+import { paymentLabel, type PaymentKind } from "@/lib/entry-labels";
 
 type Kind = "purchase" | "sale" | "payment";
 const tables: Record<Kind, { table: string; amountField: string; partyTable: string; partyField: string; label: string }> = {
@@ -64,7 +65,9 @@ export default async function ReverseOperation({
             ? kind === "payment"
               ? "аванс из тетради"
               : "долг из тетради"
-            : meta.label.toLowerCase()}
+            : kind === "payment"
+              ? paymentLabel(data.kind as PaymentKind).toLowerCase()
+              : meta.label.toLowerCase()}
         </h1>
       </div>
       <section className="panel simple-operation-panel">

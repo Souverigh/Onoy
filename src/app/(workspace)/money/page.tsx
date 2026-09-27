@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { paymentLabelWithSide, type PaymentKind } from "@/lib/entry-labels";
 import { getContext } from "@/lib/context";
 import { money } from "@/lib/format";
 
@@ -11,6 +12,7 @@ type Activity = {
   amount: string;
   occurred_at: string;
   direction?: "incoming" | "outgoing";
+  paymentKind?: PaymentKind;
   reversed: boolean;
   opening?: boolean;
   reversalComment?: string;
@@ -59,7 +61,7 @@ export default async function Money({
         .limit(8),
       db
         .from("payments")
-        .select("id,customer_id,supplier_id,direction,amount,occurred_at,reversed_at,reversal_comment,is_opening")
+        .select("id,customer_id,supplier_id,direction,amount,occurred_at,reversed_at,reversal_comment,is_opening,kind")
         .eq("organization_id", organizationId)
         .eq("status", "confirmed")
         .order("occurred_at", { ascending: false })
@@ -110,6 +112,7 @@ export default async function Money({
     reversed_at: string | null;
     is_opening?: boolean;
     reversal_comment: string | null;
+    kind: PaymentKind;
   }[];
   const customerIds = [
     ...new Set([
@@ -188,6 +191,7 @@ export default async function Money({
       amount: row.amount,
       occurred_at: row.occurred_at,
       direction: row.direction,
+      paymentKind: row.kind,
       reversed: Boolean(row.reversed_at),
       reversalComment: row.reversal_comment ?? undefined,
       opening: Boolean(row.is_opening),
@@ -285,6 +289,13 @@ export default async function Money({
             <small>От клиента или поставщику</small>
           </div>
         </Link>
+        <Link className="operation-action" href="/money/adjustment">
+          <span>%</span>
+          <div>
+            <strong>Скидка / возврат</strong>
+            <small>Уменьшить долг, с комментарием</small>
+          </div>
+        </Link>
       </section>
       <div className="money-columns">
         <section className="panel">
@@ -370,9 +381,7 @@ export default async function Money({
                           ? "Приход"
                           : activity.kind === "sale"
                             ? "Продажа"
-                            : activity.direction === "incoming"
-                              ? "Получена оплата"
-                              : "Оплата поставщику"}
+                            : paymentLabelWithSide(activity.paymentKind, activity.direction ?? "incoming")}
                       {activity.reversed && (
                         <span className="tag reversed-tag">отменена</span>
                       )}

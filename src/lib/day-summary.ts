@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { paymentLabelWithSide } from "./entry-labels";
 
 /** День по Бишкеку (YYYY-MM-DD): сменяется в 00:00 UTC+6. */
 export function bishkekDate(value: string | Date = new Date()) {
@@ -67,6 +68,7 @@ export async function computeDaySummary(
         .select("customer_id,direction,amount,bank_reference")
         .eq("organization_id", organizationId)
         .eq("status", "confirmed")
+        .eq("kind", "payment") // скидки и возвраты — не деньги
         .is("reversed_at", null)
         .eq("is_opening", false)
         .gte("occurred_at", start)
@@ -223,7 +225,7 @@ export async function afterClosing(
       .or(`created_at.gt.${since},reversed_at.gt.${since}`),
     db
       .from("payments")
-      .select("customer_id,supplier_id,direction,amount,created_at,reversed_at,status")
+      .select("customer_id,supplier_id,direction,amount,created_at,reversed_at,status,kind")
       .eq("organization_id", organizationId)
       .eq("status", "confirmed")
       .eq("is_opening", false)
@@ -280,7 +282,12 @@ export async function afterClosing(
     })),
     ...(payments.data ?? []).map((r) => ({
       kind: "payment" as const,
-      label: r.direction === "incoming" ? "Оплата от клиента" : "Оплата поставщику",
+      label:
+        r.kind === "payment"
+          ? r.direction === "incoming"
+            ? "Оплата от клиента"
+            : "Оплата поставщику"
+          : paymentLabelWithSide(r.kind, r.direction),
       party: names.get(r.customer_id ?? r.supplier_id ?? "") ?? "",
       amount: Number(r.amount),
       at: r.created_at,
@@ -332,6 +339,7 @@ export async function dayHistory(
       .select("amount,occurred_at")
       .eq("organization_id", organizationId)
       .eq("status", "confirmed")
+      .eq("kind", "payment")
       .eq("direction", "incoming")
       .is("reversed_at", null)
       .eq("is_opening", false)

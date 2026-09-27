@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Sheet } from "./xlsx";
+import { paymentLabelWithSide, type PaymentKind } from "./entry-labels";
 
 /** Таблицы выгрузки (ТЗ: «экспорт в Excel — отдельные таблицы и вся база одной кнопкой»). */
 export const EXPORT_TABLES = {
@@ -153,27 +154,32 @@ export async function exportSheets(
       occurred_at: string; direction: string; customer_id: string | null; supplier_id: string | null;
       amount: string; status: string; bank_reference: string | null; claim_comment: string | null;
       is_opening: boolean; reversed_at: string | null; reversal_comment: string | null;
-    }>(db, "payments", "id,occurred_at,direction,customer_id,supplier_id,amount,status,bank_reference,claim_comment,is_opening,reversed_at,reversal_comment", organizationId, "occurred_at");
+      kind: PaymentKind; note: string | null;
+    }>(db, "payments", "id,occurred_at,direction,customer_id,supplier_id,amount,status,bank_reference,claim_comment,is_opening,reversed_at,reversal_comment,kind,note", organizationId, "occurred_at");
     const statusLabel: Record<string, string> = { confirmed: "подтверждена", pending: "заявка ждёт", rejected: "отклонена" };
     sheets.push({
       name: EXPORT_TABLES.payments,
       columns: [
         { header: "Дата", width: 18, kind: "date" },
-        { header: "Кто платил", width: 22 },
+        { header: "Вид", width: 26 },
         { header: "Клиент / поставщик", width: 30 },
         { header: "Сумма, сом", width: 16, kind: "money" },
         { header: "Статус", width: 16 },
         { header: "Номер перевода", width: 20 },
-        { header: "Комментарий клиента", width: 30 },
+        { header: "Комментарий", width: 36 },
         { header: "Аванс из тетради", width: 12 },
         { header: "Отменена", width: 18, kind: "date" },
         { header: "Причина отмены", width: 36 },
       ],
       rows: rows.map((r) => [
         date(r.occurred_at),
-        r.direction === "incoming" ? "клиент → магазин" : "магазин → поставщик",
+        r.kind === "payment"
+          ? r.direction === "incoming"
+            ? "оплата: клиент → магазин"
+            : "оплата: магазин → поставщик"
+          : paymentLabelWithSide(r.kind, r.direction as "incoming" | "outgoing").toLowerCase(),
         r.customer_id ? customerName.get(r.customer_id) ?? "" : r.supplier_id ? supplierName.get(r.supplier_id) ?? "" : "",
-        num(r.amount), statusLabel[r.status] ?? r.status, r.bank_reference, r.claim_comment, yes(r.is_opening),
+        num(r.amount), statusLabel[r.status] ?? r.status, r.bank_reference, r.note ?? r.claim_comment, yes(r.is_opening),
         date(r.reversed_at), r.reversal_comment,
       ]),
     });

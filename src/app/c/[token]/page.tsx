@@ -3,6 +3,7 @@ import { DOCUMENT_ACCEPT } from "@/lib/pages";
 import { createAnonClient } from "@/lib/supabase/server";
 import { money } from "@/lib/format";
 import { dayMonth } from "@/lib/promise";
+import { paymentLabel, type PaymentKind } from "@/lib/entry-labels";
 import { submitClaim } from "./actions";
 
 type Statement = {
@@ -21,6 +22,8 @@ type Statement = {
     status?: string;
     /** Есть сверенная накладная — можно открыть PDF. */
     invoice?: boolean;
+    payment_kind?: PaymentKind;
+    note?: string | null;
   }[];
 };
 
@@ -124,7 +127,8 @@ export default async function ClientPage({
                           ? "Продажа"
                           : entry.status === "pending"
                             ? "Заявка (ждёт)"
-                            : "Оплата"}
+                            : paymentLabel(entry.payment_kind)}
+                      {entry.note && <small className="muted"> — {entry.note}</small>}
                       {entry.reversed && <span className="tag reversed-tag">отменена</span>}
                       {entry.invoice && !entry.reversed && !entry.opening && (
                         <>

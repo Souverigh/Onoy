@@ -1511,3 +1511,59 @@ test("customer_debt_aging: payments cover the oldest sales first, the rest ages 
   await user(b);
   assert.equal((await db.query("select * from customer_debt_aging")).rows.length, 0);
 });
+test("commit_adjustment: discount/return lower the debt like a payment, need a note, reversible, per shop", async () => {
+  await owner();
+  const customer = (
+    await db.query("insert into customers(organization_id,name) values ($1,'Клиент со скидкой') returning id", [orgA])
+  ).rows[0].id;
+  const supplier = (
+    await db.query("insert into suppliers(organization_id,name) values ($1,'Поставщик с возвратом') returning id", [orgA])
+  ).rows[0].id;
+  await db.query(
+    "insert into sales(organization_id,customer_id,total,status,idempotency_key) values ($1,$2,5000.00,'posted','ffffffff-1111-4000-8000-000000000001')",
+    [orgA, customer],
+  );
+  await db.query(
+    "insert into purchases(organization_id,supplier_id,total,status,idempotency_key) values ($1,$2,8000.00,'posted','ffffffff-1111-4000-8000-000000000002')",
+    [orgA, supplier],
+  );
+  await user(a);
+  const adjust = (direction, party, kind, amount, note, key) =>
+    db.query("select commit_adjustment($1,$2,$3,$4,$5,$6,$7) as id", [orgA, direction, party, kind, amount, note, key]);
+  const discount = (await adjust("incoming", customer, "discount", "500.00", "Постоянному клиенту", "ffffffff-1111-4000-8000-000000000003")).rows[0].id;
+  await adjust("outgoing", supplier, "return", "1200.00", "Вернули 2 автомата", "ffffffff-1111-4000-8000-000000000004");
+  // Повтор — та же запись.
+  assert.equal(
+    (await adjust("incoming", customer, "discount", "500.00", "Постоянному клиенту", "ffffffff-1111-4000-8000-000000000003")).rows[0].id,
+    discount,
+  );
+  const balance = async (view, id) => (await db.query(`select balance from ${view} where id=$1`, [id])).rows[0].balance;
+  assert.equal(await balance("customer_balances", customer), "4500.00");
+  assert.equal(await balance("supplier_balances", supplier), "6800.00");
+  assert.equal(
+    (await db.query("select due_0_30 from customer_debt_aging where customer_id=$1", [customer])).rows[0].due_0_30,
+    "4500.00",
+  );
+  await assert.rejects(adjust("incoming", customer, "discount", "100.00", "  ", "ffffffff-1111-4000-8000-000000000005"), /invalid_note/);
+  await assert.rejects(adjust("incoming", customer, "gift", "100.00", "x", "ffffffff-1111-4000-8000-000000000006"), /invalid_adjustment/);
+  await assert.rejects(adjust("incoming", supplier, "discount", "100.00", "x", "ffffffff-1111-4000-8000-000000000007"), /invalid_party/);
+
+  await db.query("select reverse_payment($1,$2,$3)", [orgA, discount, "Ошиблись"]);
+  assert.equal(await balance("customer_balances", customer), "5000.00");
+
+  await owner();
+  const row = (await db.query("select kind,note from payments where id=$1", [discount])).rows[0];
+  assert.deepEqual(row, { kind: "discount", note: "Постоянному клиенту" });
+  await assert.rejects(
+    db.query(
+      "insert into payments(organization_id,customer_id,direction,amount,status,kind,idempotency_key) values ($1,$2,'incoming',1,'confirmed','discount','ffffffff-1111-4000-8000-000000000008')",
+      [orgA, customer],
+    ),
+    /payments_adjustment_note/,
+  );
+  await user(b);
+  await assert.rejects(
+    db.query("select commit_adjustment($1,'incoming',$2,'discount','1.00','x','ffffffff-1111-4000-8000-000000000009')", [orgA, customer]),
+    /not_a_member/,
+  );
+});
