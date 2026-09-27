@@ -1,6 +1,7 @@
 import { getContext } from "@/lib/context";
 import { Submit } from "@/components/submit";
 import { updateShop } from "./actions";
+import { EXPORT_TABLES } from "@/lib/export-data";
 
 export default async function Settings({
   searchParams,
@@ -65,6 +66,22 @@ export default async function Settings({
             <Submit>Сохранить</Submit>
           </div>
         </form>
+      </section>
+      <section className="panel export-panel">
+        <h2>Выгрузка в Excel</h2>
+        <p className="muted">
+          Все записи магазина, включая отменённые (с пометкой). Даты — по Бишкеку, суммы — числами.
+        </p>
+        <a className="button primary" href="/export">
+          Скачать всю базу
+        </a>
+        <div className="export-tables">
+          {Object.entries(EXPORT_TABLES).map(([key, label]) => (
+            <a key={key} className="text-button" href={`/export?table=${key}`}>
+              {label}
+            </a>
+          ))}
+        </div>
       </section>
       <section className="panel">
         <dl className="details">

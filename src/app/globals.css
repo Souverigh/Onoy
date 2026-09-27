@@ -2614,3 +2614,19 @@ tr.line-mismatch {
   text-align: center;
   white-space: nowrap;
 }
+
+/* Выгрузка в Excel (настройки). */
+.export-panel {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+.export-panel h2,
+.export-panel p {
+  margin: 0;
+}
+.export-tables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
