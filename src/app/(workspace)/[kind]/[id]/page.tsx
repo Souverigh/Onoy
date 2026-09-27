@@ -7,9 +7,18 @@ import { directoryMeta, type Entry } from "@/lib/directory";
 import { EntryForm } from "@/components/entry-form";
 import { money, quantity } from "@/lib/format";
 import { creditLimitExceeded } from "@/lib/credit-limit";
-import { createLink, revokeLink } from "@/app/(workspace)/[kind]/actions";
+import { createLink, revokeLink, setPromisedDate } from "@/app/(workspace)/[kind]/actions";
+import { dayMonth, promiseStatus } from "@/lib/promise";
+import { bishkekDate } from "@/lib/day-summary";
 
 type ShareLink = { id: string; token: string; revoked_at: string | null };
+type Aging = {
+  due_0_30: string;
+  due_31_60: string;
+  due_61_90: string;
+  due_over_90: string;
+  oldest_days: number;
+};
 
 export default async function EntryPage({
   params,
@@ -22,12 +31,13 @@ export default async function EntryPage({
     linked?: string;
     revoked?: string;
     reversed?: string;
+    promised?: string;
   }>;
 }) {
   const { kind, id } = await params;
   if (!isDirectory(kind)) notFound();
   const { db, organizationId } = await getContext();
-  const { error, saved, linked, revoked, reversed } = await searchParams;
+  const { error, saved, linked, revoked, reversed, promised } = await searchParams;
   let entry: Entry | undefined;
   if (id !== "new") {
     if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
@@ -45,7 +55,15 @@ export default async function EntryPage({
   const isParty = kind === "customers" || kind === "suppliers";
   let activeLink: ShareLink | undefined;
   let origin = "";
+  let aging: Aging | null = null;
   if (entry && kind === "customers") {
+    const agingResult = await db
+      .from("customer_debt_aging")
+      .select("due_0_30,due_31_60,due_61_90,due_over_90,oldest_days")
+      .eq("organization_id", organizationId)
+      .eq("customer_id", entry.id)
+      .maybeSingle();
+    aging = (agingResult.data as Aging | null) ?? null;
     const links = await db
       .from("share_links")
       .select("id,token,revoked_at")
@@ -132,11 +150,22 @@ export default async function EntryPage({
   const newOperationHref = (type: string) =>
     `/money/new?type=${["sale", "purchase", "payment"].includes(type) ? type : "payment"}&party=${entry?.id ?? ""}`;
 
+  const today = bishkekDate();
+  const promise =
+    entry && kind === "customers"
+      ? promiseStatus(entry.promised_date, Number(entry.balance ?? 0), today)
+      : ({ kind: "none" } as const);
+  const promiseLine =
+    promise.kind === "broken"
+      ? ` Вы обещали оплатить до ${dayMonth(promise.date)}.`
+      : promise.kind === "upcoming"
+        ? ` Срок оплаты — ${dayMonth(promise.date)}.`
+        : "";
   const reminderText =
     entry && kind === "customers" && activeLink
-      ? `Здравствуйте! Ваш долг в ${money(entry.balance ?? 0)}. Посмотреть и оплатить: ${origin}/c/${activeLink.token}`
+      ? `Здравствуйте! Ваш долг в ${money(entry.balance ?? 0)}.${promiseLine} Посмотреть и оплатить: ${origin}/c/${activeLink.token}`
       : entry && kind === "customers"
-        ? `Здравствуйте! Ваш долг: ${money(entry.balance ?? 0)}.`
+        ? `Здравствуйте! Ваш долг: ${money(entry.balance ?? 0)}.${promiseLine}`
         : "";
   const waHref =
     entry?.phone && reminderText
@@ -193,6 +222,16 @@ export default async function EntryPage({
           Не удалось отменить запись. Возможно, она уже отменена.
         </p>
       )}
+      {promised && (
+        <p className="notice success" role="status">
+          {promised === "1" ? "Обещанная дата сохранена." : "Обещанная дата убрана."}
+        </p>
+      )}
+      {error === "promise" && (
+        <p className="form-error" role="alert">
+          Дата должна быть не раньше сегодняшней и не дальше чем через год.
+        </p>
+      )}
       {error === "link" && (
         <p className="form-error" role="alert">
           Не удалось выполнить действие со ссылкой.
@@ -214,6 +253,60 @@ export default async function EntryPage({
           <Link className="button" href={newOperationHref("payment")}>
             Оплата
           </Link>
+        </section>
+      )}
+      {entry && kind === "customers" && (
+        <section className="panel debt-terms">
+          <h2>Срок и давность долга</h2>
+          {promise.kind === "broken" ? (
+            <p className="form-error">
+              Обещал оплатить до {dayMonth(promise.date)} — прошло {promise.daysLate} дн.
+            </p>
+          ) : promise.kind === "upcoming" ? (
+            <p>
+              Обещал оплатить до <strong>{dayMonth(promise.date)}</strong>
+              {promise.daysLeft === 0 ? " — сегодня" : ` — через ${promise.daysLeft} дн.`}
+            </p>
+          ) : (
+            <p className="muted">Обещанной даты нет.</p>
+          )}
+          <form action={setPromisedDate} className="promise-form">
+            <input type="hidden" name="customer_id" value={entry.id} />
+            <label>
+              Обещал оплатить до
+              <input
+                type="date"
+                name="promised_date"
+                min={today}
+                defaultValue={entry.promised_date ?? ""}
+              />
+            </label>
+            <button className="button" type="submit">
+              Сохранить
+            </button>
+          </form>
+          {aging ? (
+            <dl className="aging">
+              <div>
+                <dt>до 30 дней</dt>
+                <dd>{money(aging.due_0_30)}</dd>
+              </div>
+              <div className={Number(aging.due_31_60) > 0 ? "aging-late" : ""}>
+                <dt>31–60 дней</dt>
+                <dd>{money(aging.due_31_60)}</dd>
+              </div>
+              <div className={Number(aging.due_61_90) > 0 ? "aging-late" : ""}>
+                <dt>61–90 дней</dt>
+                <dd>{money(aging.due_61_90)}</dd>
+              </div>
+              <div className={Number(aging.due_over_90) > 0 ? "aging-late" : ""}>
+                <dt>больше 90 дней</dt>
+                <dd>{money(aging.due_over_90)}</dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="muted">Долга нет — давность не считается.</p>
+          )}
         </section>
       )}
       {entry && kind === "customers" && (

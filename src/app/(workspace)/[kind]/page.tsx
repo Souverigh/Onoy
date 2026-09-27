@@ -5,20 +5,35 @@ import { isDirectory } from "@/lib/validation";
 import { directoryMeta, type Entry } from "@/lib/directory";
 import { money, quantity, decimalLessThan } from "@/lib/format";
 import { Icon } from "@/components/icon";
+import { OVERDUE_THRESHOLDS, overdueThreshold, promiseStatus } from "@/lib/promise";
+import { bishkekDate } from "@/lib/day-summary";
 export default async function DirectoryPage({
   params,
   searchParams,
 }: {
   params: Promise<{ kind: string }>;
-  searchParams: Promise<{ q?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; overdue?: string }>;
 }) {
   const { kind } = await params;
   if (!isDirectory(kind)) notFound();
   const meta = directoryMeta[kind];
-  const { q = "", page = "1" } = await searchParams;
+  const { q = "", page = "1", overdue: rawOverdue } = await searchParams;
+  // «Просрочено 30 / 60 / 90» — клиенты, у которых неоплачен долг старше N дней.
+  const overdue = kind === "customers" ? overdueThreshold(rawOverdue) : null;
   const current = Math.max(1, Math.min(10000, parseInt(page) || 1));
   const query = q.trim().slice(0, 100);
   const { db, organizationId } = await getContext();
+  let overdueIds: string[] | null = null;
+  if (overdue) {
+    const late = await db
+      .from("customer_debt_aging")
+      .select("customer_id")
+      .eq("organization_id", organizationId)
+      .gt("oldest_days", overdue)
+      .range(0, 4999);
+    if (late.error) throw new Error("Не удалось загрузить просроченные долги");
+    overdueIds = (late.data ?? []).map((row) => row.customer_id as string);
+  }
   let request = db
     .from(meta.view)
     .select("*", { count: "exact" })
@@ -26,6 +41,8 @@ export default async function DirectoryPage({
     .order("name")
     .order("id")
     .range((current - 1) * 25, current * 25 - 1);
+  if (overdueIds)
+    request = request.in("id", overdueIds.length ? overdueIds : ["00000000-0000-0000-0000-000000000000"]);
   if (query)
     request = request.ilike(
       "name",
@@ -34,6 +51,25 @@ export default async function DirectoryPage({
   const { data, error, count } = await request;
   if (error) throw new Error("Не удалось загрузить справочник");
   const entries = (data ?? []) as Entry[];
+  // Давность долга для строк этой страницы — одним запросом.
+  const oldestDays = new Map<string, number>();
+  if (kind === "customers" && entries.length) {
+    const aging = await db
+      .from("customer_debt_aging")
+      .select("customer_id,oldest_days")
+      .eq("organization_id", organizationId)
+      .in("customer_id", entries.map((e) => e.id));
+    for (const row of aging.data ?? []) oldestDays.set(row.customer_id as string, row.oldest_days as number);
+  }
+  const today = bishkekDate();
+  const listHref = (extra: Record<string, string | number>) => {
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (overdue) params.set("overdue", String(overdue));
+    for (const [key, value] of Object.entries(extra)) params.set(key, String(value));
+    const text = params.toString();
+    return `/${kind}${text ? `?${text}` : ""}`;
+  };
   return (
     <>
       <div className="page-heading">
@@ -72,8 +108,25 @@ export default async function DirectoryPage({
           </Link>
         </div>
       )}
+      {kind === "customers" && (
+        <nav className="overdue-filter" aria-label="Просроченные долги">
+          <Link className={overdue ? "" : "selected"} href="/customers">
+            Все
+          </Link>
+          {OVERDUE_THRESHOLDS.map((days) => (
+            <Link
+              key={days}
+              className={overdue === days ? "selected" : ""}
+              href={`/customers?overdue=${days}`}
+            >
+              Просрочено {days}+ дн.
+            </Link>
+          ))}
+        </nav>
+      )}
       <section className="panel">
         <form className="search" action={`/${kind}`}>
+          {overdue && <input type="hidden" name="overdue" value={overdue} />}
           <label htmlFor="search-name" className="sr-only">
             Поиск по названию
           </label>
@@ -112,6 +165,12 @@ export default async function DirectoryPage({
                         {item.name}
                       </Link>
                       {item.sku && <small>{item.sku}</small>}
+                      {kind === "customers" && (oldestDays.get(item.id) ?? 0) > 30 && (
+                        <span className="tag reversed-tag">долг {oldestDays.get(item.id)} дн.</span>
+                      )}
+                      {kind === "customers" &&
+                        promiseStatus(item.promised_date, Number(item.balance ?? 0), today).kind ===
+                          "broken" && <span className="tag reversed-tag">нарушил срок</span>}
                     </td>
                     <td>
                       {kind === "products"
@@ -154,13 +213,17 @@ export default async function DirectoryPage({
             <span className="empty-icon">
               <Icon name={kind === "products" ? "box" : "people"} />
             </span>
-            <h2>{query ? "Ничего не найдено" : "Список пока пуст"}</h2>
+            <h2>
+              {overdue ? "Просроченных долгов нет" : query ? "Ничего не найдено" : "Список пока пуст"}
+            </h2>
             <p>
-              {query
+              {overdue
+                ? `Ни у кого нет неоплаченных продаж старше ${overdue} дней.`
+                : query
                 ? "Попробуйте другое название."
                 : "Добавьте первую запись, чтобы подготовить магазин к работе."}
             </p>
-            {!query && (
+            {!query && !overdue && (
               <Link className="button primary" href={`/${kind}/new`}>
                 Добавить
               </Link>
@@ -171,18 +234,12 @@ export default async function DirectoryPage({
           <span className="muted">Страница {current} · По 25 записей</span>
           <div className="actions">
             {current > 1 && (
-              <Link
-                className="button"
-                href={`/${kind}?q=${encodeURIComponent(query)}&page=${current - 1}`}
-              >
+              <Link className="button" href={listHref({ page: current - 1 })}>
                 Назад
               </Link>
             )}
             {current * 25 < (count ?? 0) && (
-              <Link
-                className="button"
-                href={`/${kind}?q=${encodeURIComponent(query)}&page=${current + 1}`}
-              >
+              <Link className="button" href={listHref({ page: current + 1 })}>
                 Далее
               </Link>
             )}

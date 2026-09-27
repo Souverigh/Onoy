@@ -35,5 +35,6 @@ export type Entry = {
   stock?: string;
   balance?: string;
   credit_limit?: string | null;
+  promised_date?: string | null;
   aliases?: string[];
 };

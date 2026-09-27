@@ -1467,3 +1467,47 @@ test("customers.credit_limit: optional, non-negative, editable by members and sh
   await user(b);
   assert.equal((await db.query("select * from customer_balances where id=$1", [customer])).rows.length, 0);
 });
+test("customer_debt_aging: payments cover the oldest sales first, the rest ages from the sale day", async () => {
+  await owner();
+  const customer = (
+    await db.query("insert into customers(organization_id,name) values ($1,'Должник по давности') returning id", [orgA])
+  ).rows[0].id;
+  const sale = (daysAgo, total, key, extra = "") =>
+    db.query(
+      `insert into sales(organization_id,customer_id,total,status,idempotency_key,occurred_at${extra ? ",paid_immediately" : ""})
+       values ($1,$2,$3,'posted',$4,now() - make_interval(days => $5)${extra ? ",true" : ""})`,
+      [orgA, customer, total, `eeeeeeee-9999-4000-8000-00000000000${key}`, daysAgo],
+    );
+  await sale(100, "1000.00", 1);
+  await sale(45, "2000.00", 2);
+  await sale(10, "3000.00", 3);
+  await sale(200, "9999.00", 4, "cash"); // за наличные — не долг
+  await db.query(
+    "insert into payments(organization_id,customer_id,direction,amount,status,idempotency_key) values ($1,$2,'incoming',1500.00,'confirmed','eeeeeeee-9999-4000-8000-000000000005')",
+    [orgA, customer],
+  );
+  await db.query("update customers set promised_date=current_date + 3 where id=$1", [customer]);
+
+  await user(a);
+  const aging = (await db.query("select * from customer_debt_aging where customer_id=$1", [customer])).rows[0];
+  // 1500 гасит продажу 100 дней назад (1000) и 500 из продажи 45 дней назад.
+  assert.equal(aging.due_over_90, "0.00");
+  assert.equal(aging.due_61_90, "0.00");
+  assert.equal(aging.due_31_60, "1500.00");
+  assert.equal(aging.due_0_30, "3000.00");
+  assert.equal(aging.oldest_days, 45);
+  const balance = (await db.query("select balance,promised_date from customer_balances where id=$1", [customer])).rows[0];
+  assert.equal(balance.balance, "4500.00");
+  assert.ok(balance.promised_date);
+
+  // Полностью оплатил — строки нет.
+  await owner();
+  await db.query(
+    "insert into payments(organization_id,customer_id,direction,amount,status,idempotency_key) values ($1,$2,'incoming',4500.00,'confirmed','eeeeeeee-9999-4000-8000-000000000006')",
+    [orgA, customer],
+  );
+  await user(a);
+  assert.equal((await db.query("select * from customer_debt_aging where customer_id=$1", [customer])).rows.length, 0);
+  await user(b);
+  assert.equal((await db.query("select * from customer_debt_aging")).rows.length, 0);
+});

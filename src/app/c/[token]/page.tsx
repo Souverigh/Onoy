@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { DOCUMENT_ACCEPT } from "@/lib/pages";
 import { createAnonClient } from "@/lib/supabase/server";
 import { money } from "@/lib/format";
+import { dayMonth } from "@/lib/promise";
 import { submitClaim } from "./actions";
 
 type Statement = {
@@ -9,6 +10,7 @@ type Statement = {
   shop_phone: string;
   customer_name: string;
   balance: string;
+  promised_date?: string | null;
   entries: {
     kind: "sale" | "payment";
     id: string;
@@ -55,6 +57,9 @@ export default async function ClientPage({
         <p className="muted">{statement.customer_name}, ваш долг</p>
         <p className="client-balance-number">{money(Math.max(balance, 0))}</p>
         {balance < 0 && <p className="muted">У вас аванс: {money(-balance)}</p>}
+        {balance > 0 && statement.promised_date && (
+          <p className="muted">Срок оплаты — до {dayMonth(statement.promised_date)}</p>
+        )}
       </section>
       {claimed && (
         <p className="notice success" role="status">

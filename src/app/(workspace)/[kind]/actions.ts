@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getContext } from "@/lib/context";
 import { isDirectory, directoryInput } from "@/lib/validation";
+import { promisedDateInput } from "@/lib/promise";
+import { bishkekDate } from "@/lib/day-summary";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -66,4 +68,21 @@ export async function revokeLink(form: FormData) {
   if (result.error) redirect(`/customers/${customerId}?error=link`);
   revalidatePath("/", "layout");
   redirect(`/customers/${customerId}?revoked=1`);
+}
+
+/** Обещанная дата оплаты: пусто — убрать; прошлое и дальше года — ошибка. */
+export async function setPromisedDate(form: FormData) {
+  const customerId = String(form.get("customer_id") ?? "");
+  if (!uuidPattern.test(customerId)) redirect("/customers?error=invalid");
+  const promised = promisedDateInput(String(form.get("promised_date") ?? ""), bishkekDate());
+  if (promised === undefined) redirect(`/customers/${customerId}?error=promise`);
+  const { db, organizationId } = await getContext();
+  const result = await db
+    .from("customers")
+    .update({ promised_date: promised })
+    .eq("organization_id", organizationId)
+    .eq("id", customerId);
+  if (result.error) redirect(`/customers/${customerId}?error=promise`);
+  revalidatePath("/", "layout");
+  redirect(`/customers/${customerId}?promised=${promised ? "1" : "0"}`);
 }

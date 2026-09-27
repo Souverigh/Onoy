@@ -14,12 +14,15 @@ export function Dashboard({
   summary,
   preview = false,
   unclosedDays = [],
+  overdue,
 }: {
   summary: Summary;
   events?: { id: string; action: string; created_at: string }[];
   preview?: boolean;
   /** Прошлые дни с записями, которые не закрыли (напоминание). */
   unclosedDays?: string[];
+  /** Клиенты с неоплаченными продажами старше 30 дней и сумма этой части долга. */
+  overdue?: { count: number; amount: number };
 }) {
   const href = (url: string) => (preview ? "/preview" : url);
   return (
@@ -29,6 +32,11 @@ export function Dashboard({
         <p>Все записи — только после вашего подтверждения.</p>
       </header>
       <UnclosedDays days={unclosedDays} />
+      {overdue && overdue.count > 0 && (
+        <Link className="notice claims-notice" href={href("/customers?overdue=30")}>
+          Просрочено больше 30 дней: {overdue.count} клиент(ов), {money(overdue.amount)} →
+        </Link>
+      )}
       <section className="debt-cards" aria-label="Долги">
         <article className="debt-card">
           <span>Мне должны</span>
