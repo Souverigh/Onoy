@@ -114,7 +114,7 @@ export default async function Claims({
                         inputMode="decimal"
                         defaultValue={claim.amount}
                         required
-                        pattern="[0-9]+([.,][0-9]{1,2})?"
+                        pattern="[0-9 ]+([.,][0-9]{1,2})?"
                       />
                     </label>
                     <Submit>Подтвердить</Submit>

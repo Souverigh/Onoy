@@ -59,6 +59,8 @@ export async function commitOperation(form: FormData) {
   let amount = "";
   let bankReference = "";
   let occurredAt: string | null = null;
+  let paidNow: string | null = null;
+  let partPaymentKey = "";
   let paidImmediately = false;
   const photos = photosOf(form);
   const photo = photos.length > 0;
@@ -76,6 +78,16 @@ export async function commitOperation(form: FormData) {
       party = field(form, "supplier_id");
       amount = decimalInput(field(form, "total"), 2);
       if (!uuidPattern.test(party)) throw new Error("invalid_input");
+      // «Оплатить часть» сразу при приходе (ТЗ §4 А): не больше суммы прихода.
+      const rawPaid = String(form.get("paid_now") ?? "").trim();
+      if (rawPaid) {
+        paidNow = decimalInput(rawPaid, 2);
+        partPaymentKey = field(form, "part_payment_key");
+        if (!uuidPattern.test(partPaymentKey)) throw new Error("invalid_input");
+        if (Number(paidNow) === 0) paidNow = null;
+        else if (Number(paidNow) > Number(amount))
+          redirect(`/money/new?type=purchase&party=${party}&error=part`);
+      }
     } else if (operation === "sale") {
       party = field(form, "customer_id");
       amount = decimalInput(field(form, "total"), 2);
@@ -199,13 +211,30 @@ export async function commitOperation(form: FormData) {
       );
     }
   }
+  // Оплата части прихода — отдельная запись оплаты поставщику. Приход уже
+  // записан: если оплата не прошла, говорим об этом, а не теряем приход.
+  let part = "";
+  if (operation === "purchase" && paidNow) {
+    const payment = await db.rpc("commit_payment", {
+      p_org: organizationId,
+      p_direction: "outgoing",
+      p_party: party,
+      p_amount: paidNow,
+      p_bank_reference: null,
+      p_idempotency_key: partPaymentKey,
+    });
+    if (payment.error) {
+      console.error("commitOperation: part payment failed", { message: payment.error.message });
+      part = "&part=failed";
+    } else part = `&part=${paidNow}`;
+  }
   // Повторы фото разрешены в настройках — запись прошла, но предупреждаем.
   const duplicate =
     documentId !== null && (await isDuplicatePhoto(db, organizationId, documentId));
   revalidatePath("/", "layout");
   // После продажи — ссылка «Отправить клиенту» (накладная и долг в WhatsApp).
   const sent = operation === "sale" ? `&sale=${result.data}` : "";
-  redirect(`/money?created=${operation}${sent}${duplicate ? "&duplicate=1" : ""}`);
+  redirect(`/money?created=${operation}${sent}${part}${duplicate ? "&duplicate=1" : ""}`);
 }
 
 /**

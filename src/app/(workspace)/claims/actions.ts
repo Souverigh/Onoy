@@ -11,11 +11,17 @@ export async function confirmClaim(form: FormData) {
   const id = String(form.get("id") ?? "");
   const amount = String(form.get("amount") ?? "");
   if (!uuidPattern.test(id)) redirect("/claims?error=invalid");
+  let value: string;
+  try {
+    value = decimalInput(amount, 2);
+  } catch {
+    redirect("/claims?error=invalid");
+  }
   const { db, organizationId } = await getContext();
   const result = await db.rpc("confirm_payment_claim", {
     p_org: organizationId,
     p_payment: id,
-    p_amount: decimalInput(amount, 2),
+    p_amount: value,
   });
   if (result.error) redirect("/claims?error=invalid");
   revalidatePath("/", "layout");

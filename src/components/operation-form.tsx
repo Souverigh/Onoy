@@ -48,6 +48,7 @@ const PHOTO_USED_TEXT =
 export function OperationForm({
   kind,
   idempotencyKey,
+  partPaymentKey,
   customers,
   suppliers,
   error,
@@ -56,6 +57,8 @@ export function OperationForm({
 }: {
   kind: Operation;
   idempotencyKey: string;
+  /** Ключ для оплаты части сразу при приходе — отдельная запись оплаты. */
+  partPaymentKey?: string;
   customers: Customer[];
   suppliers: Party[];
   error?: string;
@@ -152,6 +155,8 @@ export function OperationForm({
             ? PHOTO_USED_TEXT
             : error === "photo_upload"
               ? "Не удалось загрузить фото. Попробуйте ещё раз."
+          : error === "part"
+            ? "Оплаченная часть не может быть больше суммы прихода."
           : error === "date"
             ? "Проверьте дату оплаты: не позже текущего момента и не раньше чем год назад."
           : error === "invalid"
@@ -277,6 +282,9 @@ export function OperationForm({
       <form action={commitOperation} className="simple-operation-form">
         <input type="hidden" name="kind" value={kind} />
         <input type="hidden" name="idempotency_key" value={idempotencyKey} />
+        {kind === "purchase" && partPaymentKey && (
+          <input type="hidden" name="part_payment_key" value={partPaymentKey} />
+        )}
         {prefill && <input type="hidden" name="document_id" value={prefill.documentId} />}
         {checkedPhoto && <input type="hidden" name="document_id" value={checkedPhoto.documentId} />}
         {checkedPhoto?.result && (
@@ -428,6 +436,21 @@ export function OperationForm({
               </p>
             )}
           </div>
+        )}
+        {kind === "purchase" && (
+          <label>
+            Сразу оплатили поставщику, сом (необязательно)
+            <input
+              name="paid_now"
+              inputMode="decimal"
+              autoComplete="off"
+              pattern="[0-9 ]+([.,][0-9]{1,2})?"
+              placeholder="0"
+            />
+            <small className="muted">
+              Запишем оплату поставщику вместе с приходом — долг перед ним вырастет только на остаток.
+            </small>
+          </label>
         )}
         {kind === "sale" && (
           <label className="cash-toggle">

@@ -121,6 +121,7 @@ export default async function NewOperation({
           <OperationForm
             kind={kind}
             idempotencyKey={randomUUID()}
+            partPaymentKey={randomUUID()}
             customers={customers}
             suppliers={suppliers}
             error={params.error}

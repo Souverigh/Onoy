@@ -26,7 +26,7 @@ const dateTime = (value: string) =>
 export default async function Money({
   searchParams,
 }: {
-  searchParams: Promise<{ created?: string; error?: string; duplicate?: string; sale?: string }>;
+  searchParams: Promise<{ created?: string; error?: string; duplicate?: string; sale?: string; part?: string }>;
 }) {
   const { db, organizationId } = await getContext();
   const [customerResult, supplierResult, purchaseResult, saleResult, paymentResult, claimsResult] =
@@ -230,6 +230,16 @@ export default async function Money({
               </Link>
             </>
           )}
+        </p>
+      )}
+      {params.created === "purchase" && params.part === "failed" && (
+        <p className="form-error" role="alert">
+          Приход записан, но оплату поставщику записать не удалось. Внесите её через «Оплата».
+        </p>
+      )}
+      {params.created === "purchase" && params.part && /^\d+(\.\d{1,2})?$/.test(params.part) && (
+        <p className="notice success" role="status">
+          Оплата поставщику {money(params.part)} записана — долг вырос только на остаток.
         </p>
       )}
       {successText && params.duplicate === "1" && (
