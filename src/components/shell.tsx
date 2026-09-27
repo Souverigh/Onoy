@@ -11,6 +11,7 @@ const nav: [string, string, IconName][] = [
   ["/suppliers", "Поставщики", "truck"],
   ["/money", "Деньги", "wallet"],
   ["/day", "Итог дня", "file"],
+  ["/reports", "Итоги", "chart"],
   ["/claims", "Заявки", "check"],
   ["/documents", "Документы", "camera"],
   ["/settings", "Настройки", "settings"],
@@ -24,6 +25,7 @@ const mobileNav: [string, string, IconName][] = [
 const moreNav: [string, string, IconName][] = [
   ["/money", "Деньги", "wallet"],
   ["/day", "Итог дня", "file"],
+  ["/reports", "Итоги", "chart"],
   ["/claims", "Заявки", "check"],
   ["/documents", "Документы", "camera"],
   ["/settings", "Настройки", "settings"],

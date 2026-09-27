@@ -10,6 +10,7 @@ export type IconName =
   | "arrow"
   | "truck"
   | "check"
+  | "chart"
   | "menu"
   | "close";
 const paths: Record<IconName, string> = {
@@ -23,6 +24,7 @@ const paths: Record<IconName, string> = {
     "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M5 19l2-2M17 7l2-2",
   camera: "M3 7h4l2-3h6l2 3h4v14H3V7Zm9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z",
   plus: "M12 5v14M5 12h14",
+  chart: "M3 3v18h18M8 17v-5m5 5V8m5 9v-7",
   arrow: "M5 12h14m-6-6 6 6-6 6",
   truck:
     "M1 3h14v13H1V3Zm14 6h4l3 4v3h-7M5 16a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm13 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z",

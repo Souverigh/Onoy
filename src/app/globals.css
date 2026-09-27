@@ -1331,13 +1331,15 @@ div.photo-field {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-.overdue-filter {
+.overdue-filter,
+.pill-switch {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
   margin-bottom: 14px;
 }
-.overdue-filter a {
+.overdue-filter a,
+.pill-switch a {
   padding: 6px 12px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1345,7 +1347,8 @@ div.photo-field {
   color: var(--ink);
   text-decoration: none;
 }
-.overdue-filter a.selected {
+.overdue-filter a.selected,
+.pill-switch a.selected {
   background: var(--ink);
   border-color: var(--ink);
   color: #fff;
@@ -2431,4 +2434,183 @@ tr.line-mismatch {
   border: 1px solid var(--line);
   border-radius: 10px;
   margin-bottom: 8px;
+}
+
+/* Итоги недели и месяца. */
+.report-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.report-tile {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  margin: 0;
+}
+.report-tile h2,
+.report-tile p {
+  margin: 0;
+}
+.report-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.report-charts .panel {
+  margin: 0;
+}
+.top-debtors {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+.top-debtors li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.top-debtors li strong {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.report-table summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* Столбцы по дням: один ряд, подсказка по наведению и нажатию. */
+.day-columns {
+  margin: 0;
+}
+.day-columns figcaption {
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.day-columns-plot {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+}
+.day-columns-axis {
+  position: relative;
+  height: 180px;
+  min-width: 44px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.day-columns-axis span {
+  position: absolute;
+  right: 0;
+  transform: translateY(50%);
+  white-space: nowrap;
+}
+.day-columns-area {
+  position: relative;
+  height: 180px;
+}
+.day-columns-grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--line);
+}
+.day-columns-bars {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  height: 180px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.day-columns-bars li {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.day-columns-hit {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+.day-columns-bar {
+  display: block;
+  width: 100%;
+  max-width: 24px;
+  min-height: 0;
+  background: var(--green);
+  border-radius: 4px 4px 0 0;
+}
+.day-columns-hit:hover .day-columns-bar,
+.day-columns-hit:focus-visible .day-columns-bar {
+  background: #1a4639;
+}
+.day-columns-hit:hover,
+.day-columns-hit:focus {
+  background: rgba(36, 93, 76, 0.06);
+  outline: none;
+}
+.future .day-columns-hit {
+  background: repeating-linear-gradient(135deg, transparent 0 6px, var(--bg) 6px 8px);
+}
+.day-columns-tip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.day-columns-tip strong {
+  display: block;
+  font-size: 14px;
+}
+.day-columns-hit:hover .day-columns-tip,
+.day-columns-hit:focus .day-columns-tip {
+  display: block;
+}
+.day-columns-bars li:first-child .day-columns-tip {
+  left: 0;
+  transform: none;
+}
+.day-columns-bars li:last-child .day-columns-tip {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+.day-columns-ticks {
+  display: flex;
+  gap: 2px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+  color: var(--muted);
+}
+.day-columns-ticks li {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
 }
