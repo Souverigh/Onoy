@@ -1378,3 +1378,71 @@ test("get_invoice_by_token: only a digitized, active sale of the link's own cust
   await owner();
   await assert.rejects(db.query("select get_invoice_by_token($1,$2)", [token, ok.sale]), /invalid_token/);
 });
+test("document_lines: a discount line may have a negative price, quantity stays positive", async () => {
+  await owner();
+  const doc = (
+    await db.query(
+      "insert into documents(organization_id,storage_path,file_hash,mime_type,kind,status) values ($1,'disc','disc-hash','image/jpeg','sale','processing') returning id",
+      [orgA],
+    )
+  ).rows[0].id;
+  await user(a);
+  const lines = JSON.stringify([
+    { n: 1, name_raw: "Розетка", qty: "10", unit: "шт", price: "85", confidence: 1 },
+    { n: 2, name_raw: "Скидка", qty: "1", unit: "шт", price: "-200", confidence: 1 },
+  ]);
+  await db.query("select save_recognition($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10)", [
+    orgA, doc, "gemini", "m", "v1", "{}", lines, "digitized", 1, 0,
+  ]);
+  assert.equal(
+    (await db.query("select sum(sum)::text as total from document_lines where document_id=$1", [doc])).rows[0].total,
+    "650.00",
+  );
+  await owner();
+  await assert.rejects(
+    db.query(
+      "insert into document_lines(organization_id,document_id,n,name_raw,qty,price) values ($1,$2,3,'Минус',-1,10)",
+      [orgA, doc],
+    ),
+    /document_lines_qty_check/,
+  );
+});
+test("commit_payment keeps the receipt date, rejects future or year-old dates", async () => {
+  await owner();
+  const customer = (
+    await db.query("insert into customers(organization_id,name) values ($1,'Оплата с датой') returning id", [orgA])
+  ).rows[0].id;
+  await user(a);
+  const call = (key, at) =>
+    db.query("select commit_payment($1,'incoming',$2,'500.00',null,$3,null,$4) as id", [orgA, customer, key, at]);
+  const at = new Date(Date.now() - 3 * 86400_000).toISOString();
+  const id = (await call("dddddddd-8888-4000-8000-000000000001", at)).rows[0].id;
+  assert.equal(
+    (await db.query("select occurred_at from payments where id=$1", [id])).rows[0].occurred_at.toISOString(),
+    at,
+  );
+  assert.equal((await call("dddddddd-8888-4000-8000-000000000001", at)).rows[0].id, id);
+  await assert.rejects(
+    call("dddddddd-8888-4000-8000-000000000001", new Date(Date.now() - 86400_000).toISOString()),
+    /idempotency_conflict/,
+  );
+  await assert.rejects(
+    call("dddddddd-8888-4000-8000-000000000002", new Date(Date.now() + 86400_000).toISOString()),
+    /invalid_date/,
+  );
+  await assert.rejects(
+    call("dddddddd-8888-4000-8000-000000000003", new Date(Date.now() - 400 * 86400_000).toISOString()),
+    /invalid_date/,
+  );
+  const plain = (
+    await db.query(
+      "select commit_payment($1,'incoming',$2,'100.00',null,'dddddddd-8888-4000-8000-000000000004') as id",
+      [orgA, customer],
+    )
+  ).rows[0].id;
+  assert.equal(
+    (await db.query("select occurred_at > now() - interval '1 minute' as fresh from payments where id=$1", [plain]))
+      .rows[0].fresh,
+    true,
+  );
+});

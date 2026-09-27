@@ -94,18 +94,42 @@ function computeTotal(result: InvoiceResult): number {
   return cents / 100;
 }
 
+/**
+ * document_lines требует qty > 0 и число в цене. Строка без количества или
+ * цены, но с суммой («Скидка -200») становится 1 × сумма; отрицательное
+ * количество (возврат) переносит знак в цену. Иначе одна такая строка
+ * роняет сохранение всей накладной.
+ */
+function lineShape<T extends { qty: string; price: string; sum: string }>(line: T): T {
+  const readable = (v: string) => v !== "" && Number.isFinite(Number(v));
+  if (readable(line.qty) && readable(line.price)) {
+    const qty = Number(line.qty);
+    if (qty > 0) return line;
+    if (qty < 0)
+      return { ...line, qty: line.qty.replace(/^-/, ""), price: negate(line.price) };
+  }
+  if (readable(line.sum)) return { ...line, qty: "1", price: line.sum };
+  return line;
+}
+
+function negate(value: string): string {
+  return value.startsWith("-") ? value.slice(1) : Number(value) === 0 ? value : `-${value}`;
+}
+
 export function normalizeInvoiceResult(result: InvoiceResult): InvoiceResult {
   const normalized = {
     ...result,
     lines: expandAbbreviatedNames(
-      result.lines.map((line) => ({
-        ...line,
-        name_raw: normalizeName(line.name_raw),
-        unit: normalizeUnit(line.unit),
-        qty: normalizeDecimalString(line.qty),
-        price: normalizeDecimalString(line.price),
-        sum: normalizeDecimalString(line.sum),
-      })),
+      result.lines.map((line) =>
+        lineShape({
+          ...line,
+          name_raw: normalizeName(line.name_raw),
+          unit: normalizeUnit(line.unit),
+          qty: normalizeDecimalString(line.qty),
+          price: normalizeDecimalString(line.price),
+          sum: normalizeDecimalString(line.sum),
+        }),
+      ),
     ),
   };
   return { ...normalized, total_computed: computeTotal(normalized) };

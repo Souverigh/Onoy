@@ -16,6 +16,7 @@ import {
 } from "@/lib/adre/recognize";
 import type { InvoiceResult } from "@/lib/adre/types";
 import { bestMatches } from "@/lib/match";
+import { bishkekDateTime, receiptDateTime } from "@/lib/receipt-date";
 
 type Operation = "purchase" | "sale" | "payment";
 const uuidPattern =
@@ -29,6 +30,7 @@ function field(form: FormData, name: string) {
 
 function failureCode(message: string) {
   if (message.includes("idempotency_conflict")) return "retry";
+  if (message.includes("invalid_date")) return "date";
   // unique(organization_id,document_id): это фото уже основание другой записи.
   if (message.includes("document_id")) return "photo_used";
   if (message.includes("invalid_") || message.includes("not_a_member"))
@@ -56,6 +58,7 @@ export async function commitOperation(form: FormData) {
   let direction = "";
   let amount = "";
   let bankReference = "";
+  let occurredAt: string | null = null;
   let paidImmediately = false;
   const photos = photosOf(form);
   const photo = photos.length > 0;
@@ -83,6 +86,12 @@ export async function commitOperation(form: FormData) {
       party = field(form, "party_id");
       amount = decimalInput(field(form, "amount"), 2);
       bankReference = field(form, "bank_reference");
+      // Дата перевода (из чека или вручную); пусто — «сейчас».
+      const rawDate = String(form.get("occurred_at") ?? "").trim();
+      if (rawDate) {
+        occurredAt = bishkekDateTime(rawDate);
+        if (!occurredAt) throw new Error("invalid_input");
+      }
       if (
         !["incoming", "outgoing"].includes(direction) ||
         !uuidPattern.test(party) ||
@@ -143,6 +152,7 @@ export async function commitOperation(form: FormData) {
             p_bank_reference: bankReference || null,
             p_idempotency_key: idempotencyKey,
             p_document: documentId,
+            ...(occurredAt ? { p_occurred_at: occurredAt } : {}),
           });
   if (result.error || !result.data) {
     console.error("commitOperation: RPC failed", {
@@ -351,6 +361,8 @@ export async function prepareReceiptPayment(form: FormData) {
       });
       if (result.amount) params.set("amount", String(result.amount));
       if (result.operation_id) params.set("bankRef", result.operation_id);
+      const paidAt = receiptDateTime(result.datetime);
+      if (paidAt) params.set("date", paidAt);
       if (result.sender_name) {
         const customers = await db
           .from("customers")

@@ -56,7 +56,11 @@ export async function updateLine(form: FormData) {
   let price: string;
   try {
     qty = decimalInput(form.get("qty"), 3);
-    price = decimalInput(form.get("price"), 2);
+    // Цена строки может быть отрицательной — скидка («Скидка», 1 × -200).
+    const rawPrice = String(form.get("price") ?? "").trim();
+    const negative = /^[-−–]/.test(rawPrice);
+    price = decimalInput(rawPrice.replace(/^[-−–]\s*/, ""), 2);
+    if (negative && Number(price) !== 0) price = `-${price}`;
   } catch {
     redirect(`/documents/${documentId}?error=line`);
   }

@@ -21,6 +21,8 @@ type Prefill = {
   documentId: string;
   amount?: string;
   bankRef?: string;
+  /** Дата перевода из чека, datetime-local по Бишкеку. */
+  date?: string;
   suggestions: Suggestion[];
 };
 type InvoiceLine = { n: number; name_raw: string; qty: string; unit: string; price: string };
@@ -136,6 +138,8 @@ export function OperationForm({
             ? PHOTO_USED_TEXT
             : error === "photo_upload"
               ? "Не удалось загрузить фото. Попробуйте ещё раз."
+          : error === "date"
+            ? "Проверьте дату оплаты: не позже текущего момента и не раньше чем год назад."
           : error === "invalid"
             ? "Проверьте сумму и выбранного контрагента."
             : error === "save"
@@ -427,6 +431,13 @@ export function OperationForm({
               placeholder="Необязательно"
               defaultValue={prefill?.bankRef}
             />
+          </label>
+        )}
+        {kind === "payment" && (
+          <label>
+            {prefill?.date ? "Дата и время перевода (из чека)" : "Дата и время оплаты"}
+            <input name="occurred_at" type="datetime-local" defaultValue={prefill?.date} />
+            {!prefill?.date && <small className="muted">Пусто — запишем текущее время.</small>}
           </label>
         )}
         {!prefill && kind === "payment" && (

@@ -16,6 +16,7 @@ export default async function NewOperation({
     documentId?: string;
     amount?: string;
     bankRef?: string;
+    date?: string;
     suggest?: string;
     party?: string;
   }>;
@@ -54,6 +55,7 @@ export default async function NewOperation({
           documentId: params.documentId,
           amount: params.amount,
           bankRef: params.bankRef,
+          date: params.date && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(params.date) ? params.date : undefined,
           suggestions,
         }
       : undefined;

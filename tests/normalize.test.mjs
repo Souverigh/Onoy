@@ -101,3 +101,24 @@ test("normalizeInvoiceResult restores abbreviated names from the line above", ()
     '"Кнауф" гипс',
   ]);
 });
+
+test("normalizeInvoiceResult keeps a discount line: 1 × negative sum, total matches paper", () => {
+  const line = (n, name_raw, qty, price, sum) => ({ n, name_raw, qty, unit: "шт", price, sum, confidence: 1 });
+  const result = normalizeInvoiceResult(
+    invoiceWith([
+      line(1, "Розетка 2-ая Horoz", "10", "85", "850"),
+      line(2, "Автомат 16А Horoz", "5", "120", "600"),
+      line(3, "Изолента (подарок)", "2", "0", "0"),
+      line(4, "Скидка", "", "", "-200"),
+      line(5, "Возврат лампы", "-1", "50", "-50"),
+    ]),
+  );
+  assert.deepEqual(
+    result.lines.slice(3).map((l) => [l.qty, l.price]),
+    [
+      ["1", "-200"],
+      ["1", "-50"],
+    ],
+  );
+  assert.equal(result.total_computed, 1200);
+});
