@@ -1837,3 +1837,23 @@ test("save_recognition keeps good lines when one line is broken and explains it 
   await user(b);
   await assert.rejects(db.query("select add_document_line($1,$2,'Чужое','1','шт','1')", [orgA, doc]), /not_a_member/);
 });
+test("organizations.document_names: shop names on documents, editable by members, at most 20", async () => {
+  await user(a);
+  await db.query("update organizations set document_names=$2 where id=$1", [orgA, ["Maliknur", "D MALIKNUR SATAROV"]]);
+  assert.deepEqual(
+    (await db.query("select document_names from organizations where id=$1", [orgA])).rows[0].document_names,
+    ["Maliknur", "D MALIKNUR SATAROV"],
+  );
+  await assert.rejects(
+    db.query("update organizations set document_names=$2 where id=$1", [orgA, Array.from({ length: 21 }, (_, i) => `n${i}`)]),
+    /check constraint/,
+  );
+  // Чужой магазин не меняется (RLS).
+  await user(b);
+  await db.query("update organizations set document_names='{x}' where id=$1", [orgA]);
+  await owner();
+  assert.deepEqual(
+    (await db.query("select document_names from organizations where id=$1", [orgA])).rows[0].document_names,
+    ["Maliknur", "D MALIKNUR SATAROV"],
+  );
+});

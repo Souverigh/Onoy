@@ -13,9 +13,12 @@ import {
   finalizeInvoiceRecognition,
   recognizeInvoiceCached,
   recognizeReceiptCached,
+  storagePhotoSource,
 } from "@/lib/adre/recognize";
-import type { InvoiceResult } from "@/lib/adre/types";
-import { bestMatches } from "@/lib/match";
+import type { InvoiceResult, PhotoPage } from "@/lib/adre/types";
+import { checkDocument, ownNameMatcher, type DocumentVerdict } from "@/lib/adre/classify";
+import { bestMatches, similarity } from "@/lib/match";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { bishkekDateTime, receiptDateTime } from "@/lib/receipt-date";
 import { isAdjustmentKind } from "@/lib/entry-labels";
 import { normalizePhone, phoneKey } from "@/lib/contacts";
@@ -268,6 +271,78 @@ async function commitOperationOrRedirect(
   );
 }
 
+/** Похожий клиент или поставщик по имени с документа. */
+export type PartySuggestion = { id: string; name: string; score: number };
+
+export type InvoiceCheck =
+  | {
+      ok: true;
+      documentId: string;
+      result: InvoiceResult;
+      duplicate: boolean;
+      verdict: DocumentVerdict;
+      /** Для прихода — поставщики, для продажи — клиенты; при «direction» — из другого списка. */
+      suggestions: PartySuggestion[];
+    }
+  | { ok: false; error: string; documentId?: string; duplicate?: boolean };
+
+/**
+ * Тип документа и сторона магазина (classify.ts) + похожие контрагенты.
+ * Названия магазина — из настроек (organizations.name + document_names).
+ */
+async function documentVerdict(
+  db: SupabaseClient,
+  organizationId: string,
+  kind: "purchase" | "sale",
+  result: InvoiceResult,
+): Promise<{ verdict: DocumentVerdict; suggestions: PartySuggestion[] }> {
+  const org = await db
+    .from("organizations")
+    .select("name,document_names")
+    .eq("id", organizationId)
+    .maybeSingle();
+  const ownNames = [org.data?.name ?? "", ...((org.data?.document_names as string[] | null) ?? [])];
+  const verdict = checkDocument(result, kind, ownNameMatcher(ownNames, similarity));
+  if (!verdict.counterparty) return { verdict, suggestions: [] };
+  const partyKind = verdict.ok ? kind : verdict.reason === "direction" ? verdict.suggestedKind : kind;
+  const parties = await db
+    .from(partyKind === "purchase" ? "suppliers" : "customers")
+    .select("id,name,aliases")
+    .eq("organization_id", organizationId)
+    .is("archived_at", null)
+    .is("merged_into_id", null)
+    .range(0, 999);
+  const suggestions = bestMatches(
+    verdict.counterparty,
+    (parties.data ?? []) as { id: string; name: string; aliases?: string[] }[],
+    3,
+    0.45,
+  ).map((m) => ({ id: m.candidate.id, name: m.candidate.name, score: m.score }));
+  return { verdict, suggestions };
+}
+
+async function checkInvoice(
+  db: SupabaseClient,
+  organizationId: string,
+  kind: "purchase" | "sale",
+  documentId: string,
+  duplicate: boolean,
+  loadPhoto: () => Promise<PhotoPage[]>,
+): Promise<InvoiceCheck> {
+  // Без ключа распознавания фото всё равно уже загружены — форма отправит
+  // document_id, и страницы не придётся грузить ещё раз.
+  if (!process.env.GEMINI_API_KEY)
+    return { ok: false, error: "no_provider", documentId, duplicate };
+  try {
+    const { result } = await recognizeInvoiceCached({ db, organizationId, documentId, loadPhoto });
+    const { verdict, suggestions } = await documentVerdict(db, organizationId, kind, result);
+    return { ok: true, documentId, result, duplicate, verdict, suggestions };
+  } catch (error) {
+    console.error("checkInvoice: recognition failed", error);
+    return { ok: false, error: "recognition_failed", documentId, duplicate };
+  }
+}
+
 /**
  * Проверка фото прихода/продажи до подтверждения — без перезагрузки страницы:
  * вызывается прямо с клиента (см. operation-form.tsx), возвращает результат,
@@ -277,10 +352,8 @@ async function commitOperationOrRedirect(
 export async function recognizeInvoicePhoto(
   kind: "purchase" | "sale",
   form: FormData,
-): Promise<
-  | { ok: true; documentId: string; result: InvoiceResult; duplicate: boolean }
-  | { ok: false; error: string; documentId?: string; duplicate?: boolean }
-> {
+): Promise<InvoiceCheck> {
+  if (kind !== "purchase" && kind !== "sale") return { ok: false, error: "no_photo" };
   const photos = photosOf(form);
   if (photos.length === 0) return { ok: false, error: "no_photo" };
   if (photos.length > MAX_PAGES) return { ok: false, error: "upload_failed" };
@@ -294,28 +367,76 @@ export async function recognizeInvoicePhoto(
     return { ok: false, error: used ? "photo_used" : "upload_failed" };
   }
   const duplicate = await isDuplicatePhoto(db, organizationId, documentId);
-  // Без ключа распознавания фото всё равно уже загружены — форма отправит
-  // document_id, и страницы не придётся грузить ещё раз.
-  if (!process.env.GEMINI_API_KEY)
-    return { ok: false, error: "no_provider", documentId, duplicate };
-  try {
-    const { result } = await recognizeInvoiceCached({
-      db,
-      organizationId,
-      documentId,
-      loadPhoto: async () =>
-        Promise.all(
-          photos.map(async (photo) => ({
-            photo: Buffer.from(await photo.arrayBuffer()),
-            mimeType: documentMimeType(photo),
-          })),
-        ),
-    });
-    return { ok: true, documentId, result, duplicate };
-  } catch (error) {
-    console.error("recognizeInvoicePhoto: recognition failed", error);
-    return { ok: false, error: "recognition_failed", documentId, duplicate };
+  return checkInvoice(db, organizationId, kind, documentId, duplicate, async () =>
+    Promise.all(
+      photos.map(async (photo) => ({
+        photo: Buffer.from(await photo.arrayBuffer()),
+        mimeType: documentMimeType(photo),
+      })),
+    ),
+  );
+}
+
+/**
+ * Та же проверка для документа, уже загруженного раньше — форма открыта
+ * кнопкой «Записать как приход/продажу» (switchDocumentKind). Распознавание
+ * обычно берётся из кеша, Gemini второй раз не вызывается.
+ */
+export async function checkExistingDocument(
+  kind: "purchase" | "sale",
+  documentId: string,
+): Promise<InvoiceCheck> {
+  if ((kind !== "purchase" && kind !== "sale") || !uuidPattern.test(documentId))
+    return { ok: false, error: "invalid" };
+  const { db, organizationId } = await getContext();
+  const duplicate = await isDuplicatePhoto(db, organizationId, documentId);
+  return checkInvoice(
+    db,
+    organizationId,
+    kind,
+    documentId,
+    duplicate,
+    storagePhotoSource(db, organizationId, documentId),
+  );
+}
+
+/**
+ * Документ не того вида, что выбран в форме (накладная поставщика в продаже,
+ * чек в приходе): тот же документ переводится в нужный вид — create_document
+ * переиспользует свободный документ с тем же фото — и открывается нужная
+ * форма. Фото заново не загружается.
+ */
+export async function switchDocumentKind(documentId: string, kind: string, party?: string) {
+  if (!uuidPattern.test(documentId) || !["purchase", "sale", "payment"].includes(kind))
+    redirect("/money?error=invalid");
+  const { db, organizationId } = await getContext();
+  const doc = await db
+    .from("documents")
+    .select("storage_path,file_hash,mime_type")
+    .eq("organization_id", organizationId)
+    .eq("id", documentId)
+    .maybeSingle();
+  if (doc.error || !doc.data) redirect(`/money/new?type=${kind}&error=photo_upload`);
+  const switched = await db.rpc("create_document", {
+    p_org: organizationId,
+    p_kind: kind,
+    p_storage_path: doc.data.storage_path,
+    p_file_hash: doc.data.file_hash,
+    p_mime_type: doc.data.mime_type,
+  });
+  if (switched.error || !switched.data)
+    redirect(
+      `/money/new?type=${kind}&error=${switched.error?.message.includes("document_in_use") ? "photo_used" : "photo_upload"}`,
+    );
+  const newId = String(switched.data);
+  if (kind === "payment") {
+    // Чек: сумму, дату и клиента подставим, как при «Распознать квитанцию».
+    const params = await receiptParams(db, organizationId, newId, storagePhotoSource(db, organizationId, newId));
+    redirect(`/money/new?${params.toString()}`);
   }
+  const params = new URLSearchParams({ type: kind, documentId: newId });
+  if (party && uuidPattern.test(party)) params.set("party", party);
+  redirect(`/money/new?${params.toString()}`);
 }
 
 export type SimilarRecord = {
@@ -405,6 +526,19 @@ export async function prepareReceiptPayment(form: FormData) {
     redirect(`/money/new?type=payment&error=${used ? "photo_used" : "photo_upload"}`);
   }
 
+  const params = await receiptParams(db, organizationId, documentId, async () => [
+    { photo: Buffer.from(await photo.arrayBuffer()), mimeType: documentMimeType(photo) },
+  ]);
+  redirect(`/money/new?${params.toString()}`);
+}
+
+/** Параметры формы оплаты по чеку: сумма, номер, дата, похожие клиенты. */
+async function receiptParams(
+  db: SupabaseClient,
+  organizationId: string,
+  documentId: string,
+  loadPhoto: () => Promise<PhotoPage[]>,
+) {
   const params = new URLSearchParams({ type: "payment", documentId });
   const key = process.env.GEMINI_API_KEY;
   if (key) {
@@ -415,9 +549,7 @@ export async function prepareReceiptPayment(form: FormData) {
         db,
         organizationId,
         documentId,
-        loadPhoto: async () => [
-          { photo: Buffer.from(await photo.arrayBuffer()), mimeType: documentMimeType(photo) },
-        ],
+        loadPhoto,
       });
       if (result.amount) params.set("amount", String(result.amount));
       if (result.operation_id) params.set("bankRef", result.operation_id);
@@ -436,11 +568,11 @@ export async function prepareReceiptPayment(form: FormData) {
           params.set("suggest", suggestions.map((s) => s.candidate.id).join(","));
       }
     } catch (error) {
-      console.error("prepareReceiptPayment: recognition failed", error);
+      console.error("receiptParams: recognition failed", error);
       // Распознавание не удалось — продавец заполнит форму вручную, фото уже приложено.
     }
   }
-  redirect(`/money/new?${params.toString()}`);
+  return params;
 }
 
 export async function reverseOperation(form: FormData) {

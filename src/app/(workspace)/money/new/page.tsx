@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { OperationForm } from "@/components/operation-form";
 import { getContext } from "@/lib/context";
+import { documentPages, signedPhotoUrl } from "@/lib/storage";
 
 type Operation = "purchase" | "sale" | "payment";
 type Party = { id: string; name: string };
@@ -63,6 +64,29 @@ export default async function NewOperation({
           suggestions,
         }
       : undefined;
+  // Накладная, переведённая из другой формы («Записать как приход»): фото уже
+  // загружено — показываем его, заново выбирать не нужно.
+  let existingDocument: { documentId: string; pages: { url: string | null; mimeType: string }[] } | undefined;
+  if (kind !== "payment" && params.documentId && /^[a-f0-9-]{36}$/i.test(params.documentId)) {
+    const doc = await db
+      .from("documents")
+      .select("id,kind")
+      .eq("organization_id", organizationId)
+      .eq("id", params.documentId)
+      .maybeSingle();
+    if (doc.data?.kind === kind) {
+      const pages = await documentPages(db, organizationId, doc.data.id);
+      existingDocument = {
+        documentId: doc.data.id,
+        pages: await Promise.all(
+          pages.map(async (page) => ({
+            url: await signedPhotoUrl(db, page.storage_path),
+            mimeType: page.mime_type,
+          })),
+        ),
+      };
+    }
+  }
   // Из карточки клиента/поставщика: берём, только если он из подходящего списка.
   const initialParty = [...(kind === "purchase" ? [] : customers), ...(kind === "sale" ? [] : suppliers)].some(
     (p) => p.id === params.party,
@@ -134,6 +158,7 @@ export default async function NewOperation({
             suppliers={suppliers}
             error={params.error}
             prefill={prefill}
+            existingDocument={existingDocument}
             initialParty={initialParty}
           />
         </section>

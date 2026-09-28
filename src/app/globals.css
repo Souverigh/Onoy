@@ -1283,6 +1283,18 @@ div.photo-field {
   background: #fff8e8;
   color: #a4762f;
 }
+/* Не тот документ: текст, кнопка нужного сценария, пояснение. */
+.document-kind-warning {
+  display: grid;
+  gap: 10px;
+}
+.document-kind-warning p {
+  margin: 0;
+  font-weight: 600;
+}
+.document-kind-warning .simple-operation-actions:empty {
+  display: none;
+}
 
 /* Заявки, сторно, ссылка клиента */
 /* Срок и давность долга клиента. */

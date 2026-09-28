@@ -7,12 +7,27 @@ export async function updateShop(form: FormData) {
   const name = String(form.get("name") ?? "").trim();
   const phone = String(form.get("phone") ?? "").trim();
   const blockDuplicatePhotos = form.get("block_duplicate_photos") === "on";
-  if (!name || name.length > 120 || phone.length > 40)
+  // Как магазин написан на накладных — по строке на вариант (classify.ts).
+  const documentNames = [
+    ...new Set(
+      String(form.get("document_names") ?? "")
+        .split(/\r?\n/)
+        .map((line) => line.replace(/\s+/g, " ").trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (
+    !name ||
+    name.length > 120 ||
+    phone.length > 40 ||
+    documentNames.length > 20 ||
+    documentNames.some((n) => n.length > 120)
+  )
     redirect("/settings?error=invalid");
   const { db, organizationId } = await getContext();
   const result = await db
     .from("organizations")
-    .update({ name, phone, block_duplicate_photos: blockDuplicatePhotos })
+    .update({ name, phone, block_duplicate_photos: blockDuplicatePhotos, document_names: documentNames })
     .eq("id", organizationId);
   if (result.error) redirect("/settings?error=save");
   revalidatePath("/", "layout");

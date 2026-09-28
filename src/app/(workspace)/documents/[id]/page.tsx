@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
+import { checkDocument, ownNameMatcher } from "@/lib/adre/classify";
+import type { InvoiceResult } from "@/lib/adre/types";
 import { money } from "@/lib/format";
 import { documentPages, signedPhotoUrl } from "@/lib/storage";
 import { DocumentPhotos } from "@/components/document-photos";
@@ -52,7 +54,7 @@ export default async function DocumentDetail({
 }) {
   const { id } = await params;
   if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
-  const { db, organizationId } = await getContext();
+  const { db, organizationId, organizationName } = await getContext();
   const params2 = await searchParams;
 
   const docResult = await db
@@ -150,13 +152,10 @@ export default async function DocumentDetail({
         confidence?: number;
       }
     | undefined;
-  const invoiceFields = extraction?.payload?.extracted as
-    | {
-        counterparty?: { name_raw?: string };
-        document_type?: "invoice_in" | "invoice_out";
-        total_declared?: number | null;
-      }
-    | undefined;
+  const invoiceFields =
+    doc.kind === "purchase" || doc.kind === "sale"
+      ? (extraction?.payload?.extracted as InvoiceResult | undefined)
+      : undefined;
   // «Итого», написанное на бумаге, — третья сумма сверки (см. reconcile.ts).
   const paperTotal =
     doc.kind !== "payment" && Number(invoiceFields?.total_declared) > 0
@@ -164,7 +163,23 @@ export default async function DocumentDetail({
       : null;
   const paperMismatch =
     paperTotal != null && lines.length > 0 && Math.abs(linesTotal - paperTotal) > TOLERANCE;
-  const recognizedCounterparty = invoiceFields?.counterparty?.name_raw?.trim();
+  // Тип документа и сторона магазина — как в форме (classify.ts): контрагент —
+  // другая сторона накладной, а не название нашего магазина.
+  const org = invoiceFields
+    ? await db.from("organizations").select("document_names").eq("id", organizationId).maybeSingle()
+    : null;
+  const verdict =
+    invoiceFields && (doc.kind === "purchase" || doc.kind === "sale")
+      ? checkDocument(
+          invoiceFields,
+          doc.kind,
+          ownNameMatcher(
+            [organizationName, ...((org?.data?.document_names as string[] | null) ?? [])],
+            similarity,
+          ),
+        )
+      : null;
+  const recognizedCounterparty = verdict?.counterparty?.trim();
   const counterpartyMismatch =
     party && recognizedCounterparty
       ? Math.max(
@@ -174,14 +189,20 @@ export default async function DocumentDetail({
         ) < 0.5
       : false;
 
-  const documentTypeLabel: Record<"invoice_in" | "invoice_out", string> = {
-    invoice_in: "Накладная от поставщика (приход)",
-    invoice_out: "Накладная клиенту (продажа)",
-  };
-  const expectedDocumentType = doc.kind === "purchase" ? "invoice_in" : doc.kind === "sale" ? "invoice_out" : null;
-  const recognizedDocumentType = invoiceFields?.document_type;
-  const documentTypeMismatch =
-    !!recognizedDocumentType && !!expectedDocumentType && recognizedDocumentType !== expectedDocumentType;
+  const verdictText =
+    verdict && !verdict.ok
+      ? verdict.reason === "direction"
+        ? verdict.suggestedKind === "purchase"
+          ? "По фото это накладная от поставщика вам — похоже на приход, а записано продажей."
+          : "По фото это накладная от вашего магазина покупателю — похоже на продажу, а записано приходом."
+        : {
+            receipt: "По фото это чек или квитанция об оплате, а не накладная.",
+            statement: "По фото это выписка или акт сверки, а не накладная.",
+            price_list: "По фото это прайс-лист, а не накладная.",
+            notebook: "По фото это страница тетради долгов, а не накладная.",
+            not_document: "На фото не видно документа.",
+          }[verdict.reason]
+      : null;
 
   return (
     <>
@@ -290,10 +311,14 @@ export default async function DocumentDetail({
               </details>
             </div>
           ))}
-        {recognizedDocumentType && documentTypeMismatch && (
+        {verdictText && (
           <p className="photo-check-mismatch">
-            ADRE увидел: {documentTypeLabel[recognizedDocumentType]} — не похоже на «
-            {expectedDocumentType && documentTypeLabel[expectedDocumentType]}», проверьте фото
+            {verdictText} Если запись ошибочная — отмените её и запишите правильно.
+          </p>
+        )}
+        {verdict?.fragment && (
+          <p className="photo-check-mismatch">
+            Похоже, на фото только часть накладной — сумма по строкам может быть неполной.
           </p>
         )}
       </section>

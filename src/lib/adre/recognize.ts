@@ -7,7 +7,9 @@ import { normalizeInvoiceResult } from "./normalize";
 import { contentFingerprint } from "./fingerprint";
 import { reconcileInvoice } from "./reconcile";
 
-const PROMPT_VERSION = "v1";
+// v2 — тип документа, продавец и покупатель, фрагмент (classify.ts). Кеш v1
+// не используется: в нём нет типа, повторное распознавание — новый вызов.
+const PROMPT_VERSION = "v2";
 
 const MODEL = () => process.env.GEMINI_MODEL || "gemini-3.8-flash";
 
@@ -35,6 +37,28 @@ function linesOf(result: InvoiceResult) {
 
 /** Страницы документа по порядку; у чека и обычной накладной — одна. */
 type PhotoSource = () => Promise<PhotoPage[]>;
+
+/** Страницы уже загруженного документа — из Storage. */
+export function storagePhotoSource(
+  db: SupabaseClient,
+  organizationId: string,
+  documentId: string,
+): PhotoSource {
+  return async () => {
+    const pages = await documentPages(db, organizationId, documentId);
+    if (pages.length === 0) throw new Error("document_not_found");
+    return Promise.all(
+      pages.map(async (page) => {
+        const download = await db.storage.from("receipts").download(page.storage_path);
+        if (download.error || !download.data) throw new Error("photo_download_failed");
+        return {
+          photo: Buffer.from(await download.data.arrayBuffer()),
+          mimeType: page.mime_type || "image/jpeg",
+        };
+      }),
+    );
+  };
+}
 type ExtractionKind = "invoice" | "receipt";
 
 async function cachedExtraction<T>(
@@ -217,20 +241,7 @@ export async function recognizeDocument({
   });
   if (started.error) return; // уже обрабатывается или недоступен — не мешаем
 
-  const loadPhoto: PhotoSource = async () => {
-    const pages = await documentPages(db, organizationId, documentId);
-    if (pages.length === 0) throw new Error("document_not_found");
-    return Promise.all(
-      pages.map(async (page) => {
-        const download = await db.storage.from("receipts").download(page.storage_path);
-        if (download.error || !download.data) throw new Error("photo_download_failed");
-        return {
-          photo: Buffer.from(await download.data.arrayBuffer()),
-          mimeType: page.mime_type || "image/jpeg",
-        };
-      }),
-    );
-  };
+  const loadPhoto = storagePhotoSource(db, organizationId, documentId);
 
   try {
     // Стоимость и задержка уже записаны в строке кеша (cache_extraction) —

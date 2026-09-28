@@ -10,9 +10,29 @@ export type InvoiceLine = {
   confidence: number;
 };
 
+/** Что на фото (ТЗ §15.2): первый шаг распознавания. */
+export type DocumentClass =
+  | "invoice"
+  | "receipt"
+  | "statement"
+  | "price_list"
+  | "notebook"
+  | "not_document";
+
+export type DocumentSide = { name_raw: string; phone: string | null };
+
 export type InvoiceResult = {
-  document_type: "invoice_out" | "invoice_in";
-  counterparty: { name_raw: string; phone: string | null; confidence: number };
+  /** Нет в ответах до PROMPT_VERSION v2 — считаем накладной. */
+  document_class?: DocumentClass;
+  /** Продавец и покупатель как на бумаге; какая сторона — наш магазин, решает classify.ts. */
+  seller?: DocumentSide | null;
+  buyer?: DocumentSide | null;
+  /** На фото только часть документа (нет начала или конца). */
+  fragment?: boolean;
+  /** Старые ответы (v1): направление по мнению модели, без знания нашего магазина. */
+  document_type?: "invoice_out" | "invoice_in";
+  /** v1 — контрагент по мнению модели; v2 — не заполняется, см. classify.ts. */
+  counterparty?: { name_raw: string; phone: string | null; confidence: number } | null;
   date: string | null;
   number: string | null;
   lines: InvoiceLine[];

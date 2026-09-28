@@ -4,14 +4,20 @@ import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import {
+  checkExistingDocument,
   commitOperation,
   type CommitState,
   customerFromContact,
   findSimilarRecords,
+  type InvoiceCheck,
+  type PartySuggestion,
   prepareReceiptPayment,
   recognizeInvoicePhoto,
+  switchDocumentKind,
   type SimilarRecord,
 } from "@/app/(workspace)/money/actions";
+import type { DocumentVerdict } from "@/lib/adre/classify";
+import type { InvoiceResult } from "@/lib/adre/types";
 import { Submit } from "./submit";
 import { ContactPicker } from "./contact-picker";
 import { money } from "@/lib/format";
@@ -33,17 +39,26 @@ type Prefill = {
   date?: string;
   suggestions: Suggestion[];
 };
-type InvoiceLine = { n: number; name_raw: string; qty: string; unit: string; price: string };
-type InvoiceCheckResult = {
-  total_computed: number;
-  total_declared: number | null;
-  counterparty: { name_raw: string } | null;
-  lines: InvoiceLine[];
-};
 type CheckedPhoto = {
   documentId: string;
-  result: InvoiceCheckResult | null;
+  result: InvoiceResult | null;
   duplicate: boolean;
+  verdict: DocumentVerdict | null;
+  suggestions: PartySuggestion[];
+};
+/** Уже загруженный документ (переведён из другой формы). */
+type ExistingDocument = { documentId: string; pages: { url: string | null; mimeType: string }[] };
+
+/** Подсказку выбираем сами, только если имя совпало почти целиком. */
+const SURE_MATCH = 0.85;
+
+const OTHER_DOCUMENT_TEXT: Record<Exclude<DocumentVerdict & { ok: false }, { reason: "direction" }>["reason"], string> = {
+  receipt: "Похоже, это чек или квитанция об оплате, а не накладная.",
+  statement:
+    "Похоже, это выписка или акт сверки поставщика, а не накладная. Приходом его записывать не нужно — импорт сверки появится позже.",
+  price_list: "Похоже, это прайс-лист, а не накладная — долг по нему не записывают.",
+  notebook: "Похоже, это страница тетради долгов, а не накладная.",
+  not_document: "На фото не видно документа. Сфотографируйте накладную целиком.",
 };
 
 const PHOTO_USED_TEXT =
@@ -57,6 +72,7 @@ export function OperationForm({
   suppliers,
   error,
   prefill,
+  existingDocument,
   initialParty,
 }: {
   kind: Operation;
@@ -67,6 +83,7 @@ export function OperationForm({
   suppliers: Party[];
   error?: string;
   prefill?: Prefill;
+  existingDocument?: ExistingDocument;
   /** Открыто из карточки клиента/поставщика — он уже выбран. */
   initialParty?: string;
 }) {
@@ -97,6 +114,9 @@ export function OperationForm({
   // Страницы накладной по порядку добавления. Исходные файлы — ужимаем при
   // каждой проверке, потому что степень сжатия зависит от числа страниц.
   const [pages, setPages] = useState<File[]>([]);
+  // Фото из другой формы — пока продавец не выбрал новые.
+  const [useExisting, setUseExisting] = useState(Boolean(existingDocument));
+  const [switching, setSwitching] = useState(false);
   const pagesInput = useRef<HTMLInputElement>(null);
   const [previews, setPreviews] = useState<string[]>([]);
   useEffect(() => {
@@ -169,12 +189,19 @@ export function OperationForm({
         paidNow,
       )
     : null;
+  const verdict = checkedPhoto?.verdict ?? null;
   const confirmLabel =
-    kind === "purchase"
-      ? "Подтвердить приход"
-      : kind === "sale"
-        ? "Подтвердить продажу"
-        : "Подтвердить оплату";
+    verdict && !verdict.ok
+      ? kind === "purchase"
+        ? "Всё равно записать приход"
+        : "Всё равно записать продажу"
+      : kind === "purchase"
+        ? "Подтвердить приход"
+        : kind === "sale"
+          ? "Подтвердить продажу"
+          : "Подтвердить оплату";
+  const hasPhoto = pages.length > 0 || useExisting;
+  const suggestions = verdict?.ok ? (checkedPhoto?.suggestions ?? []) : [];
   const partyWord =
     kind === "purchase" || (kind === "payment" && direction === "outgoing") ? "поставщика" : "клиента";
   const describeError = (error: string | undefined | null) =>
@@ -250,9 +277,74 @@ export function OperationForm({
     }
   }
 
+  function applyCheck(res: InvoiceCheck) {
+    if (res.ok) {
+      setCheckedPhoto({
+        documentId: res.documentId,
+        result: res.result,
+        duplicate: res.duplicate,
+        verdict: res.verdict,
+        suggestions: res.suggestions,
+      });
+      // Контрагент с накладной почти точно есть в списке — выбираем сами,
+      // если продавец ещё никого не выбрал.
+      const sure = res.verdict.ok && res.suggestions[0]?.score >= SURE_MATCH ? res.suggestions[0] : null;
+      if (sure) setSelectedParty((current) => current || sure.id);
+    } else if (res.error === "photo_used") {
+      setCheckNote(PHOTO_USED_TEXT);
+    } else if (res.documentId) {
+      setCheckedPhoto({
+        documentId: res.documentId,
+        result: null,
+        duplicate: res.duplicate ?? false,
+        verdict: null,
+        suggestions: [],
+      });
+      setCheckNote("Не удалось быстро сверить сумму — сверим после сохранения.");
+    }
+  }
+
+  // Документ из другой формы: распознавание берётся из кеша, фото не грузим.
+  const existingId = existingDocument?.documentId;
+  useEffect(() => {
+    if (!existingId || (kind !== "purchase" && kind !== "sale")) return;
+    const request = ++photoRequest.current;
+    setChecking(true);
+    checkExistingDocument(kind, existingId)
+      .then((res) => {
+        if (request === photoRequest.current) applyCheck(res);
+      })
+      .catch((err) => {
+        console.error("checkExistingDocument failed", err);
+        if (request === photoRequest.current)
+          setCheckedPhoto({ documentId: existingId, result: null, duplicate: false, verdict: null, suggestions: [] });
+      })
+      .finally(() => {
+        if (request === photoRequest.current) setChecking(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- один раз при открытии
+  }, [existingId, kind]);
+
+  /** «Записать как приход/продажу/оплату» — тот же документ, другая форма. */
+  function switchKind(target: "purchase" | "sale" | "payment", party?: string) {
+    if (!checkedPhoto) return;
+    setSwitching(true);
+    startTransition(async () => {
+      try {
+        await switchDocumentKind(checkedPhoto.documentId, target, party);
+      } catch (err) {
+        unstable_rethrow(err);
+        console.error("switchDocumentKind failed", err);
+        setSwitching(false);
+        setCheckNote("Не удалось открыть другую форму. Попробуйте ещё раз.");
+      }
+    });
+  }
+
   async function checkPages(next: File[]) {
     const request = ++photoRequest.current;
     setDiscardedAttempt(commit.attempt);
+    setUseExisting(false);
     setCheckedPhoto(null);
     setCheckNote(null);
     if (!next.length || (kind !== "purchase" && kind !== "sale")) {
@@ -279,22 +371,7 @@ export function OperationForm({
       shrunk.forEach((file) => fd.append("photo", file));
       const res = await recognizeInvoicePhoto(kind, fd);
       if (request !== photoRequest.current) return;
-      if (res.ok) {
-        setCheckedPhoto({
-          documentId: res.documentId,
-          result: res.result,
-          duplicate: res.duplicate,
-        });
-      } else if (res.error === "photo_used") {
-        setCheckNote(PHOTO_USED_TEXT);
-      } else if ("documentId" in res && res.documentId) {
-        setCheckedPhoto({
-          documentId: res.documentId,
-          result: null,
-          duplicate: res.duplicate ?? false,
-        });
-        setCheckNote("Не удалось быстро сверить сумму — сверим после сохранения.");
-      }
+      applyCheck(res);
       // upload_failed без documentId — страницы уйдут при подтверждении из скрытого поля.
     } catch (err) {
       console.error("recognizeInvoicePhoto failed", err);
@@ -355,7 +432,10 @@ export function OperationForm({
         )}
         {prefill && <input type="hidden" name="document_id" value={prefill.documentId} />}
         {checkedPhoto && <input type="hidden" name="document_id" value={checkedPhoto.documentId} />}
-        {!prefill && !checkedPhoto && uploadedDocumentId && (
+        {!checkedPhoto && useExisting && existingDocument && (
+          <input type="hidden" name="document_id" value={existingDocument.documentId} />
+        )}
+        {!prefill && !checkedPhoto && !useExisting && uploadedDocumentId && (
           <input type="hidden" name="document_id" value={uploadedDocumentId} />
         )}
         {checkedPhoto?.result && (
@@ -436,6 +516,30 @@ export function OperationForm({
             ))}
           </select>
         </label>
+        {verdict?.ok && verdict.counterparty && (kind === "purchase" || kind === "sale") && (
+          <div className="party-suggestions">
+            <span className="muted">
+              На накладной: «{verdict.counterparty}»
+              {suggestions.length === 0 &&
+                (kind === "sale" ? " — такого клиента нет в списке." : " — такого поставщика нет в списке.")}
+              {suggestions.length > 0 && " · похоже, это:"}
+            </span>
+            {suggestions.length > 0 && (
+              <div className="party-suggestions-list">
+                {suggestions.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className={`party-suggestion${selectedParty === s.id ? " active" : ""}`}
+                    onClick={() => setSelectedParty(s.id)}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {kind === "sale" && (
           <div className="contact-row">
             <ContactPicker
@@ -484,6 +588,60 @@ export function OperationForm({
           <div className="photo-check">
             {checking && <p className="muted">Проверяем фото…</p>}
             {checkNote && <p className="muted">{checkNote}</p>}
+            {verdict && !verdict.ok && (
+              <div className="photo-check-mismatch document-kind-warning" role="status">
+                {verdict.reason === "direction" ? (
+                  <p>
+                    {verdict.suggestedKind === "purchase"
+                      ? `Это накладная от поставщика${verdict.counterparty ? ` «${verdict.counterparty}»` : ""} вам — похоже на приход, а не продажу.`
+                      : `Это накладная от вашего магазина${verdict.counterparty ? ` покупателю «${verdict.counterparty}»` : ""} — похоже на продажу, а не приход.`}
+                  </p>
+                ) : (
+                  <p>{OTHER_DOCUMENT_TEXT[verdict.reason]}</p>
+                )}
+                <div className="simple-operation-actions">
+                  {verdict.reason === "direction" && (
+                    <button
+                      type="button"
+                      className="button primary"
+                      disabled={switching}
+                      onClick={() => {
+                        const top = checkedPhoto?.suggestions[0];
+                        switchKind(verdict.suggestedKind, top && top.score >= SURE_MATCH ? top.id : undefined);
+                      }}
+                    >
+                      {switching
+                        ? "Открываем…"
+                        : verdict.suggestedKind === "purchase"
+                          ? "Записать как приход"
+                          : "Записать как продажу"}
+                    </button>
+                  )}
+                  {verdict.reason === "receipt" && (
+                    <button
+                      type="button"
+                      className="button primary"
+                      disabled={switching}
+                      onClick={() => switchKind("payment")}
+                    >
+                      {switching ? "Открываем…" : "Записать как оплату"}
+                    </button>
+                  )}
+                  {verdict.reason === "notebook" && (
+                    <Link className="button primary" href={`/import?kind=${kind === "purchase" ? "suppliers" : "customers"}`}>
+                      Перенести долги из тетради
+                    </Link>
+                  )}
+                </div>
+                <small className="muted">Если это всё-таки накладная — просто подтвердите запись ниже.</small>
+              </div>
+            )}
+            {checkedPhoto?.verdict?.fragment && (
+              <p className="photo-check-mismatch" role="status">
+                Похоже, на фото только часть накладной — добавьте остальные страницы, иначе сумма
+                будет неполной.
+              </p>
+            )}
             {similar.length > 0 && (
               <div className="photo-check-mismatch" role="status">
                 Похоже, такая запись уже есть:
@@ -630,6 +788,21 @@ export function OperationForm({
               Фото накладной
               {pages.length > 0 && <span className="muted"> · страниц: {pages.length}</span>}
             </span>
+            {useExisting && existingDocument && pages.length === 0 && (
+              <ol className="page-thumbs">
+                {existingDocument.pages.map((page, i) => (
+                  <li key={i} className="page-thumb">
+                    {page.mimeType === "application/pdf" || !page.url ? (
+                      <span className="page-thumb-pdf">{page.url ? "PDF" : "Фото"}</span>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={page.url} alt={`Страница ${i + 1}`} />
+                    )}
+                    <span className="page-thumb-n">{i + 1}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
             {pages.length > 0 && (
               <ol className="page-thumbs">
                 {pages.map((file, i) => (
@@ -656,7 +829,23 @@ export function OperationForm({
                 ))}
               </ol>
             )}
-            {pages.length < MAX_PAGES && (
+            {useExisting && pages.length === 0 ? (
+              <div className="page-add-actions">
+                <button
+                  type="button"
+                  className="button page-add"
+                  onClick={() => {
+                    ++photoRequest.current;
+                    setUseExisting(false);
+                    setCheckedPhoto(null);
+                    setCheckNote(null);
+                    setChecking(false);
+                  }}
+                >
+                  Заменить фото
+                </button>
+              </div>
+            ) : pages.length < MAX_PAGES && (
               <div className="page-add-actions">
                 {/* Камера сразу — capture; файлом — фото из галереи или PDF. */}
                 <label className="button page-add">
@@ -681,7 +870,7 @@ export function OperationForm({
                 </label>
               </div>
             )}
-            {pages.length === 0 && (
+            {pages.length === 0 && !useExisting && (
               <small className="muted">
                 Накладная на нескольких листах — добавьте страницы по порядку. PDF от поставщика
                 можно приложить целиком.
@@ -691,7 +880,7 @@ export function OperationForm({
               ref={pagesInput}
               // Фото уже загружены при проверке — второй раз не отправляем,
               // сервер возьмёт document_id.
-              name={checkedPhoto || uploadedDocumentId ? undefined : "photo"}
+              name={checkedPhoto || useExisting || uploadedDocumentId ? undefined : "photo"}
               type="file"
               multiple
               hidden
@@ -714,10 +903,10 @@ export function OperationForm({
           </p>
         )}
         <div className="simple-operation-actions">
-          <Submit pending={saving} disabled={checking || (kind !== "payment" && pages.length === 0)}>
+          <Submit pending={saving} disabled={checking || switching || (kind !== "payment" && !hasPhoto)}>
             {checking
               ? "Проверяем фото…"
-              : kind !== "payment" && pages.length === 0
+              : kind !== "payment" && !hasPhoto
                 ? "Приложите фото накладной"
                 : confirmLabel}
           </Submit>

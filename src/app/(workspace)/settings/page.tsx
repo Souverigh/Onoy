@@ -40,7 +40,7 @@ export default async function Settings({
   }
   const org = await db
     .from("organizations")
-    .select("phone,block_duplicate_photos")
+    .select("phone,block_duplicate_photos,document_names")
     .eq("id", organizationId)
     .maybeSingle();
 
@@ -59,7 +59,7 @@ export default async function Settings({
       )}
       {error && (
         <p className="form-error" role="alert">
-          Не удалось сохранить. Проверьте название и телефон.
+          Не удалось сохранить. Проверьте название, телефон и названия в накладных (до 20 строк).
         </p>
       )}
       <section className="panel form-panel">
@@ -77,6 +77,19 @@ export default async function Settings({
               placeholder="+996 700 000000"
               defaultValue={org.data?.phone ?? ""}
             />
+          </label>
+          <label>
+            Как ваш магазин написан в накладных (необязательно)
+            <textarea
+              name="document_names"
+              rows={3}
+              placeholder={"Маликнур\nD MALIKNUR SATAROV"}
+              defaultValue={((org.data?.document_names as string[] | null) ?? []).join("\n")}
+            />
+            <small className="muted">
+              По строке на вариант — как на печати, в шапке или от руки. По ним приложение
+              понимает, продажа это или приход, и не путает ваш магазин с клиентом.
+            </small>
           </label>
           <label className="cash-toggle">
             <input
