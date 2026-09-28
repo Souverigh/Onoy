@@ -4,7 +4,8 @@ import { getContext } from "@/lib/context";
 import { money } from "@/lib/format";
 import { documentPages, signedPhotoUrl } from "@/lib/storage";
 import { DocumentPhotos } from "@/components/document-photos";
-import { retryRecognition, confirmDocument, updateLine, saveAlias } from "../actions";
+import { retryRecognition, confirmDocument, updateLine, saveAlias, addLine, deleteLine } from "../actions";
+import { ConfirmButton } from "@/components/confirm-button";
 import { similarity } from "@/lib/match";
 import { TOLERANCE } from "@/lib/adre/reconcile";
 
@@ -273,7 +274,22 @@ export default async function DocumentDetail({
             </form>
           )}
         </div>
-        {doc.error_message && <p className="muted">{doc.error_message}</p>}
+        {doc.error_message &&
+          (doc.error_message.startsWith("Не разобрали") ? (
+            <p className="photo-check-mismatch">{doc.error_message}</p>
+          ) : (
+            // Техническую ошибку не показываем как есть (аудит 15.1 п. 2): человеческий текст + подробности.
+            <div className="photo-check-mismatch">
+              <p>
+                Не получилось распознать фото. Попробуйте ещё раз, переснимите накладную или введите позиции
+                вручную ниже.
+              </p>
+              <details>
+                <summary className="muted">Подробности для поддержки</summary>
+                <small className="muted">{doc.error_message}</small>
+              </details>
+            </div>
+          ))}
         {recognizedDocumentType && documentTypeMismatch && (
           <p className="photo-check-mismatch">
             ADRE увидел: {documentTypeLabel[recognizedDocumentType]} — не похоже на «
@@ -410,6 +426,13 @@ export default async function DocumentDetail({
                             Сохранить
                           </button>
                         </form>
+                        <form action={deleteLine} className="invoice-line-delete">
+                          <input type="hidden" name="line_id" value={line.id} />
+                          <input type="hidden" name="document_id" value={doc.id} />
+                          <ConfirmButton className="button danger-outline" message={`Удалить строку ${line.n} «${line.name_raw}»?`}>
+                            Удалить строку
+                          </ConfirmButton>
+                        </form>
                       </details>
                     </li>
                   );
@@ -427,8 +450,37 @@ export default async function DocumentDetail({
                   )}
                 </>
               ) : (
-                <p className="muted">Позиции появятся после распознавания.</p>
+                <p className="muted">
+                  {doc.status === "failed" || doc.status === "review"
+                    ? "Позиций нет — введите их вручную ниже."
+                    : "Позиции появятся после распознавания."}
+                </p>
               )}
+              <details className="invoice-line-add">
+                <summary className="button">+ Добавить строку</summary>
+                <form action={addLine} className="invoice-line-form">
+                  <input type="hidden" name="document_id" value={doc.id} />
+                  <label className="invoice-line-field-name">
+                    Название
+                    <input name="name_raw" required maxLength={200} />
+                  </label>
+                  <label>
+                    Кол-во
+                    <input name="qty" required inputMode="decimal" defaultValue="1" />
+                  </label>
+                  <label>
+                    Ед.
+                    <input name="unit" defaultValue="шт" />
+                  </label>
+                  <label>
+                    Цена (скидка — с минусом)
+                    <input name="price" required inputMode="decimal" />
+                  </label>
+                  <button className="button primary" type="submit">
+                    Добавить
+                  </button>
+                </form>
+              </details>
             </div>
           </section>
         )}

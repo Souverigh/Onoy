@@ -5,24 +5,33 @@ import { getContext } from "@/lib/context";
 import { money } from "@/lib/format";
 import { invoiceMessage } from "@/lib/invoice-message";
 import { SendInvoice } from "@/components/send-invoice";
+import { RecordResult } from "@/components/record-result";
+import { ensureShareToken, waPhone } from "@/lib/share";
 
 // Отправка клиенту накладной и ссылки на долг (ТЗ §4 Б). PDF — только когда
 // накладная сверена (документ «оцифрована»); до этого уходит текст с долгом.
-export default async function SendSalePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SendSalePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ done?: string; duplicate?: string; undo?: string }>;
+}) {
   const { id } = await params;
+  const { done, duplicate, undo } = await searchParams;
   if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
-  const { db, organizationId } = await getContext();
+  const { db, organizationId, user } = await getContext();
 
   const saleResult = await db
     .from("sales")
-    .select("id,customer_id,total,occurred_at,paid_immediately,reversed_at,is_opening,document_id,status")
+    .select("id,customer_id,total,occurred_at,paid_immediately,reversed_at,is_opening,document_id,status,created_at,created_by")
     .eq("organization_id", organizationId)
     .eq("id", id)
     .maybeSingle();
   const sale = saleResult.data;
   if (saleResult.error || !sale || sale.status !== "posted") notFound();
 
-  const [customerResult, docResult, shopResult, linksResult] = await Promise.all([
+  const [customerResult, docResult, shopResult, share] = await Promise.all([
     db
       .from("customer_balances")
       .select("id,name,phone,balance")
@@ -38,28 +47,12 @@ export default async function SendSalePage({ params }: { params: Promise<{ id: s
           .maybeSingle()
       : Promise.resolve({ data: null }),
     db.from("organizations").select("name").eq("id", organizationId).maybeSingle(),
-    db
-      .from("share_links")
-      .select("token,revoked_at")
-      .eq("organization_id", organizationId)
-      .eq("customer_id", sale.customer_id)
-      .order("created_at", { ascending: false }),
+    ensureShareToken(db, organizationId, sale.customer_id),
   ]);
   const customer = customerResult.data;
   if (!customer) notFound();
 
-  // Ссылки у клиента ещё не было — создаём (так же, как кнопкой в карточке).
-  // Если магазин ссылку отзывал — сам не создаём, отправляем без неё.
-  const links = linksResult.data ?? [];
-  let token = links.find((l) => !l.revoked_at)?.token ?? null;
-  const revoked = !token && links.length > 0;
-  if (!token && !revoked) {
-    const created = await db.rpc("create_share_link", {
-      p_org: organizationId,
-      p_customer: customer.id,
-    });
-    token = typeof created.data === "string" ? created.data : null;
-  }
+  const { token, revoked } = share;
 
   const h = await headers();
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
@@ -88,8 +81,37 @@ export default async function SendSalePage({ params }: { params: Promise<{ id: s
   const text = message(false);
   const back = `/customers/${customer.id}`;
 
+  const debtBefore = Math.round((balance - (sale.paid_immediately ? 0 : Number(sale.total))) * 100) / 100;
   return (
     <>
+      {done && (
+        <RecordResult
+          title={sale.paid_immediately ? "Продажа за наличные записана" : "Продажа записана"}
+          party={customer.name}
+          partyHref={back}
+          amount={String(sale.total)}
+          debtLabel="Долг клиента"
+          debtBefore={debtBefore}
+          debtAfter={balance}
+          kind="sale"
+          id={sale.id}
+          canUndo={sale.created_by === user.id && Date.now() - Date.parse(sale.created_at) < 2 * 60 * 1000}
+          reversed={Boolean(sale.reversed_at)}
+          notes={
+            <>
+              {duplicate && <p className="notice">Это фото уже приложено к другой записи — проверьте, не задвоилось ли.</p>}
+              {undo === "expired" && <p className="form-error">Прошло больше 2 минут — отменить может владелец с причиной.</p>}
+            </>
+          }
+        >
+          <Link className="button" href="/money/new?type=sale">
+            Ещё продажа
+          </Link>
+          <Link className="button" href={back}>
+            Открыть клиента
+          </Link>
+        </RecordResult>
+      )}
       <Link className="back-link" href={back}>
         ← {customer.name}
       </Link>
@@ -146,7 +168,7 @@ export default async function SendSalePage({ params }: { params: Promise<{ id: s
           )}
           <pre className="send-invoice-preview">{text}</pre>
           <SendInvoice
-            phone={(customer.phone ?? "").replace(/[^0-9]/g, "")}
+            phone={waPhone(customer.phone)}
             text={text}
             fileText={message(true)}
             pdfUrl={checked && sale.document_id ? `/documents/${sale.document_id}/pdf` : null}

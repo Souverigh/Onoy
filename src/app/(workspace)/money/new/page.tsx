@@ -19,6 +19,7 @@ export default async function NewOperation({
     date?: string;
     suggest?: string;
     party?: string;
+    undone?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -31,12 +32,14 @@ export default async function NewOperation({
       .from("customer_balances")
       .select("id,name,balance,credit_limit")
       .eq("organization_id", organizationId)
+      .is("archived_at", null)
       .order("name")
       .range(0, 999),
     db
       .from("suppliers")
       .select("id,name")
       .eq("organization_id", organizationId)
+      .is("archived_at", null)
       .order("name")
       .range(0, 999),
   ]);
@@ -92,6 +95,11 @@ export default async function NewOperation({
           <h1>{title}</h1>
         </div>
       </div>
+      {params.undone && (
+        <p className="notice success" role="status">
+          Прошлая запись отменена — введите заново.
+        </p>
+      )}
       {!needsParty ? (
         <section className="panel empty">
           <h2>Кого добавить?</h2>

@@ -32,7 +32,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 19);
+  assert.equal(rows.length, 20);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -1699,9 +1699,12 @@ test("platform admin: codes, shop overview without money data, plan, block stops
   await db.query("select admin_set_plan($1,'basic','2026-12-31')", [orgA]);
   await db.query("select admin_set_blocked($1,true,'Не оплачено')", [orgA]);
 
+  // ТЗ §13: страница клиента открывается и у приостановленного магазина,
+  // заявка «Я оплатил» принимается (долг не меняет).
   await owner();
-  await db.exec("SET ROLE anon;");
-  await assert.rejects(db.query("select get_statement_by_token($1)", [link]), /shop_blocked/);
+  await db.exec("SET ROLE anon; SELECT set_config('request.jwt.claim.sub','',false);");
+  assert.ok((await db.query("select get_statement_by_token($1) as d", [link])).rows[0].d);
+  await db.query("select submit_payment_claim($1,'100.00','Перевёл')", [link]);
   await user(a);
   await assert.rejects(
     db.query("select commit_sale($1,$2,'1.00',false,'bbbbbbbb-9999-4000-8000-000000000001')", [orgA, customer]),
@@ -1721,4 +1724,116 @@ test("platform admin: codes, shop overview without money data, plan, block stops
   await db.query("insert into customers(organization_id,name) values ($1,'После разблокировки')", [orgA]);
   await owner();
   await db.query("delete from private.platform_admins where user_id=$1", [b]);
+});
+
+test("view-only after the paid period: 7 grace days, then no new records; unpaid pilot shops unaffected", async () => {
+  await owner();
+  const shop = (await db.query("insert into organizations(name,created_by,creation_key) values ('Льгота',$1,gen_random_uuid()) returning id", [a])).rows[0].id;
+  await db.query("insert into organization_members(organization_id,user_id) values ($1,$2)", [shop, a]);
+  const add = (name) => db.query("insert into customers(organization_id,name) values ($1,$2)", [shop, name]);
+  await user(a);
+  await add("Без оплаты — пилот"); // paid_until null
+  await owner();
+  await db.query("update organizations set paid_until=(now() at time zone 'Asia/Bishkek')::date - 7 where id=$1", [shop]);
+  await user(a);
+  await add("Седьмой льготный день");
+  await owner();
+  await db.query("update organizations set paid_until=(now() at time zone 'Asia/Bishkek')::date - 8 where id=$1", [shop]);
+  await user(a);
+  await assert.rejects(add("Льгота кончилась"), /shop_blocked/);
+  assert.equal((await db.query("select count(*)::int as n from customers where organization_id=$1", [shop])).rows[0].n, 2);
+});
+test("undo_recent: the author cancels a just-made record without a reason, only within 2 minutes", async () => {
+  await owner();
+  const customer = (await db.query("insert into customers(organization_id,name) values ($1,'Ошиблись клиентом') returning id", [orgA])).rows[0].id;
+  await user(a);
+  const sale = (await db.query("select commit_sale($1,$2,'300.00',false,'dededede-0000-4000-8000-000000000001') as id", [orgA, customer])).rows[0].id;
+  await user(b);
+  await assert.rejects(db.query("select undo_recent($1,'sale',$2)", [orgA, sale]), /not_a_member/);
+  await user(a);
+  await db.query("select undo_recent($1,'sale',$2)", [orgA, sale]);
+  assert.equal((await db.query("select balance from customer_balances where id=$1", [customer])).rows[0].balance, "0.00");
+  assert.equal((await db.query("select reversal_comment from sales where id=$1", [sale])).rows[0].reversal_comment, "Отменено сразу после записи");
+  await assert.rejects(db.query("select undo_recent($1,'sale',$2)", [orgA, sale]), /undo_expired/); // уже отменена
+
+  const old = (await db.query("select commit_sale($1,$2,'400.00',false,'dededede-0000-4000-8000-000000000002') as id", [orgA, customer])).rows[0].id;
+  await owner();
+  await db.query("update sales set created_at=now() - interval '3 minutes' where id=$1", [old]);
+  await user(a);
+  await assert.rejects(db.query("select undo_recent($1,'sale',$2)", [orgA, old]), /undo_expired/);
+});
+
+test("delete / archive / merge counterparties: delete only without records, merge moves everything and can be undone", async () => {
+  await owner();
+  const mk = async (name) => (await db.query("insert into customers(organization_id,name) values ($1,$2) returning id", [orgA, name])).rows[0].id;
+  const empty = await mk("Пустой по ошибке");
+  const timur1 = await mk("Тимур аке");
+  const timur2 = await mk("Тимур ака");
+  await user(a);
+  await db.query("select commit_sale($1,$2,'1000.00',false,'afafafaf-0000-4000-8000-000000000001')", [orgA, timur1]);
+  await db.query("select commit_sale($1,$2,'500.00',false,'afafafaf-0000-4000-8000-000000000002')", [orgA, timur2]);
+  const link2 = (await db.query("select create_share_link($1,$2) as t", [orgA, timur2])).rows[0].t;
+
+  await db.query("select delete_party($1,'customers',$2)", [orgA, empty]);
+  assert.equal((await db.query("select * from customers where id=$1", [empty])).rows.length, 0);
+  await assert.rejects(db.query("select delete_party($1,'customers',$2)", [orgA, timur1]), /has_records/);
+
+  await db.query("select set_party_archived($1,'customers',$2,true)", [orgA, timur1]);
+  assert.ok((await db.query("select archived_at from customer_balances where id=$1", [timur1])).rows[0].archived_at);
+  await db.query("select set_party_archived($1,'customers',$2,false)", [orgA, timur1]);
+
+  const merge = (await db.query("select merge_party($1,'customers',$2,$3) as id", [orgA, timur2, timur1])).rows[0].id;
+  const into = (await db.query("select balance,aliases from customer_balances where id=$1", [timur1])).rows[0];
+  assert.equal(into.balance, "1500.00");
+  assert.ok(into.aliases.includes("Тимур ака"));
+  const from = (await db.query("select merged_into_id,archived_at from customers where id=$1", [timur2])).rows[0];
+  assert.equal(from.merged_into_id, timur1);
+  assert.ok(from.archived_at);
+  // Ссылка второго теперь показывает общий долг остающегося.
+  await owner();
+  await db.exec("SET ROLE anon; SELECT set_config('request.jwt.claim.sub','',false);");
+  assert.equal((await db.query("select get_statement_by_token($1) as d", [link2])).rows[0].d.balance, "1500.00");
+
+  await user(a);
+  await db.query("select undo_merge($1,$2)", [orgA, merge]);
+  assert.equal((await db.query("select balance from customer_balances where id=$1", [timur1])).rows[0].balance, "1000.00");
+  assert.equal((await db.query("select balance,merged_into_id from customer_balances where id=$1", [timur2])).rows[0].balance, "500.00");
+  assert.ok(!(await db.query("select aliases from customers where id=$1", [timur1])).rows[0].aliases.includes("Тимур ака"));
+  await assert.rejects(db.query("select undo_merge($1,$2)", [orgA, merge]), /undo_expired/);
+
+  // Два действующих переноса из тетради — объединять нельзя.
+  await db.query("select import_opening_balance($1,'customer',$2,null,null,'100.00','afafafaf-0000-4000-8000-000000000003')", [orgA, timur1]);
+  await db.query("select import_opening_balance($1,'customer',$2,null,null,'200.00','afafafaf-0000-4000-8000-000000000004')", [orgA, timur2]);
+  await assert.rejects(db.query("select merge_party($1,'customers',$2,$3)", [orgA, timur2, timur1]), /opening_conflict/);
+});
+test("save_recognition keeps good lines when one line is broken and explains it in plain words", async () => {
+  await owner();
+  const doc = (
+    await db.query(
+      "insert into documents(organization_id,storage_path,file_hash,mime_type,kind,status) values ($1,'partial','partial-hash','image/jpeg','sale','processing') returning id",
+      [orgA],
+    )
+  ).rows[0].id;
+  await user(a);
+  const lines = JSON.stringify([
+    { n: 1, name_raw: "Розетка", qty: "10", unit: "шт", price: "85", confidence: 1 },
+    { n: 2, name_raw: "Кабель", qty: "0", unit: "м", price: "20", confidence: 1 }, // qty > 0 — нарушено
+    { n: 3, name_raw: "Автомат", qty: "5", unit: "шт", price: "abc", confidence: 1 }, // не число
+    { n: 4, name_raw: "Щит", qty: "1", unit: "шт", price: "240", confidence: 1 },
+  ]);
+  await db.query("select save_recognition($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10)", [
+    orgA, doc, "gemini", "m", "v1", "{}", lines, "digitized", 1, 0,
+  ]);
+  const saved = (await db.query("select n from document_lines where document_id=$1 order by n", [doc])).rows.map((r) => r.n);
+  assert.deepEqual(saved, [1, 4]);
+  const d = (await db.query("select status,error_message from documents where id=$1", [doc])).rows[0];
+  assert.equal(d.status, "review");
+  assert.equal(d.error_message, "Не разобрали строки 2, 3 — проверьте их на фото и добавьте вручную.");
+  // Строки, которые не разобрали, — вручную; лишнюю — удалить.
+  const added = (await db.query("select add_document_line($1,$2,'Кабель','100','м','20') as id", [orgA, doc])).rows[0].id;
+  assert.equal((await db.query("select n,sum from document_lines where id=$1", [added])).rows[0].n, 5);
+  await db.query("select delete_document_line($1,$2)", [orgA, added]);
+  await assert.rejects(db.query("select add_document_line($1,$2,'Минус','-1','шт','10')", [orgA, doc]), /qty_check/);
+  await user(b);
+  await assert.rejects(db.query("select add_document_line($1,$2,'Чужое','1','шт','1')", [orgA, doc]), /not_a_member/);
 });

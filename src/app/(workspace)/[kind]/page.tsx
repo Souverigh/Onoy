@@ -12,12 +12,14 @@ export default async function DirectoryPage({
   searchParams,
 }: {
   params: Promise<{ kind: string }>;
-  searchParams: Promise<{ q?: string; page?: string; overdue?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; overdue?: string; archived?: string; deleted?: string }>;
 }) {
   const { kind } = await params;
   if (!isDirectory(kind)) notFound();
   const meta = directoryMeta[kind];
-  const { q = "", page = "1", overdue: rawOverdue } = await searchParams;
+  const { q = "", page = "1", overdue: rawOverdue, archived: rawArchived, deleted } = await searchParams;
+  // Архив (ТЗ §15.2): по умолчанию скрыт, отдельный фильтр «Архив».
+  const archived = kind !== "products" && rawArchived === "1";
   // «Просрочено 30 / 60 / 90» — клиенты, у которых неоплачен долг старше N дней.
   const overdue = kind === "customers" ? overdueThreshold(rawOverdue) : null;
   const current = Math.max(1, Math.min(10000, parseInt(page) || 1));
@@ -41,6 +43,7 @@ export default async function DirectoryPage({
     .order("name")
     .order("id")
     .range((current - 1) * 25, current * 25 - 1);
+  if (kind !== "products") request = archived ? request.not("archived_at", "is", null) : request.is("archived_at", null);
   if (overdueIds)
     request = request.in("id", overdueIds.length ? overdueIds : ["00000000-0000-0000-0000-000000000000"]);
   if (query)
@@ -66,6 +69,7 @@ export default async function DirectoryPage({
     const params = new URLSearchParams();
     if (query) params.set("q", query);
     if (overdue) params.set("overdue", String(overdue));
+    if (archived) params.set("archived", "1");
     for (const [key, value] of Object.entries(extra)) params.set(key, String(value));
     const text = params.toString();
     return `/${kind}${text ? `?${text}` : ""}`;
@@ -108,12 +112,17 @@ export default async function DirectoryPage({
           </Link>
         </div>
       )}
-      {kind === "customers" && (
-        <nav className="overdue-filter" aria-label="Просроченные долги">
-          <Link className={overdue ? "" : "selected"} href="/customers">
+      {deleted && (
+        <p className="notice success" role="status">
+          Удалено.
+        </p>
+      )}
+      {kind !== "products" && (
+        <nav className="overdue-filter" aria-label="Фильтр">
+          <Link className={overdue || archived ? "" : "selected"} href={`/${kind}`}>
             Все
           </Link>
-          {OVERDUE_THRESHOLDS.map((days) => (
+          {kind === "customers" && OVERDUE_THRESHOLDS.map((days) => (
             <Link
               key={days}
               className={overdue === days ? "selected" : ""}
@@ -122,11 +131,15 @@ export default async function DirectoryPage({
               Просрочено {days}+ дн.
             </Link>
           ))}
+          <Link className={archived ? "selected" : ""} href={`/${kind}?archived=1`}>
+            Архив
+          </Link>
         </nav>
       )}
       <section className="panel">
         <form className="search" action={`/${kind}`}>
           {overdue && <input type="hidden" name="overdue" value={overdue} />}
+          {archived && <input type="hidden" name="archived" value="1" />}
           <label htmlFor="search-name" className="sr-only">
             Поиск по названию
           </label>
@@ -214,7 +227,7 @@ export default async function DirectoryPage({
               <Icon name={kind === "products" ? "box" : "people"} />
             </span>
             <h2>
-              {overdue ? "Просроченных долгов нет" : query ? "Ничего не найдено" : "Список пока пуст"}
+              {archived ? "Архив пуст" : overdue ? "Просроченных долгов нет" : query ? "Ничего не найдено" : "Список пока пуст"}
             </h2>
             <p>
               {overdue
@@ -223,7 +236,7 @@ export default async function DirectoryPage({
                 ? "Попробуйте другое название."
                 : "Добавьте первую запись, чтобы подготовить магазин к работе."}
             </p>
-            {!query && !overdue && (
+            {!query && !overdue && !archived && (
               <Link className="button primary" href={`/${kind}/new`}>
                 Добавить
               </Link>

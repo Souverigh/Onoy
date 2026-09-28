@@ -1,6 +1,7 @@
 import { requirePlatformAdmin } from "@/lib/admin";
 import { bishkekDate } from "@/lib/day-summary";
 import { Submit } from "@/components/submit";
+import { subscriptionState } from "@/lib/subscription";
 import { setBlocked, setPlan } from "./actions";
 
 type Shop = {
@@ -61,7 +62,7 @@ export default async function AdminShops({
       )}
       <div className="admin-shops">
         {shops.map((s) => {
-          const overdue = s.paid_until != null && s.paid_until < today;
+          const sub = subscriptionState(s.paid_until, s.blocked_reason, Boolean(s.blocked_at), today);
           return (
             <section key={s.id} id={`shop-${s.id}`} className={`panel admin-shop${s.blocked_at ? " blocked" : ""}`}>
               <div className="admin-shop-head">
@@ -76,7 +77,9 @@ export default async function AdminShops({
                   {s.blocked_at && <span className="tag reversed-tag">заблокирован</span>}
                   {!s.blocked_at && s.records_7d >= ACTIVE_PER_WEEK && <span className="tag green">активен</span>}
                   <span className="tag">{s.plan === "business" ? "Бизнес" : "Базовый"}</span>
-                  {overdue && <span className="tag reversed-tag">оплата просрочена</span>}
+                  {sub.kind === "grace" && <span className="tag reversed-tag">льготная неделя</span>}
+                  {sub.kind === "expired" && <span className="tag reversed-tag">только просмотр (не оплачено)</span>}
+                  {sub.kind === "ending" && <span className="tag">оплата кончается</span>}
                   {saved === s.id && <span className="tag green">сохранено</span>}
                 </div>
               </div>

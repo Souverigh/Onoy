@@ -11,6 +11,8 @@ import { createLink, revokeLink, setPromisedDate } from "@/app/(workspace)/[kind
 import { dayMonth, promiseStatus } from "@/lib/promise";
 import { paymentLabel } from "@/lib/entry-labels";
 import { memberLabels } from "@/lib/members";
+import { PartyManage } from "@/components/party-manage";
+import { waPhone } from "@/lib/share";
 import { bishkekDate } from "@/lib/day-summary";
 
 type ShareLink = { id: string; token: string; revoked_at: string | null };
@@ -35,12 +37,17 @@ export default async function EntryPage({
     reversed?: string;
     promised?: string;
     adjusted?: string;
+    archived?: string;
+    restored?: string;
+    merged?: string;
+    unmerged?: string;
   }>;
 }) {
   const { kind, id } = await params;
   if (!isDirectory(kind)) notFound();
-  const { db, organizationId, isOwner } = await getContext();
-  const { error, saved, linked, revoked, reversed, promised, adjusted } = await searchParams;
+  const { db, organizationId, organizationName, isOwner } = await getContext();
+  const { error, saved, linked, revoked, reversed, promised, adjusted, archived, restored, merged, unmerged } =
+    await searchParams;
   let entry: Entry | undefined;
   if (id !== "new") {
     if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
@@ -165,6 +172,69 @@ export default async function EntryPage({
   const showAuthors = [...members.values()].some((m) => m.role === "staff");
   const who = (id: string | null) => (id ? (members.get(id)?.name ?? "бывший сотрудник") : null);
 
+  // Управление контрагентом: есть ли записи (включая отменённые и заявки),
+  // с кем можно объединить, недавние объединения (отмена в течение суток).
+  let manage: React.ComponentProps<typeof PartyManage> | null = null;
+  if (entry && isParty) {
+    const partyColumn = kind === "customers" ? "customer_id" : "supplier_id";
+    const [docs, pays, others, merges, into] = await Promise.all([
+      db
+        .from(kind === "customers" ? "sales" : "purchases")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", organizationId)
+        .eq(partyColumn, entry.id),
+      db
+        .from("payments")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", organizationId)
+        .eq(partyColumn, entry.id),
+      isOwner
+        ? db
+            .from(kind)
+            .select("id,name")
+            .eq("organization_id", organizationId)
+            .is("merged_into_id", null)
+            .is("archived_at", null)
+            .neq("id", entry.id)
+            .order("name")
+            .range(0, 999)
+        : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      isOwner
+        ? db
+            .from("party_merges")
+            .select("id,from_id")
+            .eq("organization_id", organizationId)
+            .eq("into_id", entry.id)
+            .is("undone_at", null)
+            .gt("created_at", new Date(Date.now() - 86400000).toISOString())
+        : Promise.resolve({ data: [] as { id: string; from_id: string }[] }),
+      entry.merged_into_id
+        ? db.from(kind).select("id,name").eq("organization_id", organizationId).eq("id", entry.merged_into_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    const mergeRows = (merges.data ?? []) as { id: string; from_id: string }[];
+    const fromNames = mergeRows.length
+      ? new Map(
+          ((await db.from(kind).select("id,name").in("id", mergeRows.map((m) => m.from_id))).data ?? []).map((p) => [
+            p.id as string,
+            p.name as string,
+          ]),
+        )
+      : new Map<string, string>();
+    manage = {
+      kind: kind as "customers" | "suppliers",
+      id: entry.id,
+      name: entry.name,
+      balance: Number(entry.balance ?? 0),
+      hasRecords: (docs.count ?? 0) + (pays.count ?? 0) > 0,
+      archived: Boolean(entry.archived_at),
+      mergedInto: (into.data as { id: string; name: string } | null) ?? null,
+      isOwner,
+      others: (others.data ?? []) as { id: string; name: string }[],
+      recentMerges: mergeRows.map((m) => ({ id: m.id, fromName: fromNames.get(m.from_id) ?? "контрагент" })),
+    };
+  }
+
   const newOperationHref = (type: string) =>
     `/money/new?type=${["sale", "purchase", "payment"].includes(type) ? type : "payment"}&party=${entry?.id ?? ""}`;
 
@@ -179,15 +249,16 @@ export default async function EntryPage({
       : promise.kind === "upcoming"
         ? ` Срок оплаты — ${dayMonth(promise.date)}.`
         : "";
+  // Аудит ТЗ 15.1 п. 14: название магазина, без «долг в», страница не «оплатить», а посмотреть.
   const reminderText =
-    entry && kind === "customers" && activeLink
-      ? `Здравствуйте! Ваш долг в ${money(entry.balance ?? 0)}.${promiseLine} Посмотреть и оплатить: ${origin}/c/${activeLink.token}`
-      : entry && kind === "customers"
-        ? `Здравствуйте! Ваш долг: ${money(entry.balance ?? 0)}.${promiseLine}`
-        : "";
+    entry && kind === "customers"
+      ? `Магазин «${organizationName}»: ваш долг ${money(entry.balance ?? 0)}.${promiseLine}${
+          activeLink ? ` Накладные и история: ${origin}/c/${activeLink.token}` : ""
+        }`
+      : "";
   const waHref =
     entry?.phone && reminderText
-      ? `https://wa.me/${entry.phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(reminderText)}`
+      ? `https://wa.me/${waPhone(entry.phone)}?text=${encodeURIComponent(reminderText)}`
       : undefined;
 
   return (
@@ -238,6 +309,33 @@ export default async function EntryPage({
       {entry && isParty && error === "reversal" && (
         <p className="form-error" role="alert">
           Не удалось отменить запись. Возможно, она уже отменена.
+        </p>
+      )}
+      {(archived || restored || merged || unmerged) && (
+        <p className="notice success" role="status">
+          {archived
+            ? "Убран в архив: его нет в списках и формах, история и ссылка сохранены."
+            : restored
+              ? "Возвращён из архива."
+              : merged
+                ? "Объединено: записи и ссылка перенесены сюда, второе имя стало синонимом. Отменить можно в течение суток — ниже, в «Управлении»."
+                : "Объединение отменено."}
+        </p>
+      )}
+      {entry?.archived_at && !entry.merged_into_id && (
+        <p className="notice" role="status">
+          В архиве — не показывается в списках и формах.
+        </p>
+      )}
+      {error && ["has_records", "party", "merge", "merge_opening", "merge_expired"].includes(error) && (
+        <p className="form-error" role="alert">
+          {error === "has_records"
+            ? "Удалить нельзя: есть записи. Можно убрать в архив."
+            : error === "merge_opening"
+              ? "У обоих есть перенос из тетради — сначала отмените один из них, потом объединяйте."
+              : error === "merge_expired"
+                ? "Отменить объединение можно только в течение суток."
+                : "Не удалось выполнить действие. Обновите страницу и попробуйте снова."}
         </p>
       )}
       {adjusted && (
@@ -430,11 +528,16 @@ export default async function EntryPage({
           )}
         </section>
       )}
+      {manage && <PartyManage {...manage} />}
       <section className="panel form-panel">
         <EntryForm
           kind={kind}
           entry={entry}
-          error={error === "link" || error === "reversal" ? undefined : error}
+          error={
+            error && ["link", "reversal", "promise", "has_records", "party", "merge", "merge_opening", "merge_expired"].includes(error)
+              ? undefined
+              : error
+          }
         />
       </section>
     </>

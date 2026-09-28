@@ -234,9 +234,14 @@ export async function commitOperation(form: FormData) {
   const duplicate =
     documentId !== null && (await isDuplicatePhoto(db, organizationId, documentId));
   revalidatePath("/", "layout");
-  // После продажи — ссылка «Отправить клиенту» (накладная и долг в WhatsApp).
-  const sent = operation === "sale" ? `&sale=${result.data}` : "";
-  redirect(`/money?created=${operation}${sent}${part}${duplicate ? "&duplicate=1" : ""}`);
+  // Экран результата (ТЗ §15.2): продажа — сразу отправка клиенту, приход и
+  // оплата — «Записано» с долгом до → после.
+  const extra = `${part}${duplicate ? "&duplicate=1" : ""}`;
+  redirect(
+    operation === "sale"
+      ? `/money/send/${result.data}?done=1${extra}`
+      : `/money/done/${operation}/${result.data}?done=1${extra}`,
+  );
 }
 
 /**
@@ -503,6 +508,7 @@ export async function customerFromContact(
       .select("id,name,phone,balance")
       .eq("organization_id", organizationId)
       .neq("phone", "")
+      .is("merged_into_id", null)
       .range(0, 999); // номер хранится как ввели («0555 12-34-56») — сравниваем нормализованно
     const match = (existing.data ?? []).find((c) => phoneKey(c.phone) === key);
     if (match) return { id: match.id, name: match.name, balance: String(match.balance), created: false };
@@ -516,4 +522,17 @@ export async function customerFromContact(
   if (inserted.error || !inserted.data) return { error: "save" };
   revalidatePath("/customers");
   return { id: inserted.data.id, name: inserted.data.name, balance: "0.00", created: true };
+}
+
+/** «Отменить — ошиблись» на экране результата: автор, первые 2 минуты. */
+export async function undoRecent(form: FormData) {
+  const kind = String(form.get("kind") ?? "");
+  const id = String(form.get("id") ?? "");
+  if (!["sale", "purchase", "payment"].includes(kind) || !uuidPattern.test(id)) redirect("/money?error=invalid");
+  const { db, organizationId } = await getContext();
+  const result = await db.rpc("undo_recent", { p_org: organizationId, p_kind: kind, p_id: id });
+  if (result.error)
+    redirect(kind === "sale" ? `/money/send/${id}?done=1&undo=expired` : `/money/done/${kind}/${id}?undo=expired`);
+  revalidatePath("/", "layout");
+  redirect(`/money/new?type=${kind}&undone=1`);
 }

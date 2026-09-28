@@ -98,3 +98,50 @@ export async function saveAlias(form: FormData) {
   revalidatePath(`/documents/${documentId}`);
   redirect(`/documents/${documentId}?aliasSaved=1`);
 }
+
+/** Цена строки: с минусом — скидка/возврат (как в updateLine). */
+function linePrice(raw: FormDataEntryValue | null): string {
+  const text = String(raw ?? "").trim();
+  const negative = /^[-−–]/.test(text);
+  const price = decimalInput(text.replace(/^[-−–]\s*/, ""), 2);
+  return negative && Number(price) !== 0 ? `-${price}` : price;
+}
+
+/** Ввести позицию вручную (аудит ТЗ 15.1 п. 17, ТЗ §6). */
+export async function addLine(form: FormData) {
+  const documentId = String(form.get("document_id") ?? "");
+  if (!uuidPattern.test(documentId)) redirect("/documents?error=invalid");
+  const name = String(form.get("name_raw") ?? "").trim();
+  let qty: string;
+  let price: string;
+  try {
+    qty = decimalInput(form.get("qty"), 3);
+    price = linePrice(form.get("price"));
+  } catch {
+    redirect(`/documents/${documentId}?error=line`);
+  }
+  if (!name || name.length > 200 || Number(qty) <= 0) redirect(`/documents/${documentId}?error=line`);
+  const { db, organizationId } = await getContext();
+  const result = await db.rpc("add_document_line", {
+    p_org: organizationId,
+    p_document: documentId,
+    p_name: name,
+    p_qty: qty,
+    p_unit: String(form.get("unit") ?? "").trim() || "шт",
+    p_price: price,
+  });
+  if (result.error) redirect(`/documents/${documentId}?error=line`);
+  revalidatePath(`/documents/${documentId}`);
+  redirect(`/documents/${documentId}?saved=1`);
+}
+
+export async function deleteLine(form: FormData) {
+  const documentId = String(form.get("document_id") ?? "");
+  const lineId = String(form.get("line_id") ?? "");
+  if (!uuidPattern.test(documentId) || !uuidPattern.test(lineId)) redirect("/documents?error=invalid");
+  const { db, organizationId } = await getContext();
+  const result = await db.rpc("delete_document_line", { p_org: organizationId, p_line: lineId });
+  if (result.error) redirect(`/documents/${documentId}?error=line`);
+  revalidatePath(`/documents/${documentId}`);
+  redirect(`/documents/${documentId}?saved=1`);
+}

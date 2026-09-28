@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { LogoutButton } from "@/components/logout-button";
 import { getContext } from "@/lib/context";
 import { StaffPanel, type Invite, type Member } from "@/components/staff-panel";
 import { Submit } from "@/components/submit";
@@ -141,6 +142,7 @@ export default async function Settings({
           <dt>Версия</dt>
           <dd>0.3 · Долги, фото-основание, отмена записей, заявки, ссылка клиента</dd>
         </dl>
+        <LogoutButton />
       </section>
     </>
   );

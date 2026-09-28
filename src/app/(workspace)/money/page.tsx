@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { plural } from "@/components/dashboard";
 import { paymentLabelWithSide, type PaymentKind } from "@/lib/entry-labels";
 import { getContext } from "@/lib/context";
 import { money } from "@/lib/format";
@@ -264,7 +265,7 @@ export default async function Money({
       )}
       {isOwner && pendingClaims > 0 && (
         <Link className="notice claims-notice" href="/claims">
-          Ждут подтверждения: {pendingClaims} заявка(и) на оплату →
+          Ждут подтверждения: {pendingClaims} {plural(pendingClaims, "заявка", "заявки", "заявок")} на оплату →
         </Link>
       )}
       <section className="operation-actions" aria-label="Новая операция">

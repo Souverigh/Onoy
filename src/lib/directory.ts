@@ -36,5 +36,7 @@ export type Entry = {
   balance?: string;
   credit_limit?: string | null;
   promised_date?: string | null;
+  archived_at?: string | null;
+  merged_into_id?: string | null;
   aliases?: string[];
 };

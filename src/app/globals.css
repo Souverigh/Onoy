@@ -2814,3 +2814,252 @@ tr.line-mismatch {
   font-size: 20px;
   letter-spacing: 2px;
 }
+
+/* === Каркас 0.4 (аудит ТЗ 15.1 п. 6, 8, 11) === */
+.nav-badge-muted {
+  background: #9aa39a;
+}
+.button.danger-outline {
+  border-color: #d9a597;
+  color: #a34836;
+  background: #fff;
+}
+/* ПК средней ширины: иконка + подпись под ней, без иконок-загадок. */
+@media (max-width: 800px) and (min-width: 561px) {
+  .sidebar {
+    width: 92px;
+    padding: 20px 6px;
+  }
+  .workspace {
+    margin-left: 92px;
+    width: calc(100% - 92px);
+  }
+  .sidebar nav span {
+    display: block;
+    font-size: 11px;
+    line-height: 1.2;
+    text-align: center;
+  }
+  .sidebar nav a {
+    flex-direction: column;
+    gap: 4px;
+    padding: 9px 4px;
+    position: relative;
+  }
+  .sidebar nav a .nav-badge {
+    position: absolute;
+    top: 4px;
+    right: 8px;
+  }
+}
+/* Телефон: нижняя панель с «+ Продажа» по центру и «Ещё». */
+@media (max-width: 560px) {
+  .sidebar nav.nav-compact a,
+  .sidebar nav.nav-compact button {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    flex: 1;
+    min-height: 56px;
+    padding: 6px 2px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #74807a;
+    font: inherit;
+    font-size: 11px;
+  }
+  .sidebar nav.nav-compact span {
+    display: block;
+    font-size: 11px;
+    line-height: 1.1;
+  }
+  .sidebar nav.nav-compact .active {
+    color: var(--green);
+    font-weight: 600;
+  }
+  .sidebar nav.nav-compact .nav-primary {
+    color: #fff;
+    background: var(--green);
+    border-radius: 14px;
+    margin: 0 4px;
+    font-weight: 600;
+  }
+  .sidebar nav.nav-compact .nav-badge {
+    position: absolute;
+    top: 2px;
+    right: calc(50% - 22px);
+    margin: 0;
+  }
+  .content {
+    padding-bottom: 96px;
+  }
+  /* «Ещё» — меню снизу, над панелью. */
+  .mobile-menu {
+    top: auto;
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    border-bottom: 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.12);
+    max-height: calc(100vh - 140px);
+  }
+  .mobile-menu-backdrop {
+    inset: 0 0 calc(72px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Главный экран 0.4 (ТЗ §7 экран 2, аудит 15.1 п. 7). */
+a.debt-card {
+  color: inherit;
+  text-decoration: none;
+}
+a.debt-card:hover {
+  border-color: var(--green);
+}
+.dashboard-day {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  color: inherit;
+  text-decoration: none;
+}
+.dashboard-day > span:first-child {
+  display: grid;
+  gap: 2px;
+}
+.dashboard-search {
+  display: flex;
+  gap: 8px;
+}
+.dashboard-search input {
+  flex: 1;
+  min-width: 0;
+}
+.dashboard-recent {
+  margin: 0;
+}
+.recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.recent-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.recent-list li > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.recent-list .tag {
+  margin-left: 6px;
+}
+.nowrap {
+  white-space: nowrap;
+}
+.simple-dashboard {
+  display: grid;
+  gap: 14px;
+}
+.simple-dashboard > .notice {
+  margin: 0;
+}
+@media (max-width: 560px) {
+  .debt-cards {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .debt-card {
+    padding: 16px 10px;
+  }
+  .debt-card strong {
+    font-size: 21px;
+    letter-spacing: -0.3px;
+  }
+}
+
+/* Экран результата после записи (ТЗ §15.2). */
+.record-result {
+  display: grid;
+  gap: 10px;
+  border-color: #b9d6c4;
+  background: #f4faf5;
+  margin-bottom: 16px;
+}
+.record-result.reversed {
+  border-color: var(--line);
+  background: #fff;
+}
+.record-result p {
+  margin: 0;
+}
+.record-result-title {
+  color: var(--green);
+  font-weight: 700;
+  font-size: 18px;
+}
+.record-result-main {
+  font-size: 20px;
+}
+.record-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.record-result-undo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Управление контрагентом: удалить / архив / объединить (ТЗ §15.2). */
+.party-manage {
+  display: grid;
+  gap: 12px;
+}
+.party-manage h2,
+.party-manage p {
+  margin: 0;
+}
+.party-manage-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.party-manage-row > span {
+  flex: 1 1 240px;
+}
+
+/* Ручные строки накладной (аудит 15.1 п. 17). */
+.invoice-line-add {
+  margin-top: 12px;
+}
+.invoice-line-add > summary {
+  list-style: none;
+  display: inline-flex;
+  cursor: pointer;
+}
+.invoice-line-add > summary::-webkit-details-marker {
+  display: none;
+}
+.invoice-line-delete {
+  margin-top: 8px;
+}
