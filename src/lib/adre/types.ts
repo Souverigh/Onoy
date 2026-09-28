@@ -21,6 +21,12 @@ export type DocumentClass =
 
 export type DocumentSide = { name_raw: string; phone: string | null };
 
+/** Где на фото верх документа — по нему фото поворачивается (image.ts). */
+export type TopSide = "top" | "right" | "bottom" | "left";
+
+/** Половина длинной страницы (image.ts, pageHalves). */
+export type PagePart = "upper" | "lower";
+
 export type InvoiceResult = {
   /** Нет в ответах до PROMPT_VERSION v2 — считаем накладной. */
   document_class?: DocumentClass;
@@ -29,6 +35,9 @@ export type InvoiceResult = {
   buyer?: DocumentSide | null;
   /** На фото только часть документа (нет начала или конца). */
   fragment?: boolean;
+  top_side?: TopSide;
+  /** Как распознавали: повернули фото, читали по половинам (pipeline.ts). */
+  processing?: { rotated?: TopSide; halves?: boolean };
   /** Старые ответы (v1): направление по мнению модели, без знания нашего магазина. */
   document_type?: "invoice_out" | "invoice_in";
   /** v1 — контрагент по мнению модели; v2 — не заполняется, см. classify.ts. */
@@ -71,7 +80,7 @@ export type PhotoPage = { photo: Buffer; mimeType: string };
 export interface RecognitionProvider {
   name: string;
   model: string;
-  recognizeInvoice(pages: PhotoPage[]): Promise<RawCall<InvoiceResult>>;
+  recognizeInvoice(pages: PhotoPage[], part?: PagePart): Promise<RawCall<InvoiceResult>>;
   recognizeReceipt(photo: Buffer, mimeType: string): Promise<RawCall<ReceiptResult>>;
   recognizeNotebook(pages: PhotoPage[]): Promise<RawCall<NotebookResult>>;
 }

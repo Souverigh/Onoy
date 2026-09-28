@@ -6,6 +6,7 @@ import { documentPages } from "@/lib/storage";
 import { normalizeInvoiceResult } from "./normalize";
 import { contentFingerprint } from "./fingerprint";
 import { reconcileInvoice } from "./reconcile";
+import { recognizeInvoicePages } from "./pipeline";
 
 // v2 — тип документа, продавец и покупатель, фрагмент (classify.ts). Кеш v1
 // не используется: в нём нет типа, повторное распознавание — новый вызов.
@@ -134,7 +135,7 @@ async function recognizeWithCache<T>({
   const startedAt = Date.now();
   const call =
     kind === "invoice"
-      ? await provider.recognizeInvoice(pages)
+      ? await recognizeInvoicePages(provider, pages)
       : await provider.recognizeReceipt(pages[0].photo, pages[0].mimeType);
   const latencyMs = Date.now() - startedAt;
   const result = normalize(call.result as T);
