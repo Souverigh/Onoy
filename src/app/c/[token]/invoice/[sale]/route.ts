@@ -7,6 +7,7 @@ type Invoice = {
   shop_phone: string | null;
   customer_name: string;
   total: string;
+  currency?: string;
   occurred_at: string;
   lines: InvoiceLine[];
 };
@@ -36,6 +37,7 @@ export async function GET(
       new Date(invoice.occurred_at),
     ),
     total: Number(invoice.total),
+    currency: invoice.currency ?? "KGS",
     lines: invoice.lines,
     digitized: true,
   });

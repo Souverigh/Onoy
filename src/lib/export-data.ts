@@ -58,16 +58,29 @@ export async function exportSheets(
   const needParties = need.has("sales") || need.has("purchases") || need.has("payments") || need.has("lines");
   const [customers, suppliers] = await Promise.all([
     need.has("customers") || needParties
-      ? all<Party & { phone: string; notes: string; balance: string; credit_limit: string | null; promised_date: string | null; created_at: string }>(
-          db, "customer_balances", "id,name,phone,notes,balance,credit_limit,promised_date,created_at", organizationId, "name")
+      ? all<Party & { phone: string; notes: string; balance: string; credit_limit: string | null; promised_date: string | null; created_at: string; currency: string | null }>(
+          db, "customer_balances", "id,name,phone,notes,balance,credit_limit,promised_date,created_at,currency", organizationId, "name")
       : Promise.resolve([]),
     need.has("suppliers") || needParties
-      ? all<Party & { phone: string; notes: string; balance: string; created_at: string }>(
-          db, "supplier_balances", "id,name,phone,notes,balance,created_at", organizationId, "name")
+      ? all<Party & { phone: string; notes: string; balance: string; created_at: string; currency: string | null }>(
+          db, "supplier_balances", "id,name,phone,notes,balance,created_at,currency", organizationId, "name")
       : Promise.resolve([]),
   ]);
   const customerName = new Map(customers.map((c) => [c.id, c.name]));
   const supplierName = new Map(suppliers.map((s) => [s.id, s.name]));
+  // Валюта долга (ТЗ §15.2): суммы — в ней, у записи в другой валюте — исходная сумма и курс.
+  const shop = await db.from("organizations").select("currency").eq("id", organizationId).maybeSingle();
+  const shopCurrency = shop.data?.currency ?? "KGS";
+  const partyCurrency = new Map([...customers, ...suppliers].map((p) => [p.id, (p as { currency?: string | null }).currency ?? shopCurrency]));
+  const currencyOf = (id: string | null) => (id && partyCurrency.get(id)) || shopCurrency;
+  const originalColumns = [
+    { header: "Исходная сумма", width: 16, kind: "money" as const },
+    { header: "Исходная валюта", width: 10 },
+    { header: "Курс", width: 12, kind: "number" as const },
+  ];
+  const original = (r: { original_amount?: string | null; original_currency?: string | null; fx_rate?: string | null }) => [
+    num(r.original_amount ?? null), r.original_currency ?? "", num(r.fx_rate ?? null),
+  ];
   const sheets: Sheet[] = [];
 
   if (need.has("customers"))
@@ -76,14 +89,15 @@ export async function exportSheets(
       columns: [
         { header: "Имя", width: 30 },
         { header: "Телефон", width: 18 },
-        { header: "Долг (минус — аванс), сом", width: 22, kind: "money" },
-        { header: "Лимит долга, сом", width: 18, kind: "money" },
+        { header: "Долг (минус — аванс)", width: 22, kind: "money" },
+        { header: "Валюта", width: 10 },
+        { header: "Лимит долга", width: 18, kind: "money" },
         { header: "Обещал оплатить до", width: 20, kind: "date" },
         { header: "Заметка", width: 40 },
         { header: "Добавлен", width: 18, kind: "date" },
       ],
       rows: customers.map((c) => [
-        c.name, c.phone, num(c.balance), num(c.credit_limit), onlyDate(c.promised_date), c.notes, date(c.created_at),
+        c.name, c.phone, num(c.balance), currencyOf(c.id), num(c.credit_limit), onlyDate(c.promised_date), c.notes, date(c.created_at),
       ]),
     });
 
@@ -93,24 +107,28 @@ export async function exportSheets(
       columns: [
         { header: "Название", width: 30 },
         { header: "Телефон", width: 18 },
-        { header: "Мы должны (минус — аванс), сом", width: 26, kind: "money" },
+        { header: "Мы должны (минус — аванс)", width: 26, kind: "money" },
+        { header: "Валюта", width: 10 },
         { header: "Заметка", width: 40 },
         { header: "Добавлен", width: 18, kind: "date" },
       ],
-      rows: suppliers.map((s) => [s.name, s.phone, num(s.balance), s.notes, date(s.created_at)]),
+      rows: suppliers.map((s) => [s.name, s.phone, num(s.balance), currencyOf(s.id), s.notes, date(s.created_at)]),
     });
 
   if (need.has("sales")) {
     const rows = await all<{
       occurred_at: string; customer_id: string; total: string; paid_immediately: boolean; is_opening: boolean;
       reversed_at: string | null; reversal_comment: string | null; status: string;
-    }>(db, "sales", "id,occurred_at,customer_id,total,paid_immediately,is_opening,reversed_at,reversal_comment,status", organizationId, "occurred_at");
+      original_amount: string | null; original_currency: string | null; fx_rate: string | null;
+    }>(db, "sales", "id,occurred_at,customer_id,total,paid_immediately,is_opening,reversed_at,reversal_comment,status,original_amount,original_currency,fx_rate", organizationId, "occurred_at");
     sheets.push({
       name: EXPORT_TABLES.sales,
       columns: [
         { header: "Дата", width: 18, kind: "date" },
         { header: "Клиент", width: 30 },
-        { header: "Сумма, сом", width: 16, kind: "money" },
+        { header: "Сумма", width: 16, kind: "money" },
+        { header: "Валюта", width: 10 },
+        ...originalColumns,
         { header: "Оплачено наличными", width: 12 },
         { header: "Долг из тетради", width: 12 },
         { header: "Отменена", width: 18, kind: "date" },
@@ -119,7 +137,8 @@ export async function exportSheets(
       rows: rows
         .filter((r) => r.status === "posted")
         .map((r) => [
-          date(r.occurred_at), customerName.get(r.customer_id) ?? "", num(r.total), yes(r.paid_immediately),
+          date(r.occurred_at), customerName.get(r.customer_id) ?? "", num(r.total), currencyOf(r.customer_id), ...original(r),
+          yes(r.paid_immediately),
           yes(r.is_opening), date(r.reversed_at), r.reversal_comment,
         ]),
     });
@@ -129,13 +148,16 @@ export async function exportSheets(
     const rows = await all<{
       occurred_at: string; supplier_id: string; total: string; is_opening: boolean;
       reversed_at: string | null; reversal_comment: string | null; status: string;
-    }>(db, "purchases", "id,occurred_at,supplier_id,total,is_opening,reversed_at,reversal_comment,status", organizationId, "occurred_at");
+      original_amount: string | null; original_currency: string | null; fx_rate: string | null;
+    }>(db, "purchases", "id,occurred_at,supplier_id,total,is_opening,reversed_at,reversal_comment,status,original_amount,original_currency,fx_rate", organizationId, "occurred_at");
     sheets.push({
       name: EXPORT_TABLES.purchases,
       columns: [
         { header: "Дата", width: 18, kind: "date" },
         { header: "Поставщик", width: 30 },
-        { header: "Сумма, сом", width: 16, kind: "money" },
+        { header: "Сумма", width: 16, kind: "money" },
+        { header: "Валюта", width: 10 },
+        ...originalColumns,
         { header: "Долг из тетради", width: 12 },
         { header: "Отменён", width: 18, kind: "date" },
         { header: "Причина отмены", width: 36 },
@@ -143,7 +165,8 @@ export async function exportSheets(
       rows: rows
         .filter((r) => r.status === "posted")
         .map((r) => [
-          date(r.occurred_at), supplierName.get(r.supplier_id) ?? "", num(r.total), yes(r.is_opening),
+          date(r.occurred_at), supplierName.get(r.supplier_id) ?? "", num(r.total), currencyOf(r.supplier_id), ...original(r),
+          yes(r.is_opening),
           date(r.reversed_at), r.reversal_comment,
         ]),
     });
@@ -155,7 +178,8 @@ export async function exportSheets(
       amount: string; status: string; bank_reference: string | null; claim_comment: string | null;
       is_opening: boolean; reversed_at: string | null; reversal_comment: string | null;
       kind: PaymentKind; note: string | null;
-    }>(db, "payments", "id,occurred_at,direction,customer_id,supplier_id,amount,status,bank_reference,claim_comment,is_opening,reversed_at,reversal_comment,kind,note", organizationId, "occurred_at");
+      original_amount: string | null; original_currency: string | null; fx_rate: string | null;
+    }>(db, "payments", "id,occurred_at,direction,customer_id,supplier_id,amount,status,bank_reference,claim_comment,is_opening,reversed_at,reversal_comment,kind,note,original_amount,original_currency,fx_rate", organizationId, "occurred_at");
     const statusLabel: Record<string, string> = { confirmed: "подтверждена", pending: "заявка ждёт", rejected: "отклонена" };
     sheets.push({
       name: EXPORT_TABLES.payments,
@@ -163,7 +187,9 @@ export async function exportSheets(
         { header: "Дата", width: 18, kind: "date" },
         { header: "Вид", width: 26 },
         { header: "Клиент / поставщик", width: 30 },
-        { header: "Сумма, сом", width: 16, kind: "money" },
+        { header: "Сумма", width: 16, kind: "money" },
+        { header: "Валюта", width: 10 },
+        ...originalColumns,
         { header: "Статус", width: 16 },
         { header: "Номер перевода", width: 20 },
         { header: "Комментарий", width: 36 },
@@ -179,7 +205,7 @@ export async function exportSheets(
             : "оплата: магазин → поставщик"
           : paymentLabelWithSide(r.kind, r.direction as "incoming" | "outgoing").toLowerCase(),
         r.customer_id ? customerName.get(r.customer_id) ?? "" : r.supplier_id ? supplierName.get(r.supplier_id) ?? "" : "",
-        num(r.amount), statusLabel[r.status] ?? r.status, r.bank_reference, r.note ?? r.claim_comment, yes(r.is_opening),
+        num(r.amount), currencyOf(r.customer_id ?? r.supplier_id), ...original(r), statusLabel[r.status] ?? r.status, r.bank_reference, r.note ?? r.claim_comment, yes(r.is_opening),
         date(r.reversed_at), r.reversal_comment,
       ]),
     });
@@ -216,8 +242,8 @@ export async function exportSheets(
         { header: "Наименование", width: 40 },
         { header: "Кол-во", width: 10, kind: "number" },
         { header: "Ед.", width: 8 },
-        { header: "Цена, сом", width: 14, kind: "money" },
-        { header: "Сумма, сом", width: 14, kind: "money" },
+        { header: "Цена", width: 14, kind: "money" },
+        { header: "Сумма", width: 14, kind: "money" },
         { header: "Запись отменена", width: 12 },
       ],
       rows: rows.map(({ l, o }) => [

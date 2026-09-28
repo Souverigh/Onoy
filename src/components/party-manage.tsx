@@ -15,6 +15,7 @@ export function PartyManage({
   id,
   name,
   balance,
+  currency,
   hasRecords,
   archived,
   mergedInto,
@@ -26,6 +27,7 @@ export function PartyManage({
   id: string;
   name: string;
   balance: number;
+  currency: string;
   hasRecords: boolean;
   archived: boolean;
   mergedInto: Other | null;
@@ -82,7 +84,7 @@ export function PartyManage({
               className="button danger-outline"
               message={
                 balance !== 0
-                  ? `У «${name}» ${balance > 0 ? "долг" : "аванс"} ${money(Math.abs(balance))}. Всё равно убрать в архив?`
+                  ? `У «${name}» ${balance > 0 ? "долг" : "аванс"} ${money(Math.abs(balance), currency)}. Всё равно убрать в архив?`
                   : `Убрать «${name}» в архив?`
               }
             >

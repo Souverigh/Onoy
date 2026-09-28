@@ -27,7 +27,7 @@ export default async function ReverseOperation({
   if (!["purchase", "sale", "payment"].includes(rawKind)) notFound();
   const kind = rawKind as Kind;
   if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
-  const { db, organizationId } = await requireOwner();
+  const { db, organizationId, currency: shopCurrency } = await requireOwner();
   const meta = tables[kind];
   const row = await db
     .from(meta.table)
@@ -40,17 +40,21 @@ export default async function ReverseOperation({
   if (data.reversed_at) notFound();
 
   let party = kind === "payment" && data.direction === "outgoing" ? "поставщик" : "клиент";
+  let partyCur: string | null = null;
   if (kind === "payment" && data.direction === "outgoing") {
     const supplier = data.supplier_id
-      ? await db.from("suppliers").select("name").eq("organization_id", organizationId).eq("id", data.supplier_id).maybeSingle()
+      ? await db.from("suppliers").select("name,currency").eq("organization_id", organizationId).eq("id", data.supplier_id).maybeSingle()
       : null;
     party = supplier?.data?.name ?? "поставщик";
+    partyCur = supplier?.data?.currency ?? null;
   } else if (kind === "purchase") {
-    const supplier = await db.from("suppliers").select("name").eq("organization_id", organizationId).eq("id", data.supplier_id).maybeSingle();
+    const supplier = await db.from("suppliers").select("name,currency").eq("organization_id", organizationId).eq("id", data.supplier_id).maybeSingle();
     party = supplier.data?.name ?? "поставщик";
+    partyCur = supplier.data?.currency ?? null;
   } else {
-    const customer = await db.from("customers").select("name").eq("organization_id", organizationId).eq("id", data.customer_id).maybeSingle();
+    const customer = await db.from("customers").select("name,currency").eq("organization_id", organizationId).eq("id", data.customer_id).maybeSingle();
     party = customer.data?.name ?? "клиент";
+    partyCur = customer.data?.currency ?? null;
   }
 
   return (
@@ -72,7 +76,7 @@ export default async function ReverseOperation({
       </div>
       <section className="panel simple-operation-panel">
         <p>
-          {party} · {money(String(data[meta.amountField]))}
+          {party} · {money(String(data[meta.amountField]), partyCur ?? shopCurrency)}
         </p>
         <p className="operation-hint">
           Запись не удаляется — она останется в истории с пометкой «отменена»,

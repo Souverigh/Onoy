@@ -1857,3 +1857,74 @@ test("organizations.document_names: shop names on documents, editable by members
     ["Maliknur", "D MALIKNUR SATAROV"],
   );
 });
+test("currencies: debt in the party's currency, other currencies converted at the record's rate", async () => {
+  await user(a);
+  const horoz = (
+    await db.query("insert into suppliers(organization_id,name,currency) values ($1,'Хороз USD','USD') returning id", [orgA])
+  ).rows[0].id;
+  const client = (
+    await db.query("insert into customers(organization_id,name) values ($1,'Клиент в сомах') returning id", [orgA])
+  ).rows[0].id;
+  // Приход в долларах поставщика — без пересчёта.
+  await db.query("select commit_purchase($1,$2,$3,$4)", [orgA, horoz, "3006.96", "cccc0001-0000-4000-8000-000000000001"]);
+  // Оплата сомами по 87,80: слабая → сильная — делим.
+  const pay = (
+    await db.query("select commit_payment($1,'outgoing',$2,null,null,$3,null,null,$4,'KGS',$5) as id", [
+      orgA, horoz, "cccc0001-0000-4000-8000-000000000002", "87800", "87.80",
+    ])
+  ).rows[0].id;
+  const payment = (await db.query("select amount,original_amount,original_currency,fx_rate from payments where id=$1", [pay])).rows[0];
+  assert.deepEqual(
+    [payment.amount, payment.original_amount, payment.original_currency, payment.fx_rate],
+    ["1000.00", "87800.00", "KGS", "87.800000"],
+  );
+  assert.equal(
+    (await db.query("select balance,currency from supplier_balances where id=$1", [horoz])).rows[0].balance,
+    "2006.96",
+  );
+  // Повтор — та же запись; другой курс с тем же ключом — конфликт.
+  assert.equal(
+    (await db.query("select commit_payment($1,'outgoing',$2,null,null,$3,null,null,$4,'KGS',$5) as id", [
+      orgA, horoz, "cccc0001-0000-4000-8000-000000000002", "87800", "87.8",
+    ])).rows[0].id,
+    pay,
+  );
+  await assert.rejects(
+    db.query("select commit_payment($1,'outgoing',$2,null,null,$3,null,null,$4,'KGS',$5)", [
+      orgA, horoz, "cccc0001-0000-4000-8000-000000000002", "87800", "88",
+    ]),
+    /idempotency_conflict/,
+  );
+  // Курс и сумма записи зафиксированы: ни поменять напрямую, ни пересчитать задним числом.
+  await assert.rejects(db.query("update payments set fx_rate=90 where id=$1", [pay]), /permission denied/);
+  await assert.rejects(db.query("update payments set amount=1 where id=$1", [pay]), /permission denied/);
+  // Долларовая накладная клиенту в сомах: сильная → слабая — умножаем.
+  const sale = (
+    await db.query("select commit_sale($1,$2,null,false,$3,null,$4,'USD',$5) as id", [
+      orgA, client, "cccc0001-0000-4000-8000-000000000003", "100.50", "87.8",
+    ])
+  ).rows[0].id;
+  assert.equal((await db.query("select total from sales where id=$1", [sale])).rows[0].total, "8823.90");
+  // Та же валюта, нулевой курс, мусор — отказ.
+  await assert.rejects(
+    db.query("select commit_sale($1,$2,null,false,$3,null,'10','KGS','1')", [orgA, client, "cccc0001-0000-4000-8000-000000000004"]),
+    /invalid_currency/,
+  );
+  await assert.rejects(
+    db.query("select commit_sale($1,$2,null,false,$3,null,'10','USD','0')", [orgA, client, "cccc0001-0000-4000-8000-000000000005"]),
+    /invalid_currency/,
+  );
+  // Валюту не меняют, когда есть записи; без записей — можно.
+  await assert.rejects(db.query("update suppliers set currency='KGS' where id=$1", [horoz]), /currency_locked/);
+  await assert.rejects(db.query("update organizations set currency='RUB' where id=$1", [orgA]), /currency_locked/);
+  const fresh = (
+    await db.query("insert into customers(organization_id,name) values ($1,'Новый клиент') returning id", [orgA])
+  ).rows[0].id;
+  await db.query("update customers set currency='USD' where id=$1", [fresh]);
+  assert.equal((await db.query("select currency from customer_balances where id=$1", [fresh])).rows[0].currency, "USD");
+  // Объединить клиентов с разной валютой нельзя.
+  await assert.rejects(
+    db.query("select merge_party($1,'customers',$2,$3)", [orgA, client, fresh]),
+    /currency_mismatch/,
+  );
+});

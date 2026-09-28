@@ -2,6 +2,7 @@ import "server-only";
 import { Document, Page, Text, View, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import { ensureFontsRegistered } from "./fonts";
 import { statementEntryLabel, type StatementEntry } from "../statement-data";
+import { money } from "../format";
 
 const styles = StyleSheet.create({
   page: { fontFamily: "PT Sans", fontSize: 11, padding: 36, color: "#1d2a2a" },
@@ -23,6 +24,7 @@ const styles = StyleSheet.create({
 
 export type StatementPdfData = {
   shopName: string;
+  currency: string;
   partyName: string;
   from: string;
   to: string;
@@ -42,7 +44,7 @@ function StatementDocument({ data }: { data: StatementPdfData }) {
         </Text>
         <View style={styles.balanceRow}>
           <Text>Сальдо на начало периода</Text>
-          <Text>{data.opening.toFixed(2)} сом</Text>
+          <Text>{money(data.opening.toFixed(2), data.currency)}</Text>
         </View>
         <View style={styles.table}>
           <View style={styles.tr}>
@@ -69,7 +71,7 @@ function StatementDocument({ data }: { data: StatementPdfData }) {
         </View>
         <View style={styles.balanceRow}>
           <Text>Сальдо на конец периода</Text>
-          <Text>{data.closing.toFixed(2)} сом</Text>
+          <Text>{money(data.closing.toFixed(2), data.currency)}</Text>
         </View>
       </Page>
     </Document>

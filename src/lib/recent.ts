@@ -8,6 +8,8 @@ export type RecentRecord = {
   party: string;
   partyHref: string | null;
   amount: string;
+  /** Валюта долга контрагента. */
+  currency: string;
   at: string;
   reversed: boolean;
 };
@@ -45,16 +47,24 @@ export async function recentRecords(db: SupabaseClient, organizationId: string, 
     if (r.customer_id) customerIds.add(r.customer_id);
     if (r.supplier_id) supplierIds.add(r.supplier_id);
   }
-  const [customers, suppliers] = await Promise.all([
+  type Named = { id: string; name: string; currency: string | null };
+  const [customers, suppliers, org] = await Promise.all([
     customerIds.size
-      ? db.from("customers").select("id,name").eq("organization_id", organizationId).in("id", [...customerIds])
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      ? db.from("customers").select("id,name,currency").eq("organization_id", organizationId).in("id", [...customerIds])
+      : Promise.resolve({ data: [] as Named[] }),
     supplierIds.size
-      ? db.from("suppliers").select("id,name").eq("organization_id", organizationId).in("id", [...supplierIds])
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      ? db.from("suppliers").select("id,name,currency").eq("organization_id", organizationId).in("id", [...supplierIds])
+      : Promise.resolve({ data: [] as Named[] }),
+    db.from("organizations").select("currency").eq("id", organizationId).maybeSingle(),
   ]);
   const names = new Map<string, string>();
-  for (const p of [...(customers.data ?? []), ...(suppliers.data ?? [])]) names.set(p.id, p.name);
+  const currencies = new Map<string, string>();
+  const shopCurrency = org.data?.currency ?? "KGS";
+  for (const p of [...(customers.data ?? []), ...(suppliers.data ?? [])] as Named[]) {
+    names.set(p.id, p.name);
+    if (p.currency) currencies.set(p.id, p.currency);
+  }
+  const currencyOf = (id: string | null) => (id && currencies.get(id)) || shopCurrency;
 
   const rows: RecentRecord[] = [
     ...(sales.data ?? []).map((r) => ({
@@ -63,6 +73,7 @@ export async function recentRecords(db: SupabaseClient, organizationId: string, 
       party: names.get(r.customer_id) ?? "Клиент",
       partyHref: `/customers/${r.customer_id}`,
       amount: String(r.total),
+      currency: currencyOf(r.customer_id),
       at: r.created_at,
       reversed: Boolean(r.reversed_at),
     })),
@@ -72,6 +83,7 @@ export async function recentRecords(db: SupabaseClient, organizationId: string, 
       party: names.get(r.supplier_id) ?? "Поставщик",
       partyHref: `/suppliers/${r.supplier_id}`,
       amount: String(r.total),
+      currency: currencyOf(r.supplier_id),
       at: r.created_at,
       reversed: Boolean(r.reversed_at),
     })),
@@ -86,6 +98,7 @@ export async function recentRecords(db: SupabaseClient, organizationId: string, 
         party: (partyId && names.get(partyId)) || "",
         partyHref: partyId ? `/${r.customer_id ? "customers" : "suppliers"}/${partyId}` : null,
         amount: String(r.amount),
+        currency: currencyOf(partyId),
         at: r.created_at,
         reversed: Boolean(r.reversed_at),
       };

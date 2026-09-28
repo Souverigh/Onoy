@@ -5,6 +5,7 @@ import { bishkekDate } from "@/lib/day-summary";
 import { change, period, type PeriodKind } from "@/lib/periods";
 import { periodReport } from "@/lib/period-report";
 import { DayColumns } from "@/components/day-columns";
+import { CURRENCY_SIGN } from "@/lib/currency";
 
 const fmt = (date: string, options: Intl.DateTimeFormatOptions) =>
   new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", ...options }).format(
@@ -19,14 +20,14 @@ function range(start: string, end: string) {
     : `${fmt(start, { day: "numeric", month: "long" })} – ${fmt(end, { day: "numeric", month: "long" })}`;
 }
 
-function Delta({ current, previous, against }: { current: number; previous: number; against: string }) {
+function Delta({ current, previous, against, cur }: { current: number; previous: number; against: string; cur: string }) {
   const pct = change(current, previous);
   if (pct === null)
-    return <small className="muted">{current > 0 ? `За ${against} — 0 сом` : `Нет данных за ${against}`}</small>;
+    return <small className="muted">{current > 0 ? `За ${against} — ${money(0, cur)}` : `Нет данных за ${against}`}</small>;
   return (
     <small className="muted">
       {pct > 0 ? "▲" : pct < 0 ? "▼" : "="} {pct > 0 ? "+" : ""}
-      {pct}% к {against} ({money(previous)})
+      {pct}% к {against} ({money(previous, cur)})
     </small>
   );
 }
@@ -51,6 +52,7 @@ export default async function Reports({
   const against = range(p.previous.start, p.previous.through);
   const href = (k: PeriodKind, o: number) => `/reports?period=${k}${o ? `&offset=${o}` : ""}`;
   const { current, previous } = report;
+  const cur = report.currency;
 
   return (
     <>
@@ -86,41 +88,50 @@ export default async function Reports({
       <section className="report-tiles" aria-label="Итоги">
         <article className="panel report-tile">
           <h2>Продано</h2>
-          <p className="day-number">{money(current.sold)}</p>
+          <p className="day-number">{money(current.sold, cur)}</p>
           <small className="muted">
-            в долг {money(current.soldCredit)} · наличными {money(current.soldCash)} · продаж: {current.salesCount}
+            в долг {money(current.soldCredit, cur)} · наличными {money(current.soldCash, cur)} · продаж: {current.salesCount}
           </small>
-          <Delta current={current.sold} previous={previous.sold} against={against} />
+          <Delta cur={cur} current={current.sold} previous={previous.sold} against={against} />
         </article>
         <article className="panel report-tile">
           <h2>Собрано с клиентов</h2>
-          <p className="day-number">{money(current.collected)}</p>
+          <p className="day-number">{money(current.collected, cur)}</p>
           <small className="muted">оплаты долгов, без продаж за наличные</small>
-          <Delta current={current.collected} previous={previous.collected} against={against} />
+          <Delta cur={cur} current={current.collected} previous={previous.collected} against={against} />
         </article>
         <article className="panel report-tile">
           <h2>Приход от поставщиков</h2>
-          <p className="day-number">{money(current.purchased)}</p>
-          <Delta current={current.purchased} previous={previous.purchased} against={against} />
+          <p className="day-number">{money(current.purchased, cur)}</p>
+          <Delta cur={cur} current={current.purchased} previous={previous.purchased} against={against} />
         </article>
         <article className="panel report-tile">
           <h2>Оплачено поставщикам</h2>
-          <p className="day-number">{money(current.paidSuppliers)}</p>
-          <Delta current={current.paidSuppliers} previous={previous.paidSuppliers} against={against} />
+          <p className="day-number">{money(current.paidSuppliers, cur)}</p>
+          <Delta cur={cur} current={current.paidSuppliers} previous={previous.paidSuppliers} against={against} />
         </article>
       </section>
+      {report.foreign.map((f) => (
+        <p key={f.currency} className="notice report-foreign">
+          Отдельно, в валюте {CURRENCY_SIGN[f.currency]}: продано {money(f.current.sold, f.currency)} · собрано{" "}
+          {money(f.current.collected, f.currency)} · приход {money(f.current.purchased, f.currency)} · оплачено
+          поставщикам {money(f.current.paidSuppliers, f.currency)}
+        </p>
+      ))}
 
       <section className="report-charts">
         <div className="panel">
           <DayColumns
-            title="Продано по дням, сом"
+            title={`Продано по дням, ${CURRENCY_SIGN[cur]}`}
+            currency={cur}
             through={p.through}
             points={report.days.map((d) => ({ date: d.date, value: d.sold }))}
           />
         </div>
         <div className="panel">
           <DayColumns
-            title="Собрано с клиентов по дням, сом"
+            title={`Собрано с клиентов по дням, ${CURRENCY_SIGN[cur]}`}
+            currency={cur}
             through={p.through}
             points={report.days.map((d) => ({ date: d.date, value: d.collected }))}
           />
@@ -137,7 +148,7 @@ export default async function Reports({
                 {d.oldestDays != null && d.oldestDays > 30 && (
                   <span className="tag reversed-tag">долг {d.oldestDays} дн.</span>
                 )}
-                <strong>{money(d.balance)}</strong>
+                <strong>{money(d.balance, cur)}</strong>
               </li>
             ))}
           </ol>
@@ -166,8 +177,8 @@ export default async function Reports({
                     <td>
                       <Link href={`/day?date=${d.date}`}>{fmt(d.date, { day: "numeric", month: "long", weekday: "short" })}</Link>
                     </td>
-                    <td>{money(d.sold)}</td>
-                    <td>{money(d.collected)}</td>
+                    <td>{money(d.sold, cur)}</td>
+                    <td>{money(d.collected, cur)}</td>
                   </tr>
                 ))}
             </tbody>

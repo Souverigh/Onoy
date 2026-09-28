@@ -5,7 +5,8 @@ import { getContext } from "@/lib/context";
 import { isDirectory } from "@/lib/validation";
 import { directoryMeta, type Entry } from "@/lib/directory";
 import { EntryForm } from "@/components/entry-form";
-import { money, quantity } from "@/lib/format";
+import { money, originalAmountText, quantity } from "@/lib/format";
+import { partyCurrency } from "@/lib/currency";
 import { creditLimitExceeded } from "@/lib/credit-limit";
 import { createLink, revokeLink, setPromisedDate } from "@/app/(workspace)/[kind]/actions";
 import { dayMonth, promiseStatus } from "@/lib/promise";
@@ -45,7 +46,7 @@ export default async function EntryPage({
 }) {
   const { kind, id } = await params;
   if (!isDirectory(kind)) notFound();
-  const { db, organizationId, organizationName, isOwner } = await getContext();
+  const { db, organizationId, organizationName, isOwner, currency: shopCurrency } = await getContext();
   const { error, saved, linked, revoked, reversed, promised, adjusted, archived, restored, merged, unmerged } =
     await searchParams;
   let entry: Entry | undefined;
@@ -87,6 +88,8 @@ export default async function EntryPage({
     origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
   }
 
+  // Валюта долга этого контрагента — во всех суммах карточки.
+  const cur = partyCurrency(entry, shopCurrency);
   type HistoryRow = {
     kind: "sale" | "purchase" | "payment";
     id: string;
@@ -100,6 +103,8 @@ export default async function EntryPage({
     opening: boolean;
     /** Комментарий скидки/возврата. */
     note?: string | null;
+    /** Запись в другой валюте: «87 800 сом по 87,8». */
+    original: string | null;
     /** Кто внёс и кто отменил (журнал для владельца). */
     createdBy: string | null;
     reversedBy: string | null;
@@ -111,7 +116,7 @@ export default async function EntryPage({
     const [invoices, pays] = await Promise.all([
       db
         .from(invoiceTable)
-        .select("id,total,occurred_at,reversed_at,reversal_comment,document_id,is_opening,created_by,reversed_by")
+        .select("id,total,occurred_at,reversed_at,reversal_comment,document_id,is_opening,created_by,reversed_by,original_amount,original_currency,fx_rate")
         .eq("organization_id", organizationId)
         .eq(partyColumn, entry.id)
         .eq("status", "posted")
@@ -119,7 +124,7 @@ export default async function EntryPage({
         .limit(20),
       db
         .from("payments")
-        .select("id,amount,occurred_at,reversed_at,reversal_comment,document_id,status,is_opening,kind,note,created_by,reversed_by")
+        .select("id,amount,occurred_at,reversed_at,reversal_comment,document_id,status,is_opening,kind,note,created_by,reversed_by,original_amount,original_currency,fx_rate")
         .eq("organization_id", organizationId)
         .eq(partyColumn, entry.id)
         .eq("direction", kind === "customers" ? "incoming" : "outgoing")
@@ -133,6 +138,7 @@ export default async function EntryPage({
         id: r.id,
         label: r.is_opening ? "Долг из тетради" : kind === "customers" ? "Продажа" : "Приход",
         amount: r.total,
+        original: originalAmountText(r),
         occurred_at: r.occurred_at,
         reversed: Boolean(r.reversed_at),
         reversalComment: r.reversal_comment,
@@ -148,6 +154,7 @@ export default async function EntryPage({
         label: paymentLabel(p.kind, { opening: p.is_opening, pending: p.status === "pending" }),
         note: p.note,
         amount: p.amount,
+        original: originalAmountText(p),
         occurred_at: p.occurred_at,
         reversed: Boolean(p.reversed_at),
         reversalComment: p.reversal_comment,
@@ -226,6 +233,7 @@ export default async function EntryPage({
       id: entry.id,
       name: entry.name,
       balance: Number(entry.balance ?? 0),
+      currency: cur,
       hasRecords: (docs.count ?? 0) + (pays.count ?? 0) > 0,
       archived: Boolean(entry.archived_at),
       mergedInto: (into.data as { id: string; name: string } | null) ?? null,
@@ -252,7 +260,7 @@ export default async function EntryPage({
   // Аудит ТЗ 15.1 п. 14: название магазина, без «долг в», страница не «оплатить», а посмотреть.
   const reminderText =
     entry && kind === "customers"
-      ? `Магазин «${organizationName}»: ваш долг ${money(entry.balance ?? 0)}.${promiseLine}${
+      ? `Магазин «${organizationName}»: ваш долг ${money(entry.balance ?? 0, cur)}.${promiseLine}${
           activeLink ? ` Накладные и история: ${origin}/c/${activeLink.token}` : ""
         }`
       : "";
@@ -276,9 +284,9 @@ export default async function EntryPage({
             {entry
               ? kind === "products"
                 ? `Остаток: ${quantity(entry.stock ?? 0)} ${entry.unit}`
-                : `Долг / аванс: ${money(entry.balance ?? 0)}`
+                : `Долг / аванс: ${money(entry.balance ?? 0, cur)}`
               : "Заполните основные данные."}
-            {entry?.credit_limit != null && ` · лимит ${money(entry.credit_limit)}`}
+            {entry?.credit_limit != null && ` · лимит ${money(entry.credit_limit, cur)}`}
             {overLimit && <span className="tag reversed-tag">больше лимита</span>}
           </p>
         </div>
@@ -327,12 +335,14 @@ export default async function EntryPage({
           В архиве — не показывается в списках и формах.
         </p>
       )}
-      {error && ["has_records", "party", "merge", "merge_opening", "merge_expired"].includes(error) && (
+      {error && ["has_records", "party", "merge", "merge_opening", "merge_expired", "merge_currency"].includes(error) && (
         <p className="form-error" role="alert">
           {error === "has_records"
             ? "Удалить нельзя: есть записи. Можно убрать в архив."
             : error === "merge_opening"
               ? "У обоих есть перенос из тетради — сначала отмените один из них, потом объединяйте."
+              : error === "merge_currency"
+                ? "Объединить нельзя: у них разная валюта долга."
               : error === "merge_expired"
                 ? "Отменить объединение можно только в течение суток."
                 : "Не удалось выполнить действие. Обновите страницу и попробуйте снова."}
@@ -415,19 +425,19 @@ export default async function EntryPage({
             <dl className="aging">
               <div>
                 <dt>до 30 дней</dt>
-                <dd>{money(aging.due_0_30)}</dd>
+                <dd>{money(aging.due_0_30, cur)}</dd>
               </div>
               <div className={Number(aging.due_31_60) > 0 ? "aging-late" : ""}>
                 <dt>31–60 дней</dt>
-                <dd>{money(aging.due_31_60)}</dd>
+                <dd>{money(aging.due_31_60, cur)}</dd>
               </div>
               <div className={Number(aging.due_61_90) > 0 ? "aging-late" : ""}>
                 <dt>61–90 дней</dt>
-                <dd>{money(aging.due_61_90)}</dd>
+                <dd>{money(aging.due_61_90, cur)}</dd>
               </div>
               <div className={Number(aging.due_over_90) > 0 ? "aging-late" : ""}>
                 <dt>больше 90 дней</dt>
-                <dd>{money(aging.due_over_90)}</dd>
+                <dd>{money(aging.due_over_90, cur)}</dd>
               </div>
             </dl>
           ) : (
@@ -473,7 +483,10 @@ export default async function EntryPage({
                       {row.label}
                       {row.reversed && <span className="tag reversed-tag">отменена</span>}
                     </span>
-                    <strong className="history-amount">{money(row.amount)}</strong>
+                    <strong className="history-amount">
+                      {money(row.amount, cur)}
+                      {row.original && <small className="muted history-original">{row.original}</small>}
+                    </strong>
                   </div>
                   <div className="history-meta">
                     <span className="muted">
@@ -533,8 +546,9 @@ export default async function EntryPage({
         <EntryForm
           kind={kind}
           entry={entry}
+          shopCurrency={shopCurrency}
           error={
-            error && ["link", "reversal", "promise", "has_records", "party", "merge", "merge_opening", "merge_expired"].includes(error)
+            error && ["link", "reversal", "promise", "has_records", "party", "merge", "merge_opening", "merge_expired", "merge_currency"].includes(error)
               ? undefined
               : error
           }

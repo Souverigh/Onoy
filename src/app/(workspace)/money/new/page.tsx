@@ -3,10 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { OperationForm } from "@/components/operation-form";
 import { getContext } from "@/lib/context";
+import { officialRates } from "@/lib/fx";
+import { isCurrency } from "@/lib/currency";
 import { documentPages, signedPhotoUrl } from "@/lib/storage";
 
 type Operation = "purchase" | "sale" | "payment";
-type Party = { id: string; name: string };
+type Party = { id: string; name: string; currency: string | null };
 
 export default async function NewOperation({
   searchParams,
@@ -18,6 +20,7 @@ export default async function NewOperation({
     amount?: string;
     bankRef?: string;
     date?: string;
+    currency?: string;
     suggest?: string;
     party?: string;
     undone?: string;
@@ -27,22 +30,24 @@ export default async function NewOperation({
   if (!["purchase", "sale", "payment"].includes(params.type ?? ""))
     notFound();
   const kind = params.type as Operation;
-  const { db, organizationId } = await getContext();
-  const [customerResult, supplierResult] = await Promise.all([
+  const { db, organizationId, currency: shopCurrency } = await getContext();
+  const [customerResult, supplierResult, rates] = await Promise.all([
     db
       .from("customer_balances")
-      .select("id,name,balance,credit_limit")
+      .select("id,name,balance,credit_limit,currency")
       .eq("organization_id", organizationId)
       .is("archived_at", null)
       .order("name")
       .range(0, 999),
     db
       .from("suppliers")
-      .select("id,name")
+      .select("id,name,currency")
       .eq("organization_id", organizationId)
       .is("archived_at", null)
       .order("name")
       .range(0, 999),
+    // Курс НБКР / ЦБ РФ — для суммы в другой валюте, чем долг (кеш на час).
+    officialRates(["KGS", "USD", "RUB"]),
   ]);
   if (customerResult.error || supplierResult.error)
     throw new Error("Не удалось подготовить форму операции");
@@ -61,6 +66,7 @@ export default async function NewOperation({
           amount: params.amount,
           bankRef: params.bankRef,
           date: params.date && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(params.date) ? params.date : undefined,
+          currency: isCurrency(params.currency) ? params.currency : undefined,
           suggestions,
         }
       : undefined;
@@ -160,6 +166,8 @@ export default async function NewOperation({
             prefill={prefill}
             existingDocument={existingDocument}
             initialParty={initialParty}
+            shopCurrency={shopCurrency}
+            rates={rates}
           />
         </section>
       )}

@@ -8,8 +8,26 @@ function decimal(value: string | number) {
   const tail = fraction.replace(/0+$/, "");
   return sign + grouped + (tail ? "," + tail : "");
 }
-export const money = (value: number | string) => decimal(value) + " сом";
+// Знак валюты — как CURRENCY_SIGN в currency.ts (здесь без импорта: файл
+// читают тесты напрямую). Без валюты — сом, как раньше.
+const SIGN: Record<string, string> = { KGS: "сом", USD: "$", RUB: "₽" };
+export const money = (value: number | string, currency: string | null = "KGS") =>
+  decimal(value) + " " + (SIGN[currency ?? "KGS"] ?? "сом");
 export const quantity = (value: number | string) => decimal(value);
+
+/**
+ * Запись в другой валюте, чем долг: «87 800 сом по 87,8». null — запись в
+ * валюте долга (исходной суммы нет).
+ */
+export function originalAmountText(record: {
+  original_amount?: string | number | null;
+  original_currency?: string | null;
+  fx_rate?: string | number | null;
+}): string | null {
+  if (record.original_amount == null || !record.original_currency || record.fx_rate == null) return null;
+  const rate = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 6 }).format(Number(record.fx_rate));
+  return `${money(record.original_amount, record.original_currency)} по ${rate}`;
+}
 export function decimalLessThan(a: string, b: string) {
   const scale = Math.max(
     (a.split(".")[1] ?? "").length,

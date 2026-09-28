@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient, configured } from "./supabase/server";
+import { isCurrency, type Currency } from "./currency";
 export const getUserContext = cache(async () => {
   if (!configured()) redirect("/login");
   const db = await createClient();
@@ -13,7 +14,7 @@ export const getContext = cache(async () => {
   const { db, user } = await getUserContext();
   const { data, error } = await db
     .from("organization_members")
-    .select("organization_id,role,organizations(name,plan,paid_until,blocked_at,blocked_reason)")
+    .select("organization_id,role,organizations(name,plan,paid_until,blocked_at,blocked_reason,currency)")
     .eq("user_id", user.id)
     .order("created_at")
     .limit(1)
@@ -29,6 +30,7 @@ export const getContext = cache(async () => {
     paid_until: string | null;
     blocked_at: string | null;
     blocked_reason: string | null;
+    currency: string | null;
   };
   return {
     db,
@@ -42,6 +44,8 @@ export const getContext = cache(async () => {
     paidUntil: org.paid_until,
     /** Заблокирован админом: читать можно, вносить — нет (триггер в базе). */
     blocked: org.blocked_at ? { reason: org.blocked_reason ?? "" } : null,
+    /** Базовая валюта магазина (сом или рубль); у контрагента может быть своя. */
+    currency: (isCurrency(org.currency) ? org.currency : "KGS") as Currency,
   };
 });
 

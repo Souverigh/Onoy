@@ -4,9 +4,11 @@ import { createAnonClient } from "@/lib/supabase/server";
 import { money } from "@/lib/format";
 import { dayMonth } from "@/lib/promise";
 import { paymentLabel, type PaymentKind } from "@/lib/entry-labels";
+import { CURRENCY_SIGN, type Currency } from "@/lib/currency";
 import { submitClaim } from "./actions";
 
 type Statement = {
+  currency?: string;
   shop_name: string;
   shop_phone: string;
   customer_name: string;
@@ -42,6 +44,7 @@ export default async function ClientPage({
   const statement = data as Statement;
   const { claimed, error: submitError } = await searchParams;
   const balance = Number(statement.balance);
+  const cur = statement.currency ?? "KGS";
 
   return (
     <main className="client-page">
@@ -58,8 +61,8 @@ export default async function ClientPage({
       </header>
       <section className="client-balance">
         <p className="muted">{statement.customer_name}, ваш долг</p>
-        <p className="client-balance-number">{money(Math.max(balance, 0))}</p>
-        {balance < 0 && <p className="muted">У вас аванс: {money(-balance)}</p>}
+        <p className="client-balance-number">{money(Math.max(balance, 0), cur)}</p>
+        {balance < 0 && <p className="muted">У вас аванс: {money(-balance, cur)}</p>}
         {balance > 0 && statement.promised_date && (
           <p className="muted">Срок оплаты — до {dayMonth(statement.promised_date)}</p>
         )}
@@ -81,7 +84,7 @@ export default async function ClientPage({
         <form action={submitClaim} className="simple-operation-form">
           <input type="hidden" name="token" value={token} />
           <label className="amount-field">
-            Сколько сом?
+            Сколько, {CURRENCY_SIGN[cur as Currency] ?? "сом"}?
             <input name="amount" inputMode="decimal" required pattern="[0-9]+([.,][0-9]{1,2})?" placeholder="0" />
           </label>
           <label>
@@ -139,7 +142,7 @@ export default async function ClientPage({
                         </>
                       )}
                     </td>
-                    <td>{money(entry.amount)}</td>
+                    <td>{money(entry.amount, cur)}</td>
                   </tr>
                 ))}
               </tbody>

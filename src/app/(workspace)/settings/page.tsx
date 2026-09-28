@@ -11,7 +11,7 @@ export default async function Settings({
 }: {
   searchParams: Promise<{ saved?: string; error?: string; staff?: string }>;
 }) {
-  const { db, organizationId, organizationName, user, isOwner, plan, paidUntil } = await getContext();
+  const { db, organizationId, organizationName, user, isOwner, plan, paidUntil, currency } = await getContext();
   const { saved, error, staff } = await searchParams;
   // Сотрудники и приглашения — только владельцу (RLS тоже не отдаст продавцу).
   let members: Member[] = [];
@@ -59,7 +59,9 @@ export default async function Settings({
       )}
       {error && (
         <p className="form-error" role="alert">
-          Не удалось сохранить. Проверьте название, телефон и названия в накладных (до 20 строк).
+          {error === "currency_locked"
+            ? "Валюту магазина нельзя сменить: записи уже есть. Остальное не сохранено — попробуйте ещё раз без смены валюты."
+            : "Не удалось сохранить. Проверьте название, телефон и названия в накладных (до 20 строк)."}
         </p>
       )}
       <section className="panel form-panel">
@@ -77,6 +79,18 @@ export default async function Settings({
               placeholder="+996 700 000000"
               defaultValue={org.data?.phone ?? ""}
             />
+          </label>
+          <label>
+            Основная валюта магазина
+            <select name="currency" defaultValue={currency}>
+              <option value="KGS">Сом</option>
+              <option value="RUB">Рубль</option>
+              <option value="USD">Доллар</option>
+            </select>
+            <small className="muted">
+              В ней итоги и долги по умолчанию. Сменить можно, пока нет ни одной записи; клиенту или
+              поставщику в другой валюте задайте валюту в его карточке.
+            </small>
           </label>
           <label>
             Как ваш магазин написан в накладных (необязательно)
@@ -148,8 +162,6 @@ export default async function Settings({
               ? ` · оплачено до ${new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" }).format(new Date(`${paidUntil}T12:00:00+06:00`))}`
               : ""}
           </dd>
-          <dt>Валюта</dt>
-          <dd>Кыргызский сом (KGS)</dd>
           <dt>Часовой пояс</dt>
           <dd>Бишкек (UTC+6)</dd>
           <dt>Версия</dt>

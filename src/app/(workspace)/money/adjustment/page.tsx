@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { requireOwner } from "@/lib/context";
 import { money } from "@/lib/format";
+import { partyCurrency } from "@/lib/currency";
 import { Submit } from "@/components/submit";
 import { commitAdjustment } from "../actions";
 
-type Party = { id: string; name: string; balance: string };
+type Party = { id: string; name: string; balance: string; currency: string | null };
 
 // Скидка или возврат товара (ТЗ §5, adjustment): уменьшает долг клиента или
 // долг магазина перед поставщиком. Только с комментарием.
@@ -15,10 +16,10 @@ export default async function AdjustmentPage({
   searchParams: Promise<{ party?: string; error?: string }>;
 }) {
   const { party, error } = await searchParams;
-  const { db, organizationId } = await requireOwner();
+  const { db, organizationId, currency: shopCurrency } = await requireOwner();
   const [customers, suppliers] = await Promise.all([
-    db.from("customer_balances").select("id,name,balance").eq("organization_id", organizationId).is("merged_into_id", null).order("name").range(0, 999),
-    db.from("supplier_balances").select("id,name,balance").eq("organization_id", organizationId).is("merged_into_id", null).order("name").range(0, 999),
+    db.from("customer_balances").select("id,name,balance,currency").eq("organization_id", organizationId).is("merged_into_id", null).order("name").range(0, 999),
+    db.from("supplier_balances").select("id,name,balance,currency").eq("organization_id", organizationId).is("merged_into_id", null).order("name").range(0, 999),
   ]);
   if (customers.error || suppliers.error) throw new Error("Не удалось подготовить форму");
   const customerList = (customers.data ?? []) as Party[];
@@ -61,7 +62,7 @@ export default async function AdjustmentPage({
                 <optgroup label="Клиенты">
                   {customerList.map((c) => (
                     <option key={c.id} value={`customers:${c.id}`}>
-                      {c.name} · долг {money(c.balance)}
+                      {c.name} · долг {money(c.balance, partyCurrency(c, shopCurrency))}
                     </option>
                   ))}
                 </optgroup>
@@ -70,7 +71,7 @@ export default async function AdjustmentPage({
                 <optgroup label="Поставщики">
                   {supplierList.map((s) => (
                     <option key={s.id} value={`suppliers:${s.id}`}>
-                      {s.name} · мы должны {money(s.balance)}
+                      {s.name} · мы должны {money(s.balance, partyCurrency(s, shopCurrency))}
                     </option>
                   ))}
                 </optgroup>
@@ -87,7 +88,7 @@ export default async function AdjustmentPage({
             </label>
           </fieldset>
           <label className="amount-field">
-            Сколько сом?
+            Сколько (в валюте долга)?
             <input
               name="amount"
               inputMode="decimal"

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
+import { partyCurrency } from "@/lib/currency";
 import { isDirectory } from "@/lib/validation";
 import { directoryMeta, type Entry } from "@/lib/directory";
 import { money, quantity, decimalLessThan } from "@/lib/format";
@@ -24,7 +25,7 @@ export default async function DirectoryPage({
   const overdue = kind === "customers" ? overdueThreshold(rawOverdue) : null;
   const current = Math.max(1, Math.min(10000, parseInt(page) || 1));
   const query = q.trim().slice(0, 100);
-  const { db, organizationId } = await getContext();
+  const { db, organizationId, currency: shopCurrency } = await getContext();
   let overdueIds: string[] | null = null;
   if (overdue) {
     const late = await db
@@ -205,7 +206,7 @@ export default async function DirectoryPage({
                           {quantity(item.stock ?? 0)} {item.unit}
                         </span>
                       ) : (
-                        money(item.balance ?? 0)
+                        money(item.balance ?? 0, partyCurrency(item, shopCurrency))
                       )}
                     </td>
                     <td>

@@ -1,7 +1,7 @@
 import "server-only";
 import { Document, Page, Text, View, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import { ensureFontsRegistered } from "./fonts";
-import type { AfterCloseItem, DaySummary } from "../day-summary";
+import type { AfterCloseItem, DayMoney, DaySummary } from "../day-summary";
 
 const styles = StyleSheet.create({
   page: { fontFamily: "PT Sans", fontSize: 11, padding: 36, color: "#1d2a2a" },
@@ -13,8 +13,9 @@ const styles = StyleSheet.create({
   warn: { color: "#a4762f" },
 });
 
-const sum = (n: number) =>
-  `${new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n)} сом`;
+const SIGN: Record<string, string> = { KGS: "сом", USD: "$", RUB: "₽" };
+const sum = (n: number, currency = "KGS") =>
+  `${new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n)} ${SIGN[currency] ?? currency}`;
 
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
@@ -33,6 +34,50 @@ export type DayPdfData = {
   after: { added: AfterCloseItem[]; reversed: AfterCloseItem[] } | null;
 };
 
+/** Цифры дня в одной валюте. */
+function MoneyBlock({ m, cur, title }: { m: DayMoney; cur: string; title?: string }) {
+  return (
+    <>
+      {title && <Text style={[styles.title, styles.warn]}>{title}</Text>}
+          <Text style={styles.title}>Продажи</Text>
+          <Row label={`Продано за день (${m.sold.count} накл.)`} value={sum(m.sold.total, cur)} strong />
+          <Row label="В долг" value={sum(m.sold.credit, cur)} />
+          <Row label="За наличные" value={sum(m.sold.cash, cur)} />
+
+          <Text style={styles.title}>Собрано денег</Text>
+          <Row label="Всего" value={sum(m.collected.total, cur)} strong />
+          <Row label="Наличными" value={sum(m.collected.cash, cur)} />
+          <Row label="Переводом" value={sum(m.collected.transfer, cur)} />
+
+          <Text style={styles.title}>Долги клиентов</Text>
+          <Row label="Было утром" value={sum(m.receivable.morning, cur)} />
+          <Row label="Стало вечером" value={sum(m.receivable.evening, cur)} strong />
+
+          <Text style={styles.title}>Поставщики</Text>
+          <Row label="Приход за день" value={sum(m.suppliers.purchased, cur)} />
+          <Row label="Оплачено поставщикам" value={sum(m.suppliers.paid, cur)} />
+          <Row label="Долг на конец дня" value={sum(m.suppliers.evening, cur)} strong />
+
+          {m.creditByCustomer.length > 0 && (
+            <>
+              <Text style={styles.title}>Кому продал в долг</Text>
+              {m.creditByCustomer.map((c) => (
+                <Row key={c.id} label={c.name} value={sum(c.amount, cur)} />
+              ))}
+            </>
+          )}
+          {m.paidByCustomer.length > 0 && (
+            <>
+              <Text style={styles.title}>Кто оплатил</Text>
+              {m.paidByCustomer.map((c) => (
+                <Row key={c.id} label={c.name} value={sum(c.amount, cur)} />
+              ))}
+            </>
+          )}
+    </>
+  );
+}
+
 function DayDocument({ data }: { data: DayPdfData }) {
   const s = data.summary;
   const time = (iso: string) =>
@@ -46,49 +91,23 @@ function DayDocument({ data }: { data: DayPdfData }) {
           {data.closedAt ? ` · день закрыт в ${time(data.closedAt)}` : " · день не закрыт, цифры на сейчас"}
         </Text>
 
-        <Text style={styles.title}>Продажи</Text>
-        <Row label={`Продано за день (${s.sold.count} накл.)`} value={sum(s.sold.total)} strong />
-        <Row label="В долг" value={sum(s.sold.credit)} />
-        <Row label="За наличные" value={sum(s.sold.cash)} />
-
-        <Text style={styles.title}>Собрано денег</Text>
-        <Row label="Всего" value={sum(s.collected.total)} strong />
-        <Row label="Наличными" value={sum(s.collected.cash)} />
-        <Row label="Переводом" value={sum(s.collected.transfer)} />
-
-        <Text style={styles.title}>Долги клиентов</Text>
-        <Row label="Было утром" value={sum(s.receivable.morning)} />
-        <Row label="Стало вечером" value={sum(s.receivable.evening)} strong />
-
-        <Text style={styles.title}>Поставщики</Text>
-        <Row label="Приход за день" value={sum(s.suppliers.purchased)} />
-        <Row label="Оплачено поставщикам" value={sum(s.suppliers.paid)} />
-        <Row label="Долг на конец дня" value={sum(s.suppliers.evening)} strong />
-
-        {s.creditByCustomer.length > 0 && (
-          <>
-            <Text style={styles.title}>Кому продал в долг</Text>
-            {s.creditByCustomer.map((c) => (
-              <Row key={c.id} label={c.name} value={sum(c.amount)} />
-            ))}
-          </>
-        )}
-        {s.paidByCustomer.length > 0 && (
-          <>
-            <Text style={styles.title}>Кто оплатил</Text>
-            {s.paidByCustomer.map((c) => (
-              <Row key={c.id} label={c.name} value={sum(c.amount)} />
-            ))}
-          </>
-        )}
+        <MoneyBlock m={s} cur={s.currency ?? "KGS"} />
+        {s.foreign?.map((part) => (
+          <MoneyBlock
+            key={part.currency}
+            m={part}
+            cur={part.currency}
+            title={`В валюте ${SIGN[part.currency] ?? part.currency} — отдельно от основных цифр`}
+          />
+        ))}
         {data.after && (data.after.added.length > 0 || data.after.reversed.length > 0) && (
           <>
             <Text style={[styles.title, styles.warn]}>После закрытия</Text>
             {data.after.added.map((i, n) => (
-              <Row key={`a${n}`} label={`+ ${i.label} · ${i.party} · ${time(i.at)}`} value={sum(i.amount)} />
+              <Row key={`a${n}`} label={`+ ${i.label} · ${i.party} · ${time(i.at)}`} value={sum(i.amount, i.currency)} />
             ))}
             {data.after.reversed.map((i, n) => (
-              <Row key={`r${n}`} label={`Отменена: ${i.label} · ${i.party} · ${time(i.at)}`} value={sum(i.amount)} />
+              <Row key={`r${n}`} label={`Отменена: ${i.label} · ${i.party} · ${time(i.at)}`} value={sum(i.amount, i.currency)} />
             ))}
           </>
         )}

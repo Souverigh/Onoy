@@ -19,7 +19,7 @@ export default async function Statement({
   const { from: rawFrom, to: rawTo } = await searchParams;
   const statement = await getStatementData(db, organizationId, kind, id, rawFrom, rawTo);
   if (!statement) notFound();
-  const { partyName, shopName, from, to, opening, closing, entries } = statement;
+  const { partyName, shopName, from, to, opening, closing, entries, currency } = statement;
 
   return (
     <>
@@ -59,7 +59,7 @@ export default async function Statement({
       <section className="panel statement-panel">
         <div className="statement-row">
           <span>Сальдо на начало периода</span>
-          <strong>{money(opening)}</strong>
+          <strong>{money(opening, currency)}</strong>
         </div>
         <div className="table-wrap">
           <table>
@@ -82,7 +82,7 @@ export default async function Statement({
                     {statementEntryLabel(entry)}
                     {entry.reversed && <span className="tag reversed-tag">отменена</span>}
                   </td>
-                  <td>{money(entry.amount)}</td>
+                  <td>{money(entry.amount, currency)}</td>
                 </tr>
               ))}
             </tbody>
@@ -90,7 +90,7 @@ export default async function Statement({
         </div>
         <div className="statement-row">
           <span>Сальдо на конец периода</span>
-          <strong>{money(closing)}</strong>
+          <strong>{money(closing, currency)}</strong>
         </div>
       </section>
     </>

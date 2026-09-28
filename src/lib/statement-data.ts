@@ -37,6 +37,7 @@ export function statementEntryLabel(entry: Pick<StatementEntry, "kind" | "openin
 export type StatementData = {
   partyName: string;
   shopName: string;
+  currency: string;
   from: string;
   to: string;
   opening: number;
@@ -61,8 +62,8 @@ export async function getStatementData(
   const toIsoEnd = new Date(new Date(toIso(to)).getTime() + 86400000).toISOString();
 
   const [party, shop] = await Promise.all([
-    db.from(partyTable).select("id,name,phone").eq("organization_id", organizationId).eq("id", id).maybeSingle(),
-    db.from("organizations").select("name").eq("id", organizationId).maybeSingle(),
+    db.from(partyTable).select("id,name,phone,currency").eq("organization_id", organizationId).eq("id", id).maybeSingle(),
+    db.from("organizations").select("name,currency").eq("id", organizationId).maybeSingle(),
   ]);
   if (party.error || !party.data) return null;
 
@@ -113,6 +114,8 @@ export async function getStatementData(
   return {
     partyName: party.data.name,
     shopName: shop.data?.name ?? "Магазин",
+    // Акт — в валюте долга контрагента (ТЗ §15.2: долларовому — в USD).
+    currency: (party.data.currency ?? shop.data?.currency ?? "KGS") as string,
     from,
     to,
     opening,

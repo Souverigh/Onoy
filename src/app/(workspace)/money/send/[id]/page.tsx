@@ -2,7 +2,8 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
-import { money } from "@/lib/format";
+import { money, originalAmountText } from "@/lib/format";
+import { partyCurrency } from "@/lib/currency";
 import { invoiceMessage } from "@/lib/invoice-message";
 import { SendInvoice } from "@/components/send-invoice";
 import { RecordResult } from "@/components/record-result";
@@ -20,11 +21,11 @@ export default async function SendSalePage({
   const { id } = await params;
   const { done, duplicate, undo } = await searchParams;
   if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
-  const { db, organizationId, user } = await getContext();
+  const { db, organizationId, user, currency: shopCurrency } = await getContext();
 
   const saleResult = await db
     .from("sales")
-    .select("id,customer_id,total,occurred_at,paid_immediately,reversed_at,is_opening,document_id,status,created_at,created_by")
+    .select("id,customer_id,total,occurred_at,paid_immediately,reversed_at,is_opening,document_id,status,created_at,created_by,original_amount,original_currency,fx_rate")
     .eq("organization_id", organizationId)
     .eq("id", id)
     .maybeSingle();
@@ -34,7 +35,7 @@ export default async function SendSalePage({
   const [customerResult, docResult, shopResult, share] = await Promise.all([
     db
       .from("customer_balances")
-      .select("id,name,phone,balance")
+      .select("id,name,phone,balance,currency")
       .eq("organization_id", organizationId)
       .eq("id", sale.customer_id)
       .maybeSingle(),
@@ -64,16 +65,17 @@ export default async function SendSalePage({
     timeZone: "Asia/Bishkek",
   }).format(new Date(sale.occurred_at));
   const balance = Number(customer.balance ?? 0);
+  const cur = partyCurrency(customer, shopCurrency);
   const message = (attached: boolean) =>
     invoiceMessage({
       customerName: customer.name,
       shopName: shopResult.data?.name ?? "",
       date,
-      total: money(sale.total),
+      total: sale.original_amount != null ? money(sale.original_amount, sale.original_currency) : money(sale.total, cur),
       paidImmediately: sale.paid_immediately,
       balance,
-      balanceText: money(customer.balance ?? 0),
-      advanceText: balance < 0 ? money(String(customer.balance).replace(/^-/, "")) : "",
+      balanceText: money(customer.balance ?? 0, cur),
+      advanceText: balance < 0 ? money(String(customer.balance).replace(/^-/, ""), cur) : "",
       invoiceUrl: !attached && checked && token ? `${origin}/c/${token}/invoice/${sale.id}` : null,
       invoiceAttached: attached,
       debtUrl: token ? `${origin}/c/${token}` : null,
@@ -86,6 +88,8 @@ export default async function SendSalePage({
     <>
       {done && (
         <RecordResult
+          currency={cur}
+          original={originalAmountText(sale)}
           title={sale.paid_immediately ? "Продажа за наличные записана" : "Продажа записана"}
           party={customer.name}
           partyHref={back}
@@ -120,7 +124,7 @@ export default async function SendSalePage({
           <span className="eyebrow">ПРОДАЖА</span>
           <h1>Отправить клиенту</h1>
           <p className="muted">
-            {date} · {money(sale.total)}
+            {date} · {money(sale.total, cur)}
             {sale.paid_immediately ? " · оплачено" : ""}
           </p>
         </div>

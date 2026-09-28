@@ -48,7 +48,10 @@ export type InvoiceResult = {
   lines: InvoiceLine[];
   total_declared: number | null;
   total_computed: number;
-  currency: "KGS";
+  /** До v3 — всегда KGS. */
+  currency: "KGS" | "USD" | "RUB";
+  /** Откуда валюта: знак на документе, масштаб цен или ничего (тогда сом). До v3 нет. */
+  currency_evidence?: "symbol" | "price_scale" | "none";
   warnings: string[];
 };
 
@@ -57,6 +60,8 @@ export type ReceiptResult = {
   operation_id: string | null;
   datetime: string | null;
   amount: number;
+  /** До v3 нет — сом. */
+  currency?: "KGS" | "USD" | "RUB";
   sender_name: string | null;
   receiver_name: string | null;
   receiver_phone: string | null;

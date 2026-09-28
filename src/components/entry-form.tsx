@@ -4,15 +4,19 @@ import type { Entry } from "@/lib/directory";
 import { Submit } from "./submit";
 import { ContactFill } from "./contact-fill";
 import { saveEntry } from "@/app/(workspace)/[kind]/actions";
+import { CURRENCIES, CURRENCY_NAME, CURRENCY_SIGN, partyCurrency, type Currency } from "@/lib/currency";
 export function EntryForm({
   kind,
   entry,
   error,
+  shopCurrency,
 }: {
   kind: Directory;
   entry?: Entry;
   error?: string;
+  shopCurrency: Currency;
 }) {
+  const sign = CURRENCY_SIGN[partyCurrency(entry, shopCurrency)];
   return (
     <form action={saveEntry} className="entry-form">
       <input type="hidden" name="kind" value={kind} />
@@ -92,9 +96,26 @@ export function EntryForm({
               defaultValue={entry?.phone ?? ""}
             />
           </label>
+          <label>
+            В какой валюте долг
+            <select name="currency" defaultValue={entry?.currency ?? ""}>
+              <option value="">Как у магазина — {CURRENCY_NAME[shopCurrency]}</option>
+              {CURRENCIES.filter((c) => c !== shopCurrency).map((c) => (
+                <option key={c} value={c}>
+                  {CURRENCY_NAME[c]} ({CURRENCY_SIGN[c]})
+                </option>
+              ))}
+            </select>
+            <small className="muted">
+              {kind === "suppliers"
+                ? "Если поставщик считает в долларах (как Хороз) — выберите доллар: долг будет в долларах, оплаты в сомах пересчитаются по курсу."
+                : "Долг клиента ведётся в этой валюте; записи в другой валюте пересчитываются по курсу."}{" "}
+              Сменить можно, пока нет записей.
+            </small>
+          </label>
           {kind === "customers" && (
             <label>
-              Лимит долга, сом (необязательно)
+              Лимит долга, {sign} (необязательно)
               <input
                 name="credit_limit"
                 inputMode="decimal"
@@ -121,6 +142,8 @@ export function EntryForm({
         <p className="form-error" role="alert">
           {error === "duplicate"
             ? "Товар с таким артикулом уже существует."
+            : error === "currency_locked"
+              ? "Валюту нельзя сменить: у контрагента уже есть записи в прежней валюте."
             : error === "invalid"
               ? "Проверьте заполнение полей. Суммы — неотрицательные числа, до 2 знаков после запятой."
               : "Не удалось сохранить запись. Повторите попытку."}

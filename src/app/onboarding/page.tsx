@@ -31,6 +31,16 @@ export default async function Onboarding({
             />
           </label>
           <label>
+            Основная валюта
+            <select name="currency" defaultValue="KGS">
+              <option value="KGS">Сом — Кыргызстан</option>
+              <option value="RUB">Рубль — Россия</option>
+            </select>
+            <small className="muted">
+              В ней считаются итоги. Поставщику или клиенту в долларах можно задать свою валюту.
+            </small>
+          </label>
+          <label>
             Код доступа
             <input
               name="code"

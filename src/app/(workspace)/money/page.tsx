@@ -4,13 +4,14 @@ import { paymentLabelWithSide, type PaymentKind } from "@/lib/entry-labels";
 import { getContext } from "@/lib/context";
 import { money } from "@/lib/format";
 
-type PartyBalance = { id: string; name: string; balance: string };
-type PartyName = { id: string; name: string };
+type PartyBalance = { id: string; name: string; balance: string; currency: string | null };
+type PartyName = { id: string; name: string; currency: string | null };
 type Activity = {
   id: string;
   kind: "purchase" | "sale" | "payment";
   party: string;
   amount: string;
+  currency: string;
   occurred_at: string;
   direction?: "incoming" | "outgoing";
   paymentKind?: PaymentKind;
@@ -31,18 +32,18 @@ export default async function Money({
 }: {
   searchParams: Promise<{ created?: string; error?: string; duplicate?: string; sale?: string; part?: string }>;
 }) {
-  const { db, organizationId, isOwner } = await getContext();
+  const { db, organizationId, isOwner, currency: shopCurrency } = await getContext();
   const [customerResult, supplierResult, purchaseResult, saleResult, paymentResult, claimsResult] =
     await Promise.all([
       db
         .from("customer_balances")
-        .select("id,name,balance")
+        .select("id,name,balance,currency")
         .eq("organization_id", organizationId)
         .order("name")
         .limit(8),
       db
         .from("supplier_balances")
-        .select("id,name,balance")
+        .select("id,name,balance,currency")
         .eq("organization_id", organizationId)
         .order("name")
         .limit(8),
@@ -135,14 +136,14 @@ export default async function Money({
     customerIds.length
       ? db
           .from("customers")
-          .select("id,name")
+          .select("id,name,currency")
           .eq("organization_id", organizationId)
           .in("id", customerIds)
       : Promise.resolve({ data: [], error: null }),
     supplierIds.length
       ? db
           .from("suppliers")
-          .select("id,name")
+          .select("id,name,currency")
           .eq("organization_id", organizationId)
           .in("id", supplierIds)
       : Promise.resolve({ data: [], error: null }),
@@ -161,12 +162,21 @@ export default async function Money({
       entry.name,
     ]),
   );
+  // Валюта долга контрагента — в суммах журнала.
+  const partyCurrencies = new Map(
+    [...((customerLookup.data ?? []) as PartyName[]), ...((supplierLookup.data ?? []) as PartyName[])].map((p) => [
+      p.id,
+      p.currency ?? shopCurrency,
+    ]),
+  );
+  const currencyOf = (id: string | null) => (id && partyCurrencies.get(id)) || shopCurrency;
   const activities: Activity[] = [
     ...purchases.map((row) => ({
       id: row.id,
       kind: "purchase" as const,
       party: supplierNames.get(row.supplier_id) ?? "Поставщик",
       amount: row.total,
+      currency: currencyOf(row.supplier_id),
       occurred_at: row.occurred_at,
       reversed: Boolean(row.reversed_at),
       reversalComment: row.reversal_comment ?? undefined,
@@ -177,6 +187,7 @@ export default async function Money({
       kind: "sale" as const,
       party: customerNames.get(row.customer_id) ?? "Клиент",
       amount: row.total,
+      currency: currencyOf(row.customer_id),
       occurred_at: row.occurred_at,
       reversed: Boolean(row.reversed_at),
       reversalComment: row.reversal_comment ?? undefined,
@@ -190,6 +201,7 @@ export default async function Money({
           ? (customerNames.get(row.customer_id ?? "") ?? "Клиент")
           : (supplierNames.get(row.supplier_id ?? "") ?? "Поставщик"),
       amount: row.amount,
+      currency: currencyOf(row.customer_id ?? row.supplier_id),
       occurred_at: row.occurred_at,
       direction: row.direction,
       paymentKind: row.kind,
@@ -317,7 +329,7 @@ export default async function Money({
                   key={customer.id}
                 >
                   <span>{customer.name}</span>
-                  <strong>{money(customer.balance)}</strong>
+                  <strong>{money(customer.balance, customer.currency ?? shopCurrency)}</strong>
                 </Link>
               ))}
             </div>
@@ -341,7 +353,7 @@ export default async function Money({
                   key={supplier.id}
                 >
                   <span>{supplier.name}</span>
-                  <strong>{money(supplier.balance)}</strong>
+                  <strong>{money(supplier.balance, supplier.currency ?? shopCurrency)}</strong>
                 </Link>
               ))}
             </div>
@@ -390,7 +402,7 @@ export default async function Money({
                       )}
                     </td>
                     <td>{activity.party}</td>
-                    <td>{money(activity.amount)}</td>
+                    <td>{money(activity.amount, activity.currency)}</td>
                     <td>{dateTime(activity.occurred_at)}</td>
                     <td>
                       {activity.reversed ? (

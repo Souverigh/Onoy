@@ -45,7 +45,9 @@ export function directoryInput(kind: Directory, data: Record<string, unknown>) {
       sale_price: decimalInput(data.sale_price, 2),
       min_stock: decimalInput(data.min_stock, 3),
     };
-  const base = { name, phone: text(data.phone, 40), notes: text(data.notes, 2000) };
+  // Валюта долга: пусто — как у магазина (null).
+  const currency = ["KGS", "USD", "RUB"].includes(String(data.currency)) ? String(data.currency) : null;
+  const base = { name, phone: text(data.phone, 40), notes: text(data.notes, 2000), currency };
   if (kind === "suppliers") return base;
   // Лимит долга: пусто — без лимита.
   const limit = String(data.credit_limit ?? "").trim();

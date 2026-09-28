@@ -3,13 +3,9 @@ import { money } from "@/lib/format";
 import { UnclosedDays } from "@/components/unclosed-days";
 import type { RecentRecord } from "@/lib/recent";
 
-export type Summary = {
-  sold: string | number;
-  receivable: string | number;
-  payable: string | number;
-  low_stock: number;
-  review: number;
-};
+/** Долги по валютам: первая — валюта магазина, дальше — другие (Хороз в $). */
+export type DebtTotals = { currency: string; receivable: number; payable: number }[];
+export type Summary = { debts: DebtTotals };
 
 /** «3 заявки», «1 заявка», «5 заявок» — склонение (аудит ТЗ 15.1 п. 18). */
 export function plural(n: number, one: string, few: string, many: string) {
@@ -44,13 +40,13 @@ export function Dashboard({
   /** Прошлые дни с записями, которые не закрыли (напоминание). */
   unclosedDays?: string[];
   /** Клиенты с неоплаченными продажами старше 30 дней и сумма этой части долга. */
-  overdue?: { count: number; amount: number };
+  overdue?: { count: number; amounts: { currency: string; amount: number }[] };
   /** Продавец: итогов магазина не видит (ТЗ), только действия. */
   staff?: boolean;
   /** Продавец открыл владельческую страницу — объясняем, почему вернули сюда. */
   ownerOnlyNotice?: boolean;
   /** Продано и собрано за сегодня (для кнопки «Итог дня»). */
-  today?: { sold: number; collected: number };
+  today?: { sold: number; collected: number; currency: string };
   pendingClaims?: number;
   /** Накладные с расхождением или ошибкой распознавания — «незавершённые». */
   reviewCount?: number;
@@ -77,19 +73,25 @@ export function Dashboard({
       {!staff && overdue && overdue.count > 0 && (
         <Link className="notice claims-notice" href={href("/customers?overdue=30")}>
           Просрочено больше 30 дней: {overdue.count} {plural(overdue.count, "клиент", "клиента", "клиентов")},{" "}
-          {money(overdue.amount)} →
+          {overdue.amounts.map((a) => money(a.amount, a.currency)).join(" + ")} →
         </Link>
       )}
       {!staff && summary && (
         <section className="debt-cards" aria-label="Долги">
           <Link className="debt-card" href={href("/customers")}>
             <span>Мне должны</span>
-            <strong>{money(summary.receivable)}</strong>
+            <strong>{money(summary.debts[0]?.receivable ?? 0, summary.debts[0]?.currency)}</strong>
+            {summary.debts.slice(1).filter((d) => d.receivable !== 0).map((d) => (
+              <small key={d.currency} className="debt-extra">+ {money(d.receivable, d.currency)}</small>
+            ))}
             <small>Клиенты →</small>
           </Link>
           <Link className="debt-card supplier-debt" href={href("/suppliers")}>
             <span>Я должен</span>
-            <strong>{money(summary.payable)}</strong>
+            <strong>{money(summary.debts[0]?.payable ?? 0, summary.debts[0]?.currency)}</strong>
+            {summary.debts.slice(1).filter((d) => d.payable !== 0).map((d) => (
+              <small key={d.currency} className="debt-extra">+ {money(d.payable, d.currency)}</small>
+            ))}
             <small>Поставщикам →</small>
           </Link>
         </section>
@@ -110,7 +112,7 @@ export function Dashboard({
           <span>
             <strong>Итог дня</strong>
             <small className="muted">
-              продано {money(today.sold)} · собрано {money(today.collected)}
+              продано {money(today.sold, today.currency)} · собрано {money(today.collected, today.currency)}
             </small>
           </span>
           <span aria-hidden="true">→</span>
@@ -147,7 +149,7 @@ export function Dashboard({
                     {r.partyHref ? <Link href={href(r.partyHref)}>{r.party}</Link> : r.party} · {time(r.at)}
                   </small>
                 </span>
-                <strong className="nowrap">{money(r.amount)}</strong>
+                <strong className="nowrap">{money(r.amount, r.currency)}</strong>
               </li>
             ))}
           </ul>

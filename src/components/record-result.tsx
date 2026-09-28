@@ -12,6 +12,8 @@ export function RecordResult({
   party,
   partyHref,
   amount,
+  currency,
+  original,
   debtBefore,
   debtAfter,
   debtLabel,
@@ -26,6 +28,10 @@ export function RecordResult({
   party: string;
   partyHref: string;
   amount: string;
+  /** Валюта долга контрагента. */
+  currency: string;
+  /** Запись в другой валюте: «87 800 сом по 87,8». */
+  original?: string | null;
   debtBefore: number;
   debtAfter: number;
   /** «Долг клиента» / «Мы должны поставщику». */
@@ -41,11 +47,12 @@ export function RecordResult({
     <section className={`panel record-result${reversed ? " reversed" : ""}`}>
       <p className="record-result-title">{reversed ? "Запись отменена" : `✓ ${title}`}</p>
       <p className="record-result-main">
-        <Link href={partyHref}>{party}</Link> · <strong className="nowrap">{money(amount)}</strong>
+        <Link href={partyHref}>{party}</Link> · <strong className="nowrap">{money(amount, currency)}</strong>
+        {original && <span className="muted"> ({original})</span>}
       </p>
       {!reversed && (
         <p className="muted">
-          {debtLabel}: {money(debtBefore)} → <strong>{money(debtAfter)}</strong>
+          {debtLabel}: {money(debtBefore, currency)} → <strong>{money(debtAfter, currency)}</strong>
         </p>
       )}
       {notes}

@@ -3075,3 +3075,37 @@ a.debt-card:hover {
 .invoice-line-delete {
   margin-top: 8px;
 }
+
+/* Валюта суммы в форме записи и курс (ТЗ §15.2). */
+.amount-currency {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.amount-currency .party-suggestion {
+  min-width: 56px;
+}
+.fx-field {
+  display: grid;
+  gap: 8px;
+}
+.history-original {
+  display: block;
+  font-weight: 400;
+  font-size: 12px;
+}
+/* Итог дня: блок другой валюты (доллары Хороза) — отдельно от основных цифр. */
+.day-foreign {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+}
+.day-foreign-title {
+  font-size: 15px;
+  margin: 0;
+}
+.debt-card .debt-extra {
+  font-weight: 600;
+  opacity: 0.85;
+}

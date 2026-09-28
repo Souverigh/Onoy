@@ -26,7 +26,17 @@ const axisLabel = (value: number) =>
  * заголовок. Подсказка — по наведению и по нажатию (focus), таблица — отдельно.
  * HTML, а не SVG: на телефоне подписи не ужимаются вместе с графиком.
  */
-export function DayColumns({ title, points, through }: { title: string; points: Point[]; through: string }) {
+export function DayColumns({
+  title,
+  points,
+  through,
+  currency = "KGS",
+}: {
+  title: string;
+  points: Point[];
+  through: string;
+  currency?: string;
+}) {
   const weekly = points.length <= 7;
   const max = niceMax(Math.max(0, ...points.map((p) => p.value)));
   const ticks = [max, max / 2, 0];
@@ -50,11 +60,11 @@ export function DayColumns({ title, points, through }: { title: string; points: 
               const future = p.date > through;
               return (
                 <li key={p.date} className={future ? "future" : undefined}>
-                  <button type="button" className="day-columns-hit" aria-label={`${fullDay(p.date)}: ${future ? "ещё не наступил" : money(p.value)}`}>
+                  <button type="button" className="day-columns-hit" aria-label={`${fullDay(p.date)}: ${future ? "ещё не наступил" : money(p.value, currency)}`}>
                     <span className="day-columns-bar" style={{ height: `${(p.value / max) * 100}%` }} />
                     <span className="day-columns-tip" role="tooltip">
                       {fullDay(p.date)}
-                      <strong>{future ? "ещё не наступил" : money(p.value)}</strong>
+                      <strong>{future ? "ещё не наступил" : money(p.value, currency)}</strong>
                     </span>
                   </button>
                 </li>

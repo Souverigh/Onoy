@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireOwner } from "@/lib/context";
 import { money } from "@/lib/format";
+import { CURRENCY_SIGN, type Currency } from "@/lib/currency";
 import { Submit } from "@/components/submit";
 import {
   afterClosing,
@@ -9,6 +10,7 @@ import {
   dayBounds,
   dayClosure,
   dayHistory,
+  type DayMoney,
   type PartyAmount,
   unclosedDays,
 } from "@/lib/day-summary";
@@ -17,17 +19,63 @@ import { UnclosedDays } from "@/components/unclosed-days";
 
 const HISTORY_DAYS = 14;
 
-function PartyList({ items, empty }: { items: PartyAmount[]; empty: string }) {
+function PartyList({ items, empty, currency }: { items: PartyAmount[]; empty: string; currency: string }) {
   if (!items.length) return <p className="muted">{empty}</p>;
   return (
     <div className="balance-list">
       {items.map((item) => (
         <Link className="balance-row" href={`/customers/${item.id}`} key={item.id}>
           <span>{item.name}</span>
-          <strong>{money(item.amount)}</strong>
+          <strong>{money(item.amount, currency)}</strong>
         </Link>
       ))}
     </div>
+  );
+}
+
+/** Цифры дня в одной валюте: основная валюта магазина или отдельный блок (доллары Хороза). */
+function DayMoneyPanels({ m, cur }: { m: DayMoney; cur: string }) {
+  return (
+    <>
+        <div className="day-grid">
+          <section className="panel">
+            <h2>Продано за день</h2>
+            <p className="day-number">{money(m.sold.total, cur)}</p>
+            <p className="muted">
+              Накладных: {m.sold.count} · В долг: {money(m.sold.credit, cur)} · Наличными:{" "}
+              {money(m.sold.cash, cur)}
+            </p>
+          </section>
+          <section className="panel">
+            <h2>Собрано денег</h2>
+            <p className="day-number">{money(m.collected.total, cur)}</p>
+            <p className="muted">
+              Наличными: {money(m.collected.cash, cur)} · Переводом: {money(m.collected.transfer, cur)}
+            </p>
+          </section>
+          <section className="panel">
+            <h2>Долг клиентов</h2>
+            <p className="muted">Было утром: {money(m.receivable.morning, cur)}</p>
+            <p className="day-number">Стало вечером: {money(m.receivable.evening, cur)}</p>
+          </section>
+          <section className="panel">
+            <h2>Поставщики</h2>
+            <p className="muted">Приход за день: {money(m.suppliers.purchased, cur)}</p>
+            <p className="muted">Оплачено: {money(m.suppliers.paid, cur)}</p>
+            <p className="day-number">Долг на конец дня: {money(m.suppliers.evening, cur)}</p>
+          </section>
+        </div>
+        <div className="day-grid">
+          <section className="panel">
+            <h2>Кому продал в долг</h2>
+            <PartyList items={m.creditByCustomer} currency={cur} empty="Продаж в долг не было." />
+          </section>
+          <section className="panel">
+            <h2>Кто оплатил</h2>
+            <PartyList items={m.paidByCustomer} currency={cur} empty="Оплат от клиентов не было." />
+          </section>
+        </div>
+    </>
   );
 }
 
@@ -36,7 +84,7 @@ export default async function DayClose({
 }: {
   searchParams: Promise<{ date?: string; closed?: string; error?: string }>;
 }) {
-  const { db, organizationId } = await requireOwner();
+  const { db, organizationId, currency: shopCurrency } = await requireOwner();
   const { date: rawDate, closed, error } = await searchParams;
   const today = bishkekDate();
   // Будущие дни не показываем — сразу сегодняшний.
@@ -182,44 +230,15 @@ export default async function DayClose({
         </section>
       )}
 
-      <div className="day-grid">
-        <section className="panel">
-          <h2>Продано за день</h2>
-          <p className="day-number">{money(summary.sold.total)}</p>
-          <p className="muted">
-            Накладных: {summary.sold.count} · В долг: {money(summary.sold.credit)} · Наличными:{" "}
-            {money(summary.sold.cash)}
-          </p>
+      <DayMoneyPanels m={summary} cur={summary.currency ?? "KGS"} />
+      {summary.foreign?.map((part) => (
+        <section key={part.currency} className="day-foreign">
+          <h2 className="day-foreign-title">
+            В валюте {CURRENCY_SIGN[part.currency as Currency] ?? part.currency} — отдельно, не складывается с основными
+          </h2>
+          <DayMoneyPanels m={part} cur={part.currency} />
         </section>
-        <section className="panel">
-          <h2>Собрано денег</h2>
-          <p className="day-number">{money(summary.collected.total)}</p>
-          <p className="muted">
-            Наличными: {money(summary.collected.cash)} · Переводом: {money(summary.collected.transfer)}
-          </p>
-        </section>
-        <section className="panel">
-          <h2>Долг клиентов</h2>
-          <p className="muted">Было утром: {money(summary.receivable.morning)}</p>
-          <p className="day-number">Стало вечером: {money(summary.receivable.evening)}</p>
-        </section>
-        <section className="panel">
-          <h2>Поставщики</h2>
-          <p className="muted">Приход за день: {money(summary.suppliers.purchased)}</p>
-          <p className="muted">Оплачено: {money(summary.suppliers.paid)}</p>
-          <p className="day-number">Долг на конец дня: {money(summary.suppliers.evening)}</p>
-        </section>
-      </div>
-      <div className="day-grid">
-        <section className="panel">
-          <h2>Кому продал в долг</h2>
-          <PartyList items={summary.creditByCustomer} empty="Продаж в долг не было." />
-        </section>
-        <section className="panel">
-          <h2>Кто оплатил</h2>
-          <PartyList items={summary.paidByCustomer} empty="Оплат от клиентов не было." />
-        </section>
-      </div>
+      ))}
 
       {/* По продавцам — когда в магазине работают сотрудники. */}
       {summary.bySeller?.some((s) => s.role === "staff") && (
@@ -240,8 +259,8 @@ export default async function DayClose({
                   <tr key={s.id ?? "none"}>
                     <td>{s.name}</td>
                     <td>{s.count}</td>
-                    <td>{money(s.sold)}</td>
-                    <td>{money(s.collected)}</td>
+                    <td>{money(s.sold, summary.currency ?? "KGS")}</td>
+                    <td>{money(s.collected, summary.currency ?? "KGS")}</td>
                   </tr>
                 ))}
               </tbody>
@@ -264,7 +283,7 @@ export default async function DayClose({
                   + {item.label} · {item.party}
                   <small className="muted"> · внесена {time(item.at)}</small>
                 </span>
-                <strong>{money(item.amount)}</strong>
+                <strong>{money(item.amount, item.currency)}</strong>
               </li>
             ))}
             {after.reversed.map((item, i) => (
@@ -273,7 +292,7 @@ export default async function DayClose({
                   Отменена: {item.label} · {item.party}
                   <small className="muted"> · {time(item.at)}</small>
                 </span>
-                <strong>{money(item.amount)}</strong>
+                <strong>{money(item.amount, item.currency)}</strong>
               </li>
             ))}
           </ul>
@@ -321,9 +340,9 @@ export default async function DayClose({
                           }).format(new Date(`${row.date}T12:00:00+06:00`))}
                     </Link>
                   </td>
-                  <td>{money(row.sold)}</td>
-                  <td>{money(row.collected)}</td>
-                  <td>{money(row.purchased)}</td>
+                  <td>{money(row.sold, shopCurrency)}</td>
+                  <td>{money(row.collected, shopCurrency)}</td>
+                  <td>{money(row.purchased, shopCurrency)}</td>
                   <td>{snapshots.has(row.date) ? "✓" : <span className="muted">—</span>}</td>
                 </tr>
               ))}

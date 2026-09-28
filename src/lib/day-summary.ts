@@ -2,6 +2,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { paymentLabelWithSide } from "./entry-labels";
 import { memberLabels } from "./members";
+import { isCurrency, type Currency } from "./currency";
+import { foreignParties, recordCurrency } from "./party-currency";
 
 /** День по Бишкеку (YYYY-MM-DD): сменяется в 00:00 UTC+6. */
 export function bishkekDate(value: string | Date = new Date()) {
@@ -21,28 +23,93 @@ export function dayBounds(date: string) {
 
 export type PartyAmount = { id: string; name: string; amount: number };
 
-/**
- * Итог дня. Хранится как снимок в day_closures.snapshot при «Закрыть день»,
- * поэтому только простые значения (JSON) и поле version на случай изменений.
- */
-export type DaySummary = {
-  version: 1;
-  date: string;
-  computedAt: string;
+/** Итоги дня в одной валюте. */
+export type DayMoney = {
   sold: { total: number; credit: number; cash: number; count: number };
   collected: { total: number; cash: number; transfer: number };
   creditByCustomer: PartyAmount[];
   paidByCustomer: PartyAmount[];
   receivable: { morning: number; evening: number };
   suppliers: { purchased: number; paid: number; morning: number; evening: number };
-  pendingClaims: number;
-  /** По продавцам (тариф «Бизнес»): кто сколько оформил. В старых снимках нет. */
-  bySeller?: SellerTotal[];
 };
+
+/**
+ * Итог дня. Хранится как снимок в day_closures.snapshot при «Закрыть день»,
+ * поэтому только простые значения (JSON) и поле version на случай изменений.
+ * Основные цифры — в валюте магазина (`currency`; в старых снимках нет —
+ * сом). Контрагенты в другой валюте (Хороз в долларах) — отдельными блоками
+ * `foreign`: суммы разных валют не складываются.
+ */
+export type DaySummary = {
+  version: 1;
+  date: string;
+  computedAt: string;
+  currency?: string;
+  pendingClaims: number;
+  /** По продавцам (тариф «Бизнес»): кто сколько оформил, в валюте магазина. В старых снимках нет. */
+  bySeller?: SellerTotal[];
+  foreign?: (DayMoney & { currency: string })[];
+} & DayMoney;
 export type SellerTotal = { id: string | null; name: string; role: "owner" | "staff" | null; sold: number; collected: number; count: number };
 
 const sum = <T>(rows: T[], pick: (row: T) => string | number) =>
   Math.round(rows.reduce((s, r) => s + Number(pick(r)), 0) * 100) / 100;
+const round = (n: number) => Math.round(n * 100) / 100;
+
+type SaleRow = { customer_id: string | null; total: string; paid_immediately: boolean; created_by: string | null };
+type PaymentRow = { customer_id: string | null; supplier_id: string | null; direction: string; amount: string; bank_reference: string | null; created_by: string | null };
+type PurchaseRow = { supplier_id: string | null; total: string };
+type Movements = { receivable: number; payable: number };
+
+/** Итоги по записям одной валюты (записи уже отобраны по валюте контрагента). */
+function dayMoney(
+  sales: SaleRow[],
+  payments: PaymentRow[],
+  purchases: PurchaseRow[],
+  receivableNow: number,
+  payableNow: number,
+  later: Movements | null,
+  names: Map<string, string>,
+): DayMoney {
+  const creditSales = sales.filter((s) => !s.paid_immediately);
+  const cashSales = sales.filter((s) => s.paid_immediately);
+  const incoming = payments.filter((p) => p.direction === "incoming");
+  const outgoing = payments.filter((p) => p.direction === "outgoing");
+  const byCustomer = (rows: { customer_id: string | null; value: string }[]) => {
+    const totals = new Map<string, number>();
+    for (const row of rows)
+      if (row.customer_id) totals.set(row.customer_id, (totals.get(row.customer_id) ?? 0) + Number(row.value));
+    return totals;
+  };
+  const list = (totals: Map<string, number>): PartyAmount[] =>
+    [...totals.entries()]
+      .map(([id, amount]) => ({ id, name: names.get(id) ?? "Клиент", amount: round(amount) }))
+      .sort((a, b) => b.amount - a.amount);
+  const soldCredit = sum(creditSales, (s) => s.total);
+  const soldCash = sum(cashSales, (s) => s.total);
+  const collectedCash = sum(incoming.filter((p) => !p.bank_reference), (p) => p.amount);
+  const collectedTransfer = sum(incoming.filter((p) => p.bank_reference), (p) => p.amount);
+  const purchased = sum(purchases, (p) => p.total);
+  const paidSuppliers = sum(outgoing, (p) => p.amount);
+  const receivableEvening = round(receivableNow - (later?.receivable ?? 0));
+  const payableEvening = round(payableNow - (later?.payable ?? 0));
+  return {
+    sold: { total: round(soldCredit + soldCash), credit: soldCredit, cash: soldCash, count: sales.length },
+    collected: { total: round(collectedCash + collectedTransfer), cash: collectedCash, transfer: collectedTransfer },
+    creditByCustomer: list(byCustomer(creditSales.map((r) => ({ customer_id: r.customer_id, value: r.total })))),
+    paidByCustomer: list(byCustomer(incoming.map((r) => ({ customer_id: r.customer_id, value: r.amount })))),
+    receivable: {
+      morning: round(receivableEvening - soldCredit + collectedCash + collectedTransfer),
+      evening: receivableEvening,
+    },
+    suppliers: {
+      purchased,
+      paid: paidSuppliers,
+      morning: round(payableEvening - purchased + paidSuppliers),
+      evening: payableEvening,
+    },
+  };
+}
 
 /**
  * Считает итог дня по действующим записям. Перенос тетради (is_opening) —
@@ -56,7 +123,9 @@ export async function computeDaySummary(
 ): Promise<DaySummary> {
   const { start, end } = dayBounds(date);
   const isToday = date === bishkekDate();
-  const [sales, payments, purchases, pending, later, customerBalances, supplierBalances] =
+  const org = await db.from("organizations").select("currency").eq("id", organizationId).maybeSingle();
+  const shopCurrency: Currency = isCurrency(org.data?.currency) ? org.data.currency : "KGS";
+  const [sales, payments, purchases, pending, later, customerBalances, supplierBalances, foreign] =
     await Promise.all([
       db
         .from("sales")
@@ -69,7 +138,7 @@ export async function computeDaySummary(
         .lt("occurred_at", end),
       db
         .from("payments")
-        .select("customer_id,direction,amount,bank_reference,created_by")
+        .select("customer_id,supplier_id,direction,amount,bank_reference,created_by")
         .eq("organization_id", organizationId)
         .eq("status", "confirmed")
         .eq("kind", "payment") // скидки и возвраты — не деньги
@@ -79,7 +148,7 @@ export async function computeDaySummary(
         .lt("occurred_at", end),
       db
         .from("purchases")
-        .select("total")
+        .select("supplier_id,total")
         .eq("organization_id", organizationId)
         .eq("status", "posted")
         .is("reversed_at", null)
@@ -92,50 +161,57 @@ export async function computeDaySummary(
         .eq("organization_id", organizationId)
         .eq("status", "pending"),
       isToday ? Promise.resolve(null) : laterMovements(db, organizationId, end),
-      db.from("customer_balances").select("balance").eq("organization_id", organizationId),
-      db.from("supplier_balances").select("balance").eq("organization_id", organizationId),
+      db.from("customer_balances").select("id,balance").eq("organization_id", organizationId),
+      db.from("supplier_balances").select("id,balance").eq("organization_id", organizationId),
+      foreignParties(db, organizationId, shopCurrency),
     ]);
   if (sales.error || payments.error || purchases.error || customerBalances.error || supplierBalances.error)
     throw new Error("Не удалось загрузить итог дня");
 
-  const saleRows = sales.data ?? [];
-  const creditSales = saleRows.filter((s) => !s.paid_immediately);
-  const cashSales = saleRows.filter((s) => s.paid_immediately);
-  const incoming = (payments.data ?? []).filter((p) => p.direction === "incoming");
-  const outgoing = (payments.data ?? []).filter((p) => p.direction === "outgoing");
-
-  const byCustomer = (rows: { customer_id: string | null; value: string }[]) => {
-    const totals = new Map<string, number>();
-    for (const row of rows)
-      if (row.customer_id)
-        totals.set(row.customer_id, (totals.get(row.customer_id) ?? 0) + Number(row.value));
-    return totals;
-  };
-  const creditTotals = byCustomer(creditSales.map((r) => ({ customer_id: r.customer_id, value: r.total })));
-  const paidTotals = byCustomer(incoming.map((r) => ({ customer_id: r.customer_id, value: r.amount })));
-  const ids = [...new Set([...creditTotals.keys(), ...paidTotals.keys()])];
+  const saleRows = (sales.data ?? []) as SaleRow[];
+  const paymentRows = (payments.data ?? []) as PaymentRow[];
+  const purchaseRows = (purchases.data ?? []) as PurchaseRow[];
+  const ids = [
+    ...new Set([
+      ...saleRows.map((s) => s.customer_id),
+      ...paymentRows.filter((p) => p.direction === "incoming").map((p) => p.customer_id),
+    ].filter((id): id is string => Boolean(id))),
+  ];
   const names = new Map<string, string>();
   if (ids.length) {
-    const lookup = await db
-      .from("customers")
-      .select("id,name")
-      .eq("organization_id", organizationId)
-      .in("id", ids);
+    const lookup = await db.from("customers").select("id,name").eq("organization_id", organizationId).in("id", ids);
     for (const c of lookup.data ?? []) names.set(c.id, c.name);
   }
-  const list = (totals: Map<string, number>): PartyAmount[] =>
-    [...totals.entries()]
-      .map(([id, amount]) => ({ id, name: names.get(id) ?? "Клиент", amount: Math.round(amount * 100) / 100 }))
-      .sort((a, b) => b.amount - a.amount);
 
-  const soldCredit = sum(creditSales, (s) => s.total);
-  const soldCash = sum(cashSales, (s) => s.total);
-  const collectedCash = sum(incoming.filter((p) => !p.bank_reference), (p) => p.amount);
-  const collectedTransfer = sum(incoming.filter((p) => p.bank_reference), (p) => p.amount);
-  const purchased = sum(purchases.data ?? [], (p) => p.total);
-  const paidSuppliers = sum(outgoing, (p) => p.amount);
+  // Каждая валюта — отдельно: записи и балансы по валюте контрагента.
+  const currencyOf = (row: { customer_id?: string | null; supplier_id?: string | null; id?: string }) =>
+    recordCurrency({ customer_id: row.customer_id ?? row.id, supplier_id: row.supplier_id }, foreign, shopCurrency);
+  const partFor = (cur: Currency): DayMoney =>
+    dayMoney(
+      saleRows.filter((r) => currencyOf(r) === cur),
+      paymentRows.filter((r) => currencyOf(r) === cur),
+      purchaseRows.filter((r) => currencyOf(r) === cur),
+      sum((customerBalances.data ?? []).filter((c) => currencyOf({ id: c.id }) === cur), (c) => c.balance),
+      sum((supplierBalances.data ?? []).filter((c) => currencyOf({ id: c.id }) === cur), (c) => c.balance),
+      later?.get(cur) ?? null,
+      names,
+    );
+  const main = partFor(shopCurrency);
+  const otherCurrencies = [...new Set(foreign.values())].filter((c) => c !== shopCurrency);
+  const foreignParts = otherCurrencies
+    .map((cur) => ({ currency: cur, ...partFor(cur) }))
+    // Валюта без записей и без долгов — не показываем.
+    .filter(
+      (p) =>
+        p.sold.count > 0 ||
+        p.collected.total !== 0 ||
+        p.suppliers.purchased !== 0 ||
+        p.suppliers.paid !== 0 ||
+        p.receivable.evening !== 0 ||
+        p.suppliers.evening !== 0,
+    );
 
-  // Кто сколько оформил: продажи и собранные оплаты по автору записи.
+  // Кто сколько оформил: продажи и собранные оплаты по автору записи — в валюте магазина.
   const members = await memberLabels(db, organizationId);
   const sellers = new Map<string, SellerTotal>();
   const seller = (id: string | null) => {
@@ -146,49 +222,39 @@ export async function computeDaySummary(
     }
     return sellers.get(key)!;
   };
-  for (const r of saleRows) {
+  for (const r of saleRows.filter((r) => currencyOf(r) === shopCurrency)) {
     const t = seller(r.created_by);
-    t.sold = Math.round((t.sold + Number(r.total)) * 100) / 100;
+    t.sold = round(t.sold + Number(r.total));
     t.count += 1;
   }
-  for (const p of incoming) {
+  for (const p of paymentRows.filter((p) => p.direction === "incoming" && currencyOf(p) === shopCurrency)) {
     const t = seller(p.created_by);
-    t.collected = Math.round((t.collected + Number(p.amount)) * 100) / 100;
+    t.collected = round(t.collected + Number(p.amount));
   }
-
-  const receivableEvening = sum(customerBalances.data ?? [], (c) => c.balance) - (later?.receivable ?? 0);
-  const payableEvening = sum(supplierBalances.data ?? [], (c) => c.balance) - (later?.payable ?? 0);
-  const round = (n: number) => Math.round(n * 100) / 100;
 
   return {
     version: 1,
     date,
     computedAt: new Date().toISOString(),
-    sold: { total: round(soldCredit + soldCash), credit: soldCredit, cash: soldCash, count: saleRows.length },
-    collected: { total: round(collectedCash + collectedTransfer), cash: collectedCash, transfer: collectedTransfer },
-    creditByCustomer: list(creditTotals),
-    paidByCustomer: list(paidTotals),
-    receivable: {
-      morning: round(receivableEvening - soldCredit + collectedCash + collectedTransfer),
-      evening: round(receivableEvening),
-    },
-    suppliers: {
-      purchased,
-      paid: paidSuppliers,
-      morning: round(payableEvening - purchased + paidSuppliers),
-      evening: round(payableEvening),
-    },
+    currency: shopCurrency,
+    ...main,
     pendingClaims: pending.count ?? 0,
     bySeller: [...sellers.values()].sort((a, b) => b.sold - a.sold),
+    ...(foreignParts.length ? { foreign: foreignParts } : {}),
   };
 }
 
-/** Как изменились долги начиная с момента `from` (действующие записи, включая перенос тетради). */
+/**
+ * Как изменились долги начиная с момента `from` (действующие записи, включая
+ * перенос тетради) — по валютам контрагентов.
+ */
 async function laterMovements(db: SupabaseClient, organizationId: string, from: string) {
-  const [sales, payments, purchases] = await Promise.all([
+  const org = await db.from("organizations").select("currency").eq("id", organizationId).maybeSingle();
+  const shopCurrency: Currency = isCurrency(org.data?.currency) ? org.data.currency : "KGS";
+  const [sales, payments, purchases, foreign] = await Promise.all([
     db
       .from("sales")
-      .select("total")
+      .select("customer_id,total")
       .eq("organization_id", organizationId)
       .eq("status", "posted")
       .eq("paid_immediately", false)
@@ -196,26 +262,37 @@ async function laterMovements(db: SupabaseClient, organizationId: string, from: 
       .gte("occurred_at", from),
     db
       .from("payments")
-      .select("direction,amount")
+      .select("customer_id,supplier_id,direction,amount")
       .eq("organization_id", organizationId)
       .eq("status", "confirmed")
       .is("reversed_at", null)
       .gte("occurred_at", from),
     db
       .from("purchases")
-      .select("total")
+      .select("supplier_id,total")
       .eq("organization_id", organizationId)
       .eq("status", "posted")
       .is("reversed_at", null)
       .gte("occurred_at", from),
+    foreignParties(db, organizationId, shopCurrency),
   ]);
   if (sales.error || payments.error || purchases.error)
     throw new Error("Не удалось загрузить итог дня");
-  const pays = payments.data ?? [];
-  return {
-    receivable: sum(sales.data ?? [], (r) => r.total) - sum(pays.filter((p) => p.direction === "incoming"), (p) => p.amount),
-    payable: sum(purchases.data ?? [], (r) => r.total) - sum(pays.filter((p) => p.direction === "outgoing"), (p) => p.amount),
+  const byCurrency = new Map<Currency, Movements>();
+  const add = (cur: Currency, key: keyof Movements, value: number) => {
+    const m = byCurrency.get(cur) ?? { receivable: 0, payable: 0 };
+    m[key] = round(m[key] + value);
+    byCurrency.set(cur, m);
   };
+  for (const s of sales.data ?? []) add(recordCurrency(s, foreign, shopCurrency), "receivable", Number(s.total));
+  for (const p of purchases.data ?? []) add(recordCurrency(p, foreign, shopCurrency), "payable", Number(p.total));
+  for (const p of payments.data ?? [])
+    add(
+      recordCurrency(p, foreign, shopCurrency),
+      p.direction === "incoming" ? "receivable" : "payable",
+      -Number(p.amount),
+    );
+  return byCurrency;
 }
 
 export type AfterCloseItem = {
@@ -223,6 +300,8 @@ export type AfterCloseItem = {
   label: string;
   party: string;
   amount: number;
+  /** Валюта долга контрагента. */
+  currency: string;
   at: string;
 };
 
@@ -276,16 +355,24 @@ export async function afterClosing(
     if (r.customer_id) customerIds.add(r.customer_id);
     if (r.supplier_id) supplierIds.add(r.supplier_id);
   }
-  const [customers, suppliers] = await Promise.all([
+  type Named = { id: string; name: string; currency: string | null };
+  const [customers, suppliers, org] = await Promise.all([
     customerIds.size
-      ? db.from("customers").select("id,name").eq("organization_id", organizationId).in("id", [...customerIds])
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      ? db.from("customers").select("id,name,currency").eq("organization_id", organizationId).in("id", [...customerIds])
+      : Promise.resolve({ data: [] as Named[] }),
     supplierIds.size
-      ? db.from("suppliers").select("id,name").eq("organization_id", organizationId).in("id", [...supplierIds])
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      ? db.from("suppliers").select("id,name,currency").eq("organization_id", organizationId).in("id", [...supplierIds])
+      : Promise.resolve({ data: [] as Named[] }),
+    db.from("organizations").select("currency").eq("id", organizationId).maybeSingle(),
   ]);
   const names = new Map<string, string>();
-  for (const c of [...(customers.data ?? []), ...(suppliers.data ?? [])]) names.set(c.id, c.name);
+  const currencies = new Map<string, string>();
+  const shopCurrency = org.data?.currency ?? "KGS";
+  for (const c of [...(customers.data ?? []), ...(suppliers.data ?? [])] as Named[]) {
+    names.set(c.id, c.name);
+    currencies.set(c.id, c.currency ?? shopCurrency);
+  }
+  const currencyOf = (id: string | null) => (id && currencies.get(id)) || shopCurrency;
 
   const items: (AfterCloseItem & { created_at: string; reversed_at: string | null })[] = [
     ...(sales.data ?? []).map((r) => ({
@@ -293,6 +380,7 @@ export async function afterClosing(
       label: r.paid_immediately ? "Продажа за наличные" : "Продажа в долг",
       party: names.get(r.customer_id) ?? "Клиент",
       amount: Number(r.total),
+      currency: currencyOf(r.customer_id),
       at: r.created_at,
       created_at: r.created_at,
       reversed_at: r.reversed_at,
@@ -302,6 +390,7 @@ export async function afterClosing(
       label: "Приход",
       party: names.get(r.supplier_id) ?? "Поставщик",
       amount: Number(r.total),
+      currency: currencyOf(r.supplier_id),
       at: r.created_at,
       created_at: r.created_at,
       reversed_at: r.reversed_at,
@@ -316,6 +405,7 @@ export async function afterClosing(
           : paymentLabelWithSide(r.kind, r.direction),
       party: names.get(r.customer_id ?? r.supplier_id ?? "") ?? "",
       amount: Number(r.amount),
+      currency: currencyOf(r.customer_id ?? r.supplier_id),
       at: r.created_at,
       created_at: r.created_at,
       reversed_at: r.reversed_at,
@@ -342,7 +432,11 @@ export async function afterClosing(
 
 export type DayHistoryRow = { date: string; sold: number; collected: number; purchased: number };
 
-/** Короткий итог за последние дни — от нового к старому, включая пустые дни. */
+/**
+ * Короткий итог за последние дни — от нового к старому, включая пустые дни.
+ * Только в валюте магазина: записи контрагентов в другой валюте (Хороз в
+ * долларах) сюда не входят — их не сложить со сомами.
+ */
 export async function dayHistory(
   db: SupabaseClient,
   organizationId: string,
@@ -350,10 +444,12 @@ export async function dayHistory(
 ): Promise<DayHistoryRow[]> {
   const today = bishkekDate();
   const from = new Date(new Date(dayBounds(today).start).getTime() - (days - 1) * 86400000).toISOString();
-  const [sales, payments, purchases] = await Promise.all([
+  const org = await db.from("organizations").select("currency").eq("id", organizationId).maybeSingle();
+  const shopCurrency: Currency = isCurrency(org.data?.currency) ? org.data.currency : "KGS";
+  const [sales, payments, purchases, foreign] = await Promise.all([
     db
       .from("sales")
-      .select("total,occurred_at")
+      .select("customer_id,total,occurred_at")
       .eq("organization_id", organizationId)
       .eq("status", "posted")
       .is("reversed_at", null)
@@ -362,7 +458,7 @@ export async function dayHistory(
       .range(0, 4999),
     db
       .from("payments")
-      .select("amount,occurred_at")
+      .select("customer_id,amount,occurred_at")
       .eq("organization_id", organizationId)
       .eq("status", "confirmed")
       .eq("kind", "payment")
@@ -373,13 +469,14 @@ export async function dayHistory(
       .range(0, 4999),
     db
       .from("purchases")
-      .select("total,occurred_at")
+      .select("supplier_id,total,occurred_at")
       .eq("organization_id", organizationId)
       .eq("status", "posted")
       .is("reversed_at", null)
       .eq("is_opening", false)
       .gte("occurred_at", from)
       .range(0, 4999),
+    foreignParties(db, organizationId, shopCurrency),
   ]);
   if (sales.error || payments.error || purchases.error)
     throw new Error("Не удалось загрузить итог дня");
@@ -389,15 +486,17 @@ export async function dayHistory(
     const date = bishkekDate(new Date(startMs + i * 86400000 + 12 * 3600000));
     rows.set(date, { date, sold: 0, collected: 0, purchased: 0 });
   }
-  for (const r of sales.data ?? []) {
+  const own = (r: { customer_id?: string | null; supplier_id?: string | null }) =>
+    recordCurrency(r, foreign, shopCurrency) === shopCurrency;
+  for (const r of (sales.data ?? []).filter(own)) {
     const d = rows.get(bishkekDate(r.occurred_at));
     if (d) d.sold += Number(r.total);
   }
-  for (const r of payments.data ?? []) {
+  for (const r of (payments.data ?? []).filter(own)) {
     const d = rows.get(bishkekDate(r.occurred_at));
     if (d) d.collected += Number(r.amount);
   }
-  for (const r of purchases.data ?? []) {
+  for (const r of (purchases.data ?? []).filter(own)) {
     const d = rows.get(bishkekDate(r.occurred_at));
     if (d) d.purchased += Number(r.total);
   }

@@ -7,6 +7,7 @@ export async function updateShop(form: FormData) {
   const name = String(form.get("name") ?? "").trim();
   const phone = String(form.get("phone") ?? "").trim();
   const blockDuplicatePhotos = form.get("block_duplicate_photos") === "on";
+  const currency = String(form.get("currency") ?? "");
   // Как магазин написан на накладных — по строке на вариант (classify.ts).
   const documentNames = [
     ...new Set(
@@ -24,12 +25,20 @@ export async function updateShop(form: FormData) {
     documentNames.some((n) => n.length > 120)
   )
     redirect("/settings?error=invalid");
-  const { db, organizationId } = await getContext();
+  const { db, organizationId, currency: currentCurrency } = await getContext();
   const result = await db
     .from("organizations")
-    .update({ name, phone, block_duplicate_photos: blockDuplicatePhotos, document_names: documentNames })
+    .update({
+      name,
+      phone,
+      block_duplicate_photos: blockDuplicatePhotos,
+      document_names: documentNames,
+      // Валюту трогаем, только если сменили: с записями база её не меняет.
+      ...(["KGS", "USD", "RUB"].includes(currency) && currency !== currentCurrency ? { currency } : {}),
+    })
     .eq("id", organizationId);
-  if (result.error) redirect("/settings?error=save");
+  if (result.error)
+    redirect(`/settings?error=${result.error.message.includes("currency_locked") ? "currency_locked" : "save"}`);
   revalidatePath("/", "layout");
   redirect("/settings?saved=1");
 }

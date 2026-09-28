@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getContext } from "@/lib/context";
 import { renderInvoicePdf } from "@/lib/pdf/invoice";
+import { money } from "@/lib/format";
 
 const kindLabel: Record<string, string> = {
   purchase: "Приходная накладная",
@@ -15,7 +16,7 @@ export async function GET(
   const { id } = await params;
   if (!/^[a-f0-9-]{36}$/i.test(id))
     return NextResponse.json({ error: "invalid_id" }, { status: 400 });
-  const { db, organizationId } = await getContext();
+  const { db, organizationId, currency: shopCurrency } = await getContext();
 
   const doc = await db
     .from("documents")
@@ -29,10 +30,23 @@ export async function GET(
   let partyName = "—";
   let total = 0;
   let date = doc.data.created_at;
+  // Валюта накладной: исходная, если записана в другой валюте, иначе — долга.
+  let currency: string | null = null;
+  let debtNote: string | null = null;
+  const applyCurrency = (
+    row: { total: string | number; original_amount: string | null; original_currency: string | null; fx_rate: string | null },
+    partyCurrency: string | null,
+  ) => {
+    if (row.original_amount != null && row.original_currency) {
+      total = Number(row.original_amount);
+      currency = row.original_currency;
+      debtNote = `В долг: ${money(row.total, partyCurrency ?? shopCurrency)} по курсу ${Number(row.fx_rate)}.`;
+    } else currency = partyCurrency;
+  };
   if (doc.data.kind === "purchase") {
     const row = await db
       .from("purchases")
-      .select("total,occurred_at,supplier_id")
+      .select("total,occurred_at,supplier_id,original_amount,original_currency,fx_rate")
       .eq("organization_id", organizationId)
       .eq("document_id", id)
       .maybeSingle();
@@ -41,16 +55,17 @@ export async function GET(
       date = row.data.occurred_at;
       const supplier = await db
         .from("suppliers")
-        .select("name")
+        .select("name,currency")
         .eq("organization_id", organizationId)
         .eq("id", row.data.supplier_id)
         .maybeSingle();
       partyName = supplier.data?.name ?? partyName;
+      applyCurrency(row.data, supplier.data?.currency ?? null);
     }
   } else if (doc.data.kind === "sale") {
     const row = await db
       .from("sales")
-      .select("total,occurred_at,customer_id")
+      .select("total,occurred_at,customer_id,original_amount,original_currency,fx_rate")
       .eq("organization_id", organizationId)
       .eq("document_id", id)
       .maybeSingle();
@@ -59,11 +74,12 @@ export async function GET(
       date = row.data.occurred_at;
       const customer = await db
         .from("customers")
-        .select("name")
+        .select("name,currency")
         .eq("organization_id", organizationId)
         .eq("id", row.data.customer_id)
         .maybeSingle();
       partyName = customer.data?.name ?? partyName;
+      applyCurrency(row.data, customer.data?.currency ?? null);
     }
   }
 
@@ -87,6 +103,8 @@ export async function GET(
       new Date(date),
     ),
     total,
+    currency: currency ?? shopCurrency,
+    debtNote,
     lines: (linesResult.data ?? []) as {
       n: number;
       name_raw: string;

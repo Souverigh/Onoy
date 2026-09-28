@@ -110,6 +110,13 @@ export async function createOrganization(form: FormData) {
     signup_code: code,
   });
   if (error || !data) redirect(`/onboarding?error=${error?.message.includes("invalid_code") ? "code" : "save"}`);
+  // Базовая валюта (ТЗ §14.3: задаётся при регистрации) — пока записей нет,
+  // база её меняет; сом — по умолчанию.
+  const currency = String(form.get("currency") ?? "KGS");
+  if (currency !== "KGS" && ["USD", "RUB"].includes(currency)) {
+    const update = await db.from("organizations").update({ currency }).eq("id", data);
+    if (update.error) console.error("createOrganization: currency not set", update.error);
+  }
   revalidatePath("/", "layout");
   redirect("/");
 }

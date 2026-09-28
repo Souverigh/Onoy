@@ -15,11 +15,17 @@ export async function saveEntry(form: FormData) {
   const id = String(form.get("id") ?? "");
   if (id && !/^[a-f0-9-]{36}$/i.test(id))
     throw new Error("Неверный идентификатор");
-  let input;
+  let input: Record<string, unknown>;
   try {
     input = directoryInput(kind, Object.fromEntries(form));
   } catch {
     redirect(`/${kind}/${id || "new"}?error=invalid`);
+  }
+  // Валюту не трогаем, если её не меняли: у контрагента с записями база
+  // запрещает смену (currency_locked), даже null → та же валюта.
+  if (id && kind !== "products") {
+    const current = await db.from(kind).select("currency").eq("organization_id", organizationId).eq("id", id).maybeSingle();
+    if ((current.data?.currency ?? null) === (input.currency ?? null)) delete input.currency;
   }
   const result = id
     ? await db
@@ -36,7 +42,13 @@ export async function saveEntry(form: FormData) {
         .single();
   if (result.error || !result.data)
     redirect(
-      `/${kind}/${id || "new"}?error=${result.error?.code === "23505" ? "duplicate" : "save"}`,
+      `/${kind}/${id || "new"}?error=${
+        result.error?.code === "23505"
+          ? "duplicate"
+          : result.error?.message.includes("currency_locked")
+            ? "currency_locked"
+            : "save"
+      }`,
     );
   revalidatePath("/", "layout");
   redirect(`/${kind}/${result.data.id}?saved=1`);
@@ -122,7 +134,15 @@ export async function mergeParty(form: FormData) {
   const { db, organizationId } = await requireOwner();
   const result = await db.rpc("merge_party", { p_org: organizationId, p_kind: kind, p_from: id, p_into: into });
   if (result.error)
-    redirect(`/${kind}/${id}?error=${result.error.message.includes("opening_conflict") ? "merge_opening" : "merge"}`);
+    redirect(
+      `/${kind}/${id}?error=${
+        result.error.message.includes("opening_conflict")
+          ? "merge_opening"
+          : result.error.message.includes("currency_mismatch")
+            ? "merge_currency"
+            : "merge"
+      }`,
+    );
   revalidatePath("/", "layout");
   redirect(`/${kind}/${into}?merged=1`);
 }

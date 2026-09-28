@@ -54,7 +54,7 @@ export default async function DocumentDetail({
 }) {
   const { id } = await params;
   if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
-  const { db, organizationId, organizationName } = await getContext();
+  const { db, organizationId, organizationName, currency: shopCurrency } = await getContext();
   const params2 = await searchParams;
 
   const docResult = await db
@@ -94,44 +94,51 @@ export default async function DocumentDetail({
     : null;
 
   let declaredTotal: number | null = null;
+  // Валюта накладной: исходная, если запись в другой валюте, иначе — долга контрагента.
+  let docCurrency: string = shopCurrency;
   let saleId: string | null = null;
+  // Сверка строк — с суммой в валюте накладной, а не с пересчитанной в долг.
+  const recordTotal = (row: { total: string | number; original_amount: string | null; original_currency: string | null }) =>
+    row.original_amount != null ? Number(row.original_amount) : Number(row.total);
   let party: { id: string; name: string; aliases: string[]; kind: "customer" | "supplier" } | null = null;
   if (doc.kind === "purchase") {
     const row = await db
       .from("purchases")
-      .select("total,supplier_id")
+      .select("total,supplier_id,original_amount,original_currency")
       .eq("organization_id", organizationId)
       .eq("document_id", id)
       .maybeSingle();
-    declaredTotal = row.data ? Number(row.data.total) : null;
+    declaredTotal = row.data ? recordTotal(row.data) : null;
     if (row.data) {
       const supplier = await db
         .from("suppliers")
-        .select("id,name,aliases")
+        .select("id,name,aliases,currency")
         .eq("organization_id", organizationId)
         .eq("id", row.data.supplier_id)
         .maybeSingle();
       if (supplier.data)
         party = { id: supplier.data.id, name: supplier.data.name, aliases: supplier.data.aliases ?? [], kind: "supplier" };
+      docCurrency = row.data.original_currency ?? supplier.data?.currency ?? shopCurrency;
     }
   } else if (doc.kind === "sale") {
     const row = await db
       .from("sales")
-      .select("id,total,customer_id")
+      .select("id,total,customer_id,original_amount,original_currency")
       .eq("organization_id", organizationId)
       .eq("document_id", id)
       .maybeSingle();
-    declaredTotal = row.data ? Number(row.data.total) : null;
+    declaredTotal = row.data ? recordTotal(row.data) : null;
     saleId = row.data?.id ?? null;
     if (row.data) {
       const customer = await db
         .from("customers")
-        .select("id,name,aliases")
+        .select("id,name,aliases,currency")
         .eq("organization_id", organizationId)
         .eq("id", row.data.customer_id)
         .maybeSingle();
       if (customer.data)
         party = { id: customer.data.id, name: customer.data.name, aliases: customer.data.aliases ?? [], kind: "customer" };
+      docCurrency = row.data.original_currency ?? customer.data?.currency ?? shopCurrency;
     }
   }
 
@@ -383,9 +390,9 @@ export default async function DocumentDetail({
                 <h2>Позиции</h2>
                 {lines.length > 0 && (declaredTotal != null || paperTotal != null) && (
                   <span className={totalsMismatch || paperMismatch ? "tag reversed-tag" : "tag green"}>
-                    Строки: {money(linesTotal)}
-                    {paperTotal != null && <> · На бумаге: {money(paperTotal)}</>}
-                    {declaredTotal != null && <> · В записи: {money(declaredTotal)}</>}
+                    Строки: {money(linesTotal, docCurrency)}
+                    {paperTotal != null && <> · На бумаге: {money(paperTotal, docCurrency)}</>}
+                    {declaredTotal != null && <> · В записи: {money(declaredTotal, docCurrency)}</>}
                   </span>
                 )}
               </div>
@@ -415,18 +422,18 @@ export default async function DocumentDetail({
                             <span className="invoice-line-name">{line.name_raw}</span>
                             <span className="invoice-line-calc">
                               <span className="nowrap">
-                                {line.qty} {line.unit} × {money(line.price)}
+                                {line.qty} {line.unit} × {money(line.price, docCurrency)}
                               </span>
                               {lineMismatch && (
                                 <>
-                                  {" "}· по бумаге <span className="nowrap">{money(line.sum)}</span>, должно
-                                  быть <span className="nowrap">{money(computed)}</span>
+                                  {" "}· по бумаге <span className="nowrap">{money(line.sum, docCurrency)}</span>, должно
+                                  быть <span className="nowrap">{money(computed, docCurrency)}</span>
                                 </>
                               )}
                               {!lineMismatch && lowConfidence && <> · проверьте, плохо читается</>}
                             </span>
                           </span>
-                          <span className="invoice-line-sum">{money(line.sum)}</span>
+                          <span className="invoice-line-sum">{money(line.sum, docCurrency)}</span>
                         </summary>
                         <form action={updateLine} className="invoice-line-form">
                           <input type="hidden" name="line_id" value={line.id} />

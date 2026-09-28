@@ -1,5 +1,6 @@
 import { requireOwner } from "@/lib/context";
 import { money } from "@/lib/format";
+import { partyCurrency } from "@/lib/currency";
 import { signedPhotoUrl } from "@/lib/storage";
 import { confirmClaim, rejectClaim } from "./actions";
 import { Submit } from "@/components/submit";
@@ -18,7 +19,7 @@ export default async function Claims({
 }: {
   searchParams: Promise<{ error?: string; done?: string }>;
 }) {
-  const { db, organizationId } = await requireOwner();
+  const { db, organizationId, currency: shopCurrency } = await requireOwner();
   const { error, done } = await searchParams;
   const { data, error: loadError } = await db
     .from("payments")
@@ -31,8 +32,8 @@ export default async function Claims({
   const customerIds = [...new Set(claims.map((c) => c.customer_id))];
   const [customerLookup, documentLookup] = await Promise.all([
     customerIds.length
-      ? db.from("customers").select("id,name,phone").eq("organization_id", organizationId).in("id", customerIds)
-      : Promise.resolve({ data: [] as { id: string; name: string; phone: string }[] }),
+      ? db.from("customers").select("id,name,phone,currency").eq("organization_id", organizationId).in("id", customerIds)
+      : Promise.resolve({ data: [] as { id: string; name: string; phone: string; currency: string | null }[] }),
     db
       .from("documents")
       .select("id,storage_path")
@@ -89,7 +90,7 @@ export default async function Claims({
               <section className="panel claim-card" key={claim.id}>
                 <div className="section-title">
                   <h2>{customer?.name ?? "Клиент"}</h2>
-                  <strong>{money(claim.amount)}</strong>
+                  <strong>{money(claim.amount, partyCurrency(customer, shopCurrency))}</strong>
                 </div>
                 {claim.claim_comment && (
                   <p className="muted">«{claim.claim_comment}»</p>

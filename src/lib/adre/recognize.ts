@@ -10,7 +10,8 @@ import { recognizeInvoicePages } from "./pipeline";
 
 // v2 — тип документа, продавец и покупатель, фрагмент (classify.ts). Кеш v1
 // не используется: в нём нет типа, повторное распознавание — новый вызов.
-const PROMPT_VERSION = "v2";
+// v3 — валюта документа и чека (currency, currency_evidence).
+const PROMPT_VERSION = "v3";
 
 const MODEL = () => process.env.GEMINI_MODEL || "gemini-3.8-flash";
 

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
-import { money } from "@/lib/format";
+import { money, originalAmountText } from "@/lib/format";
+import { partyCurrency } from "@/lib/currency";
 import { ensureShareToken, waPhone } from "@/lib/share";
 import { paymentLabelWithSide, type PaymentKind } from "@/lib/entry-labels";
 import { RecordResult } from "@/components/record-result";
@@ -20,20 +21,20 @@ export default async function DonePage({
   const { kind, id } = await params;
   const { part, duplicate, undo } = await searchParams;
   if (!["purchase", "payment"].includes(kind) || !/^[a-f0-9-]{36}$/i.test(id)) notFound();
-  const { db, organizationId, organizationName, user } = await getContext();
+  const { db, organizationId, organizationName, user, currency: shopCurrency } = await getContext();
 
   if (kind === "purchase") {
     const row = (
       await db
         .from("purchases")
-        .select("id,supplier_id,total,created_at,created_by,reversed_at")
+        .select("id,supplier_id,total,created_at,created_by,reversed_at,original_amount,original_currency,fx_rate")
         .eq("organization_id", organizationId)
         .eq("id", id)
         .maybeSingle()
     ).data;
     if (!row) notFound();
     const supplier = (
-      await db.from("supplier_balances").select("id,name,balance").eq("organization_id", organizationId).eq("id", row.supplier_id).maybeSingle()
+      await db.from("supplier_balances").select("id,name,balance,currency").eq("organization_id", organizationId).eq("id", row.supplier_id).maybeSingle()
     ).data;
     if (!supplier) notFound();
     const paid = part && /^\d+(\.\d{1,2})?$/.test(part) ? Number(part) : 0;
@@ -45,6 +46,8 @@ export default async function DonePage({
           party={supplier.name}
           partyHref={`/suppliers/${supplier.id}`}
           amount={String(row.total)}
+          currency={partyCurrency(supplier, shopCurrency)}
+          original={originalAmountText(row)}
           debtLabel="Мы должны поставщику"
           debtBefore={Math.round((after - Number(row.total) + paid) * 100) / 100}
           debtAfter={after}
@@ -54,7 +57,7 @@ export default async function DonePage({
           reversed={Boolean(row.reversed_at)}
           notes={
             <>
-              {paid > 0 && <p className="notice success">Сразу оплачено поставщику: {money(paid)}.</p>}
+              {paid > 0 && <p className="notice success">Сразу оплачено поставщику: {money(paid, partyCurrency(supplier, shopCurrency))}.</p>}
               {part === "failed" && (
                 <p className="form-error">Оплату поставщику записать не удалось — внесите её через «Оплата».</p>
               )}
@@ -77,7 +80,7 @@ export default async function DonePage({
   const row = (
     await db
       .from("payments")
-      .select("id,customer_id,supplier_id,direction,amount,kind,created_at,created_by,reversed_at")
+      .select("id,customer_id,supplier_id,direction,amount,kind,created_at,created_by,reversed_at,original_amount,original_currency,fx_rate")
       .eq("organization_id", organizationId)
       .eq("id", id)
       .maybeSingle()
@@ -88,13 +91,14 @@ export default async function DonePage({
   const party = (
     await db
       .from(incoming ? "customer_balances" : "supplier_balances")
-      .select("id,name,phone,balance")
+      .select("id,name,phone,balance,currency")
       .eq("organization_id", organizationId)
       .eq("id", partyId)
       .maybeSingle()
   ).data;
   if (!party) notFound();
   const after = Number(party.balance);
+  const cur = partyCurrency(party, shopCurrency);
   const partyHref = `/${incoming ? "customers" : "suppliers"}/${party.id}`;
 
   // Квитанция клиенту в WhatsApp (ТЗ §4 В.1: «клиенту по желанию уходит квитанция»).
@@ -104,8 +108,8 @@ export default async function DonePage({
     const h = await headers();
     const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
     const text = [
-      `Магазин «${organizationName}»: получили вашу оплату ${money(row.amount)}.`,
-      after > 0 ? `Ваш долг: ${money(after)}.` : after < 0 ? `Долга нет, аванс: ${money(-after)}.` : "Долга нет.",
+      `Магазин «${organizationName}»: получили вашу оплату ${originalAmountText(row)?.replace(/ по .*/, "") ?? money(row.amount, cur)}.`,
+      after > 0 ? `Ваш долг: ${money(after, cur)}.` : after < 0 ? `Долга нет, аванс: ${money(-after, cur)}.` : "Долга нет.",
       token ? `Накладные и история: ${origin}/c/${token}` : "",
     ]
       .filter(Boolean)
@@ -115,6 +119,8 @@ export default async function DonePage({
 
   return (
     <RecordResult
+      currency={cur}
+      original={originalAmountText(row)}
       title={`${paymentLabelWithSide(row.kind as PaymentKind, row.direction as "incoming" | "outgoing")} — записано`}
       party={party.name}
       partyHref={partyHref}

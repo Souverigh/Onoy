@@ -22,6 +22,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { bishkekDateTime, receiptDateTime } from "@/lib/receipt-date";
 import { isAdjustmentKind } from "@/lib/entry-labels";
 import { normalizePhone, phoneKey } from "@/lib/contacts";
+import { isCurrency, rateInput } from "@/lib/currency";
 
 type Operation = "purchase" | "sale" | "payment";
 const uuidPattern =
@@ -37,6 +38,7 @@ function failureCode(message: string) {
   if (message.includes("idempotency_conflict")) return "retry";
   if (message.includes("invalid_date")) return "date";
   if (message.includes("shop_blocked")) return "blocked";
+  if (message.includes("invalid_currency")) return "currency";
   // unique(organization_id,document_id): это фото уже основание другой записи.
   if (message.includes("document_id")) return "photo_used";
   if (message.includes("invalid_") || message.includes("not_a_member"))
@@ -95,6 +97,11 @@ async function commitOperationOrRedirect(
   const photos = photosOf(form);
   const photo = photos.length > 0;
   const existingDocumentId = String(form.get("document_id") ?? "").trim();
+  // Сумма в другой валюте, чем долг контрагента: база пересчитает по курсу.
+  const rawOriginalCurrency = String(form.get("original_currency") ?? "");
+  const originalCurrency = isCurrency(rawOriginalCurrency) ? rawOriginalCurrency : null;
+  const fxRate = originalCurrency ? rateInput(String(form.get("fx_rate") ?? "")) : null;
+  if (originalCurrency && !fxRate) return { error: "rate" };
   const hasExistingDocument = uuidPattern.test(existingDocumentId);
   if (operation !== "payment" && !photo && !hasExistingDocument) return { error: "photo" };
   // Чек оплаты — всегда одно фото; накладная — до MAX_PAGES страниц.
@@ -113,7 +120,9 @@ async function commitOperationOrRedirect(
         partPaymentKey = field(form, "part_payment_key");
         if (!uuidPattern.test(partPaymentKey)) throw new Error("invalid_input");
         if (Number(paidNow) === 0) paidNow = null;
-        else if (Number(paidNow) > Number(amount)) return { error: "part" };
+        // Сумма прихода в другой валюте — сравниваем после пересчёта в базе
+        // (ниже, по итоговой сумме записи).
+        else if (!originalCurrency && Number(paidNow) > Number(amount)) return { error: "part" };
       }
     } else if (operation === "sale") {
       party = field(form, "customer_id");
@@ -157,6 +166,10 @@ async function commitOperationOrRedirect(
   if (!(Number(amount) > 0)) return { error: "amount" };
 
   const { db, organizationId } = await getContext();
+  // Исходная сумма и курс — только если валюта суммы не валюта долга.
+  const original = originalCurrency
+    ? { p_amount: null, p_original_amount: amount, p_original_currency: originalCurrency, p_fx_rate: fxRate }
+    : { p_amount: amount };
   let documentId: string | null = hasExistingDocument ? existingDocumentId : null;
   if (photo && !hasExistingDocument) {
     try {
@@ -171,7 +184,7 @@ async function commitOperationOrRedirect(
       ? await db.rpc("commit_purchase", {
           p_org: organizationId,
           p_supplier: party,
-          p_amount: amount,
+          ...original,
           p_idempotency_key: idempotencyKey,
           p_document: documentId,
         })
@@ -179,7 +192,7 @@ async function commitOperationOrRedirect(
         ? await db.rpc("commit_sale", {
             p_org: organizationId,
             p_customer: party,
-            p_amount: amount,
+            ...original,
             p_paid_immediately: paidImmediately,
             p_idempotency_key: idempotencyKey,
             p_document: documentId,
@@ -188,7 +201,7 @@ async function commitOperationOrRedirect(
             p_org: organizationId,
             p_direction: direction,
             p_party: party,
-            p_amount: amount,
+            ...original,
             p_bank_reference: bankReference || null,
             p_idempotency_key: idempotencyKey,
             p_document: documentId,
@@ -243,6 +256,14 @@ async function commitOperationOrRedirect(
   // Оплата части прихода — отдельная запись оплаты поставщику. Приход уже
   // записан: если оплата не прошла, говорим об этом, а не теряем приход.
   let part = "";
+  if (operation === "purchase" && paidNow && originalCurrency) {
+    // Приход в другой валюте: оплата части — не больше суммы после пересчёта.
+    const posted = await db.from("purchases").select("total").eq("organization_id", organizationId).eq("id", result.data).maybeSingle();
+    if (posted.data && Number(paidNow) > Number(posted.data.total)) {
+      paidNow = null;
+      part = "&part=failed";
+    }
+  }
   if (operation === "purchase" && paidNow) {
     const payment = await db.rpc("commit_payment", {
       p_org: organizationId,
@@ -552,6 +573,7 @@ async function receiptParams(
         loadPhoto,
       });
       if (result.amount) params.set("amount", String(result.amount));
+      if (result.currency && isCurrency(result.currency)) params.set("currency", result.currency);
       if (result.operation_id) params.set("bankRef", result.operation_id);
       const paidAt = receiptDateTime(result.datetime);
       if (paidAt) params.set("date", paidAt);

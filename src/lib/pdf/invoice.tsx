@@ -1,6 +1,7 @@
 import "server-only";
 import { Document, Page, Text, View, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import { ensureFontsRegistered } from "./fonts";
+import { money } from "../format";
 
 const styles = StyleSheet.create({
   page: { fontFamily: "PT Sans", fontSize: 11, padding: 36, color: "#1d2a2a" },
@@ -32,6 +33,10 @@ export type InvoiceData = {
   partyName: string;
   date: string;
   total: number;
+  /** Валюта накладной (итога и строк). */
+  currency: string;
+  /** Накладная в другой валюте, чем долг: «В долг: 8 823,9 сом по 87,8». */
+  debtNote?: string | null;
   lines: InvoiceLine[];
   digitized: boolean;
 };
@@ -71,8 +76,9 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
         )}
         <View style={styles.total}>
           <Text>Итого</Text>
-          <Text>{data.total.toFixed(2)} сом</Text>
+          <Text>{money(data.total.toFixed(2), data.currency)}</Text>
         </View>
+        {data.debtNote && <Text style={styles.footer}>{data.debtNote}</Text>}
         <Text style={styles.footer}>
           {data.digitized
             ? "Позиции сверены автоматическим распознаванием (ADRE)."

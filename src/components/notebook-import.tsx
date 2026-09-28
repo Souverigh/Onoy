@@ -242,7 +242,7 @@ export function NotebookImport({
                     />
                   </label>
                   <label>
-                    Сумма, сом
+                    Сумма долга
                     <input
                       value={row.amount}
                       inputMode="decimal"
