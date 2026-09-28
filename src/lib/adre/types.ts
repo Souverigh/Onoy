@@ -35,9 +35,10 @@ export type InvoiceResult = {
   buyer?: DocumentSide | null;
   /** На фото только часть документа (нет начала или конца). */
   fragment?: boolean;
-  top_side?: TopSide;
-  /** Как распознавали: повернули фото, читали по половинам (pipeline.ts). */
-  processing?: { rotated?: TopSide; halves?: boolean };
+  /** Где верх документа на каждом фото, по порядку. */
+  page_top_sides?: TopSide[];
+  /** Как распознавали: какие фото повернули (номера с 1), читали ли по половинам (pipeline.ts). */
+  processing?: { rotatedPages?: number[]; halves?: boolean };
   /** Старые ответы (v1): направление по мнению модели, без знания нашего магазина. */
   document_type?: "invoice_out" | "invoice_in";
   /** v1 — контрагент по мнению модели; v2 — не заполняется, см. classify.ts. */
