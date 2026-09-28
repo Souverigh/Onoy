@@ -2,7 +2,7 @@
 
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { getContext } from "@/lib/context";
 import { decimalInput } from "@/lib/validation";
 import { safeBackPath } from "@/lib/back-path";
@@ -33,6 +33,7 @@ function field(form: FormData, name: string) {
 function failureCode(message: string) {
   if (message.includes("idempotency_conflict")) return "retry";
   if (message.includes("invalid_date")) return "date";
+  if (message.includes("shop_blocked")) return "blocked";
   // unique(organization_id,document_id): это фото уже основание другой записи.
   if (message.includes("document_id")) return "photo_used";
   if (message.includes("invalid_") || message.includes("not_a_member"))
@@ -48,11 +49,35 @@ function photosOf(form: FormData) {
     .filter((file): file is File => file instanceof File && file.size > 0);
 }
 
-export async function commitOperation(form: FormData) {
+/**
+ * Итог подтверждения формы, если запись не прошла (ТЗ §15.5: ошибка не
+ * сбрасывает форму). Успех — редирект на экран результата. `documentId` —
+ * фото уже загружены: повторная отправка возьмёт их, а не загрузит заново.
+ */
+export type CommitState = { error?: string; documentId?: string; attempt?: number };
+
+export async function commitOperation(
+  previous: CommitState,
+  form: FormData,
+): Promise<CommitState> {
+  const attempt = (previous.attempt ?? 0) + 1;
+  try {
+    const failure = await commitOperationOrRedirect(form);
+    return { ...failure, attempt };
+  } catch (error) {
+    // redirect() на экран результата — не ошибка.
+    unstable_rethrow(error);
+    console.error("commitOperation: unexpected failure", error);
+    return { error: "save", attempt };
+  }
+}
+
+async function commitOperationOrRedirect(
+  form: FormData,
+): Promise<{ error: string; documentId?: string }> {
   const rawKind = form.get("kind");
   const kind = typeof rawKind === "string" ? rawKind : "";
-  if (!["purchase", "sale", "payment"].includes(kind))
-    redirect("/money?error=invalid");
+  if (!["purchase", "sale", "payment"].includes(kind)) return { error: "invalid" };
 
   const operation = kind as Operation;
   let idempotencyKey = "";
@@ -68,11 +93,9 @@ export async function commitOperation(form: FormData) {
   const photo = photos.length > 0;
   const existingDocumentId = String(form.get("document_id") ?? "").trim();
   const hasExistingDocument = uuidPattern.test(existingDocumentId);
-  if (operation !== "payment" && !photo && !hasExistingDocument)
-    redirect(`/money/new?type=${operation}&error=photo`);
+  if (operation !== "payment" && !photo && !hasExistingDocument) return { error: "photo" };
   // Чек оплаты — всегда одно фото; накладная — до MAX_PAGES страниц.
-  if (photos.length > (operation === "payment" ? 1 : MAX_PAGES))
-    redirect(`/money/new?type=${operation}&error=photo_upload`);
+  if (photos.length > (operation === "payment" ? 1 : MAX_PAGES)) return { error: "photo_upload" };
   try {
     idempotencyKey = field(form, "idempotency_key");
     if (!uuidPattern.test(idempotencyKey)) throw new Error("invalid_input");
@@ -87,8 +110,7 @@ export async function commitOperation(form: FormData) {
         partPaymentKey = field(form, "part_payment_key");
         if (!uuidPattern.test(partPaymentKey)) throw new Error("invalid_input");
         if (Number(paidNow) === 0) paidNow = null;
-        else if (Number(paidNow) > Number(amount))
-          redirect(`/money/new?type=purchase&party=${party}&error=part`);
+        else if (Number(paidNow) > Number(amount)) return { error: "part" };
       }
     } else if (operation === "sale") {
       party = field(form, "customer_id");
@@ -104,7 +126,7 @@ export async function commitOperation(form: FormData) {
       const rawDate = String(form.get("occurred_at") ?? "").trim();
       if (rawDate) {
         occurredAt = bishkekDateTime(rawDate);
-        if (!occurredAt) throw new Error("invalid_input");
+        if (!occurredAt) return { error: "date" };
       }
       if (
         !["incoming", "outgoing"].includes(direction) ||
@@ -125,10 +147,11 @@ export async function commitOperation(form: FormData) {
         hasParty: uuidPattern.test(party),
         rawAmount: operation === "payment" ? form.get("amount") : form.get("total"),
       });
-      redirect(`/money/new?type=${operation}&error=invalid`);
+      return { error: uuidPattern.test(party) || operation === "payment" ? "amount" : "party" };
     }
     throw error;
   }
+  if (!(Number(amount) > 0)) return { error: "amount" };
 
   const { db, organizationId } = await getContext();
   let documentId: string | null = hasExistingDocument ? existingDocumentId : null;
@@ -137,7 +160,7 @@ export async function commitOperation(form: FormData) {
       documentId = await uploadOperationPhotos(db, organizationId, operation, photos);
     } catch (error) {
       const used = error instanceof Error && error.message === "document_in_use";
-      redirect(`/money/new?type=${operation}&error=${used ? "photo_used" : "photo_upload"}`);
+      return { error: used ? "photo_used" : "photo_upload" };
     }
   }
   const result =
@@ -174,9 +197,10 @@ export async function commitOperation(form: FormData) {
       amount,
       message: result.error?.message,
     });
-    redirect(
-      `/money/new?type=${operation}&error=${failureCode(result.error?.message ?? "save")}`,
-    );
+    const error = failureCode(result.error?.message ?? "save");
+    // Фото уже загружены — при исправлении формы не грузим их второй раз.
+    // Кроме случая, когда само фото занято другой записью.
+    return error === "photo_used" || !documentId ? { error } : { error, documentId };
   }
   if (documentId) {
     const declaredTotal = operation === "payment" ? null : Number(amount);

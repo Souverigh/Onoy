@@ -6,3 +6,4 @@ node_modules/
 .superpowers/
 supabase/.temp/
 supabase/.branches/
+.handover/

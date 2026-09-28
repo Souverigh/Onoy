@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { unstable_rethrow } from "next/navigation";
+import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import {
   commitOperation,
+  type CommitState,
   customerFromContact,
   findSimilarRecords,
   prepareReceiptPayment,
@@ -102,6 +104,29 @@ export function OperationForm({
     setPreviews(urls);
     return () => urls.forEach((url) => URL.revokeObjectURL(url));
   }, [pages]);
+  // Подтверждение без перезагрузки (ТЗ §15.5): ошибка сервера приходит в
+  // форму, фото, клиент и сумма остаются. Успех — редирект на экран результата.
+  const [commit, commitAction, saving] = useActionState(
+    async (previous: CommitState, form: FormData): Promise<CommitState> => {
+      try {
+        return await commitOperation(previous, form);
+      } catch (err) {
+        unstable_rethrow(err);
+        console.error("commitOperation failed", err);
+        return { error: "network", attempt: (previous.attempt ?? 0) + 1 };
+      }
+    },
+    {},
+  );
+  const [localError, setLocalError] = useState<string | null>(null);
+  // Фото, загруженные неудачной попыткой, — до смены фото продавцом.
+  const [discardedAttempt, setDiscardedAttempt] = useState<number | undefined>(undefined);
+  const uploadedDocumentId =
+    commit.documentId && commit.attempt !== discardedAttempt ? commit.documentId : null;
+  const commitError = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (commit.error) commitError.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [commit.attempt, commit.error]);
   const [similar, setSimilar] = useState<SimilarRecord[]>([]);
   const similarRequest = useRef(0);
   const checkedDocumentId = checkedPhoto?.documentId ?? null;
@@ -150,9 +175,19 @@ export function OperationForm({
       : kind === "sale"
         ? "Подтвердить продажу"
         : "Подтвердить оплату";
-  const errorText =
+  const partyWord =
+    kind === "purchase" || (kind === "payment" && direction === "outgoing") ? "поставщика" : "клиента";
+  const describeError = (error: string | undefined | null) =>
     error === "retry"
-      ? "Эта запись уже отправлялась. Обновите страницу и проверьте историю."
+      ? "Эта запись уже сохранена — возможно, при прошлой попытке. Проверьте историю."
+      : error === "amount"
+        ? "Введите сумму больше нуля."
+        : error === "party"
+          ? `Выберите ${partyWord} из списка.`
+          : error === "blocked"
+            ? "Магазин в режиме «только просмотр» — новые записи не сохраняются. Продлите оплату."
+            : error === "network"
+              ? "Нет связи с сервером — запись не сохранена. Проверьте интернет и нажмите ещё раз: вторая запись не появится."
       : error === "duplicate"
         ? "Такой номер перевода уже учтён."
         : error === "photo"
@@ -170,6 +205,21 @@ export function OperationForm({
             : error === "save"
               ? "Не удалось сохранить запись. Проверьте данные и попробуйте снова."
               : undefined;
+  // Ошибка из адреса — при открытии формы (сверху); ошибка подтверждения — у кнопки.
+  const errorText = describeError(error);
+  const submitErrorText = describeError(localError ?? commit.error);
+
+  function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (saving) return;
+    if (!amountFromInput(amountValue)) {
+      setLocalError("amount");
+      return;
+    }
+    setLocalError(null);
+    const form = new FormData(e.currentTarget);
+    startTransition(() => commitAction(form));
+  }
 
   function addPages(e: React.ChangeEvent<HTMLInputElement>) {
     const picked = Array.from(e.target.files ?? []);
@@ -202,6 +252,7 @@ export function OperationForm({
 
   async function checkPages(next: File[]) {
     const request = ++photoRequest.current;
+    setDiscardedAttempt(commit.attempt);
     setCheckedPhoto(null);
     setCheckNote(null);
     if (!next.length || (kind !== "purchase" && kind !== "sale")) {
@@ -256,8 +307,10 @@ export function OperationForm({
 
   // Три суммы: строки (наш итог), «Итого» на бумаге, введённая продавцом.
   const enteredAmount = amountFromInput(amountValue);
+  // Накладная без цен (только названия и количество): «0 сом» — не сумма.
+  const noPrices = checkedPhoto?.result ? !(checkedPhoto.result.total_computed > 0) : false;
   const checkMismatch =
-    checkedPhoto?.result && enteredAmount
+    checkedPhoto?.result && !noPrices && enteredAmount
       ? Math.abs(checkedPhoto.result.total_computed - enteredAmount) > TOLERANCE
       : false;
   const paperTotal =
@@ -265,7 +318,9 @@ export function OperationForm({
       ? checkedPhoto.result.total_declared
       : null;
   const paperMismatch =
-    paperTotal != null && Math.abs(checkedPhoto!.result!.total_computed - paperTotal) > TOLERANCE;
+    paperTotal != null &&
+    !noPrices &&
+    Math.abs(checkedPhoto!.result!.total_computed - paperTotal) > TOLERANCE;
 
   return (
     <>
@@ -292,7 +347,7 @@ export function OperationForm({
           </button>
         </form>
       )}
-      <form action={commitOperation} className="simple-operation-form">
+      <form onSubmit={submit} className="simple-operation-form">
         <input type="hidden" name="kind" value={kind} />
         <input type="hidden" name="idempotency_key" value={idempotencyKey} />
         {kind === "purchase" && partPaymentKey && (
@@ -300,6 +355,9 @@ export function OperationForm({
         )}
         {prefill && <input type="hidden" name="document_id" value={prefill.documentId} />}
         {checkedPhoto && <input type="hidden" name="document_id" value={checkedPhoto.documentId} />}
+        {!prefill && !checkedPhoto && uploadedDocumentId && (
+          <input type="hidden" name="document_id" value={uploadedDocumentId} />
+        )}
         {checkedPhoto?.result && (
           <input
             type="hidden"
@@ -415,7 +473,10 @@ export function OperationForm({
             pattern="[0-9 ]+([.,][0-9]{1,2})?"
             placeholder="0"
             value={amountValue}
-            onChange={(e) => setAmountValue(e.target.value)}
+            onChange={(e) => {
+              setAmountValue(e.target.value);
+              if (localError === "amount") setLocalError(null);
+            }}
             aria-label="Сумма в сомах"
           />
         </label>
@@ -455,7 +516,13 @@ export function OperationForm({
                 Это фото уже приложено к другой записи — сохранится как дубликат.
               </p>
             )}
-            {checkedPhoto?.result && (
+            {checkedPhoto?.result && noPrices && (
+              <p className="photo-check-mismatch" role="status">
+                Цен в накладной не нашли — введите сумму вручную.
+                {paperTotal != null && <> «Итого» на бумаге: {money(paperTotal)}.</>}
+              </p>
+            )}
+            {checkedPhoto?.result && !noPrices && (
               <p className={checkMismatch || paperMismatch ? "photo-check-mismatch" : "photo-check-ok"}>
                 По строкам: {money(checkedPhoto.result.total_computed)}
                 {paperTotal != null && <> · «Итого» на бумаге: {money(paperTotal)}</>}
@@ -546,10 +613,14 @@ export function OperationForm({
           <label className="photo-field">
             Фото или PDF чека
             <input
-              name="photo"
+              // Чек уже загружен неудачной попыткой — второй раз не отправляем.
+              name={uploadedDocumentId ? undefined : "photo"}
               type="file"
               accept={DOCUMENT_ACCEPT}
-              onChange={(e) => void shrinkInputFile(e.target)}
+              onChange={(e) => {
+                setDiscardedAttempt(commit.attempt);
+                void shrinkInputFile(e.target);
+              }}
             />
           </label>
         )}
@@ -620,7 +691,7 @@ export function OperationForm({
               ref={pagesInput}
               // Фото уже загружены при проверке — второй раз не отправляем,
               // сервер возьмёт document_id.
-              name={checkedPhoto ? undefined : "photo"}
+              name={checkedPhoto || uploadedDocumentId ? undefined : "photo"}
               type="file"
               multiple
               hidden
@@ -637,8 +708,13 @@ export function OperationForm({
               ? "Сумма сразу добавится к долгу клиента. Если клиент заплатил — отметьте наличные."
               : "Оплата сразу уменьшит долг контрагента. Если платили переводом — приложите чек."}
         </p>
+        {submitErrorText && !saving && (
+          <p className="form-error" role="alert" ref={commitError}>
+            {submitErrorText}
+          </p>
+        )}
         <div className="simple-operation-actions">
-          <Submit disabled={checking || (kind !== "payment" && pages.length === 0)}>
+          <Submit pending={saving} disabled={checking || (kind !== "payment" && pages.length === 0)}>
             {checking
               ? "Проверяем фото…"
               : kind !== "payment" && pages.length === 0
