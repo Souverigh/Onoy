@@ -1230,21 +1230,6 @@ div.photo-field {
   text-align: center;
   width: 100%;
 }
-.receipt-intake-form {
-  max-width: 480px;
-  margin: 0 auto 20px;
-  padding: 16px;
-  background: #f2f6ed;
-  border: 1px dashed #b7cda3;
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.receipt-intake-form label {
-  margin-bottom: 0;
-  font-size: 14px;
-}
 .party-suggestions {
   max-width: 480px;
   margin: 0 auto 16px;
@@ -3128,6 +3113,14 @@ a.debt-card:hover {
   padding: 0;
   margin-bottom: 6px;
 }
+form label.expense-chip {
+  flex-direction: row;
+  margin-bottom: 0;
+  color: var(--ink);
+}
+.expense-categories {
+  margin-bottom: 18px;
+}
 .expense-chip {
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -3144,4 +3137,62 @@ a.debt-card:hover {
 .expense-chip:has(input:focus-visible) {
   outline: 2px solid var(--green);
   outline-offset: 2px;
+}
+
+/* Дата «дд.мм.гггг» и время «чч:мм» — формат КР (ru-date-input.tsx). */
+.ru-date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  color: #536457;
+  margin-bottom: 18px;
+}
+.ru-date-inputs {
+  display: flex;
+  gap: 10px;
+}
+.ru-date-inputs input {
+  flex: 1 1 auto;
+  letter-spacing: 0.02em;
+}
+.ru-date-inputs .ru-time-input {
+  flex: 0 0 96px;
+  text-align: center;
+}
+.ru-date-inputs input[aria-invalid] {
+  border-color: #c0553a;
+}
+.form-error-inline {
+  color: #b0412a;
+}
+
+/* Выбранный чек оплаты: миниатюра, что взяли с чека, «убрать». */
+.receipt-picked {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 40px 8px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.receipt-picked img,
+.receipt-picked .page-thumb-pdf {
+  width: 56px;
+  height: 72px;
+  flex: 0 0 56px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.receipt-picked-text {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.receipt-remove {
+  top: 50%;
+  transform: translateY(-50%);
+  right: 8px;
 }

@@ -25,7 +25,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { bishkekDateTime, receiptDateTime } from "@/lib/receipt-date";
 import { isAdjustmentKind } from "@/lib/entry-labels";
 import { normalizePhone, phoneKey } from "@/lib/contacts";
-import { isCurrency, rateInput } from "@/lib/currency";
+import { isCurrency, rateInput, type Currency } from "@/lib/currency";
 
 type Operation = "purchase" | "sale" | "payment";
 const uuidPattern =
@@ -530,33 +530,56 @@ export async function findSimilarRecords(
   }));
 }
 
-/**
- * ТЗ §4, сценарий В.2: квитанция → распознаём сразу (не в фоне, это часть
- * диалога) → предлагаем клиента по имени отправителя, прежде чем продавец
- * подтвердит оплату. Сам платёж ещё не проводится — только подготавливает
- * форму `/money/new?type=payment`.
- */
-export async function prepareReceiptPayment(form: FormData) {
-  const photo = form.get("photo");
-  if (!(photo instanceof File) || photo.size === 0)
-    redirect("/money/new?type=payment&error=photo");
+/** Что взяли с чека для формы оплаты. */
+export type ReceiptFields = {
+  amount?: string;
+  currency?: Currency;
+  bankRef?: string;
+  /** Дата и время перевода по Бишкеку, "ГГГГ-ММ-ДДTчч:мм". */
+  date?: string;
+  /** Похожие клиенты — по отправителю, поставщики — по получателю. */
+  customerIds: string[];
+  supplierIds: string[];
+};
 
-  const { db, organizationId } = await getContext();
-  let documentId: string;
-  try {
-    documentId = await uploadOperationPhoto(db, organizationId, "payment", photo);
-  } catch (error) {
-    const used = error instanceof Error && error.message === "document_in_use";
-    redirect(`/money/new?type=payment&error=${used ? "photo_used" : "photo_upload"}`);
-  }
-
-  const params = await receiptParams(db, organizationId, documentId, async () => [
-    { photo: Buffer.from(await photo.arrayBuffer()), mimeType: documentMimeType(photo) },
+/** Распознать чек (кеш — один платный вызов на фото) и найти похожих контрагентов. */
+async function receiptFields(
+  db: SupabaseClient,
+  organizationId: string,
+  documentId: string,
+  loadPhoto: () => Promise<PhotoPage[]>,
+): Promise<ReceiptFields> {
+  const fields: ReceiptFields = { customerIds: [], supplierIds: [] };
+  if (!process.env.GEMINI_API_KEY) return fields;
+  // Результат кешируется: фоновая оцифровка после подтверждения оплаты
+  // возьмёт его отсюда, а не вызовет Gemini второй раз.
+  const { result } = await recognizeReceiptCached({ db, organizationId, documentId, loadPhoto });
+  if (result.amount) fields.amount = String(result.amount);
+  if (result.currency && isCurrency(result.currency)) fields.currency = result.currency;
+  if (result.operation_id) fields.bankRef = String(result.operation_id).slice(0, 200);
+  const paidAt = receiptDateTime(result.datetime);
+  if (paidAt) fields.date = paidAt;
+  const lookup = async (table: "customers" | "suppliers", name: string | null) => {
+    if (!name) return [];
+    const rows = await db
+      .from(table)
+      .select("id,name,aliases")
+      .eq("organization_id", organizationId)
+      .is("archived_at", null)
+      .is("merged_into_id", null)
+      .range(0, 999);
+    return bestMatches(name, (rows.data ?? []) as { id: string; name: string; aliases?: string[] }[]).map(
+      (m) => m.candidate.id,
+    );
+  };
+  [fields.customerIds, fields.supplierIds] = await Promise.all([
+    lookup("customers", result.sender_name),
+    lookup("suppliers", result.receiver_name),
   ]);
-  redirect(`/money/new?${params.toString()}`);
+  return fields;
 }
 
-/** Параметры формы оплаты по чеку: сумма, номер, дата, похожие клиенты. */
+/** Параметры формы оплаты по чеку — для перехода из другой формы (switchDocumentKind). */
 async function receiptParams(
   db: SupabaseClient,
   organizationId: string,
@@ -564,40 +587,50 @@ async function receiptParams(
   loadPhoto: () => Promise<PhotoPage[]>,
 ) {
   const params = new URLSearchParams({ type: "payment", documentId });
-  const key = process.env.GEMINI_API_KEY;
-  if (key) {
-    try {
-      // Результат кешируется: фоновая оцифровка после подтверждения оплаты
-      // возьмёт его отсюда, а не вызовет Gemini второй раз.
-      const { result } = await recognizeReceiptCached({
-        db,
-        organizationId,
-        documentId,
-        loadPhoto,
-      });
-      if (result.amount) params.set("amount", String(result.amount));
-      if (result.currency && isCurrency(result.currency)) params.set("currency", result.currency);
-      if (result.operation_id) params.set("bankRef", result.operation_id);
-      const paidAt = receiptDateTime(result.datetime);
-      if (paidAt) params.set("date", paidAt);
-      if (result.sender_name) {
-        const customers = await db
-          .from("customers")
-          .select("id,name,aliases")
-          .eq("organization_id", organizationId);
-        const suggestions = bestMatches(
-          result.sender_name,
-          (customers.data ?? []) as { id: string; name: string; aliases?: string[] }[],
-        );
-        if (suggestions.length)
-          params.set("suggest", suggestions.map((s) => s.candidate.id).join(","));
-      }
-    } catch (error) {
-      console.error("receiptParams: recognition failed", error);
-      // Распознавание не удалось — продавец заполнит форму вручную, фото уже приложено.
-    }
+  try {
+    const f = await receiptFields(db, organizationId, documentId, loadPhoto);
+    if (f.amount) params.set("amount", f.amount);
+    if (f.currency) params.set("currency", f.currency);
+    if (f.bankRef) params.set("bankRef", f.bankRef);
+    if (f.date) params.set("date", f.date);
+    if (f.customerIds.length) params.set("suggest", f.customerIds.join(","));
+  } catch (error) {
+    console.error("receiptParams: recognition failed", error);
+    // Распознавание не удалось — продавец заполнит форму вручную, фото уже приложено.
   }
   return params;
+}
+
+export type ReceiptCheck =
+  | ({ ok: true; documentId: string; duplicate: boolean } & ReceiptFields)
+  | { ok: false; error: string; documentId?: string; duplicate?: boolean };
+
+/**
+ * Чек оплаты выбран в форме — загружаем и сразу распознаём, без
+ * перезагрузки: форма подставит сумму, номер перевода, дату и клиента.
+ */
+export async function recognizeReceiptPhoto(form: FormData): Promise<ReceiptCheck> {
+  const photo = photosOf(form)[0];
+  if (!photo) return { ok: false, error: "no_photo" };
+  const { db, organizationId } = await getContext();
+  let documentId: string;
+  try {
+    documentId = await uploadOperationPhoto(db, organizationId, "payment", photo);
+  } catch (error) {
+    const used = error instanceof Error && error.message === "document_in_use";
+    return { ok: false, error: used ? "photo_used" : "upload_failed" };
+  }
+  const duplicate = await isDuplicatePhoto(db, organizationId, documentId);
+  if (!process.env.GEMINI_API_KEY) return { ok: false, error: "no_provider", documentId, duplicate };
+  try {
+    const fields = await receiptFields(db, organizationId, documentId, async () => [
+      { photo: Buffer.from(await photo.arrayBuffer()), mimeType: documentMimeType(photo) },
+    ]);
+    return { ok: true, documentId, duplicate, ...fields };
+  } catch (error) {
+    console.error("recognizeReceiptPhoto: recognition failed", error);
+    return { ok: false, error: "recognition_failed", documentId, duplicate };
+  }
 }
 
 export async function reverseOperation(form: FormData) {

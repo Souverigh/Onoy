@@ -15,6 +15,7 @@ import { MULTI_PAGE_MAX_SIDE, shrinkImage } from "@/lib/shrink-image";
 import { CURRENCY_SIGN, type Currency } from "@/lib/currency";
 import { money } from "@/lib/format";
 import { Submit } from "@/components/submit";
+import { RuDateInput } from "@/components/ru-date-input";
 
 const ERRORS: Record<string, string> = {
   amount: "Введите сумму больше нуля.",
@@ -53,7 +54,10 @@ export function ExpenseForm({
   const [category, setCategory] = useState<ExpenseCategory | "">("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
-  const [date, setDate] = useState(today);
+  // Поле даты показывает dateSeed (задаётся с чека), введённое — в dateValue.
+  const [dateSeed, setDateSeed] = useState(today);
+  const [dateValue, setDateValue] = useState<string | null>(today);
+  const dateTouched = useRef(false);
   const [pages, setPages] = useState<File[]>([]);
   const [preparing, setPreparing] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -99,7 +103,10 @@ export function ExpenseForm({
     if (r.amount > 0 && (r.currency ?? "KGS") === currency)
       setAmount((prev) => (prev.trim() ? prev : amountText(r.amount)));
     const day = res.date;
-    if (day) setDate((prev) => (prev === today ? day : prev));
+    if (day && !dateTouched.current) {
+      setDateSeed(day);
+      setDateValue(day);
+    }
     if (isExpenseCategory(r.category)) setCategory((prev) => prev || r.category);
     const text = [r.description, r.vendor].filter(Boolean).join(" — ").slice(0, 500);
     if (text) setNote((prev) => (prev.trim() ? prev : text));
@@ -162,8 +169,13 @@ export function ExpenseForm({
       setLocalError("note");
       return;
     }
+    if (!dateValue || dateValue > today || dateValue < minDate) {
+      setLocalError("date");
+      return;
+    }
     setLocalError(null);
     const form = new FormData(e.currentTarget);
+    form.set("spent_on", dateValue);
     // Фото уже загружено как документ — второй раз не отправляем.
     if (documentId) form.set("document_id", documentId);
     else for (const file of pages) form.append("photo", file);
@@ -212,13 +224,9 @@ export function ExpenseForm({
         )}
         {pages.length < MAX_PAGES && (
           <div className="page-add-actions">
-            {/* Камера сразу — capture; файлом — фото из галереи или PDF. */}
+            {/* Одна кнопка: телефон сам предложит камеру, галерею или файлы. */}
             <label className="button page-add">
-              {pages.length ? "+ Сфотографировать ещё" : "Сфотографировать"}
-              <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={addPages} />
-            </label>
-            <label className="button page-add">
-              {pages.length ? "+ Добавить файл" : "Выбрать фото или PDF"}
+              {pages.length ? "+ Добавить ещё фото" : "Сфотографировать или выбрать чек"}
               <input type="file" accept={DOCUMENT_ACCEPT} multiple className="sr-only" onChange={addPages} />
             </label>
           </div>
@@ -304,18 +312,15 @@ export function ExpenseForm({
           onChange={(e) => setNote(e.target.value)}
         />
       </label>
-      <label>
-        Дата
-        <input
-          type="date"
-          name="spent_on"
-          min={minDate}
-          max={today}
-          required
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
-      </label>
+      <RuDateInput
+        label="Дата"
+        value={dateSeed}
+        onChange={(next) => {
+          dateTouched.current = true;
+          setDateValue(next);
+          if (localError === "date") setLocalError(null);
+        }}
+      />
       <p className="operation-hint">Расход уменьшит деньги за день в «Итоге дня». Долги клиентов и поставщиков не меняются.</p>
       {error && !saving && (
         <p className="form-error" role="alert" ref={errorRef}>

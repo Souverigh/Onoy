@@ -11,14 +11,16 @@ import {
   findSimilarRecords,
   type InvoiceCheck,
   type PartySuggestion,
-  prepareReceiptPayment,
   recognizeInvoicePhoto,
+  recognizeReceiptPhoto,
+  type ReceiptCheck,
   switchDocumentKind,
   type SimilarRecord,
 } from "@/app/(workspace)/money/actions";
 import type { DocumentVerdict } from "@/lib/adre/classify";
 import type { InvoiceResult } from "@/lib/adre/types";
 import { Submit } from "./submit";
+import { RuDateInput, bishkekNow } from "./ru-date-input";
 import { ContactPicker } from "./contact-picker";
 import { money } from "@/lib/format";
 import {
@@ -33,7 +35,7 @@ import {
 } from "@/lib/currency";
 import { amountFromInput, creditLimitExceeded } from "@/lib/credit-limit";
 import { TOLERANCE } from "@/lib/adre/reconcile";
-import { MULTI_PAGE_MAX_SIDE, shrinkImage, shrinkInputFile } from "@/lib/shrink-image";
+import { MULTI_PAGE_MAX_SIDE, shrinkImage } from "@/lib/shrink-image";
 import { DOCUMENT_ACCEPT, MAX_PAGES, MAX_UPLOAD_BYTES, isPdf } from "@/lib/pages";
 
 type Operation = "purchase" | "sale" | "payment";
@@ -130,7 +132,32 @@ export function OperationForm({
   const allCustomers = [...customers, ...contactCustomers.filter((c) => !customers.some((x) => x.id === c.id))];
   const [checkedPhoto, setCheckedPhoto] = useState<CheckedPhoto | null>(null);
   const [checking, setChecking] = useState(false);
-  const [shrinkingReceipt, setShrinkingReceipt] = useState(false);
+  // Чек оплаты: выбран → сразу загружаем и распознаём (без перезагрузки).
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [receiptCheck, setReceiptCheck] = useState<ReceiptCheck | null>(null);
+  const [checkingReceipt, setCheckingReceipt] = useState(false);
+  const [bankRef, setBankRef] = useState(prefill?.bankRef ?? "");
+  // Дата оплаты: с чека или «сейчас» (ставится в браузере — без расхождения
+  // с сервером при отрисовке); продавец может поменять.
+  const [dateSeed, setDateSeed] = useState(prefill?.date ?? "");
+  const [dateValue, setDateValue] = useState<string | null>(prefill?.date ?? null);
+  const [dateTouched, setDateTouched] = useState(Boolean(prefill?.date));
+  useEffect(() => {
+    if (kind !== "payment" || prefill?.date) return;
+    const now = bishkekNow();
+    setDateSeed(now);
+    setDateValue(now);
+  }, [kind, prefill?.date]);
+  useEffect(() => {
+    if (!receiptFile || isPdf(receiptFile)) {
+      setReceiptPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(receiptFile);
+    setReceiptPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [receiptFile]);
   const [checkNote, setCheckNote] = useState<string | null>(null);
   // Номер последнего выбранного фото: ответ по старому фото, пришедший позже,
   // не должен перезаписать результат по новому.
@@ -167,6 +194,19 @@ export function OperationForm({
   const [discardedAttempt, setDiscardedAttempt] = useState<number | undefined>(undefined);
   const uploadedDocumentId =
     commit.documentId && commit.attempt !== discardedAttempt ? commit.documentId : null;
+  const receiptDocumentId = receiptCheck?.documentId ?? null;
+  // Похожие по чеку: клиенты — по отправителю, поставщики — по получателю.
+  const receiptSuggestions: (Party & { balance?: string })[] = (
+    prefill
+      ? direction === "incoming"
+        ? prefill.suggestions
+        : []
+      : receiptCheck?.ok
+        ? (direction === "incoming" ? receiptCheck.customerIds : receiptCheck.supplierIds)
+            .map((id) => (direction === "incoming" ? customers : suppliers).find((p) => p.id === id))
+            .filter((p): p is Party & { balance?: string } => Boolean(p))
+        : []
+  );
   const commitError = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     if (commit.error) commitError.current?.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -296,9 +336,67 @@ export function OperationForm({
       setLocalError("rate");
       return;
     }
+    if (kind === "payment" && dateTouched && !dateValue) {
+      setLocalError("date");
+      return;
+    }
     setLocalError(null);
     const form = new FormData(e.currentTarget);
+    if (kind === "payment") {
+      // Дату не меняли и чека с датой нет — сервер запишет текущее время.
+      form.set("occurred_at", dateTouched && dateValue ? dateValue : "");
+      // Чек не загрузился при выборе — отправляем файл вместе с оплатой.
+      if (receiptFile && !receiptDocumentId && !uploadedDocumentId) form.set("photo", receiptFile);
+    }
     startTransition(() => commitAction(form));
+  }
+
+  async function pickReceipt(file: File | null) {
+    const request = ++photoRequest.current;
+    setReceiptCheck(null);
+    setDiscardedAttempt(commit.attempt);
+    if (!file) {
+      setReceiptFile(null);
+      setCheckingReceipt(false);
+      return;
+    }
+    // Пока чек загружается и распознаётся, подтверждение заблокировано.
+    setCheckingReceipt(true);
+    try {
+      const shrunk = await shrinkImage(file);
+      if (request !== photoRequest.current) return;
+      if (shrunk.size > MAX_UPLOAD_BYTES) {
+        setReceiptFile(null);
+        setLocalError("photo_upload");
+        return;
+      }
+      setReceiptFile(shrunk);
+      const fd = new FormData();
+      fd.append("photo", shrunk);
+      const res = await recognizeReceiptPhoto(fd);
+      if (request !== photoRequest.current) return;
+      setReceiptCheck(res);
+      if (!res.ok) return;
+      // Заполняем с чека; введённое продавцом не трогаем.
+      const amount = res.amount;
+      const currency = res.currency;
+      const ref = res.bankRef;
+      if (amount) setAmountValue((prev) => (prev.trim() ? prev : amount.replace(".", ",")));
+      if (currency) setAmountCurrency((prev) => prev ?? currency);
+      if (ref) setBankRef((prev) => (prev.trim() ? prev : ref));
+      if (res.date) {
+        setDateSeed(res.date);
+        setDateValue(res.date);
+        setDateTouched(true);
+      }
+      const ids = direction === "incoming" ? res.customerIds : res.supplierIds;
+      if (ids[0]) setSelectedParty((prev) => prev || ids[0]);
+    } catch (err) {
+      console.error("recognizeReceiptPhoto failed", err);
+      if (request === photoRequest.current) setReceiptCheck({ ok: false, error: "recognition_failed" });
+    } finally {
+      if (request === photoRequest.current) setCheckingReceipt(false);
+    }
   }
 
   function addPages(e: React.ChangeEvent<HTMLInputElement>) {
@@ -455,29 +553,6 @@ export function OperationForm({
 
   return (
     <>
-      {kind === "payment" && !prefill && (
-        <form action={prepareReceiptPayment} className="receipt-intake-form">
-          <label className="photo-field">
-            Есть фото, скриншот или PDF квитанции? Сумму и клиента подставим сами.
-            <input
-              name="photo"
-              type="file"
-              accept={DOCUMENT_ACCEPT}
-              onChange={async (e) => {
-                setShrinkingReceipt(true);
-                try {
-                  await shrinkInputFile(e.target);
-                } finally {
-                  setShrinkingReceipt(false);
-                }
-              }}
-            />
-          </label>
-          <button className="button" type="submit" disabled={shrinkingReceipt}>
-            {shrinkingReceipt ? "Готовим фото…" : "Распознать квитанцию"}
-          </button>
-        </form>
-      )}
       <form onSubmit={submit} className="simple-operation-form">
         <input type="hidden" name="kind" value={kind} />
         <input type="hidden" name="idempotency_key" value={idempotencyKey} />
@@ -495,7 +570,7 @@ export function OperationForm({
         {!checkedPhoto && useExisting && existingDocument && (
           <input type="hidden" name="document_id" value={existingDocument.documentId} />
         )}
-        {!prefill && !checkedPhoto && !useExisting && uploadedDocumentId && (
+        {!prefill && !checkedPhoto && !useExisting && !receiptDocumentId && uploadedDocumentId && (
           <input type="hidden" name="document_id" value={uploadedDocumentId} />
         )}
         {checkedPhoto?.result && (
@@ -509,6 +584,63 @@ export function OperationForm({
           <p className="form-error" role="alert">
             {errorText}
           </p>
+        )}
+        {!prefill && receiptDocumentId && <input type="hidden" name="document_id" value={receiptDocumentId} />}
+        {kind === "payment" && !prefill && (
+          <div className="photo-field receipt-field">
+            <span>Чек или скриншот перевода (необязательно)</span>
+            {receiptFile ? (
+              <div className="receipt-picked">
+                {receiptPreview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={receiptPreview} alt="Чек" />
+                ) : (
+                  <span className="page-thumb-pdf">PDF</span>
+                )}
+                <span className="receipt-picked-text">
+                  {checkingReceipt
+                    ? "Читаем чек…"
+                    : receiptCheck?.ok
+                      ? receiptCheck.amount
+                        ? `С чека: ${money(receiptCheck.amount, receiptCheck.currency ?? docCurrency)}. Проверьте поля ниже.`
+                        : "Сумму на чеке не нашли — введите вручную."
+                      : receiptCheck?.error === "photo_used"
+                        ? PHOTO_USED_TEXT
+                        : receiptCheck?.error === "upload_failed"
+                          ? "Чек не загрузился — отправим вместе с оплатой."
+                          : receiptCheck
+                            ? "Чек прочитать не удалось — заполните поля вручную, чек сохранится."
+                            : null}
+                  {receiptCheck?.duplicate && (
+                    <small className="muted"> Этот чек уже приложен к другой записи — проверьте, не задвоилось ли.</small>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  className="page-thumb-remove receipt-remove"
+                  aria-label="Убрать чек"
+                  onClick={() => void pickReceipt(null)}
+                >
+                  ×
+                </button>
+              </div>
+            ) : (
+              <label className="button page-add">
+                Сфотографировать или выбрать чек
+                <input
+                  type="file"
+                  accept={DOCUMENT_ACCEPT}
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    e.target.value = "";
+                    void pickReceipt(file);
+                  }}
+                />
+              </label>
+            )}
+            {!receiptFile && <small className="muted">Сумму, дату, номер перевода и клиента заполним с чека.</small>}
+          </div>
         )}
         {kind === "payment" && (
           <fieldset className="payment-direction">
@@ -537,18 +669,19 @@ export function OperationForm({
             </label>
           </fieldset>
         )}
-        {prefill && prefill.suggestions.length > 0 && direction === "incoming" && (
+        {receiptSuggestions.length > 0 && (
           <div className="party-suggestions">
-            <span className="muted">Похоже, это:</span>
+            <span className="muted">По чеку похоже, это:</span>
             <div className="party-suggestions-list">
-              {prefill.suggestions.map((s) => (
+              {receiptSuggestions.map((s) => (
                 <button
                   key={s.id}
                   type="button"
                   className={`party-suggestion${selectedParty === s.id ? " active" : ""}`}
                   onClick={() => setSelectedParty(s.id)}
                 >
-                  {s.name} · {money(s.balance, partyCurrency(s, shopCurrency))}
+                  {s.name}
+                  {s.balance != null ? ` · ${money(s.balance, partyCurrency(s, shopCurrency))}` : ""}
                 </button>
               ))}
             </div>
@@ -893,31 +1026,22 @@ export function OperationForm({
               maxLength={200}
               autoComplete="off"
               placeholder="Необязательно"
-              defaultValue={prefill?.bankRef}
+              value={bankRef}
+              onChange={(e) => setBankRef(e.target.value)}
             />
           </label>
         )}
         {kind === "payment" && (
-          <label>
-            {prefill?.date ? "Дата и время перевода (из чека)" : "Дата и время оплаты"}
-            <input name="occurred_at" type="datetime-local" defaultValue={prefill?.date} />
-            {!prefill?.date && <small className="muted">Пусто — запишем текущее время.</small>}
-          </label>
-        )}
-        {!prefill && kind === "payment" && (
-          <label className="photo-field">
-            Фото или PDF чека
-            <input
-              // Чек уже загружен неудачной попыткой — второй раз не отправляем.
-              name={uploadedDocumentId ? undefined : "photo"}
-              type="file"
-              accept={DOCUMENT_ACCEPT}
-              onChange={(e) => {
-                setDiscardedAttempt(commit.attempt);
-                void shrinkInputFile(e.target);
-              }}
-            />
-          </label>
+          <RuDateInput
+            label={prefill?.date || (receiptCheck?.ok && receiptCheck.date) ? "Дата и время перевода (с чека)" : "Дата и время оплаты"}
+            value={dateSeed}
+            withTime
+            onChange={(next) => {
+              setDateValue(next);
+              setDateTouched(true);
+              if (localError === "date") setLocalError(null);
+            }}
+          />
         )}
         {kind !== "payment" && (
           <div className="photo-field">
@@ -1032,7 +1156,7 @@ export function OperationForm({
             ? "Сумма сразу добавится к долгу перед поставщиком. Фото — основание записи."
             : kind === "sale"
               ? "Сумма сразу добавится к долгу клиента. Если клиент заплатил — отметьте наличные."
-              : "Оплата сразу уменьшит долг контрагента. Если платили переводом — приложите чек."}
+              : "Оплата сразу уменьшит долг контрагента."}
         </p>
         {submitErrorText && !saving && (
           <p className="form-error" role="alert" ref={commitError}>
@@ -1040,9 +1164,11 @@ export function OperationForm({
           </p>
         )}
         <div className="simple-operation-actions">
-          <Submit pending={saving} disabled={checking || switching || (kind !== "payment" && !hasPhoto)}>
+          <Submit pending={saving} disabled={checking || checkingReceipt || switching || (kind !== "payment" && !hasPhoto)}>
             {checking
               ? "Проверяем фото…"
+              : checkingReceipt
+                ? "Читаем чек…"
               : kind !== "payment" && !hasPhoto
                 ? "Приложите фото накладной"
                 : confirmLabel}
