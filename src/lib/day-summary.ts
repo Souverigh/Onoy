@@ -4,6 +4,7 @@ import { paymentLabelWithSide } from "./entry-labels";
 import { memberLabels } from "./members";
 import { isCurrency, type Currency } from "./currency";
 import { foreignParties, recordCurrency } from "./party-currency";
+import { expenseCategoryLabel, expensesByCategory } from "./expenses";
 
 /** День по Бишкеку (YYYY-MM-DD): сменяется в 00:00 UTC+6. */
 export function bishkekDate(value: string | Date = new Date()) {
@@ -49,7 +50,20 @@ export type DaySummary = {
   /** По продавцам (тариф «Бизнес»): кто сколько оформил, в валюте магазина. В старых снимках нет. */
   bySeller?: SellerTotal[];
   foreign?: (DayMoney & { currency: string })[];
+  /** Расходы магазина за день (в валюте магазина). В старых снимках нет — расходов не было. */
+  expenses?: DayExpenses;
 } & DayMoney;
+export type DayExpenses = { total: number; count: number; byCategory: { category: string; amount: number }[] };
+
+/**
+ * Деньги за день в валюте магазина: пришло (продажи за наличные + собрано с
+ * клиентов) минус ушло (оплачено поставщикам + расходы).
+ */
+export function dayNet(summary: DayMoney & { expenses?: DayExpenses }) {
+  const income = round(summary.sold.cash + summary.collected.total);
+  const expenses = summary.expenses?.total ?? 0;
+  return { income, paid: summary.suppliers.paid, expenses, left: round(income - summary.suppliers.paid - expenses) };
+}
 export type SellerTotal = { id: string | null; name: string; role: "owner" | "staff" | null; sold: number; collected: number; count: number };
 
 const sum = <T>(rows: T[], pick: (row: T) => string | number) =>
@@ -125,7 +139,7 @@ export async function computeDaySummary(
   const isToday = date === bishkekDate();
   const org = await db.from("organizations").select("currency").eq("id", organizationId).maybeSingle();
   const shopCurrency: Currency = isCurrency(org.data?.currency) ? org.data.currency : "KGS";
-  const [sales, payments, purchases, pending, later, customerBalances, supplierBalances, foreign] =
+  const [sales, payments, purchases, pending, later, customerBalances, supplierBalances, foreign, expenses] =
     await Promise.all([
       db
         .from("sales")
@@ -164,9 +178,21 @@ export async function computeDaySummary(
       db.from("customer_balances").select("id,balance").eq("organization_id", organizationId),
       db.from("supplier_balances").select("id,balance").eq("organization_id", organizationId),
       foreignParties(db, organizationId, shopCurrency),
+      db
+        .from("expenses")
+        .select("category,amount")
+        .eq("organization_id", organizationId)
+        .eq("spent_on", date)
+        .eq("currency", shopCurrency)
+        .is("reversed_at", null)
+        .range(0, 4999),
     ]);
   if (sales.error || payments.error || purchases.error || customerBalances.error || supplierBalances.error)
     throw new Error("Не удалось загрузить итог дня");
+  // Таблицы расходов может ещё не быть (миграция 29 не применена) — без них.
+  if (expenses.error) console.error("computeDaySummary: expenses lookup failed", expenses.error);
+  const expenseRows = (expenses.data ?? []) as { category: string; amount: string }[];
+  const expenseCategories = expensesByCategory(expenseRows);
 
   const saleRows = (sales.data ?? []) as SaleRow[];
   const paymentRows = (payments.data ?? []) as PaymentRow[];
@@ -240,6 +266,11 @@ export async function computeDaySummary(
     ...main,
     pendingClaims: pending.count ?? 0,
     bySeller: [...sellers.values()].sort((a, b) => b.sold - a.sold),
+    expenses: {
+      total: round(expenseCategories.reduce((s, c) => s + c.amount, 0)),
+      count: expenseRows.length,
+      byCategory: expenseCategories,
+    },
     ...(foreignParts.length ? { foreign: foreignParts } : {}),
   };
 }
@@ -296,7 +327,7 @@ async function laterMovements(db: SupabaseClient, organizationId: string, from: 
 }
 
 export type AfterCloseItem = {
-  kind: "sale" | "purchase" | "payment";
+  kind: "sale" | "purchase" | "payment" | "expense";
   label: string;
   party: string;
   amount: number;
@@ -318,7 +349,7 @@ export async function afterClosing(
   const { start, end } = dayBounds(date);
   // В формате «…Z»: «+00:00» из базы в строке фильтра превратился бы в пробел.
   const since = new Date(closedAt).toISOString();
-  const [sales, payments, purchases] = await Promise.all([
+  const [sales, payments, purchases, expenses] = await Promise.all([
     db
       .from("sales")
       .select("customer_id,total,paid_immediately,created_at,reversed_at")
@@ -345,6 +376,12 @@ export async function afterClosing(
       .eq("is_opening", false)
       .gte("occurred_at", start)
       .lt("occurred_at", end)
+      .or(`created_at.gt.${since},reversed_at.gt.${since}`),
+    db
+      .from("expenses")
+      .select("category,note,amount,currency,created_at,reversed_at")
+      .eq("organization_id", organizationId)
+      .eq("spent_on", date)
       .or(`created_at.gt.${since},reversed_at.gt.${since}`),
   ]);
   const customerIds = new Set<string>();
@@ -410,6 +447,16 @@ export async function afterClosing(
       created_at: r.created_at,
       reversed_at: r.reversed_at,
     })),
+    ...((expenses.data ?? []) as { category: string; note: string | null; amount: string; currency: string; created_at: string; reversed_at: string | null }[]).map((r) => ({
+      kind: "expense" as const,
+      label: `Расход: ${expenseCategoryLabel(r.category)}`,
+      party: r.note ?? "",
+      amount: Number(r.amount),
+      currency: r.currency,
+      at: r.created_at,
+      created_at: r.created_at,
+      reversed_at: r.reversed_at,
+    })),
   ];
   const closed = new Date(closedAt).getTime();
   const strip = ({ created_at: _c, reversed_at: _r, ...item }: (typeof items)[number]) => item;
@@ -430,7 +477,7 @@ export async function afterClosing(
   };
 }
 
-export type DayHistoryRow = { date: string; sold: number; collected: number; purchased: number };
+export type DayHistoryRow = { date: string; sold: number; collected: number; purchased: number; expenses: number };
 
 /**
  * Короткий итог за последние дни — от нового к старому, включая пустые дни.
@@ -446,7 +493,7 @@ export async function dayHistory(
   const from = new Date(new Date(dayBounds(today).start).getTime() - (days - 1) * 86400000).toISOString();
   const org = await db.from("organizations").select("currency").eq("id", organizationId).maybeSingle();
   const shopCurrency: Currency = isCurrency(org.data?.currency) ? org.data.currency : "KGS";
-  const [sales, payments, purchases, foreign] = await Promise.all([
+  const [sales, payments, purchases, foreign, expenses] = await Promise.all([
     db
       .from("sales")
       .select("customer_id,total,occurred_at")
@@ -477,6 +524,14 @@ export async function dayHistory(
       .gte("occurred_at", from)
       .range(0, 4999),
     foreignParties(db, organizationId, shopCurrency),
+    db
+      .from("expenses")
+      .select("spent_on,amount")
+      .eq("organization_id", organizationId)
+      .eq("currency", shopCurrency)
+      .is("reversed_at", null)
+      .gte("spent_on", bishkekDate(from))
+      .range(0, 4999),
   ]);
   if (sales.error || payments.error || purchases.error)
     throw new Error("Не удалось загрузить итог дня");
@@ -484,7 +539,7 @@ export async function dayHistory(
   const startMs = new Date(from).getTime();
   for (let i = days - 1; i >= 0; i--) {
     const date = bishkekDate(new Date(startMs + i * 86400000 + 12 * 3600000));
-    rows.set(date, { date, sold: 0, collected: 0, purchased: 0 });
+    rows.set(date, { date, sold: 0, collected: 0, purchased: 0, expenses: 0 });
   }
   const own = (r: { customer_id?: string | null; supplier_id?: string | null }) =>
     recordCurrency(r, foreign, shopCurrency) === shopCurrency;
@@ -499,6 +554,10 @@ export async function dayHistory(
   for (const r of (purchases.data ?? []).filter(own)) {
     const d = rows.get(bishkekDate(r.occurred_at));
     if (d) d.purchased += Number(r.total);
+  }
+  for (const r of (expenses.data ?? []) as { spent_on: string; amount: string }[]) {
+    const d = rows.get(r.spent_on);
+    if (d) d.expenses = round(d.expenses + Number(r.amount));
   }
   return [...rows.values()];
 }
@@ -544,7 +603,7 @@ export async function unclosedDays(db: SupabaseClient, organizationId: string): 
       .gte("occurred_at", from.toISOString())
       .lt("occurred_at", todayStart)
       .range(0, 4999);
-  const [sales, purchases, payments, closures] = await Promise.all([
+  const [sales, purchases, payments, closures, expenses] = await Promise.all([
     range("sales"),
     range("purchases"),
     range("payments"),
@@ -553,6 +612,13 @@ export async function unclosedDays(db: SupabaseClient, organizationId: string): 
       .select("day")
       .eq("organization_id", organizationId)
       .gte("day", bishkekDate(from)),
+    db
+      .from("expenses")
+      .select("spent_on")
+      .eq("organization_id", organizationId)
+      .gte("spent_on", bishkekDate(from))
+      .lt("spent_on", today)
+      .range(0, 4999),
   ]);
   if (sales.error || purchases.error || payments.error || closures.error) return [];
   const closed = new Set((closures.data ?? []).map((row) => row.day as string));
@@ -561,5 +627,6 @@ export async function unclosedDays(db: SupabaseClient, organizationId: string): 
       bishkekDate(row.occurred_at),
     ),
   );
+  for (const row of (expenses.data ?? []) as { spent_on: string }[]) active.add(row.spent_on);
   return [...active].filter((day) => !closed.has(day)).sort().reverse();
 }

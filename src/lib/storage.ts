@@ -3,7 +3,7 @@ import { randomUUID, createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { MAX_PAGES, documentMimeType, isAcceptedDocument } from "./pages";
 
-export type OperationKind = "purchase" | "sale" | "payment";
+export type OperationKind = "purchase" | "sale" | "payment" | "expense";
 
 function extensionOf(file: File) {
   const fromName = file.name.split(".").pop();

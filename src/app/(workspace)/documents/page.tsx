@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { getContext } from "@/lib/context";
 import { Icon } from "@/components/icon";
+import { expenseCategoryLabel } from "@/lib/expenses";
 
 type DocRow = {
   id: string;
-  kind: "purchase" | "sale" | "payment" | null;
+  kind: "purchase" | "sale" | "payment" | "expense" | null;
   status: string;
   error_message: string | null;
   created_at: string;
@@ -22,7 +23,9 @@ const kindLabel: Record<string, string> = {
   purchase: "Приход",
   sale: "Продажа",
   payment: "Оплата",
+  expense: "Расход",
 };
+const roleLabel = { customer: "клиент", supplier: "поставщик", expense: "расход магазина" } as const;
 
 export default async function Documents() {
   const { db, organizationId } = await getContext();
@@ -43,7 +46,7 @@ export default async function Documents() {
           <span className="eyebrow">ФОТО → РАСПОЗНАВАНИЕ → ПРОВЕРКА</span>
           <h1>Документы</h1>
           <p className="muted">
-            Накладные и чеки, приложенные к операциям. Долг они не меняют — это
+            Накладные и чеки, приложенные к операциям и расходам. Долг они не меняют — это
             уже случилось при подтверждении операции.
           </p>
         </div>
@@ -74,7 +77,7 @@ export default async function Documents() {
                           <span className="doc-party">
                             {parties.get(doc.id)!.name}
                             <small className="muted">
-                              {parties.get(doc.id)!.role === "customer" ? "клиент" : "поставщик"}
+                              {roleLabel[parties.get(doc.id)!.role]}
                             </small>
                           </span>
                         ) : (
@@ -122,7 +125,7 @@ export default async function Documents() {
   );
 }
 
-type Party = { name: string; role: "customer" | "supplier" };
+type Party = { name: string; role: "customer" | "supplier" | "expense" };
 
 /** Контрагент записи, к которой приложен документ, — одним запросом на таблицу. */
 async function partiesOf(
@@ -132,7 +135,7 @@ async function partiesOf(
 ): Promise<Map<string, Party>> {
   const result = new Map<string, Party>();
   if (!documentIds.length) return result;
-  const [purchases, sales, payments] = await Promise.all([
+  const [purchases, sales, payments, expenses] = await Promise.all([
     db.from("purchases").select("document_id,supplier_id").eq("organization_id", organizationId).in("document_id", documentIds),
     db.from("sales").select("document_id,customer_id").eq("organization_id", organizationId).in("document_id", documentIds),
     db
@@ -140,15 +143,19 @@ async function partiesOf(
       .select("document_id,customer_id,supplier_id")
       .eq("organization_id", organizationId)
       .in("document_id", documentIds),
+    db.from("expenses").select("document_id,category").eq("organization_id", organizationId).in("document_id", documentIds),
   ]);
-  const links: { documentId: string; id: string; role: Party["role"] }[] = [];
+  // Расход — без контрагента: показываем категорию.
+  for (const r of expenses.data ?? [])
+    if (r.document_id) result.set(r.document_id, { name: expenseCategoryLabel(r.category), role: "expense" });
+  const links: { documentId: string; id: string; role: "customer" | "supplier" }[] = [];
   for (const r of purchases.data ?? []) links.push({ documentId: r.document_id, id: r.supplier_id, role: "supplier" });
   for (const r of sales.data ?? []) links.push({ documentId: r.document_id, id: r.customer_id, role: "customer" });
   for (const r of payments.data ?? []) {
     if (r.customer_id) links.push({ documentId: r.document_id, id: r.customer_id, role: "customer" });
     else if (r.supplier_id) links.push({ documentId: r.document_id, id: r.supplier_id, role: "supplier" });
   }
-  const ids = (role: Party["role"]) => [...new Set(links.filter((l) => l.role === role).map((l) => l.id))];
+  const ids = (role: "customer" | "supplier") => [...new Set(links.filter((l) => l.role === role).map((l) => l.id))];
   const [customers, suppliers] = await Promise.all([
     ids("customer").length
       ? db.from("customers").select("id,name").eq("organization_id", organizationId).in("id", ids("customer"))

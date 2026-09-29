@@ -1,12 +1,13 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createGeminiProvider } from "./gemini";
-import type { RecognitionProvider, InvoiceResult, ReceiptResult, PhotoPage } from "./types";
+import type { RecognitionProvider, InvoiceResult, ReceiptResult, ExpenseResult, PhotoPage } from "./types";
 import { documentPages } from "@/lib/storage";
 import { normalizeInvoiceResult } from "./normalize";
 import { contentFingerprint } from "./fingerprint";
 import { reconcileInvoice } from "./reconcile";
 import { recognizeInvoicePages } from "./pipeline";
+import { expenseMatches, normalizeExpenseResult } from "./expense";
 
 // v2 — тип документа, продавец и покупатель, фрагмент (classify.ts). Кеш v1
 // не используется: в нём нет типа, повторное распознавание — новый вызов.
@@ -61,7 +62,7 @@ export function storagePhotoSource(
     );
   };
 }
-type ExtractionKind = "invoice" | "receipt";
+type ExtractionKind = "invoice" | "receipt" | "expense";
 
 async function cachedExtraction<T>(
   db: SupabaseClient,
@@ -137,7 +138,9 @@ async function recognizeWithCache<T>({
   const call =
     kind === "invoice"
       ? await recognizeInvoicePages(provider, pages)
-      : await provider.recognizeReceipt(pages[0].photo, pages[0].mimeType);
+      : kind === "expense"
+        ? await provider.recognizeExpense(pages)
+        : await provider.recognizeReceipt(pages[0].photo, pages[0].mimeType);
   const latencyMs = Date.now() - startedAt;
   const result = normalize(call.result as T);
   const save = await db.rpc("cache_extraction", {
@@ -216,6 +219,11 @@ export function recognizeReceiptCached(args: CachedArgs) {
   return recognizeWithCache<ReceiptResult>({ ...args, kind: "receipt", normalize: (r) => r });
 }
 
+/** Чек расхода: сумма, дата, кому заплатили, категория. */
+export function recognizeExpenseCached(args: CachedArgs) {
+  return recognizeWithCache<ExpenseResult>({ ...args, kind: "expense", normalize: normalizeExpenseResult });
+}
+
 /**
  * Фоновая оцифровка уже проведённого документа — не меняет долг. Вызывается
  * из `after()`, поэтому ошибки не должны всплывать в ответ пользователю; все
@@ -234,7 +242,7 @@ export async function recognizeDocument({
   db: SupabaseClient;
   organizationId: string;
   documentId: string;
-  kind: "purchase" | "sale" | "payment";
+  kind: "purchase" | "sale" | "payment" | "expense";
   declaredTotal: number | null;
 }): Promise<void> {
   const started = await db.rpc("start_recognition", {
@@ -258,6 +266,17 @@ export async function recognizeDocument({
       p_latency_ms: null,
       p_cost: null,
     };
+    if (kind === "expense") {
+      const { result } = await recognizeExpenseCached({ db, organizationId, documentId, loadPhoto });
+      const save = await db.rpc("save_recognition", {
+        ...common,
+        p_raw_json: { kind: "expense", extracted: result, response: null },
+        p_lines: [],
+        p_status: expenseMatches(result, declaredTotal) ? "digitized" : "review",
+      });
+      if (save.error) throw new Error(save.error.message);
+      return;
+    }
     if (kind === "payment") {
       const { result } = await recognizeReceiptCached({ db, organizationId, documentId, loadPhoto });
       const save = await db.rpc("save_recognition", {

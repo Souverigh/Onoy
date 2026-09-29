@@ -1,7 +1,8 @@
 import "server-only";
 import { Document, Page, Text, View, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import { ensureFontsRegistered } from "./fonts";
-import type { AfterCloseItem, DayMoney, DaySummary } from "../day-summary";
+import { dayNet, type AfterCloseItem, type DayMoney, type DaySummary } from "../day-summary";
+import { expenseCategoryLabel } from "../expenses";
 
 const styles = StyleSheet.create({
   page: { fontFamily: "PT Sans", fontSize: 11, padding: 36, color: "#1d2a2a" },
@@ -78,6 +79,27 @@ function MoneyBlock({ m, cur, title }: { m: DayMoney; cur: string; title?: strin
   );
 }
 
+/** Расходы и «Осталось за день» — в валюте магазина. */
+function ExpensesBlock({ s }: { s: DaySummary }) {
+  const cur = s.currency ?? "KGS";
+  const net = dayNet(s);
+  return (
+    <>
+      <Text style={styles.title}>Расходы</Text>
+      <Row label="Расходы за день" value={sum(net.expenses, cur)} strong />
+      {s.expenses?.byCategory.map((c) => (
+        <Row key={c.category} label={expenseCategoryLabel(c.category)} value={sum(c.amount, cur)} />
+      ))}
+
+      <Text style={styles.title}>Осталось за день</Text>
+      <Row label="Пришло (наличные продажи + собрано)" value={sum(net.income, cur)} />
+      <Row label="Оплачено поставщикам" value={`− ${sum(net.paid, cur)}`} />
+      <Row label="Расходы" value={`− ${sum(net.expenses, cur)}`} />
+      <Row label="Осталось" value={sum(net.left, cur)} strong />
+    </>
+  );
+}
+
 function DayDocument({ data }: { data: DayPdfData }) {
   const s = data.summary;
   const time = (iso: string) =>
@@ -92,6 +114,7 @@ function DayDocument({ data }: { data: DayPdfData }) {
         </Text>
 
         <MoneyBlock m={s} cur={s.currency ?? "KGS"} />
+        <ExpensesBlock s={s} />
         {s.foreign?.map((part) => (
           <MoneyBlock
             key={part.currency}
@@ -104,10 +127,10 @@ function DayDocument({ data }: { data: DayPdfData }) {
           <>
             <Text style={[styles.title, styles.warn]}>После закрытия</Text>
             {data.after.added.map((i, n) => (
-              <Row key={`a${n}`} label={`+ ${i.label} · ${i.party} · ${time(i.at)}`} value={sum(i.amount, i.currency)} />
+              <Row key={`a${n}`} label={`+ ${i.label}${i.party ? ` · ${i.party}` : ""} · ${time(i.at)}`} value={sum(i.amount, i.currency)} />
             ))}
             {data.after.reversed.map((i, n) => (
-              <Row key={`r${n}`} label={`Отменена: ${i.label} · ${i.party} · ${time(i.at)}`} value={sum(i.amount, i.currency)} />
+              <Row key={`r${n}`} label={`Отменена: ${i.label}${i.party ? ` · ${i.party}` : ""} · ${time(i.at)}`} value={sum(i.amount, i.currency)} />
             ))}
           </>
         )}

@@ -1056,9 +1056,14 @@ td small {
 }
 .quick-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 22px;
+}
+@media (max-width: 560px) {
+  .quick-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .quick-action {
   display: flex;
@@ -3108,4 +3113,35 @@ a.debt-card:hover {
 .debt-card .debt-extra {
   font-weight: 600;
   opacity: 0.85;
+}
+
+/* Расход: категории кнопками-чипами. */
+.expense-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.expense-categories legend {
+  padding: 0;
+  margin-bottom: 6px;
+}
+.expense-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: white;
+  cursor: pointer;
+  font-size: 15px;
+}
+.expense-chip.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: white;
+}
+.expense-chip:has(input:focus-visible) {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
 }

@@ -83,7 +83,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
       summary={{ debts: debtTotals } satisfies Summary}
       unclosedDays={unclosed}
       overdue={overdue}
-      today={todayRow ? { sold: todayRow.sold, collected: todayRow.collected, currency: shopCurrency } : undefined}
+      today={
+        todayRow
+          ? { sold: todayRow.sold, collected: todayRow.collected, expenses: todayRow.expenses, currency: shopCurrency }
+          : undefined
+      }
       pendingClaims={claims.count ?? 0}
       reviewCount={reviewResult.count ?? 0}
       recent={recent}

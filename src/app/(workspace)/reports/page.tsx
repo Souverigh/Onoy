@@ -110,6 +110,14 @@ export default async function Reports({
           <p className="day-number">{money(current.paidSuppliers, cur)}</p>
           <Delta cur={cur} current={current.paidSuppliers} previous={previous.paidSuppliers} against={against} />
         </article>
+        <article className="panel report-tile">
+          <h2>Расходы</h2>
+          <p className="day-number">{money(current.expenses, cur)}</p>
+          <small className="muted">
+            <Link href="/money/expenses">аренда, зарплата, доставка… →</Link>
+          </small>
+          <Delta cur={cur} current={current.expenses} previous={previous.expenses} against={against} />
+        </article>
       </section>
       {report.foreign.map((f) => (
         <p key={f.currency} className="notice report-foreign">

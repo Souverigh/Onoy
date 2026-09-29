@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Sheet } from "./xlsx";
 import { paymentLabelWithSide, type PaymentKind } from "./entry-labels";
+import { expenseCategoryLabel } from "./expenses";
 
 /** Таблицы выгрузки (ТЗ: «экспорт в Excel — отдельные таблицы и вся база одной кнопкой»). */
 export const EXPORT_TABLES = {
@@ -10,6 +11,7 @@ export const EXPORT_TABLES = {
   sales: "Продажи",
   purchases: "Приходы",
   payments: "Оплаты",
+  expenses: "Расходы",
   lines: "Позиции накладных",
 } as const;
 export type ExportTable = keyof typeof EXPORT_TABLES;
@@ -207,6 +209,31 @@ export async function exportSheets(
         r.customer_id ? customerName.get(r.customer_id) ?? "" : r.supplier_id ? supplierName.get(r.supplier_id) ?? "" : "",
         num(r.amount), currencyOf(r.customer_id ?? r.supplier_id), ...original(r), statusLabel[r.status] ?? r.status, r.bank_reference, r.note ?? r.claim_comment, yes(r.is_opening),
         date(r.reversed_at), r.reversal_comment,
+      ]),
+    });
+  }
+
+  if (need.has("expenses")) {
+    const rows = await all<{
+      spent_on: string; category: string; note: string | null; amount: string; currency: string;
+      photos: unknown[]; created_at: string; reversed_at: string | null; reversal_comment: string | null;
+    }>(db, "expenses", "id,spent_on,category,note,amount,currency,photos,created_at,reversed_at,reversal_comment", organizationId, "spent_on");
+    sheets.push({
+      name: EXPORT_TABLES.expenses,
+      columns: [
+        { header: "Дата", width: 14, kind: "date" },
+        { header: "Категория", width: 24 },
+        { header: "Комментарий", width: 40 },
+        { header: "Сумма", width: 16, kind: "money" },
+        { header: "Валюта", width: 10 },
+        { header: "Фото", width: 8 },
+        { header: "Внесён", width: 18, kind: "date" },
+        { header: "Отменён", width: 18, kind: "date" },
+        { header: "Причина отмены", width: 36 },
+      ],
+      rows: rows.map((r) => [
+        onlyDate(r.spent_on), expenseCategoryLabel(r.category), r.note ?? "", num(r.amount), r.currency,
+        yes((r.photos ?? []).length > 0), date(r.created_at), date(r.reversed_at), r.reversal_comment,
       ]),
     });
   }

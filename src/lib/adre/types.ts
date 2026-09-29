@@ -69,6 +69,21 @@ export type ReceiptResult = {
   confidence: number;
 };
 
+/**
+ * Чек или квитанция расхода магазина (аренда, доставка, свет, покупка в
+ * хозмаге). category — одна из категорий expenses (src/lib/expenses.ts).
+ */
+export type ExpenseResult = {
+  document_class: "receipt" | "invoice" | "bill" | "handwritten" | "not_document";
+  vendor: string | null;
+  datetime: string | null;
+  amount: number;
+  currency?: "KGS" | "USD" | "RUB";
+  description: string | null;
+  category: "rent" | "salary" | "transport" | "utilities" | "taxes" | "supplies" | "food" | "other";
+  confidence: number;
+};
+
 /** Страница тетради долгов при переносе: «имя — сумма», сумма со знаком. */
 export type NotebookRow = {
   name_raw: string;
@@ -89,4 +104,5 @@ export interface RecognitionProvider {
   recognizeInvoice(pages: PhotoPage[], part?: PagePart): Promise<RawCall<InvoiceResult>>;
   recognizeReceipt(photo: Buffer, mimeType: string): Promise<RawCall<ReceiptResult>>;
   recognizeNotebook(pages: PhotoPage[]): Promise<RawCall<NotebookResult>>;
+  recognizeExpense(pages: PhotoPage[]): Promise<RawCall<ExpenseResult>>;
 }

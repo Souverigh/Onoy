@@ -32,7 +32,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 20);
+  assert.equal(rows.length, 21);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -1926,5 +1926,79 @@ test("currencies: debt in the party's currency, other currencies converted at th
   await assert.rejects(
     db.query("select merge_party($1,'customers',$2,$3)", [orgA, client, fresh]),
     /currency_mismatch/,
+  );
+});
+
+test("expenses: any member records, owner reverses, author undoes, other shops see nothing", async () => {
+  await owner();
+  await db.query("insert into organization_members(organization_id,user_id,role) values ($1,$2,'staff') on conflict do nothing", [orgA, b]);
+  await user(b);
+  const key = "e0e0e0e0-0000-4000-8000-000000000001";
+  // Продавец вносит расход: сегодня по умолчанию, валюта — магазина.
+  const id = (
+    await db.query("select commit_expense($1,'1500.50','transport','Доставка цемента',null,null,$2) as id", [orgA, key])
+  ).rows[0].id;
+  const row = (await db.query("select amount,currency,spent_on,created_by from expenses where id=$1", [id])).rows[0];
+  assert.equal(row.amount, "1500.50");
+  assert.equal(row.created_by, b);
+  // Повтор с тем же ключом — та же запись; с другими данными — конфликт.
+  assert.equal(
+    (await db.query("select commit_expense($1,'1500.50','transport','Доставка цемента',null,null,$2) as id", [orgA, key])).rows[0].id,
+    id,
+  );
+  await assert.rejects(
+    db.query("select commit_expense($1,'1600','transport','Доставка цемента',null,null,$2)", [orgA, key]),
+    /idempotency_conflict/,
+  );
+  // «Прочее» без комментария, будущая дата, чужая папка фото — отказ.
+  await assert.rejects(
+    db.query("select commit_expense($1,'100','other','  ',null,null,'e0e0e0e0-0000-4000-8000-000000000002')", [orgA]),
+    /invalid_note/,
+  );
+  await assert.rejects(
+    db.query("select commit_expense($1,'100','food',null,current_date+5,null,'e0e0e0e0-0000-4000-8000-000000000003')", [orgA]),
+    /invalid_date/,
+  );
+  // Фото — документ расхода своего магазина; документ продажи или чужой — отказ.
+  const doc = (
+    await db.query("select create_document($1,'expense','x/expense/1.jpg','hash-expense-1','image/jpeg') as id", [orgA])
+  ).rows[0].id;
+  const saleDoc = (
+    await db.query("select create_document($1,'sale','x/sale/1.jpg','hash-expense-2','image/jpeg') as id", [orgA])
+  ).rows[0].id;
+  await assert.rejects(
+    db.query("select commit_expense($1,'100','food',null,null,$2,'e0e0e0e0-0000-4000-8000-000000000004')", [orgA, saleDoc]),
+    /invalid_document/,
+  );
+  const withPhoto = (
+    await db.query(
+      "select commit_expense($1,'250','food',null,current_date-1,$2,'e0e0e0e0-0000-4000-8000-000000000005') as id",
+      [orgA, doc],
+    )
+  ).rows[0].id;
+  // Фото занято действующим расходом — второй раз не приложить (повторы запрещены по умолчанию).
+  await assert.rejects(
+    db.query("select create_document($1,'expense','x/expense/2.jpg','hash-expense-1','image/jpeg')", [orgA]),
+    /document_in_use/,
+  );
+  // Напрямую в таблицу не пишут и не правят.
+  await assert.rejects(db.query("update expenses set amount=1 where id=$1", [id]), /permission denied/);
+  // Продавец не отменяет с причиной; автор отменяет свой расход в первые 2 минуты.
+  await assert.rejects(db.query("select reverse_expense($1,$2,'ошибка')", [orgA, id]), /owner_only/);
+  await db.query("select undo_recent($1,'expense',$2)", [orgA, withPhoto]);
+  assert.ok((await db.query("select reversed_at from expenses where id=$1", [withPhoto])).rows[0].reversed_at);
+  // Владелец отменяет с причиной.
+  await user(a);
+  await db.query("select reverse_expense($1,$2,'Задвоили')", [orgA, id]);
+  assert.equal((await db.query("select reversal_comment from expenses where id=$1", [id])).rows[0].reversal_comment, "Задвоили");
+  await assert.rejects(db.query("select reverse_expense($1,$2,'ещё раз')", [orgA, id]), /invalid_expense/);
+  // Магазин B расходов A не видит.
+  await owner();
+  await db.query("delete from organization_members where organization_id=$1 and user_id=$2", [orgA, b]);
+  await user(b);
+  assert.equal((await db.query("select count(*)::int as n from expenses where organization_id=$1", [orgA])).rows[0].n, 0);
+  await assert.rejects(
+    db.query("select commit_expense($1,'100','food',null,null,null,'e0e0e0e0-0000-4000-8000-000000000006')", [orgA]),
+    /not_a_member/,
   );
 });

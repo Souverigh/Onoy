@@ -7,15 +7,18 @@ import { getContext } from "@/lib/context";
 import { decimalInput } from "@/lib/validation";
 import { safeBackPath } from "@/lib/back-path";
 import { isDuplicatePhoto, uploadOperationPhoto, uploadOperationPhotos } from "@/lib/storage";
+import { expenseDateInput, isExpenseCategory } from "@/lib/expenses";
+import { bishkekDate } from "@/lib/day-summary";
 import { MAX_PAGES, documentMimeType } from "@/lib/pages";
 import {
   recognizeDocument,
   finalizeInvoiceRecognition,
   recognizeInvoiceCached,
   recognizeReceiptCached,
+  recognizeExpenseCached,
   storagePhotoSource,
 } from "@/lib/adre/recognize";
-import type { InvoiceResult, PhotoPage } from "@/lib/adre/types";
+import type { ExpenseResult, InvoiceResult, PhotoPage } from "@/lib/adre/types";
 import { checkDocument, ownNameMatcher, type DocumentVerdict } from "@/lib/adre/classify";
 import { bestMatches, similarity } from "@/lib/match";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -706,11 +709,154 @@ export async function customerFromContact(
 export async function undoRecent(form: FormData) {
   const kind = String(form.get("kind") ?? "");
   const id = String(form.get("id") ?? "");
-  if (!["sale", "purchase", "payment"].includes(kind) || !uuidPattern.test(id)) redirect("/money?error=invalid");
+  if (!["sale", "purchase", "payment", "expense"].includes(kind) || !uuidPattern.test(id)) redirect("/money?error=invalid");
   const { db, organizationId } = await getContext();
   const result = await db.rpc("undo_recent", { p_org: organizationId, p_kind: kind, p_id: id });
   if (result.error)
-    redirect(kind === "sale" ? `/money/send/${id}?done=1&undo=expired` : `/money/done/${kind}/${id}?undo=expired`);
+    redirect(
+      kind === "sale"
+        ? `/money/send/${id}?done=1&undo=expired`
+        : kind === "expense"
+          ? `/money/expense/${id}?undo=expired`
+          : `/money/done/${kind}/${id}?undo=expired`,
+    );
   revalidatePath("/", "layout");
-  redirect(`/money/new?type=${kind}&undone=1`);
+  redirect(kind === "expense" ? "/money/expense?undone=1" : `/money/new?type=${kind}&undone=1`);
+}
+
+/** Итог записи расхода, если не прошла (успех — редирект на экран результата). */
+export type ExpenseState = { error?: string; documentId?: string; attempt?: number };
+
+/** Распознанный чек расхода — для подстановки в форму до записи. */
+export type ExpenseCheck =
+  | { ok: true; documentId: string; result: ExpenseResult; duplicate: boolean; date: string | null }
+  | { ok: false; error: string; documentId?: string; duplicate?: boolean };
+
+/**
+ * Фото чека расхода выбрано — загружаем как документ и сразу распознаём:
+ * форма подставит сумму, дату, категорию и комментарий. Без перезагрузки;
+ * запись расхода потом берёт этот document_id.
+ */
+export async function recognizeExpensePhoto(form: FormData): Promise<ExpenseCheck> {
+  const photos = photosOf(form);
+  if (photos.length === 0) return { ok: false, error: "no_photo" };
+  if (photos.length > MAX_PAGES) return { ok: false, error: "upload_failed" };
+  const { db, organizationId } = await getContext();
+  let documentId: string;
+  try {
+    documentId = await uploadOperationPhotos(db, organizationId, "expense", photos);
+  } catch (error) {
+    const used = error instanceof Error && error.message === "document_in_use";
+    return { ok: false, error: used ? "photo_used" : "upload_failed" };
+  }
+  const duplicate = await isDuplicatePhoto(db, organizationId, documentId);
+  if (!process.env.GEMINI_API_KEY) return { ok: false, error: "no_provider", documentId, duplicate };
+  try {
+    const { result } = await recognizeExpenseCached({
+      db,
+      organizationId,
+      documentId,
+      loadPhoto: async () =>
+        Promise.all(
+          photos.map(async (photo) => ({
+            photo: Buffer.from(await photo.arrayBuffer()),
+            mimeType: documentMimeType(photo),
+          })),
+        ),
+    });
+    // Дата чека → день расхода, если он не в будущем и не старше года.
+    const paidAt = receiptDateTime(result.datetime);
+    const date = paidAt ? expenseDateInput(paidAt.slice(0, 10), bishkekDate()) : null;
+    return { ok: true, documentId, result, duplicate, date };
+  } catch (error) {
+    console.error("recognizeExpensePhoto: recognition failed", error);
+    return { ok: false, error: "recognition_failed", documentId, duplicate };
+  }
+}
+
+/**
+ * Расход магазина: сумма, категория, комментарий, день (по умолчанию
+ * сегодня), фото чека по желанию — оно становится документом и
+ * распознаётся. Вносит любой участник. Ошибка возвращается в форму —
+ * введённое не пропадает.
+ */
+export async function commitExpense(previous: ExpenseState, form: FormData): Promise<ExpenseState> {
+  const attempt = (previous.attempt ?? 0) + 1;
+  try {
+    const idempotencyKey = String(form.get("idempotency_key") ?? "");
+    const category = String(form.get("category") ?? "");
+    const note = String(form.get("note") ?? "").trim();
+    if (!uuidPattern.test(idempotencyKey) || !isExpenseCategory(category)) return { error: "invalid", attempt };
+    let amount: string;
+    try {
+      amount = decimalInput(form.get("amount"), 2);
+    } catch {
+      return { error: "amount", attempt };
+    }
+    if (!(Number(amount) > 0)) return { error: "amount", attempt };
+    if (note.length > 500 || (category === "other" && !note)) return { error: "note", attempt };
+    const day = expenseDateInput(String(form.get("spent_on") ?? ""), bishkekDate());
+    if (!day) return { error: "date", attempt };
+    const files = photosOf(form);
+    if (files.length > MAX_PAGES) return { error: "photo_upload", attempt };
+    const existing = String(form.get("document_id") ?? "").trim();
+
+    const { db, organizationId } = await getContext();
+    let documentId: string | null = uuidPattern.test(existing) ? existing : null;
+    if (!documentId && files.length) {
+      try {
+        documentId = await uploadOperationPhotos(db, organizationId, "expense", files);
+      } catch (error) {
+        const used = error instanceof Error && error.message === "document_in_use";
+        return { error: used ? "photo_used" : "photo_upload", attempt };
+      }
+    }
+    const result = await db.rpc("commit_expense", {
+      p_org: organizationId,
+      p_amount: amount,
+      p_category: category,
+      p_note: note || null,
+      p_spent_on: day,
+      p_document: documentId,
+      p_idempotency_key: idempotencyKey,
+    });
+    if (result.error || !result.data) {
+      console.error("commitExpense: RPC failed", { message: result.error?.message });
+      const message = result.error?.message ?? "";
+      const error = message.includes("invalid_note")
+        ? "note"
+        : message.includes("invalid_date")
+          ? "date"
+          : failureCode(message);
+      // Фото уже загружены — повтор возьмёт этот документ, а не загрузит заново.
+      return error === "photo_used" || !documentId ? { error, attempt } : { error, documentId, attempt };
+    }
+    if (documentId) {
+      const docId = documentId;
+      // Распознавание обычно уже в кеше (проверка при выборе фото) — здесь
+      // только статус документа: «Оцифрована» или «Расхождение» с суммой.
+      after(() =>
+        recognizeDocument({ db, organizationId, documentId: docId, kind: "expense", declaredTotal: Number(amount) }),
+      );
+    }
+    revalidatePath("/", "layout");
+    redirect(`/money/expense/${result.data}?done=1`);
+  } catch (error) {
+    unstable_rethrow(error);
+    console.error("commitExpense: unexpected failure", error);
+    return { error: "save", attempt };
+  }
+}
+
+/** Отмена расхода владельцем — с причиной, запись остаётся в истории. */
+export async function reverseExpense(form: FormData) {
+  const id = String(form.get("id") ?? "");
+  const comment = String(form.get("comment") ?? "").trim();
+  if (!uuidPattern.test(id)) redirect("/money/expenses?error=invalid");
+  if (!comment) redirect(`/money/expense/${id}?error=comment`);
+  const { db, organizationId } = await getContext();
+  const result = await db.rpc("reverse_expense", { p_org: organizationId, p_expense: id, p_comment: comment });
+  if (result.error) redirect(`/money/expense/${id}?error=reversal`);
+  revalidatePath("/", "layout");
+  redirect(`/money/expense/${id}?reversed=1`);
 }

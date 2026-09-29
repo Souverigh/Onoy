@@ -17,7 +17,7 @@ export default function Preview() {
             { currency: "USD", receivable: 0, payable: 55816.76 },
           ],
         }}
-        today={{ sold: 12400, collected: 5000, currency: "KGS" }}
+        today={{ sold: 12400, collected: 5000, expenses: 1500, currency: "KGS" }}
         pendingClaims={3}
         reviewCount={1}
         unclosedDays={["2026-09-26"]}

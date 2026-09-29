@@ -18,6 +18,8 @@ export type PeriodTotals = {
   collected: number;
   purchased: number;
   paidSuppliers: number;
+  /** Расходы магазина (в валюте магазина; в `foreign` всегда 0). */
+  expenses: number;
 };
 export type PeriodDay = { date: string; sold: number; collected: number };
 export type Debtor = { id: string; name: string; balance: number; oldestDays: number | null };
@@ -40,6 +42,7 @@ const empty = (): PeriodTotals => ({
   collected: 0,
   purchased: 0,
   paidSuppliers: 0,
+  expenses: 0,
 });
 
 // Суммы копим в тийынах — без ошибок float на длинных периодах.
@@ -69,7 +72,7 @@ export async function periodReport(
       .range(0, 9999);
   const org = await db.from("organizations").select("currency").eq("id", organizationId).maybeSingle();
   const shopCurrency: Currency = isCurrency(org.data?.currency) ? org.data.currency : "KGS";
-  const [sales, purchases, payments, customers, aging, foreignMap] = await Promise.all([
+  const [sales, purchases, payments, customers, aging, foreignMap, expenses] = await Promise.all([
     rows("sales", "customer_id,total,paid_immediately,occurred_at"),
     rows("purchases", "supplier_id,total,occurred_at"),
     rows("payments", "customer_id,supplier_id,amount,direction,occurred_at,kind"),
@@ -84,6 +87,15 @@ export async function periodReport(
       .eq("organization_id", organizationId)
       .range(0, 4999),
     foreignParties(db, organizationId, shopCurrency),
+    db
+      .from("expenses")
+      .select("spent_on,amount")
+      .eq("organization_id", organizationId)
+      .eq("currency", shopCurrency)
+      .is("reversed_at", null)
+      .gte("spent_on", period.previous.start)
+      .lte("spent_on", period.end)
+      .range(0, 9999),
   ]);
   if (sales.error || purchases.error || payments.error || customers.error)
     throw new Error("Не удалось загрузить итоги периода");
@@ -138,6 +150,11 @@ export async function periodReport(
       t.collected += cents(r.amount);
       if (t === current) byDay.get(date)!.collected += cents(r.amount);
     } else t.paidSuppliers += cents(r.amount);
+  }
+
+  for (const r of (expenses.data ?? []) as { spent_on: string; amount: string }[]) {
+    const t = bucket(r.spent_on, {});
+    if (t) t.expenses += cents(r.amount);
   }
 
   const oldest = new Map(

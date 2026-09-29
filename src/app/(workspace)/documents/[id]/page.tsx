@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
 import { checkDocument, ownNameMatcher } from "@/lib/adre/classify";
-import type { InvoiceResult } from "@/lib/adre/types";
+import type { ExpenseResult, InvoiceResult } from "@/lib/adre/types";
+import { expenseCategoryLabel } from "@/lib/expenses";
 import { money } from "@/lib/format";
 import { documentPages, signedPhotoUrl } from "@/lib/storage";
 import { DocumentPhotos } from "@/components/document-photos";
@@ -15,7 +16,7 @@ type DocRow = {
   id: string;
   storage_path: string;
   status: string;
-  kind: "purchase" | "sale" | "payment" | null;
+  kind: "purchase" | "sale" | "payment" | "expense" | null;
   error_message: string | null;
   created_at: string;
 };
@@ -142,6 +143,23 @@ export default async function DocumentDetail({
     }
   }
 
+  // Расход: сумма в записи — третья сторона сверки с чеком.
+  let expense: { id: string; amount: string; currency: string; category: string; note: string | null } | null = null;
+  if (doc.kind === "expense") {
+    const row = await db
+      .from("expenses")
+      .select("id,amount,currency,category,note")
+      .eq("organization_id", organizationId)
+      .eq("document_id", id)
+      .maybeSingle();
+    if (row.data) {
+      expense = row.data;
+      declaredTotal = Number(row.data.amount);
+      docCurrency = row.data.currency;
+    }
+  }
+  const expenseFields = doc.kind === "expense" ? (extraction?.payload?.extracted as ExpenseResult | undefined) : undefined;
+
   const pages = await documentPages(db, organizationId, doc.id);
   const photoUrls = await Promise.all(pages.map((page) => signedPhotoUrl(db, page.storage_path)));
   const linesTotal = lines.reduce((sum, line) => sum + Number(line.sum), 0);
@@ -219,7 +237,13 @@ export default async function DocumentDetail({
       <div className="page-heading">
         <div>
           <span className="eyebrow">
-            {doc.kind === "purchase" ? "ПРИХОД" : doc.kind === "sale" ? "ПРОДАЖА" : "ОПЛАТА"}
+            {doc.kind === "purchase"
+              ? "ПРИХОД"
+              : doc.kind === "sale"
+                ? "ПРОДАЖА"
+                : doc.kind === "expense"
+                  ? "РАСХОД"
+                  : "ОПЛАТА"}
           </span>
           <h1>Документ</h1>
         </div>
@@ -359,7 +383,61 @@ export default async function DocumentDetail({
           />
         </section>
 
-        {doc.kind === "payment" ? (
+        {doc.kind === "expense" ? (
+          <section className="panel">
+            <div className="section-title">
+              <h2>Распознанные данные чека</h2>
+              {expense && (
+                <Link className="text-button" href={`/money/expense/${expense.id}`}>
+                  Открыть расход →
+                </Link>
+              )}
+            </div>
+            {expenseFields ? (
+              <>
+                <dl className="details">
+                  <dt>Кому заплатили</dt>
+                  <dd>{expenseFields.vendor ?? "—"}</dd>
+                  <dt>Дата</dt>
+                  <dd>{expenseFields.datetime ?? "—"}</dd>
+                  <dt>Сумма на чеке</dt>
+                  <dd>{expenseFields.amount > 0 ? money(expenseFields.amount, expenseFields.currency ?? docCurrency) : "—"}</dd>
+                  <dt>В записи</dt>
+                  <dd>{expense ? money(expense.amount, expense.currency) : "—"}</dd>
+                  <dt>За что</dt>
+                  <dd>{expenseFields.description ?? "—"}</dd>
+                  <dt>Категория по чеку</dt>
+                  <dd>
+                    {expenseCategoryLabel(expenseFields.category)}
+                    {expense && expense.category !== expenseFields.category && (
+                      <span className="muted"> · в записи: {expenseCategoryLabel(expense.category)}</span>
+                    )}
+                  </dd>
+                </dl>
+                {doc.status === "review" && (
+                  <>
+                    <p className="photo-check-mismatch">
+                      {expenseFields.document_class === "not_document"
+                        ? "На фото не видно чека."
+                        : "Сумма на чеке не совпадает с записью или чек плохо читается. Сверьте с фото."}{" "}
+                      Если запись ошибочная — отмените расход и запишите правильно.
+                    </p>
+                    <form action={confirmDocument} className="simple-operation-actions">
+                      <input type="hidden" name="id" value={doc.id} />
+                      <button className="button primary" type="submit">
+                        Всё верно
+                      </button>
+                    </form>
+                  </>
+                )}
+              </>
+            ) : (
+              <p className="muted">
+                {expense ? "Данные появятся после распознавания." : "Фото ещё не привязано к расходу."}
+              </p>
+            )}
+          </section>
+        ) : doc.kind === "payment" ? (
           <section className="panel">
             <h2>Распознанные данные чека</h2>
             {receiptFields ? (

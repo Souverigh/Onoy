@@ -18,7 +18,7 @@ export function plural(n: number, one: string, few: string, many: string) {
 
 /**
  * Главный экран (ТЗ §7, экран 2; аудит 15.1 п. 7): «Мне должны / Я должен»
- * (кликаются), Продажа / Приход / Оплата, ждущие заявки, итог дня за
+ * (кликаются), Продажа / Приход / Оплата / Расход, ждущие заявки, итог дня за
  * сегодня, накладные с расхождением, поиск клиента, последние записи.
  * Продавцу — без сумм магазина (роли, п. 45).
  */
@@ -46,7 +46,7 @@ export function Dashboard({
   /** Продавец открыл владельческую страницу — объясняем, почему вернули сюда. */
   ownerOnlyNotice?: boolean;
   /** Продано и собрано за сегодня (для кнопки «Итог дня»). */
-  today?: { sold: number; collected: number; currency: string };
+  today?: { sold: number; collected: number; expenses: number; currency: string };
   pendingClaims?: number;
   /** Накладные с расхождением или ошибкой распознавания — «незавершённые». */
   reviewCount?: number;
@@ -106,6 +106,9 @@ export function Dashboard({
         <Link className="quick-action secondary-action" href={href("/money/new?type=payment")}>
           Оплата
         </Link>
+        <Link className="quick-action secondary-action" href={href("/money/expense")}>
+          Расход
+        </Link>
       </section>
       {!staff && today && (
         <Link className="dashboard-day" href={href("/day")}>
@@ -113,6 +116,7 @@ export function Dashboard({
             <strong>Итог дня</strong>
             <small className="muted">
               продано {money(today.sold, today.currency)} · собрано {money(today.collected, today.currency)}
+              {today.expenses > 0 && <> · расходы {money(today.expenses, today.currency)}</>}
             </small>
           </span>
           <span aria-hidden="true">→</span>

@@ -10,12 +10,15 @@ import {
   dayBounds,
   dayClosure,
   dayHistory,
+  dayNet,
   type DayMoney,
+  type DaySummary,
   type PartyAmount,
   unclosedDays,
 } from "@/lib/day-summary";
 import { closeDay } from "./actions";
 import { UnclosedDays } from "@/components/unclosed-days";
+import { expenseCategoryLabel } from "@/lib/expenses";
 
 const HISTORY_DAYS = 14;
 
@@ -79,6 +82,43 @@ function DayMoneyPanels({ m, cur }: { m: DayMoney; cur: string }) {
   );
 }
 
+/** Расходы и «Осталось за день» — в валюте магазина. */
+function DayExpensesPanels({ summary, date }: { summary: DaySummary; date: string }) {
+  const cur = summary.currency ?? "KGS";
+  const net = dayNet(summary);
+  const expenses = summary.expenses;
+  return (
+    <div className="day-grid">
+      <section className="panel">
+        <h2>Расходы за день</h2>
+        <p className="day-number">{money(net.expenses, cur)}</p>
+        {expenses && expenses.byCategory.length > 0 ? (
+          <div className="balance-list">
+            {expenses.byCategory.map((c) => (
+              <div className="balance-row" key={c.category}>
+                <span>{expenseCategoryLabel(c.category)}</span>
+                <strong>{money(c.amount, cur)}</strong>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="muted">Расходов не было.</p>
+        )}
+        <p className="muted">
+          <Link href={`/money/expenses?month=${date.slice(0, 7)}`}>Все расходы →</Link>
+        </p>
+      </section>
+      <section className="panel">
+        <h2>Осталось за день</h2>
+        <p className="muted">Пришло (наличные продажи + собрано): {money(net.income, cur)}</p>
+        <p className="muted">Оплачено поставщикам: − {money(net.paid, cur)}</p>
+        <p className="muted">Расходы: − {money(net.expenses, cur)}</p>
+        <p className="day-number">{money(net.left, cur)}</p>
+      </section>
+    </div>
+  );
+}
+
 export default async function DayClose({
   searchParams,
 }: {
@@ -123,7 +163,13 @@ export default async function DayClose({
   const rows = history.map((row) => {
     const snap = snapshots.get(row.date);
     return snap
-      ? { ...row, sold: snap.sold.total, collected: snap.collected.total, purchased: snap.suppliers.purchased }
+      ? {
+          ...row,
+          sold: snap.sold.total,
+          collected: snap.collected.total,
+          purchased: snap.suppliers.purchased,
+          expenses: snap.expenses?.total ?? 0,
+        }
       : row;
   });
 
@@ -231,6 +277,7 @@ export default async function DayClose({
       )}
 
       <DayMoneyPanels m={summary} cur={summary.currency ?? "KGS"} />
+      <DayExpensesPanels summary={summary} date={date} />
       {summary.foreign?.map((part) => (
         <section key={part.currency} className="day-foreign">
           <h2 className="day-foreign-title">
@@ -280,7 +327,8 @@ export default async function DayClose({
             {after.added.map((item, i) => (
               <li key={`a${i}`}>
                 <span>
-                  + {item.label} · {item.party}
+                  + {item.label}
+                  {item.party ? ` · ${item.party}` : ""}
                   <small className="muted"> · внесена {time(item.at)}</small>
                 </span>
                 <strong>{money(item.amount, item.currency)}</strong>
@@ -289,7 +337,8 @@ export default async function DayClose({
             {after.reversed.map((item, i) => (
               <li key={`r${i}`} className="day-after-reversed">
                 <span>
-                  Отменена: {item.label} · {item.party}
+                  Отменена: {item.label}
+                  {item.party ? ` · ${item.party}` : ""}
                   <small className="muted"> · {time(item.at)}</small>
                 </span>
                 <strong>{money(item.amount, item.currency)}</strong>
@@ -322,6 +371,7 @@ export default async function DayClose({
                 <th>Продано</th>
                 <th>Собрано</th>
                 <th>Приход</th>
+                <th>Расходы</th>
                 <th>Закрыт</th>
               </tr>
             </thead>
@@ -343,6 +393,7 @@ export default async function DayClose({
                   <td>{money(row.sold, shopCurrency)}</td>
                   <td>{money(row.collected, shopCurrency)}</td>
                   <td>{money(row.purchased, shopCurrency)}</td>
+                  <td>{money(row.expenses, shopCurrency)}</td>
                   <td>{snapshots.has(row.date) ? "✓" : <span className="muted">—</span>}</td>
                 </tr>
               ))}

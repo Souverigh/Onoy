@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { paymentLabelWithSide, type PaymentKind } from "./entry-labels";
+import { expenseCategoryLabel } from "./expenses";
 
 export type RecentRecord = {
   key: string;
@@ -14,9 +15,9 @@ export type RecentRecord = {
   reversed: boolean;
 };
 
-/** Последние записи магазина (продажи, приходы, оплаты) — для главного экрана. */
+/** Последние записи магазина (продажи, приходы, оплаты, расходы) — для главного экрана. */
 export async function recentRecords(db: SupabaseClient, organizationId: string, limit = 6): Promise<RecentRecord[]> {
-  const [sales, purchases, payments] = await Promise.all([
+  const [sales, purchases, payments, expenses] = await Promise.all([
     db
       .from("sales")
       .select("id,customer_id,total,paid_immediately,created_at,reversed_at,is_opening")
@@ -36,6 +37,12 @@ export async function recentRecords(db: SupabaseClient, organizationId: string, 
       .select("id,customer_id,supplier_id,direction,amount,created_at,reversed_at,is_opening,kind,status")
       .eq("organization_id", organizationId)
       .neq("status", "rejected")
+      .order("created_at", { ascending: false })
+      .limit(limit),
+    db
+      .from("expenses")
+      .select("id,category,note,amount,currency,created_at,reversed_at")
+      .eq("organization_id", organizationId)
       .order("created_at", { ascending: false })
       .limit(limit),
   ]);
@@ -103,6 +110,17 @@ export async function recentRecords(db: SupabaseClient, organizationId: string, 
         reversed: Boolean(r.reversed_at),
       };
     }),
+    // Таблицы может ещё не быть (миграция 29) — тогда data пустая.
+    ...((expenses.data ?? []) as { id: string; category: string; note: string | null; amount: string; currency: string; created_at: string; reversed_at: string | null }[]).map((r) => ({
+      key: `e${r.id}`,
+      label: `Расход · ${expenseCategoryLabel(r.category)}`,
+      party: r.note || "Подробнее",
+      partyHref: `/money/expense/${r.id}`,
+      amount: String(r.amount),
+      currency: r.currency,
+      at: r.created_at,
+      reversed: Boolean(r.reversed_at),
+    })),
   ];
   return rows.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
 }

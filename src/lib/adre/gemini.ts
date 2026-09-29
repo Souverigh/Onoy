@@ -3,6 +3,7 @@ import type {
   InvoiceResult,
   ReceiptResult,
   NotebookResult,
+  ExpenseResult,
   RecognitionProvider,
   RawCall,
   PhotoPage,
@@ -105,6 +106,26 @@ const receiptSchema = {
   },
   required: ["amount", "confidence"],
 };
+
+const expenseSchema = {
+  type: "object",
+  properties: {
+    document_class: { type: "string", enum: ["receipt", "invoice", "bill", "handwritten", "not_document"] },
+    vendor: { type: "string", nullable: true },
+    datetime: { type: "string", nullable: true },
+    amount: { type: "number" },
+    currency: { type: "string", enum: ["KGS", "USD", "RUB"] },
+    description: { type: "string", nullable: true },
+    category: {
+      type: "string",
+      enum: ["rent", "salary", "transport", "utilities", "taxes", "supplies", "food", "other"],
+    },
+    confidence: { type: "number" },
+  },
+  required: ["document_class", "amount", "currency", "category", "confidence"],
+};
+
+const expensePrompt = `Ты распознаёшь документ о РАСХОДЕ магазина стройматериалов в Кыргызстане: кассовый чек, товарный чек, квитанция об оплате (свет, вода, интернет, связь, налог, аренда), скриншот банковского перевода, рукописная расписка (доставка, грузчики, зарплата). document_class: receipt — кассовый или товарный чек, скриншот перевода; invoice — накладная или счёт; bill — квитанция коммунальных услуг, налога, аренды; handwritten — рукописная расписка или записка; not_document — документа нет. Извлеки: vendor — кому заплатили (магазин, компания, получатель перевода, человек), как написано; datetime — дата и время, в формате ГГГГ-ММ-ДДTчч:мм (если времени нет — ГГГГ-ММ-ДД), без часового пояса; amount — итоговая сумма к оплате (ИТОГО, К оплате, сумма перевода), число с точкой; currency — KGS (сом, без знака в Кыргызстане — KGS), USD или RUB по знаку; description — коротко, за что заплатили, 2–6 слов по-русски (например «Бензин для доставки», «Электроэнергия за сентябрь», «Хлеб и чай»); category — одна из: rent (аренда помещения, склада), salary (зарплата, аванс сотруднику, грузчики), transport (доставка, такси, бензин, ремонт машины), utilities (свет, вода, газ, отопление, интернет, связь, телефон), taxes (налоги, патент, сборы, штрафы), supplies (хозтовары, канцелярия, уборка, ремонт магазина, пакеты), food (еда, чай, вода для магазина), other (если ничего не подходит); confidence — уверенность 0-1. Отвечай только JSON по заданной схеме.`;
 
 const invoicePrompt = `Ты распознаёшь документ магазина стройматериалов в Кыргызстане (кириллица, латиница, турецкий; кыргызские и узбекские имена, сокращения названий товаров). Сначала определи, что на фото (document_class): invoice — накладная, счёт или товарный чек со списком отпущенных товаров; receipt — чек или квитанция об оплате, скриншот банковского перевода; statement — выписка или акт сверки: таблица операций по датам с приходом и оплатами (дебет/кредит, Borç/Alacak, сальдо); price_list — прайс-лист (цены без покупателя и количества); notebook — страница тетради долгов (имена и суммы); not_document — документа на фото нет. Если это не invoice — lines оставь пустым, total_computed 0, остальное — что видно. Стороны документа: seller — кто продал и отпустил товар (шапка, «Поставщик», «Продавец», «От кого», печать), buyer — кому («Покупатель», «Получатель», «Кому», «Клиент»); имя как написано, телефон, если есть; стороны не видно — null. fragment — true, если на фото только часть документа: нет шапки и нумерация строк начинается не с 1, или итог промежуточный («Итого по странице», перенос), или документ явно продолжается на другом листе. page_top_sides — для каждого фото по порядку (Фото 1, Фото 2, …; у PDF — для каждой его страницы): у какого края фото верх текста — куда смотрят верхушки букв и цифр (у прямой страницы строки читаются слева направо, и верх букв смотрит вверх): top — к верхнему краю фото, right — к правому, bottom — к нижнему (текст вверх ногами), left — к левому. Определяй по самим буквам, а не по шапке: у продолжения накладной шапки нет. Фото может быть повёрнуто, а соседние — нет: смотри каждое отдельно. Для накладной извлеки дату, номер накладной, все позиции (номер строки, название как написано, количество, единицу, цену за единицу, сумму строки, уверенность 0-1 по каждой позиции), итог по бумаге (total_declared, если виден) и посчитанный тобой итог по сумме строк (total_computed). Валюта (currency) — KGS (сом), USD (доллар) или RUB (рубль): по знаку или слову на документе ($, USD, у.е., долл. — USD; ₽, руб., р., RUB, сумма прописью в рублях — RUB; сом, с., KGS — KGS), тогда currency_evidence = symbol; если знака нет — по масштабу цен (цены вида 0,26 или 3,40 за штуку и итог в тысячах с копейками — это доллары, не сомы), тогда price_scale; если признаков нет — KGS и none. Суммы не пересчитывай — пиши как на бумаге. Числа (qty, price, sum) — только с точкой как разделителем дробной части, без пробелов и разделителей тысяч, например "1234.50", никогда "1 234,50". Единицу измерения приводи к одному из: шт, м, кг, упак, л (если не подходит ни одна — оставь как есть). В рукописных накладных название часто пишут один раз, а в следующих строках — только размер или вариант (например «Щит -4», ниже «-8», «-12», или «Хомуты 150», ниже «200», «250») либо знак повтора (〃, -//-, «то же»). В таких строках пиши полное название, как если бы его повторили: «Щит - 8», «Хомуты 200». Если строка вызывает сомнение (зачёркнуто, неразборчиво) — опиши это в warnings. Отвечай только JSON по заданной схеме, ничего лишнего.`;
 
@@ -230,6 +251,14 @@ export function createGeminiProvider(apiKey: string, model: string): Recognition
     async recognizeNotebook(pages): Promise<RawCall<NotebookResult>> {
       const { json, raw } = await callGemini(model, apiKey, notebookPrompt, notebookSchema, pages);
       return { result: json as NotebookResult, raw, costUsd: estimateCost(raw) };
+    },
+    async recognizeExpense(pages): Promise<RawCall<ExpenseResult>> {
+      const prompt =
+        pages.length > 1 ? `${expensePrompt}
+
+Фото несколько — это страницы одного документа.` : expensePrompt;
+      const { json, raw } = await callGemini(model, apiKey, prompt, expenseSchema, pages);
+      return { result: json as ExpenseResult, raw, costUsd: estimateCost(raw) };
     },
     async recognizeReceipt(photo, mimeType): Promise<RawCall<ReceiptResult>> {
       const { json, raw } = await callGemini(model, apiKey, receiptPrompt, receiptSchema, [

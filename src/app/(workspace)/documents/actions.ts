@@ -15,7 +15,7 @@ export async function retryRecognition(form: FormData) {
   const declared = form.get("declared_total");
   if (
     !uuidPattern.test(id) ||
-    !["purchase", "sale", "payment"].includes(kind)
+    !["purchase", "sale", "payment", "expense"].includes(kind)
   )
     redirect("/documents?error=invalid");
   const { db, organizationId } = await getContext();
@@ -24,7 +24,7 @@ export async function retryRecognition(form: FormData) {
       db,
       organizationId,
       documentId: id,
-      kind: kind as "purchase" | "sale" | "payment",
+      kind: kind as "purchase" | "sale" | "payment" | "expense",
       declaredTotal: typeof declared === "string" && declared ? Number(declared) : null,
     }),
   );
