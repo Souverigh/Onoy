@@ -8,9 +8,11 @@ import {
   commitOperation,
   type CommitState,
   customerFromContact,
+  findPaymentByReference,
   findSimilarRecords,
   type InvoiceCheck,
   type PartySuggestion,
+  type ReferencePayment,
   recognizeInvoicePhoto,
   recognizeReceiptPhoto,
   type ReceiptCheck,
@@ -21,6 +23,7 @@ import type { DocumentVerdict } from "@/lib/adre/classify";
 import type { InvoiceResult } from "@/lib/adre/types";
 import { Submit } from "./submit";
 import { RuDateInput, bishkekNow } from "./ru-date-input";
+import { ruDate } from "@/lib/ru-date";
 import { ContactPicker } from "./contact-picker";
 import { money } from "@/lib/format";
 import {
@@ -264,6 +267,27 @@ export function OperationForm({
     }, 400);
     return () => clearTimeout(timer);
   }, [kind, checkedDocumentId, selectedParty, similarAmount]);
+  // Номер перевода уже есть в другой оплате — «Дубликат» сразу, до
+  // подтверждения (запишется на проверку владельцу, долг не изменится).
+  const [referenceDuplicate, setReferenceDuplicate] = useState<ReferencePayment | null>(null);
+  const referenceRequest = useRef(0);
+  const trimmedRef = bankRef.trim();
+  useEffect(() => {
+    const request = ++referenceRequest.current;
+    if (kind !== "payment" || !trimmedRef) {
+      setReferenceDuplicate(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const found = await findPaymentByReference(trimmedRef);
+        if (request === referenceRequest.current) setReferenceDuplicate(found);
+      } catch (err) {
+        console.error("findPaymentByReference failed", err);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [kind, trimmedRef]);
   // Лимит долга — только для продажи: предупреждаем, но не блокируем.
   const saleCustomer = kind === "sale" ? allCustomers.find((c) => c.id === selectedParty) : undefined;
   const overLimit = saleCustomer
@@ -324,6 +348,53 @@ export function OperationForm({
   // Ошибка из адреса — при открытии формы (сверху); ошибка подтверждения — у кнопки.
   const errorText = describeError(error);
   const submitErrorText = describeError(localError ?? commit.error);
+
+  const rateField = (
+    <label>
+      Курс: 1 {CURRENCY_SIGN[strongCurrency]} = ? {CURRENCY_SIGN[weakCurrency]}
+      <input
+        inputMode="decimal"
+        autoComplete="off"
+        value={rateValue || (quote ? formatRate(quote.rate) : "")}
+        placeholder="Например, 87,80"
+        onChange={(e) => {
+          setRateValue(e.target.value);
+          if (localError === "rate") setLocalError(null);
+        }}
+      />
+      <small className="muted">
+        {quote
+          ? `${quote.source} на ${quote.date}: ${formatRate(quote.rate)}. Можно поправить.`
+          : "Официальный курс сейчас недоступен — введите курс."}
+      </small>
+    </label>
+  );
+  const debtChangeLine = debtAmount > 0 && (
+    <p className="photo-check-ok">
+      {kind === "purchase" || (kind === "payment" && direction === "outgoing")
+        ? "Долг перед поставщиком изменится на "
+        : "Долг клиента изменится на "}
+      {money(debtAmount, debtCurrency)} ({money(amountFromInput(amountValue), docCurrency)} по{" "}
+      {formatRate(rate ?? 0)})
+    </p>
+  );
+  // Оплата: курс, номер перевода и дата — в свёрнутом блоке «Подробности
+  // оплаты»; в заголовке — что заполнено. Раскрывается сам при ошибке в нём
+  // и когда курс нужно ввести вручную.
+  const shownDate = dateValue ?? dateSeed;
+  const moreSummary = [
+    foreign && rate ? `курс ${formatRate(rate)}` : null,
+    bankRef.trim() ? `№ ${bankRef.trim()}` : null,
+    shownDate ? `${ruDate(shownDate)}${shownDate.length > 10 ? ` ${shownDate.slice(11, 16)}` : ""}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreNeeded =
+    localError === "rate" || localError === "date" || (foreign && !quote && !rateValue);
+  useEffect(() => {
+    if (moreNeeded) setMoreOpen(true);
+  }, [moreNeeded]);
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -611,9 +682,6 @@ export function OperationForm({
                           : receiptCheck
                             ? "Чек прочитать не удалось — заполните поля вручную, чек сохранится."
                             : null}
-                  {receiptCheck?.duplicate && (
-                    <small className="muted"> Этот чек уже приложен к другой записи — проверьте, не задвоилось ли.</small>
-                  )}
                 </span>
                 <button
                   type="button"
@@ -818,37 +886,13 @@ export function OperationForm({
             </div>
           </div>
         )}
-        {foreign && (
+        {foreign && kind !== "payment" && (
           <div className="fx-field">
-            <label>
-              Курс: 1 {CURRENCY_SIGN[strongCurrency]} = ? {CURRENCY_SIGN[weakCurrency]}
-              <input
-                inputMode="decimal"
-                autoComplete="off"
-                value={rateValue || (quote ? formatRate(quote.rate) : "")}
-                placeholder="Например, 87,80"
-                onChange={(e) => {
-                  setRateValue(e.target.value);
-                  if (localError === "rate") setLocalError(null);
-                }}
-              />
-              <small className="muted">
-                {quote
-                  ? `${quote.source} на ${quote.date}: ${formatRate(quote.rate)}. Можно поправить.`
-                  : "Официальный курс сейчас недоступен — введите курс."}
-              </small>
-            </label>
-            {debtAmount > 0 && (
-              <p className="photo-check-ok">
-                {kind === "purchase" || (kind === "payment" && direction === "outgoing")
-                  ? "Долг перед поставщиком изменится на "
-                  : "Долг клиента изменится на "}
-                {money(debtAmount, debtCurrency)} ({money(amountFromInput(amountValue), docCurrency)} по{" "}
-                {formatRate(rate ?? 0)})
-              </p>
-            )}
+            {rateField}
+            {debtChangeLine}
           </div>
         )}
+        {foreign && kind === "payment" && debtChangeLine}
         {(kind === "purchase" || kind === "sale") && (
           <div className="photo-check">
             {checking && <p className="muted">Проверяем фото…</p>}
@@ -935,9 +979,10 @@ export function OperationForm({
               </div>
             )}
             {checkedPhoto?.duplicate && (
-              <p className="photo-check-mismatch">
-                Это фото уже приложено к другой записи — сохранится как дубликат.
-              </p>
+              <div className="duplicate-warning" role="alert">
+                <strong>Дубликат</strong>
+                <p>Это фото уже приложено к другой записи — сохранится как дубликат. Проверьте, не задвоилось ли.</p>
+              </div>
             )}
             {checkedPhoto?.result && noPrices && (
               <p className="photo-check-mismatch" role="status">
@@ -1018,30 +1063,64 @@ export function OperationForm({
             Продать можно, но проверьте, стоит ли давать в долг.
           </p>
         )}
-        {kind === "payment" && (
-          <label>
-            Номер перевода (если есть)
-            <input
-              name="bank_reference"
-              maxLength={200}
-              autoComplete="off"
-              placeholder="Необязательно"
-              value={bankRef}
-              onChange={(e) => setBankRef(e.target.value)}
-            />
-          </label>
+        {kind === "payment" && (referenceDuplicate || receiptCheck?.duplicate) && (
+          <div className="duplicate-warning" role="alert">
+            <strong>Дубликат</strong>
+            {referenceDuplicate && (
+              <p>
+                Номер перевода {trimmedRef} уже есть в оплате от{" "}
+                {new Intl.DateTimeFormat("ru-RU", {
+                  dateStyle: "short",
+                  timeStyle: "short",
+                  timeZone: "Asia/Bishkek",
+                }).format(new Date(referenceDuplicate.occurredAt))}
+                {referenceDuplicate.party ? ` · ${referenceDuplicate.party}` : ""} ·{" "}
+                {money(referenceDuplicate.amount, referenceDuplicate.currency)}. Если записать — оплата уйдёт владельцу
+                на проверку, долг не изменится.
+                {referenceDuplicate.href && (
+                  <>
+                    {" "}
+                    <Link className="duplicate-link" href={referenceDuplicate.href} target="_blank">
+                      Первая запись →
+                    </Link>
+                  </>
+                )}
+              </p>
+            )}
+            {receiptCheck?.duplicate && <p>Этот чек уже приложен к другой записи — проверьте, не задвоилось ли.</p>}
+          </div>
         )}
         {kind === "payment" && (
-          <RuDateInput
-            label={prefill?.date || (receiptCheck?.ok && receiptCheck.date) ? "Дата и время перевода (с чека)" : "Дата и время оплаты"}
-            value={dateSeed}
-            withTime
-            onChange={(next) => {
-              setDateValue(next);
-              setDateTouched(true);
-              if (localError === "date") setLocalError(null);
-            }}
-          />
+          <details className="more-fields" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
+            <summary>
+              <span className="more-fields-title">Подробности оплаты</span>
+              {!moreOpen && moreSummary && <span className="more-fields-values">{moreSummary}</span>}
+            </summary>
+            <div className="more-fields-body">
+              {foreign && <div className="fx-field">{rateField}</div>}
+              <label>
+                Номер перевода (если есть)
+                <input
+                  name="bank_reference"
+                  maxLength={200}
+                  autoComplete="off"
+                  placeholder="Необязательно"
+                  value={bankRef}
+                  onChange={(e) => setBankRef(e.target.value)}
+                />
+              </label>
+              <RuDateInput
+                label={prefill?.date || (receiptCheck?.ok && receiptCheck.date) ? "Дата и время перевода (с чека)" : "Дата и время оплаты"}
+                value={dateSeed}
+                withTime
+                onChange={(next) => {
+                  setDateValue(next);
+                  setDateTouched(true);
+                  if (localError === "date") setLocalError(null);
+                }}
+              />
+            </div>
+          </details>
         )}
         {kind !== "payment" && (
           <div className="photo-field">

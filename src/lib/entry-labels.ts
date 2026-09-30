@@ -18,7 +18,7 @@ export function paymentLabel(
   if (opts.opening) return "Аванс из тетради";
   if (kind === "discount") return "Скидка";
   if (kind === "return") return "Возврат товара";
-  if (opts.pending && opts.duplicate) return "Оплата — дубликат, на проверке";
+  if (opts.pending && opts.duplicate) return "Оплата на проверке";
   return opts.pending ? "Заявка на оплату" : "Оплата";
 }
 

@@ -1,8 +1,11 @@
 "use server";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { createAnonClient } from "@/lib/supabase/server";
 import { decimalInput } from "@/lib/validation";
 import { uploadClaimPhoto } from "@/lib/storage";
+import { documentMimeType } from "@/lib/pages";
+import { noteClaimReceipt } from "@/lib/adre/recognize";
 
 export async function submitClaim(form: FormData) {
   const token = String(form.get("token") ?? "");
@@ -31,5 +34,13 @@ export async function submitClaim(form: FormData) {
     p_receipt_document: documentId,
   });
   if (result.error) redirect(`/c/${token}?error=invalid`);
+  // Номер перевода с квитанции — после ответа клиенту: если он уже есть в
+  // оплате магазина, заявка помечается «Дубликат» (видят продавец и владелец).
+  const paymentId = typeof result.data === "string" ? result.data : null;
+  if (paymentId && documentId && photo instanceof File) {
+    const buffer = Buffer.from(await photo.arrayBuffer());
+    const mimeType = documentMimeType(photo);
+    after(() => noteClaimReceipt({ anon, token, paymentId, photo: buffer, mimeType }));
+  }
   redirect(`/c/${token}?claimed=1`);
 }

@@ -7,6 +7,7 @@ import { partyCurrency } from "@/lib/currency";
 import { ensureShareToken, waPhone } from "@/lib/share";
 import { paymentLabelWithSide, type PaymentKind } from "@/lib/entry-labels";
 import { RecordResult } from "@/components/record-result";
+import { firstPaymentHref } from "@/lib/duplicates";
 
 const UNDO_MS = 2 * 60 * 1000;
 
@@ -105,7 +106,7 @@ export default async function DonePage({
     ? (
         await db
           .from("payments")
-          .select("occurred_at,amount,customer_id,supplier_id")
+          .select("id,occurred_at,amount,customer_id,supplier_id,document_id")
           .eq("organization_id", organizationId)
           .eq("id", row.duplicate_of)
           .maybeSingle()
@@ -151,7 +152,8 @@ export default async function DonePage({
       notes={
         <>
           {onReview && (
-            <p className="notice">
+            <p className="duplicate-warning">
+              <strong>Дубликат</strong>
               Номер перевода {row.bank_reference} уже есть в оплате
               {firstPayment
                 ? ` от ${new Intl.DateTimeFormat("ru-RU", {
@@ -162,6 +164,14 @@ export default async function DonePage({
                 : ""}
               . Долг не
               изменился — владелец подтвердит или отклонит эту оплату в «Заявках».
+              {firstPayment && firstPaymentHref(firstPayment) && (
+                <>
+                  {" "}
+                  <Link className="duplicate-link" href={firstPaymentHref(firstPayment)!}>
+                    Первая запись →
+                  </Link>
+                </>
+              )}
             </p>
           )}
           {duplicate && <p className="notice">Это фото уже приложено к другой записи — проверьте, не задвоилось ли.</p>}

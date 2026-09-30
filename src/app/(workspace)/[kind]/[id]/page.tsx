@@ -11,6 +11,7 @@ import { creditLimitExceeded } from "@/lib/credit-limit";
 import { createLink, revokeLink, setPromisedDate } from "@/app/(workspace)/[kind]/actions";
 import { dayMonth, promiseStatus } from "@/lib/promise";
 import { paymentLabel } from "@/lib/entry-labels";
+import { firstPaymentHref } from "@/lib/duplicates";
 import { memberLabels } from "@/lib/members";
 import { PartyManage } from "@/components/party-manage";
 import { waPhone } from "@/lib/share";
@@ -100,6 +101,10 @@ export default async function EntryPage({
     reversalComment: string | null;
     documentId: string | null;
     pending: boolean;
+    /** Дубликат оплаты (тот же номер перевода / то же фото чека) — на проверке у владельца. */
+    duplicate?: boolean;
+    /** Ссылка «первая запись» у дубликата. */
+    firstHref?: string | null;
     opening: boolean;
     /** Комментарий скидки/возврата. */
     note?: string | null;
@@ -132,6 +137,17 @@ export default async function EntryPage({
         .order("occurred_at", { ascending: false })
         .limit(20),
     ]);
+    const firstIds = [...new Set((pays.data ?? []).map((p) => p.duplicate_of).filter(Boolean) as string[])];
+    const firsts = firstIds.length
+      ? (
+          await db
+            .from("payments")
+            .select("id,document_id,customer_id,supplier_id")
+            .eq("organization_id", organizationId)
+            .in("id", firstIds)
+        ).data ?? []
+      : [];
+    const firstHrefs = new Map(firsts.map((f) => [f.id, firstPaymentHref(f)]));
     history = [
       ...(invoices.data ?? []).map((r) => ({
         kind: (kind === "customers" ? "sale" : "purchase") as HistoryRow["kind"],
@@ -151,7 +167,12 @@ export default async function EntryPage({
       ...(pays.data ?? []).map((p) => ({
         kind: "payment" as const,
         id: p.id,
-        label: paymentLabel(p.kind, { opening: p.is_opening, pending: p.status === "pending", duplicate: Boolean(p.duplicate_of) }),
+        // Заявка клиента (created_by пустой) остаётся «Заявкой»; метка «дубликат» — у обеих.
+        label: paymentLabel(p.kind, {
+          opening: p.is_opening,
+          pending: p.status === "pending",
+          duplicate: Boolean(p.duplicate_of) && p.created_by !== null,
+        }),
         note: p.note,
         amount: p.amount,
         original: originalAmountText(p),
@@ -160,6 +181,8 @@ export default async function EntryPage({
         reversalComment: p.reversal_comment,
         documentId: p.document_id,
         pending: p.status === "pending",
+        duplicate: Boolean(p.duplicate_of),
+        firstHref: p.duplicate_of ? firstHrefs.get(p.duplicate_of) ?? null : null,
         opening: Boolean(p.is_opening),
         createdBy: p.created_by,
         reversedBy: p.reversed_by,
@@ -477,11 +500,16 @@ export default async function EntryPage({
           {history.length ? (
             <ul className="history-list">
               {history.map((row) => (
-                <li key={row.kind + row.id} className={row.reversed ? "history-item reversed-row" : "history-item"}>
+                <li
+                  key={row.kind + row.id}
+                  id={row.kind === "payment" ? `pay-${row.id}` : undefined}
+                  className={`history-item${row.reversed ? " reversed-row" : row.duplicate && row.pending ? " duplicate-row" : ""}`}
+                >
                   <div className="history-main">
                     <span className="history-kind">
                       {row.label}
                       {row.reversed && <span className="tag reversed-tag">отменена</span>}
+                      {!row.reversed && row.duplicate && row.pending && <span className="tag duplicate-tag">дубликат</span>}
                     </span>
                     <strong className="history-amount">
                       {money(row.amount, cur)}
@@ -524,6 +552,13 @@ export default async function EntryPage({
                     </span>
                   </div>
                   {row.note && <p className="history-comment muted">{row.note}</p>}
+                  {!row.reversed && row.duplicate && row.pending && row.firstHref && (
+                    <p className="history-comment">
+                      <Link className="duplicate-link" href={row.firstHref}>
+                        Первая запись →
+                      </Link>
+                    </p>
+                  )}
                   {showAuthors && (who(row.createdBy) || (row.reversed && who(row.reversedBy))) && (
                     <p className="history-comment muted">
                       {who(row.createdBy) && <>Внёс: {who(row.createdBy)}</>}

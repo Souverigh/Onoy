@@ -9,6 +9,7 @@ import { safeBackPath } from "@/lib/back-path";
 import { isDuplicatePhoto, uploadOperationPhoto, uploadOperationPhotos } from "@/lib/storage";
 import { expenseDateInput, isExpenseCategory } from "@/lib/expenses";
 import { bishkekDate } from "@/lib/day-summary";
+import { firstPaymentHref } from "@/lib/duplicates";
 import { MAX_PAGES, documentMimeType } from "@/lib/pages";
 import {
   recognizeDocument,
@@ -463,6 +464,51 @@ export async function switchDocumentKind(documentId: string, kind: string, party
   const params = new URLSearchParams({ type: kind, documentId: newId });
   if (party && uuidPattern.test(party)) params.set("party", party);
   redirect(`/money/new?${params.toString()}`);
+}
+
+export type ReferencePayment = {
+  /** Ссылка «первая запись». */
+  href: string | null;
+  occurredAt: string;
+  amount: string;
+  party: string;
+  currency: string | null;
+};
+
+/**
+ * Действующая оплата с тем же номером перевода (как в commit_payment:
+ * подтверждённая или на проверке, не отменённая). Форма показывает «Дубликат»
+ * до подтверждения; запись при этом не блокируется — уйдёт на проверку.
+ */
+export async function findPaymentByReference(rawReference: string): Promise<ReferencePayment | null> {
+  const reference = rawReference.trim();
+  if (!reference || reference.length > 200) return null;
+  const { db, organizationId, currency: shopCurrency } = await getContext();
+  const { data, error } = await db
+    .from("payments")
+    .select("id,occurred_at,amount,customer_id,supplier_id,document_id,status")
+    .eq("organization_id", organizationId)
+    .eq("bank_reference", reference)
+    .in("status", ["confirmed", "pending"])
+    .is("reversed_at", null)
+    .order("created_at")
+    .limit(5);
+  if (error) {
+    console.error("findPaymentByReference: query failed", error);
+    return null;
+  }
+  const row = (data ?? []).find((p) => p.status === "confirmed") ?? data?.[0];
+  if (!row) return null;
+  const party = row.customer_id
+    ? (await db.from("customers").select("name,currency").eq("organization_id", organizationId).eq("id", row.customer_id).maybeSingle()).data
+    : (await db.from("suppliers").select("name,currency").eq("organization_id", organizationId).eq("id", row.supplier_id).maybeSingle()).data;
+  return {
+    href: firstPaymentHref(row),
+    occurredAt: row.occurred_at,
+    amount: String(row.amount),
+    party: party?.name ?? "",
+    currency: party?.currency ?? shopCurrency,
+  };
 }
 
 export type SimilarRecord = {

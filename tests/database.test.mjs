@@ -1417,6 +1417,66 @@ test("a repeated bank reference is saved as a pending duplicate that does not mo
   await owner();
 });
 
+test("client claim with an already counted receipt is marked duplicate (same photo or same transfer number)", async () => {
+  await owner();
+  await user(a);
+  const customer = (await db.query(
+    "insert into customers(organization_id,name) values($1,'Клиент с повтором чека') returning id", [orgA],
+  )).rows[0].id;
+  const token = (await db.query("select create_share_link($1,$2) as token", [orgA, customer])).rows[0].token;
+  // Оплата продавца с чеком (фото hash-dup-1) и номером перевода.
+  await owner();
+  const doc = (await db.query(
+    "insert into documents(organization_id,storage_path,file_hash,mime_type,kind,status) values($1,'x/1.jpg','hash-dup-1','image/jpeg','payment','uploaded') returning id",
+    [orgA],
+  )).rows[0].id;
+  await user(a);
+  const first = (await db.query(
+    "select commit_payment($1,'incoming',$2,'100.00','CLAIM-REF-1','dddd0001-3333-4000-8000-000000000001',$3) as id",
+    [orgA, customer, doc],
+  )).rows[0].id;
+
+  await owner();
+  await db.exec("SET ROLE anon; SELECT set_config('request.jwt.claim.sub','',false);");
+  const claimDoc = async (path, hash) =>
+    (await db.query("select create_claim_document($1,$2,$3,'image/jpeg') as id", [token, path, hash])).rows[0].id;
+  const claim = async (document) =>
+    (await db.query("select submit_payment_claim($1,'100.00',null,$2) as id", [token, document])).rows[0].id;
+  const row = async (id) => {
+    await owner();
+    const r = (await db.query("select status,duplicate_of,bank_reference from payments where id=$1", [id])).rows[0];
+    await db.exec("SET ROLE anon; SELECT set_config('request.jwt.claim.sub','',false);");
+    return r;
+  };
+
+  // 1) То же фото — дубликат сразу.
+  const samePhoto = await claim(await claimDoc(`claims/${token}/a.jpg`, "hash-dup-1"));
+  assert.deepEqual(await row(samePhoto), { status: "pending", duplicate_of: first, bank_reference: null });
+
+  // 2) Другое фото, но тот же номер перевода после распознавания.
+  const otherPhoto = await claim(await claimDoc(`claims/${token}/b.jpg`, "hash-dup-2"));
+  assert.equal((await row(otherPhoto)).duplicate_of, null);
+  const extraction = { kind: "receipt", extracted: { operation_id: "CLAIM-REF-1" } };
+  await db.query("select note_claim_receipt($1,$2,'CLAIM-REF-1','gemini','m','v3',$3,100,0.0005)", [token, otherPhoto, extraction]);
+  assert.deepEqual(await row(otherPhoto), { status: "pending", duplicate_of: first, bank_reference: "CLAIM-REF-1" });
+
+  // 3) Новый номер — не дубликат, номер сохраняется.
+  const fresh = await claim(await claimDoc(`claims/${token}/c.jpg`, "hash-dup-3"));
+  await db.query("select note_claim_receipt($1,$2,'CLAIM-REF-NEW','gemini','m','v3',null,null,null)", [token, fresh]);
+  assert.deepEqual(await row(fresh), { status: "pending", duplicate_of: null, bank_reference: "CLAIM-REF-NEW" });
+
+  // Чужая оплата по этому токену не трогается.
+  await assert.rejects(
+    db.query("select note_claim_receipt($1,$2,'X','g','m','v',null,null,null)", [token, first]),
+    /invalid_payment/,
+  );
+  await owner();
+  const cached = (await db.query(
+    "select count(*)::int as n from document_extractions where document_id=(select document_id from payments where id=$1)", [otherPhoto],
+  )).rows[0].n;
+  assert.equal(cached, 1);
+});
+
 test("anon checks a claim token without reading share_links", async () => {
   await owner();
   await user(a);

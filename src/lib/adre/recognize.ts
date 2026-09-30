@@ -215,6 +215,50 @@ export async function recognizeNotebook(pages: PhotoPage[]) {
   };
 }
 
+/**
+ * Квитанция к заявке клиента «Я оплатил» — клиент без входа, кеша через
+ * cache_extraction нет (он только для участников магазина). Результат и
+ * номер перевода пишет note_claim_receipt по токену ссылки — там же отметка
+ * «Дубликат», если номер уже есть в оплате магазина. Вызывается из after():
+ * ошибки только в лог.
+ */
+export async function noteClaimReceipt({
+  anon,
+  token,
+  paymentId,
+  photo,
+  mimeType,
+}: {
+  anon: SupabaseClient;
+  token: string;
+  paymentId: string;
+  photo: Buffer;
+  mimeType: string;
+}) {
+  const provider = getProvider();
+  if (!provider) return;
+  try {
+    const startedAt = Date.now();
+    const call = await provider.recognizeReceipt(photo, mimeType);
+    const result = call.result as ReceiptResult;
+    const reference = result.operation_id ? String(result.operation_id).trim().slice(0, 200) : null;
+    const { error } = await anon.rpc("note_claim_receipt", {
+      p_token: token,
+      p_payment: paymentId,
+      p_bank_reference: reference,
+      p_provider: provider.name,
+      p_model: provider.model,
+      p_prompt_version: PROMPT_VERSION,
+      p_raw_json: { kind: "receipt", extracted: result, response: call.raw },
+      p_latency_ms: Date.now() - startedAt,
+      p_cost: call.costUsd,
+    });
+    if (error) console.error("noteClaimReceipt: note_claim_receipt failed", error);
+  } catch (err) {
+    console.error("noteClaimReceipt: recognition failed", err);
+  }
+}
+
 export function recognizeReceiptCached(args: CachedArgs) {
   return recognizeWithCache<ReceiptResult>({ ...args, kind: "receipt", normalize: (r) => r });
 }

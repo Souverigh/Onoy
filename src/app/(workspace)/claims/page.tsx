@@ -3,7 +3,9 @@ import { money } from "@/lib/format";
 import { partyCurrency } from "@/lib/currency";
 import { signedPhotoUrl } from "@/lib/storage";
 import { confirmClaim, rejectClaim } from "./actions";
+import Link from "next/link";
 import { Submit } from "@/components/submit";
+import { duplicateReason, firstPaymentHref } from "@/lib/duplicates";
 
 type Claim = {
   id: string;
@@ -15,6 +17,18 @@ type Claim = {
   occurred_at: string;
   bank_reference: string | null;
   duplicate_of: string | null;
+  created_by: string | null;
+};
+type FirstPayment = {
+  id: string;
+  amount: string;
+  occurred_at: string;
+  status: string;
+  reversed_at: string | null;
+  bank_reference: string | null;
+  document_id: string | null;
+  customer_id: string | null;
+  supplier_id: string | null;
 };
 type Party = { id: string; name: string; currency: string | null };
 
@@ -33,7 +47,7 @@ export default async function Claims({
   const { error, done } = await searchParams;
   const { data, error: loadError } = await db
     .from("payments")
-    .select("id,customer_id,supplier_id,amount,claim_comment,document_id,occurred_at,bank_reference,duplicate_of")
+    .select("id,customer_id,supplier_id,amount,claim_comment,document_id,occurred_at,bank_reference,duplicate_of,created_by")
     .eq("organization_id", organizationId)
     .eq("status", "pending")
     .order("occurred_at", { ascending: false });
@@ -51,8 +65,12 @@ export default async function Claims({
       ? db.from("suppliers").select("id,name,currency").eq("organization_id", organizationId).in("id", supplierIds)
       : none,
     firstIds.length
-      ? db.from("payments").select("id,amount,occurred_at,status,reversed_at").eq("organization_id", organizationId).in("id", firstIds)
-      : Promise.resolve({ data: [] as { id: string; amount: string; occurred_at: string; status: string; reversed_at: string | null }[] }),
+      ? db
+          .from("payments")
+          .select("id,amount,occurred_at,status,reversed_at,bank_reference,document_id,customer_id,supplier_id")
+          .eq("organization_id", organizationId)
+          .in("id", firstIds)
+      : Promise.resolve({ data: [] as FirstPayment[] }),
     db
       .from("documents")
       .select("id,storage_path")
@@ -62,7 +80,7 @@ export default async function Claims({
   const parties = new Map<string, Party>(
     [...(customerLookup.data ?? []), ...(supplierLookup.data ?? [])].map((c) => [c.id, c]),
   );
-  const firstPayments = new Map((firstLookup.data ?? []).map((p) => [p.id, p]));
+  const firstPayments = new Map(((firstLookup.data ?? []) as FirstPayment[]).map((p) => [p.id, p]));
   const documents = new Map(
     (documentLookup.data ?? []).map((d) => [d.id, d.storage_path]),
   );
@@ -110,6 +128,7 @@ export default async function Claims({
             const party = partyId ? parties.get(partyId) : undefined;
             const currency = partyCurrency(party, shopCurrency);
             const first = claim.duplicate_of ? firstPayments.get(claim.duplicate_of) : undefined;
+            const firstHref = first ? firstPaymentHref(first) : null;
             return (
               <section className="panel claim-card" key={claim.id}>
                 <div className="section-title">
@@ -120,12 +139,20 @@ export default async function Claims({
                   <strong>{money(claim.amount, currency)}</strong>
                 </div>
                 {claim.duplicate_of && (
-                  <p className="notice">
-                    Дубликат: номер перевода {claim.bank_reference} уже есть в оплате
-                    {first ? ` от ${dateTime.format(new Date(first.occurred_at))} на ${money(first.amount, currency)}` : ""}
-                    {first?.reversed_at ? " (она отменена)" : first?.status === "rejected" ? " (она отклонена)" : ""}.
-                    Подтвердите, только если это действительно вторая оплата.
-                  </p>
+                  <div className="duplicate-warning">
+                    <strong>Дубликат{claim.created_by ? "" : " от клиента"}</strong>
+                    <p>
+                      {duplicateReason(claim, first)} уже есть в оплате
+                      {first ? ` от ${dateTime.format(new Date(first.occurred_at))} на ${money(first.amount, currency)}` : ""}
+                      {first?.reversed_at ? " (она отменена)" : first?.status === "rejected" ? " (она отклонена)" : ""}.
+                      Подтвердите, только если это действительно вторая оплата.
+                    </p>
+                    {firstHref && (
+                      <Link className="duplicate-link" href={firstHref}>
+                        Первая запись →
+                      </Link>
+                    )}
+                  </div>
                 )}
                 {claim.claim_comment && (
                   <p className="muted">«{claim.claim_comment}»</p>
