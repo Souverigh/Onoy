@@ -1850,6 +1850,31 @@ tr.line-mismatch {
   color: #8a5a00;
   font-weight: 600;
 }
+/* Дубликат уже решён (отклонён / отменён) — не тревожим жёлтым. */
+.duplicate-warning.resolved {
+  background: #f1f2f0;
+  border-left-color: #b9c0bb;
+  color: #5d6663;
+}
+.duplicate-warning.resolved .duplicate-link {
+  color: inherit;
+}
+.doc-record {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.doc-record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
 .duplicate-subtitle {
   margin-top: 6px !important;
   font-weight: 700;

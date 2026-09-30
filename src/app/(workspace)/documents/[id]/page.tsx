@@ -28,6 +28,7 @@ type DuplicatePayment = {
   created_at: string;
   status: string;
   reversed_at: string | null;
+  reject_comment?: string | null;
   created_by: string | null;
   document_id: string | null;
   customer_id: string | null;
@@ -35,7 +36,7 @@ type DuplicatePayment = {
   duplicate_of: string | null;
 };
 const DUPLICATE_COLUMNS =
-  "id,amount,occurred_at,created_at,status,reversed_at,created_by,document_id,customer_id,supplier_id,duplicate_of";
+  "id,amount,occurred_at,created_at,status,reversed_at,created_by,document_id,customer_id,supplier_id,duplicate_of,reject_comment";
 
 type DocRow = {
   id: string;
@@ -80,7 +81,7 @@ export default async function DocumentDetail({
 }) {
   const { id } = await params;
   if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
-  const { db, organizationId, organizationName, currency: shopCurrency } = await getContext();
+  const { db, organizationId, organizationName, currency: shopCurrency, isOwner } = await getContext();
   const params2 = await searchParams;
 
   const docResult = await db
@@ -123,6 +124,8 @@ export default async function DocumentDetail({
   // Валюта накладной: исходная, если запись в другой валюте, иначе — долга контрагента.
   let docCurrency: string = shopCurrency;
   let saleId: string | null = null;
+  // Запись, к которой приложен документ, — для блока «Запись» (статус, отмена).
+  let record: { kind: "sale" | "purchase"; id: string; reversed: boolean } | null = null;
   // Сверка строк — с суммой в валюте накладной, а не с пересчитанной в долг.
   const recordTotal = (row: { total: string | number; original_amount: string | null; original_currency: string | null }) =>
     row.original_amount != null ? Number(row.original_amount) : Number(row.total);
@@ -130,11 +133,12 @@ export default async function DocumentDetail({
   if (doc.kind === "purchase") {
     const row = await db
       .from("purchases")
-      .select("total,supplier_id,original_amount,original_currency")
+      .select("id,total,supplier_id,original_amount,original_currency,reversed_at")
       .eq("organization_id", organizationId)
       .eq("document_id", id)
       .maybeSingle();
     declaredTotal = row.data ? recordTotal(row.data) : null;
+    if (row.data) record = { kind: "purchase", id: row.data.id, reversed: Boolean(row.data.reversed_at) };
     if (row.data) {
       const supplier = await db
         .from("suppliers")
@@ -149,12 +153,13 @@ export default async function DocumentDetail({
   } else if (doc.kind === "sale") {
     const row = await db
       .from("sales")
-      .select("id,total,customer_id,original_amount,original_currency")
+      .select("id,total,customer_id,original_amount,original_currency,reversed_at")
       .eq("organization_id", organizationId)
       .eq("document_id", id)
       .maybeSingle();
     declaredTotal = row.data ? recordTotal(row.data) : null;
     saleId = row.data?.id ?? null;
+    if (row.data) record = { kind: "sale", id: row.data.id, reversed: Boolean(row.data.reversed_at) };
     if (row.data) {
       const customer = await db
         .from("customers")
@@ -453,7 +458,9 @@ export default async function DocumentDetail({
           )}
         </div>
         {(payment?.duplicate_of || repeats.length > 0) && (
-          <div className="duplicate-warning">
+          <div
+            className={`duplicate-warning${payment && (payment.reversed_at || payment.status === "rejected") ? " resolved" : ""}`}
+          >
             {payment?.duplicate_of && (
               <>
                 <strong>
@@ -504,6 +511,61 @@ export default async function DocumentDetail({
                 </ul>
               </>
             )}
+          </div>
+        )}
+        {(record || payment) && (
+          <div className="doc-record">
+            <span className="doc-record-status">
+              {record
+                ? record.reversed
+                  ? "Запись отменена — долг пересчитан."
+                  : `${record.kind === "sale" ? "Продажа" : "Приход"} записана.`
+                : payment!.reversed_at
+                  ? "Оплата отменена — долг пересчитан."
+                  : payment!.status === "rejected"
+                    ? `Заявка отклонена${payment!.reject_comment ? `: «${payment!.reject_comment}»` : ""}. Долг не менялся — отменять нечего.`
+                    : payment!.status === "pending"
+                      ? "Оплата ждёт проверки владельца — долг ещё не изменился."
+                      : "Оплата записана."}
+            </span>
+            <span className="doc-record-actions">
+              {party && (
+                <Link className="text-button" href={`/${party.kind === "customer" ? "customers" : "suppliers"}/${party.id}`}>
+                  Открыть {party.kind === "customer" ? "клиента" : "поставщика"}
+                </Link>
+              )}
+              {!party && payment && (payment.customer_id ?? payment.supplier_id) && (
+                <Link
+                  className="text-button"
+                  href={`/${payment.customer_id ? "customers" : "suppliers"}/${payment.customer_id ?? payment.supplier_id}`}
+                >
+                  Открыть {payment.customer_id ? "клиента" : "поставщика"}
+                </Link>
+              )}
+              {isOwner && payment?.status === "pending" && !payment.reversed_at && (
+                <Link className="text-button" href="/claims">
+                  Рассмотреть в «Заявках»
+                </Link>
+              )}
+              {isOwner &&
+                ((record && !record.reversed) || (payment && payment.status === "confirmed" && !payment.reversed_at)) && (
+                  <Link
+                    className="button danger-outline"
+                    href={(() => {
+                      const kind = record ? record.kind : "payment";
+                      const id = record ? record.id : payment!.id;
+                      const partyPath = party
+                        ? `/${party.kind === "customer" ? "customers" : "suppliers"}/${party.id}`
+                        : payment
+                          ? `/${payment.customer_id ? "customers" : "suppliers"}/${payment.customer_id ?? payment.supplier_id}`
+                          : null;
+                      return `/money/reverse/${kind}/${id}${partyPath ? `?back=${encodeURIComponent(partyPath)}` : ""}`;
+                    })()}
+                  >
+                    Отменить запись
+                  </Link>
+                )}
+            </span>
           </div>
         )}
         {doc.error_message &&
