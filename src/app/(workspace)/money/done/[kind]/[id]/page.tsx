@@ -80,7 +80,7 @@ export default async function DonePage({
   const row = (
     await db
       .from("payments")
-      .select("id,customer_id,supplier_id,direction,amount,kind,created_at,created_by,reversed_at,original_amount,original_currency,fx_rate")
+      .select("id,customer_id,supplier_id,direction,amount,kind,status,duplicate_of,bank_reference,created_at,created_by,reversed_at,original_amount,original_currency,fx_rate")
       .eq("organization_id", organizationId)
       .eq("id", id)
       .maybeSingle()
@@ -100,10 +100,22 @@ export default async function DonePage({
   const after = Number(party.balance);
   const cur = partyCurrency(party, shopCurrency);
   const partyHref = `/${incoming ? "customers" : "suppliers"}/${party.id}`;
+  // Номер перевода уже есть в другой оплате — записана «на проверке», долг не менялся.
+  const firstPayment = row.status === "pending" && row.duplicate_of
+    ? (
+        await db
+          .from("payments")
+          .select("occurred_at,amount,customer_id,supplier_id")
+          .eq("organization_id", organizationId)
+          .eq("id", row.duplicate_of)
+          .maybeSingle()
+      ).data
+    : null;
+  const onReview = row.status === "pending";
 
   // Квитанция клиенту в WhatsApp (ТЗ §4 В.1: «клиенту по желанию уходит квитанция»).
   let receiptHref: string | null = null;
-  if (incoming && !row.reversed_at) {
+  if (incoming && !row.reversed_at && !onReview) {
     const { token } = await ensureShareToken(db, organizationId, party.id);
     const h = await headers();
     const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
@@ -121,19 +133,37 @@ export default async function DonePage({
     <RecordResult
       currency={cur}
       original={originalAmountText(row)}
-      title={`${paymentLabelWithSide(row.kind as PaymentKind, row.direction as "incoming" | "outgoing")} — записано`}
+      title={
+        onReview
+          ? "Оплата записана как дубликат — на проверке"
+          : `${paymentLabelWithSide(row.kind as PaymentKind, row.direction as "incoming" | "outgoing")} — записано`
+      }
       party={party.name}
       partyHref={partyHref}
       amount={String(row.amount)}
       debtLabel={incoming ? "Долг клиента" : "Мы должны поставщику"}
-      debtBefore={Math.round((after + Number(row.amount)) * 100) / 100}
+      debtBefore={onReview ? after : Math.round((after + Number(row.amount)) * 100) / 100}
       debtAfter={after}
       kind="payment"
       id={row.id}
-      canUndo={row.created_by === user.id && Date.now() - Date.parse(row.created_at) < UNDO_MS}
+      canUndo={!onReview && row.created_by === user.id && Date.now() - Date.parse(row.created_at) < UNDO_MS}
       reversed={Boolean(row.reversed_at)}
       notes={
         <>
+          {onReview && (
+            <p className="notice">
+              Номер перевода {row.bank_reference} уже есть в оплате
+              {firstPayment
+                ? ` от ${new Intl.DateTimeFormat("ru-RU", {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                    timeZone: "Asia/Bishkek",
+                  }).format(new Date(firstPayment.occurred_at))} на ${money(firstPayment.amount, cur)}`
+                : ""}
+              . Долг не
+              изменился — владелец подтвердит или отклонит эту оплату в «Заявках».
+            </p>
+          )}
           {duplicate && <p className="notice">Это фото уже приложено к другой записи — проверьте, не задвоилось ли.</p>}
           {undo === "expired" && <p className="form-error">Прошло больше 2 минут — отменить может владелец с причиной.</p>}
         </>

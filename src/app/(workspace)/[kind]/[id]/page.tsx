@@ -124,7 +124,7 @@ export default async function EntryPage({
         .limit(20),
       db
         .from("payments")
-        .select("id,amount,occurred_at,reversed_at,reversal_comment,document_id,status,is_opening,kind,note,created_by,reversed_by,original_amount,original_currency,fx_rate")
+        .select("id,amount,occurred_at,reversed_at,reversal_comment,document_id,status,is_opening,kind,note,created_by,reversed_by,original_amount,original_currency,fx_rate,duplicate_of")
         .eq("organization_id", organizationId)
         .eq(partyColumn, entry.id)
         .eq("direction", kind === "customers" ? "incoming" : "outgoing")
@@ -151,7 +151,7 @@ export default async function EntryPage({
       ...(pays.data ?? []).map((p) => ({
         kind: "payment" as const,
         id: p.id,
-        label: paymentLabel(p.kind, { opening: p.is_opening, pending: p.status === "pending" }),
+        label: paymentLabel(p.kind, { opening: p.is_opening, pending: p.status === "pending", duplicate: Boolean(p.duplicate_of) }),
         note: p.note,
         amount: p.amount,
         original: originalAmountText(p),

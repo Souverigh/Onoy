@@ -11,10 +11,14 @@ export const isAdjustmentKind = (value: string): value is AdjustmentKind =>
   (ADJUSTMENT_KINDS as readonly string[]).includes(value);
 
 /** Подпись в карточке, акте сверки, на странице клиента — контрагент уже понятен. */
-export function paymentLabel(kind: PaymentKind | null | undefined, opts: { opening?: boolean; pending?: boolean } = {}) {
+export function paymentLabel(
+  kind: PaymentKind | null | undefined,
+  opts: { opening?: boolean; pending?: boolean; duplicate?: boolean } = {},
+) {
   if (opts.opening) return "Аванс из тетради";
   if (kind === "discount") return "Скидка";
   if (kind === "return") return "Возврат товара";
+  if (opts.pending && opts.duplicate) return "Оплата — дубликат, на проверке";
   return opts.pending ? "Заявка на оплату" : "Оплата";
 }
 

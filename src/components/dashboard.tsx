@@ -66,7 +66,7 @@ export function Dashboard({
       )}
       {!staff && pendingClaims > 0 && (
         <Link className="notice claims-notice" href={href("/claims")}>
-          Ждут подтверждения: {pendingClaims} {plural(pendingClaims, "оплата", "оплаты", "оплат")} от клиентов →
+          Ждут подтверждения: {pendingClaims} {plural(pendingClaims, "оплата", "оплаты", "оплат")} →
         </Link>
       )}
       {!staff && <UnclosedDays days={unclosedDays} />}

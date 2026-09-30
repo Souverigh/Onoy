@@ -44,9 +44,11 @@ function failureCode(message: string) {
   if (message.includes("invalid_currency")) return "currency";
   // unique(organization_id,document_id): это фото уже основание другой записи.
   if (message.includes("document_id")) return "photo_used";
+  // unique(organization_id,bank_reference): номер перевода уже в другой оплате.
+  // В message нет кода 23505 — только имя ограничения.
+  if (message.includes("bank_reference")) return "duplicate";
   if (message.includes("invalid_") || message.includes("not_a_member"))
     return "invalid";
-  if (message.includes("23505")) return "duplicate";
   return "save";
 }
 

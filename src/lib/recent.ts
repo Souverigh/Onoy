@@ -34,7 +34,7 @@ export async function recentRecords(db: SupabaseClient, organizationId: string, 
       .limit(limit),
     db
       .from("payments")
-      .select("id,customer_id,supplier_id,direction,amount,created_at,reversed_at,is_opening,kind,status")
+      .select("id,customer_id,supplier_id,direction,amount,created_at,reversed_at,is_opening,kind,status,duplicate_of")
       .eq("organization_id", organizationId)
       .neq("status", "rejected")
       .order("created_at", { ascending: false })
@@ -100,7 +100,9 @@ export async function recentRecords(db: SupabaseClient, organizationId: string, 
         key: `m${r.id}`,
         label:
           r.status === "pending"
-            ? "Заявка «Я оплатил»"
+            ? r.duplicate_of
+              ? "Оплата — дубликат, на проверке"
+              : "Заявка «Я оплатил»"
             : paymentLabelWithSide(r.kind as PaymentKind, r.direction as "incoming" | "outgoing", r.is_opening),
         party: (partyId && names.get(partyId)) || "",
         partyHref: partyId ? `/${r.customer_id ? "customers" : "suppliers"}/${partyId}` : null,

@@ -192,16 +192,11 @@ test("payment direction and duplicate reference constraints reject inconsistent 
     ),
     /check constraint/,
   );
+  // Повтор номера перевода не запрещён таблицей — commit_payment пишет его
+  // как дубликат на проверке (см. «a repeated bank reference…»).
   await db.query(
     `insert into payments(organization_id,customer_id,direction,amount,bank_reference,idempotency_key) values ($1,$2,'incoming',100,'MB-1',gen_random_uuid())`,
     [orgA, c],
-  );
-  await assert.rejects(
-    db.query(
-      `insert into payments(organization_id,customer_id,direction,amount,bank_reference,idempotency_key) values ($1,$2,'incoming',100,'MB-1',gen_random_uuid())`,
-      [orgA, c],
-    ),
-    /unique constraint/,
   );
 });
 test("a member of two shops cannot move a directory record between them", async () => {
@@ -1381,6 +1376,45 @@ test("get_invoice_by_token: only a digitized, active sale of the link's own cust
   await db.query("select revoke_share_link($1,$2)", [orgA, linkId]);
   await owner();
   await assert.rejects(db.query("select get_invoice_by_token($1,$2)", [token, ok.sale]), /invalid_token/);
+});
+
+test("a repeated bank reference is saved as a pending duplicate that does not move the debt", async () => {
+  await owner();
+  await user(a);
+  const customer = (await db.query(
+    "insert into customers(organization_id,name) values($1,'Клиент дубликата') returning id", [orgA],
+  )).rows[0].id;
+  const balance = async () =>
+    (await db.query("select balance from customer_balances where id=$1", [customer])).rows[0].balance;
+  const pay = async (key, ref = "DUP-REF-1") =>
+    (await db.query("select commit_payment($1,'incoming',$2,'100.00',$3,$4) as id", [orgA, customer, ref, key])).rows[0].id;
+  const row = async (id) =>
+    (await db.query("select status,duplicate_of from payments where id=$1", [id])).rows[0];
+
+  const first = await pay("dddd0001-3232-4000-8000-000000000001");
+  assert.deepEqual(await row(first), { status: "confirmed", duplicate_of: null });
+  assert.equal(await balance(), "-100.00");
+
+  const second = await pay("dddd0001-3232-4000-8000-000000000002");
+  assert.deepEqual(await row(second), { status: "pending", duplicate_of: first });
+  assert.equal(await balance(), "-100.00");
+  // Повтор того же запроса — та же запись, не третья.
+  assert.equal(await pay("dddd0001-3232-4000-8000-000000000002"), second);
+
+  // Владелец подтверждает — долг меняется; отклоняет — нет.
+  const third = await pay("dddd0001-3232-4000-8000-000000000003");
+  assert.equal((await row(third)).duplicate_of, first);
+  await db.query("select confirm_payment_claim($1,$2,null)", [orgA, second]);
+  assert.equal(await balance(), "-200.00");
+  await db.query("select reject_payment_claim($1,$2,'Двойная запись')", [orgA, third]);
+  assert.equal(await balance(), "-200.00");
+
+  // Отменённая оплата номер не занимает.
+  const fresh = await pay("dddd0001-3232-4000-8000-000000000004", "DUP-REF-2");
+  await db.query("select reverse_payment($1,$2,'Ошибка в сумме')", [orgA, fresh]);
+  const again = await pay("dddd0001-3232-4000-8000-000000000005", "DUP-REF-2");
+  assert.deepEqual(await row(again), { status: "confirmed", duplicate_of: null });
+  await owner();
 });
 
 test("anon checks a claim token without reading share_links", async () => {
