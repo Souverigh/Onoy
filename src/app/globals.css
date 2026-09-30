@@ -1401,6 +1401,98 @@ div.photo-field {
   margin-bottom: 14px;
   font-size: 14px;
 }
+/* Карточка заявки: шапка (кто · сумма), флажки одной строкой, одна
+   главная кнопка; правка суммы/курса и отклонение — в раскрывашках. */
+.claim-card {
+  display: grid;
+  gap: 10px;
+}
+.claim-card > * {
+  margin: 0;
+}
+.claim-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.claim-head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.claim-amount {
+  display: grid;
+  text-align: right;
+}
+.claim-amount strong {
+  font-size: 20px;
+  white-space: nowrap;
+}
+.claim-amount small {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.claim-flag {
+  font-size: 14px !important;
+  line-height: 1.45;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+.claim-flag.duplicate {
+  background: #fff1b8;
+  border-left: 4px solid #e0a800;
+  color: #5c4500;
+}
+.claim-flag.differs {
+  background: #fff8e8;
+  color: #8a5a00;
+}
+.claim-flag.ok {
+  background: #eaf4e5;
+  color: #315b3a;
+}
+.claim-comment {
+  font-size: 14px !important;
+}
+.claim-card .claim-links {
+  font-size: 14px;
+}
+.claim-card .claim-links a {
+  color: var(--green);
+  text-decoration: underline;
+}
+.claim-main-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+}
+.claim-main-actions form,
+.claim-main-actions .button {
+  width: 100%;
+}
+.claim-more > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+.claim-edit-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 10px;
+}
+.claim-edit-form label {
+  flex: 1;
+  min-width: 110px;
+  margin-bottom: 0;
+}
+.claim-edit-form > input[name="comment"] {
+  flex: 1;
+  min-width: 160px;
+}
+
 .claim-actions {
   display: flex;
   gap: 16px;

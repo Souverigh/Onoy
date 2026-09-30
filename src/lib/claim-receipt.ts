@@ -35,6 +35,8 @@ export type ReceiptCheck = {
   inDebt: number | null;
   /** По чеку минус заявка, в валюте долга: > 0 — по чеку больше. */
   diff: number | null;
+  /** Курс, по которому пересчитан чек (null — чек в валюте долга или курса нет). */
+  rate: number | null;
 };
 
 /**
@@ -49,16 +51,17 @@ export function checkReceipt(
   rates: Record<string, RateQuote> = {},
 ): ReceiptCheck {
   let inDebt: number | null = null;
+  let rate: number | null = null;
   if (receipt.currency === debtCurrency) inDebt = receipt.amount;
   else {
-    const rate =
+    rate =
       claim.original_currency === receipt.currency && Number(claim.fx_rate) > 0
         ? Number(claim.fx_rate)
-        : rates[ratePair(receipt.currency, debtCurrency).join("/")]?.rate;
+        : rates[ratePair(receipt.currency, debtCurrency).join("/")]?.rate ?? null;
     if (rate) inDebt = convertAmount(receipt.amount, receipt.currency, debtCurrency, rate);
   }
   const diff = inDebt == null ? null : Math.round((inDebt - Number(claim.amount)) * 100) / 100;
-  return { receipt, inDebt, diff };
+  return { receipt, inDebt, diff, rate };
 }
 
 /** Расхождение больше 1 (сом/рубль/доллар) — как TOLERANCE у накладных. */

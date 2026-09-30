@@ -27,6 +27,8 @@ type Statement = {
     payment_kind?: PaymentKind;
     note?: string | null;
   }[];
+  /** Оплаты в другой валюте: исходная сумма и курс (миграция 36). */
+  originals?: Record<string, { amount: string; currency: string; rate: string }>;
 };
 
 export default async function ClientPage({
@@ -107,8 +109,9 @@ export default async function ClientPage({
             Сколько перевели?
             <input name="amount" inputMode="decimal" pattern="[0-9 ]+([.,][0-9]{1,2})?" placeholder="0" />
             <small className="muted">
-              Можно не вводить, если приложите чек, — сумму и валюту прочитаем с него. Ваш долг — в{" "}
-              {CURRENCY_SIGN[debtCurrency]}; перевод в другой валюте пересчитаем по курсу Нацбанка на сегодня.
+              Можно не вводить, если приложите чек, — сумму и валюту прочитаем с него. Оплата сохранится в той
+              валюте, в которой вы перевели; ваш долг — в {CURRENCY_SIGN[debtCurrency]}, в него она зачтётся по
+              курсу Нацбанка.
             </small>
           </label>
           <label>
@@ -166,7 +169,17 @@ export default async function ClientPage({
                         </>
                       )}
                     </td>
-                    <td>{money(entry.amount, cur)}</td>
+                    <td>
+                      {/* Оплата в другой валюте — клиенту в ней, пересчёт в валюту долга подсказкой. */}
+                      {entry.kind === "payment" && statement.originals?.[entry.id] ? (
+                        <>
+                          {money(statement.originals[entry.id].amount, statement.originals[entry.id].currency)}
+                          <small className="muted history-original">≈ {money(entry.amount, cur)}</small>
+                        </>
+                      ) : (
+                        money(entry.amount, cur)
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -1517,7 +1517,17 @@ test("client claim in another currency is converted to the debt currency, origin
   assert.equal((await row(first)).original_currency, "KGS");
   await db.query("select confirm_payment_claim($1,$2,'1200.00')", [orgA, second]);
   assert.deepEqual(await row(second), { amount: "1200.00", original_amount: null, original_currency: null, fx_rate: null });
+
+  // 10 $ по другому курсу: владелец меняет курс — доллары остаются, рубли пересчитаны.
   await owner();
+  await db.exec("SET ROLE anon; SELECT set_config('request.jwt.claim.sub','',false);");
+  const dollars = (await db.query("select submit_payment_claim($1,null,null,null,'10','USD','84.4283') as id", [token])).rows[0].id;
+  const statement = (await db.query("select get_statement_by_token($1) as s", [token])).rows[0].s;
+  assert.deepEqual(statement.originals[dollars], { amount: "10.00", currency: "USD", rate: "84.428300" });
+  await user(a);
+  await db.query("select confirm_payment_claim($1,$2,null,'10','USD','90')", [orgA, dollars]);
+  await owner();
+  assert.deepEqual(await row(dollars), { amount: "900.00", original_amount: "10.00", original_currency: "USD", fx_rate: "90.000000" });
 });
 
 test("anon checks a claim token without reading share_links", async () => {

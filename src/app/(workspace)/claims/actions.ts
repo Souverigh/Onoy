@@ -3,17 +3,35 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getContext } from "@/lib/context";
 import { decimalInput } from "@/lib/validation";
+import { isCurrency, rateInput } from "@/lib/currency";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Подтверждение заявки: как есть (без суммы), с исправленной суммой в валюте
+ * долга, или — у оплаты в другой валюте — с исходной суммой и курсом (сумма
+ * в валюте долга пересчитывается в базе, исходная валюта остаётся).
+ */
 export async function confirmClaim(form: FormData) {
   const id = String(form.get("id") ?? "");
-  const amount = String(form.get("amount") ?? "");
   if (!uuidPattern.test(id)) redirect("/claims?error=invalid");
-  let value: string;
+  const rawAmount = String(form.get("amount") ?? "").trim();
+  const originalCurrency = form.get("original_currency");
+  let params: Record<string, string | null> = { p_amount: null };
   try {
-    value = decimalInput(amount, 2);
+    if (isCurrency(originalCurrency)) {
+      const rate = rateInput(String(form.get("fx_rate") ?? ""));
+      if (!rate) throw new Error("rate");
+      params = {
+        p_amount: null,
+        p_original_amount: decimalInput(form.get("original_amount"), 2),
+        p_original_currency: originalCurrency,
+        p_fx_rate: rate,
+      };
+    } else if (rawAmount) {
+      params = { p_amount: decimalInput(rawAmount, 2) };
+    }
   } catch {
     redirect("/claims?error=invalid");
   }
@@ -21,7 +39,7 @@ export async function confirmClaim(form: FormData) {
   const result = await db.rpc("confirm_payment_claim", {
     p_org: organizationId,
     p_payment: id,
-    p_amount: value,
+    ...params,
   });
   if (result.error) redirect("/claims?error=invalid");
   revalidatePath("/", "layout");
