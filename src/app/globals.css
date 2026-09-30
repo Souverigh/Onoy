@@ -1798,6 +1798,13 @@ tr.line-mismatch {
   border-left: 4px solid #e0a800;
   padding-left: 10px;
 }
+.duplicate-repeats {
+  margin: 0;
+  padding-left: 18px;
+}
+.doc-status .duplicate-warning {
+  margin-top: 12px;
+}
 .duplicate-link {
   font-weight: 700;
   color: #7a5a00;

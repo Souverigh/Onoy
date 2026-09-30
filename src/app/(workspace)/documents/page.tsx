@@ -25,6 +25,12 @@ const kindLabel: Record<string, string> = {
   payment: "Оплата",
   expense: "Расход",
 };
+const dateTime = new Intl.DateTimeFormat("ru-RU", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Asia/Bishkek",
+});
+
 const roleLabel = { customer: "клиент", supplier: "поставщик", expense: "расход магазина" } as const;
 
 export default async function Documents() {
@@ -37,7 +43,12 @@ export default async function Documents() {
     .limit(50);
   if (error) throw new Error("Не удалось загрузить документы");
   const documents = (data ?? []) as DocRow[];
-  const parties = await partiesOf(db, organizationId, documents.map((d) => d.id));
+  const ids = documents.map((d) => d.id);
+  const [parties, digitizedAt, duplicates] = await Promise.all([
+    partiesOf(db, organizationId, ids),
+    lastRecognition(db, organizationId, ids),
+    duplicateDocuments(db, organizationId, ids),
+  ]);
 
   return (
     <>
@@ -61,6 +72,7 @@ export default async function Documents() {
                   <th>Кто</th>
                   <th>Статус</th>
                   <th>Загружен</th>
+                  <th>Оцифрован</th>
                   <th>
                     <span className="sr-only">Открыть</span>
                   </th>
@@ -86,16 +98,18 @@ export default async function Documents() {
                       </td>
                       <td>
                         <span className={status.className}>{status.label}</span>
+                        {duplicates.has(doc.id) && <span className="tag duplicate-tag">дубликат</span>}
                         {doc.status === "failed" && doc.error_message && (
                           <small>{doc.error_message}</small>
                         )}
                       </td>
+                      <td>{dateTime.format(new Date(doc.created_at))}</td>
                       <td>
-                        {new Intl.DateTimeFormat("ru-RU", {
-                          dateStyle: "medium",
-                          timeStyle: "short",
-                          timeZone: "Asia/Bishkek",
-                        }).format(new Date(doc.created_at))}
+                        {(doc.status === "digitized" || doc.status === "review") && digitizedAt.get(doc.id) ? (
+                          dateTime.format(new Date(digitizedAt.get(doc.id)!))
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
                       </td>
                       <td>
                         <Link href={`/documents/${doc.id}`} aria-label="Открыть документ">
@@ -123,6 +137,37 @@ export default async function Documents() {
       )}
     </>
   );
+}
+
+type Db = Awaited<ReturnType<typeof getContext>>["db"];
+
+/** Время последнего распознавания документа (строка document_extractions). */
+async function lastRecognition(db: Db, organizationId: string, documentIds: string[]) {
+  const result = new Map<string, string>();
+  if (!documentIds.length) return result;
+  const { data } = await db
+    .from("document_extractions")
+    .select("document_id,created_at")
+    .eq("organization_id", organizationId)
+    .in("document_id", documentIds)
+    .order("created_at", { ascending: false })
+    .limit(1000);
+  for (const row of data ?? []) if (!result.has(row.document_id)) result.set(row.document_id, row.created_at);
+  return result;
+}
+
+/** Чеки оплат-дубликатов, которые ещё ждут проверки владельца. */
+async function duplicateDocuments(db: Db, organizationId: string, documentIds: string[]) {
+  if (!documentIds.length) return new Set<string>();
+  const { data } = await db
+    .from("payments")
+    .select("document_id")
+    .eq("organization_id", organizationId)
+    .in("document_id", documentIds)
+    .not("duplicate_of", "is", null)
+    .eq("status", "pending")
+    .is("reversed_at", null);
+  return new Set((data ?? []).map((r) => r.document_id as string));
 }
 
 type Party = { name: string; role: "customer" | "supplier" | "expense" };

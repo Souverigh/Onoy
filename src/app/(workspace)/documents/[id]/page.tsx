@@ -11,6 +11,31 @@ import { retryRecognition, confirmDocument, updateLine, saveAlias, addLine, dele
 import { ConfirmButton } from "@/components/confirm-button";
 import { similarity } from "@/lib/match";
 import { TOLERANCE } from "@/lib/adre/reconcile";
+import { firstPaymentHref } from "@/lib/duplicates";
+import { partyCurrency } from "@/lib/currency";
+
+const dateTime = new Intl.DateTimeFormat("ru-RU", {
+  dateStyle: "short",
+  timeStyle: "short",
+  timeZone: "Asia/Bishkek",
+});
+const when = (iso: string) => dateTime.format(new Date(iso));
+
+type DuplicatePayment = {
+  id: string;
+  amount: string;
+  occurred_at: string;
+  created_at: string;
+  status: string;
+  reversed_at: string | null;
+  created_by: string | null;
+  document_id: string | null;
+  customer_id: string | null;
+  supplier_id: string | null;
+  duplicate_of: string | null;
+};
+const DUPLICATE_COLUMNS =
+  "id,amount,occurred_at,created_at,status,reversed_at,created_by,document_id,customer_id,supplier_id,duplicate_of";
 
 type DocRow = {
   id: string;
@@ -158,6 +183,60 @@ export default async function DocumentDetail({
       docCurrency = row.data.currency;
     }
   }
+  // Оплата-дубликат: какая запись повторена (и когда её чек оцифровали), и
+  // обратное — какие записи повторили эту оплату.
+  let payment: DuplicatePayment | null = null;
+  let firstPayment: DuplicatePayment | null = null;
+  let firstDigitizedAt: string | null = null;
+  let repeats: DuplicatePayment[] = [];
+  let paymentCurrency: string = shopCurrency;
+  if (doc.kind === "payment") {
+    payment =
+      ((
+        await db.from("payments").select(DUPLICATE_COLUMNS).eq("organization_id", organizationId).eq("document_id", id).maybeSingle()
+      ).data as DuplicatePayment | null) ?? null;
+    if (payment) {
+      const partyId = payment.customer_id ?? payment.supplier_id;
+      const [firstResult, repeatsResult, partyResult] = await Promise.all([
+        payment.duplicate_of
+          ? db.from("payments").select(DUPLICATE_COLUMNS).eq("organization_id", organizationId).eq("id", payment.duplicate_of).maybeSingle()
+          : Promise.resolve({ data: null }),
+        db
+          .from("payments")
+          .select(DUPLICATE_COLUMNS)
+          .eq("organization_id", organizationId)
+          .eq("duplicate_of", payment.id)
+          .order("created_at"),
+        partyId
+          ? db.from(payment.customer_id ? "customers" : "suppliers").select("currency").eq("organization_id", organizationId).eq("id", partyId).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      firstPayment = (firstResult.data as DuplicatePayment | null) ?? null;
+      repeats = (repeatsResult.data ?? []) as DuplicatePayment[];
+      paymentCurrency = partyCurrency(partyResult.data as { currency: string | null } | null, shopCurrency);
+      if (firstPayment?.document_id) {
+        firstDigitizedAt =
+          (
+            await db
+              .from("document_extractions")
+              .select("created_at")
+              .eq("organization_id", organizationId)
+              .eq("document_id", firstPayment.document_id)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle()
+          ).data?.created_at ?? null;
+      }
+    }
+  }
+  const statusOf = (p: DuplicatePayment) =>
+    p.reversed_at
+      ? "отменена"
+      : p.status === "pending"
+        ? "на проверке"
+        : p.status === "rejected"
+          ? "отклонена"
+          : "подтверждена";
   const expenseFields = doc.kind === "expense" ? (extraction?.payload?.extracted as ExpenseResult | undefined) : undefined;
 
   const pages = await documentPages(db, organizationId, doc.id);
@@ -307,6 +386,12 @@ export default async function DocumentDetail({
                     ? "Расхождение"
                     : "Ошибка"}
           </span>
+          <span className="muted doc-status-model">
+            Загружен {when(doc.created_at)}
+            {extraction && (doc.status === "digitized" || doc.status === "review") && (
+              <> · {doc.status === "digitized" ? "оцифрован" : "распознан"} {when(extraction.created_at)}</>
+            )}
+          </span>
           {extraction && (
             <span className="muted doc-status-model">
               {extraction.provider} · {extraction.model_version}
@@ -326,6 +411,48 @@ export default async function DocumentDetail({
             </form>
           )}
         </div>
+        {payment?.duplicate_of && (
+          <div className="duplicate-warning">
+            <strong>Дубликат{payment.created_by ? "" : " от клиента"}</strong>
+            <p>
+              Этот чек уже учтён в оплате
+              {firstPayment
+                ? ` от ${when(firstPayment.occurred_at)} на ${money(firstPayment.amount, paymentCurrency)} (${statusOf(firstPayment)})`
+                : ""}
+              {firstDigitizedAt ? `; её чек оцифрован ${when(firstDigitizedAt)}` : ""}. Эта запись — {statusOf(payment)},
+              внесена {when(payment.created_at)}.
+            </p>
+            {firstPayment && firstPaymentHref(firstPayment) && (
+              <Link className="duplicate-link" href={firstPaymentHref(firstPayment)!}>
+                Первая запись →
+              </Link>
+            )}
+          </div>
+        )}
+        {repeats.length > 0 && (
+          <div className="duplicate-warning">
+            <strong>Этот чек повторили: {repeats.length}</strong>
+            <ul className="duplicate-repeats">
+              {repeats.map((r) => {
+                const href = firstPaymentHref(r);
+                return (
+                  <li key={r.id}>
+                    {when(r.created_at)} · {r.created_by ? "продавец" : "клиент"} · {money(r.amount, paymentCurrency)} ·{" "}
+                    {statusOf(r)}
+                    {href && (
+                      <>
+                        {" · "}
+                        <Link className="duplicate-link" href={href}>
+                          открыть →
+                        </Link>
+                      </>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
         {doc.error_message &&
           (doc.error_message.startsWith("Не разобрали") ? (
             <p className="photo-check-mismatch">{doc.error_message}</p>
