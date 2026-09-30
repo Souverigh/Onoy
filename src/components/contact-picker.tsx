@@ -11,7 +11,17 @@ type ContactsManager = {
  * (Contact Picker API); iPhone и компьютер его не умеют — там загрузка .vcf
  * («Поделиться контактом» → «Сохранить в Файлы»).
  */
-export function ContactPicker({ onPick, label = "Из контактов" }: { onPick: (contact: PickedContact) => void; label?: string }) {
+export function ContactPicker({
+  onPick,
+  label = "Из контактов",
+  compact = false,
+}: {
+  onPick: (contact: PickedContact) => void;
+  label?: string;
+  /** Текстовая ссылка вместо кнопки (форма продажи). */
+  compact?: boolean;
+}) {
+  const buttonClass = compact ? "text-button" : "button";
   const [native, setNative] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -50,13 +60,18 @@ export function ContactPicker({ onPick, label = "Из контактов" }: { o
   return (
     <span className="contact-picker">
       {native ? (
-        <button type="button" className="button" onClick={pickNative}>
+        <button type="button" className={buttonClass} onClick={pickNative}>
           {label}
         </button>
       ) : (
         <>
-          <button type="button" className="button" onClick={() => fileInput.current?.click()}>
-            {label} (.vcf)
+          <button
+            type="button"
+            className={buttonClass}
+            title="Файл контакта .vcf"
+            onClick={() => fileInput.current?.click()}
+          >
+            {compact ? label : `${label} (.vcf)`}
           </button>
           <input
             ref={fileInput}

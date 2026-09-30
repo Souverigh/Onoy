@@ -657,6 +657,111 @@ export function OperationForm({
           </p>
         )}
         {!prefill && receiptDocumentId && <input type="hidden" name="document_id" value={receiptDocumentId} />}
+        {kind !== "payment" && (
+          <div className="photo-field invoice-dropzone">
+            <span className="invoice-dropzone-title">
+              Фото накладной
+              {pages.length > 0 && <span className="muted"> · страниц: {pages.length}</span>}
+            </span>
+            {useExisting && existingDocument && pages.length === 0 && (
+              <ol className="page-thumbs">
+                {existingDocument.pages.map((page, i) => (
+                  <li key={i} className="page-thumb">
+                    {page.mimeType === "application/pdf" || !page.url ? (
+                      <span className="page-thumb-pdf">{page.url ? "PDF" : "Фото"}</span>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={page.url} alt={`Страница ${i + 1}`} />
+                    )}
+                    <span className="page-thumb-n">{i + 1}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {pages.length > 0 && (
+              <ol className="page-thumbs">
+                {pages.map((file, i) => (
+                  <li key={`${i}-${file.name}-${file.lastModified}`} className="page-thumb">
+                    {isPdf(file) ? (
+                      <span className="page-thumb-pdf" title={file.name}>
+                        PDF
+                        <small>{file.name}</small>
+                      </span>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      previews[i] && <img src={previews[i]} alt={`Страница ${i + 1}`} />
+                    )}
+                    <span className="page-thumb-n">{i + 1}</span>
+                    <button
+                      type="button"
+                      className="page-thumb-remove"
+                      aria-label={`Убрать страницу ${i + 1}`}
+                      onClick={() => removePage(i)}
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {useExisting && pages.length === 0 ? (
+              <div className="page-add-actions">
+                <button
+                  type="button"
+                  className="button page-add"
+                  onClick={() => {
+                    ++photoRequest.current;
+                    setUseExisting(false);
+                    setCheckedPhoto(null);
+                    setCheckNote(null);
+                    setChecking(false);
+                  }}
+                >
+                  Заменить фото
+                </button>
+              </div>
+            ) : pages.length < MAX_PAGES && (
+              <div className="page-add-actions">
+                {/* Камера сразу — capture; файлом — фото из галереи или PDF. */}
+                <label className="button page-add">
+                  {pages.length ? "+ Ещё страница" : "Сфотографировать"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="sr-only"
+                    onChange={addPages}
+                  />
+                </label>
+                <label className="button page-add">
+                  {pages.length ? "+ Файл" : "Фото или PDF"}
+                  <input
+                    type="file"
+                    accept={DOCUMENT_ACCEPT}
+                    multiple
+                    className="sr-only"
+                    onChange={addPages}
+                  />
+                </label>
+              </div>
+            )}
+            {pages.length === 0 && !useExisting && (
+              <small className="muted">
+                {kind === "sale" ? "Клиента" : "Поставщика"} и сумму подставим с фото. Несколько листов — по
+                порядку, PDF — целиком.
+              </small>
+            )}
+            <input
+              ref={pagesInput}
+              // Фото уже загружены при проверке — второй раз не отправляем,
+              // сервер возьмёт document_id.
+              name={checkedPhoto || useExisting || uploadedDocumentId ? undefined : "photo"}
+              type="file"
+              multiple
+              hidden
+            />
+          </div>
+        )}
         {kind === "payment" && !prefill && (
           <div className="photo-field receipt-field">
             <span>Чек или скриншот перевода (необязательно)</span>
@@ -804,7 +909,8 @@ export function OperationForm({
         {kind === "sale" && (
           <div className="contact-row">
             <ContactPicker
-              label="Клиент из контактов"
+              compact
+              label="+ Клиент из контактов"
               onPick={async ({ name, phone }) => {
                 setContactNote("Ищем клиента…");
                 const found = await customerFromContact(name, phone);
@@ -828,25 +934,26 @@ export function OperationForm({
             {contactNote && <small className="muted">{contactNote}</small>}
           </div>
         )}
-        <div className="amount-currency">
-          <span className="muted">Валюта суммы:</span>
-          {CURRENCIES.map((c) => (
-            <button
-              key={c}
-              type="button"
-              className={`party-suggestion${docCurrency === c ? " active" : ""}`}
-              aria-pressed={docCurrency === c}
-              onClick={() => {
-                setAmountCurrency(c === debtCurrency ? null : c);
-                setRateValue("");
-              }}
-            >
-              {CURRENCY_SIGN[c]}
-            </button>
-          ))}
+        <div className="amount-head">
+          <span>Сколько?</span>
+          <span className="currency-pills" role="group" aria-label="Валюта суммы">
+            {CURRENCIES.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={docCurrency === c ? "active" : ""}
+                aria-pressed={docCurrency === c}
+                onClick={() => {
+                  setAmountCurrency(c === debtCurrency ? null : c);
+                  setRateValue("");
+                }}
+              >
+                {CURRENCY_SIGN[c]}
+              </button>
+            ))}
+          </span>
         </div>
         <label className="amount-field">
-          Сколько, {CURRENCY_SIGN[docCurrency]}?
           <input
             name={kind === "payment" ? "amount" : "total"}
             inputMode="decimal"
@@ -1122,121 +1229,9 @@ export function OperationForm({
             </div>
           </details>
         )}
-        {kind !== "payment" && (
-          <div className="photo-field">
-            <span>
-              Фото накладной
-              {pages.length > 0 && <span className="muted"> · страниц: {pages.length}</span>}
-            </span>
-            {useExisting && existingDocument && pages.length === 0 && (
-              <ol className="page-thumbs">
-                {existingDocument.pages.map((page, i) => (
-                  <li key={i} className="page-thumb">
-                    {page.mimeType === "application/pdf" || !page.url ? (
-                      <span className="page-thumb-pdf">{page.url ? "PDF" : "Фото"}</span>
-                    ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={page.url} alt={`Страница ${i + 1}`} />
-                    )}
-                    <span className="page-thumb-n">{i + 1}</span>
-                  </li>
-                ))}
-              </ol>
-            )}
-            {pages.length > 0 && (
-              <ol className="page-thumbs">
-                {pages.map((file, i) => (
-                  <li key={`${i}-${file.name}-${file.lastModified}`} className="page-thumb">
-                    {isPdf(file) ? (
-                      <span className="page-thumb-pdf" title={file.name}>
-                        PDF
-                        <small>{file.name}</small>
-                      </span>
-                    ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      previews[i] && <img src={previews[i]} alt={`Страница ${i + 1}`} />
-                    )}
-                    <span className="page-thumb-n">{i + 1}</span>
-                    <button
-                      type="button"
-                      className="page-thumb-remove"
-                      aria-label={`Убрать страницу ${i + 1}`}
-                      onClick={() => removePage(i)}
-                    >
-                      ×
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            )}
-            {useExisting && pages.length === 0 ? (
-              <div className="page-add-actions">
-                <button
-                  type="button"
-                  className="button page-add"
-                  onClick={() => {
-                    ++photoRequest.current;
-                    setUseExisting(false);
-                    setCheckedPhoto(null);
-                    setCheckNote(null);
-                    setChecking(false);
-                  }}
-                >
-                  Заменить фото
-                </button>
-              </div>
-            ) : pages.length < MAX_PAGES && (
-              <div className="page-add-actions">
-                {/* Камера сразу — capture; файлом — фото из галереи или PDF. */}
-                <label className="button page-add">
-                  {pages.length ? "+ Сфотографировать ещё" : "Сфотографировать"}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="sr-only"
-                    onChange={addPages}
-                  />
-                </label>
-                <label className="button page-add">
-                  {pages.length ? "+ Добавить файл" : "Выбрать фото или PDF"}
-                  <input
-                    type="file"
-                    accept={DOCUMENT_ACCEPT}
-                    multiple
-                    className="sr-only"
-                    onChange={addPages}
-                  />
-                </label>
-              </div>
-            )}
-            {pages.length === 0 && !useExisting && (
-              <small className="muted">
-                Накладная на нескольких листах — добавьте страницы по порядку. PDF от поставщика
-                можно приложить целиком.
-              </small>
-            )}
-            <input
-              ref={pagesInput}
-              // Фото уже загружены при проверке — второй раз не отправляем,
-              // сервер возьмёт document_id.
-              name={checkedPhoto || useExisting || uploadedDocumentId ? undefined : "photo"}
-              type="file"
-              multiple
-              hidden
-            />
-          </div>
-        )}
         {prefill && (
           <p className="muted">Фото квитанции уже приложено — распознаём в фоне.</p>
         )}
-        <p className="operation-hint">
-          {kind === "purchase"
-            ? "Сумма сразу добавится к долгу перед поставщиком. Фото — основание записи."
-            : kind === "sale"
-              ? "Сумма сразу добавится к долгу клиента. Если клиент заплатил — отметьте наличные."
-              : "Оплата сразу уменьшит долг контрагента."}
-        </p>
         {submitErrorText && !saving && (
           <p className="form-error" role="alert" ref={commitError}>
             {submitErrorText}
@@ -1256,6 +1251,13 @@ export function OperationForm({
             Отмена
           </Link>
         </div>
+        <p className="operation-hint">
+          {kind === "purchase"
+            ? "Сумма сразу добавится к долгу перед поставщиком. Фото — основание записи."
+            : kind === "sale"
+              ? "Сумма сразу добавится к долгу клиента. Если клиент заплатил — отметьте наличные."
+              : "Оплата сразу уменьшит долг контрагента."}
+        </p>
       </form>
     </>
   );

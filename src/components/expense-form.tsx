@@ -57,6 +57,8 @@ export function ExpenseForm({
   // Поле даты показывает dateSeed (задаётся с чека), введённое — в dateValue.
   const [dateSeed, setDateSeed] = useState(today);
   const [dateValue, setDateValue] = useState<string | null>(today);
+  // «Комментарий и дата» свёрнуты; раскрываются сами, когда нужны.
+  const [moreOpen, setMoreOpen] = useState(false);
   const dateTouched = useRef(false);
   const [pages, setPages] = useState<File[]>([]);
   const [preparing, setPreparing] = useState(false);
@@ -188,12 +190,17 @@ export function ExpenseForm({
   const amountDiffers =
     paperAmount !== null && (recognized?.currency ?? "KGS") === currency && amount.trim() !== "" && Math.abs(enteredAmount - paperAmount) > 1;
 
+  const moreNeeded = category === "other" || localError === "note" || localError === "date";
+  useEffect(() => {
+    if (moreNeeded) setMoreOpen(true);
+  }, [moreNeeded]);
+
   return (
     <form onSubmit={submit} className="simple-operation-form expense-form">
       <input type="hidden" name="idempotency_key" value={idempotencyKey} />
-      <div className="photo-field">
-        <span>
-          Фото чека (необязательно)
+      <div className="photo-field invoice-dropzone">
+        <span className="invoice-dropzone-title">
+          Фото чека <span className="muted">(необязательно)</span>
           {pages.length > 0 && <span className="muted"> · файлов: {pages.length}</span>}
         </span>
         {pages.length > 0 && (
@@ -223,7 +230,7 @@ export function ExpenseForm({
           </ol>
         )}
         {pages.length < MAX_PAGES && (
-          <div className="page-add-actions">
+          <div className="page-add-actions single">
             {/* Одна кнопка: телефон сам предложит камеру, галерею или файлы. */}
             <label className="button page-add">
               {pages.length ? "+ Добавить ещё фото" : "Сфотографировать или выбрать чек"}
@@ -301,27 +308,40 @@ export function ExpenseForm({
           </label>
         ))}
       </fieldset>
-      <label>
-        Комментарий{category === "other" ? " (обязательно)" : " (необязательно)"}
-        <input
-          name="note"
-          maxLength={500}
-          required={category === "other"}
-          placeholder={category === "other" ? "На что потратили" : "Например: аренда за октябрь"}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
-      </label>
-      <RuDateInput
-        label="Дата"
-        value={dateSeed}
-        onChange={(next) => {
-          dateTouched.current = true;
-          setDateValue(next);
-          if (localError === "date") setLocalError(null);
-        }}
-      />
-      <p className="operation-hint">Расход уменьшит деньги за день в «Итоге дня». Долги клиентов и поставщиков не меняются.</p>
+      <details className="more-fields" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
+        <summary>
+          <span className="more-fields-title">Комментарий и дата</span>
+          {!moreOpen && (
+            <span className="more-fields-values">
+              {[dateValue ? (dateValue === today ? "сегодня" : dayText(dateValue)) : null, note.trim() || null]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          )}
+        </summary>
+        <div className="more-fields-body">
+          <label>
+            Комментарий{category === "other" ? " (обязательно)" : " (необязательно)"}
+            <input
+              name="note"
+              maxLength={500}
+              required={category === "other"}
+              placeholder={category === "other" ? "На что потратили" : "Например: аренда за октябрь"}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </label>
+          <RuDateInput
+            label="Дата"
+            value={dateSeed}
+            onChange={(next) => {
+              dateTouched.current = true;
+              setDateValue(next);
+              if (localError === "date") setLocalError(null);
+            }}
+          />
+        </div>
+      </details>
       {error && !saving && (
         <p className="form-error" role="alert" ref={errorRef}>
           {ERRORS[error] ?? ERRORS.save}
@@ -335,6 +355,7 @@ export function ExpenseForm({
           Отмена
         </Link>
       </div>
+      <p className="operation-hint">Расход уменьшит деньги за день в «Итоге дня». Долги клиентов и поставщиков не меняются.</p>
     </form>
   );
 }

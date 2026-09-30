@@ -1135,8 +1135,73 @@ td small {
 .cash-toggle {
   flex-direction: row !important;
   align-items: center;
-  gap: 10px !important;
+  gap: 12px !important;
   font-size: 15px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+.cash-toggle:has(input:checked) {
+  border-color: var(--green);
+  background: #edf4e9;
+}
+/* Продажа/приход: фото накладной — первым шагом, рамкой. */
+.invoice-dropzone {
+  gap: 10px;
+  padding: 14px;
+  border: 1.5px dashed #c9d2cc;
+  border-radius: 12px;
+  background: #fafbf9;
+}
+.invoice-dropzone-title {
+  font-weight: 600;
+}
+.invoice-dropzone .page-add-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.invoice-dropzone .page-add-actions.single {
+  grid-template-columns: 1fr;
+}
+.invoice-dropzone .page-add-actions .page-add {
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  padding-left: 8px;
+  padding-right: 8px;
+  white-space: nowrap;
+}
+/* «Сколько?» и валюта одной строкой — компактный переключатель. */
+.amount-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.currency-pills {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: #eef1ee;
+}
+.currency-pills button {
+  min-width: 44px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.currency-pills button.active {
+  background: #fff;
+  color: var(--green);
+  box-shadow: 0 1px 2px rgba(20, 30, 25, 0.12);
 }
 .cash-toggle input {
   width: 22px;
@@ -2879,6 +2944,7 @@ tr.line-mismatch {
 /* Клиент из контактов телефона. */
 .contact-picker,
 .contact-row {
+  margin-top: -8px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
