@@ -1798,6 +1798,10 @@ tr.line-mismatch {
   border-left: 4px solid #e0a800;
   padding-left: 10px;
 }
+.duplicate-subtitle {
+  margin-top: 6px !important;
+  font-weight: 700;
+}
 .duplicate-repeats {
   margin: 0;
   padding-left: 18px;

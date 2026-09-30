@@ -190,6 +190,9 @@ export default async function DocumentDetail({
   let firstDigitizedAt: string | null = null;
   let repeats: DuplicatePayment[] = [];
   let paymentCurrency: string = shopCurrency;
+  // Кто записан контрагентом (справочник) и отправитель, как на чеке.
+  const partyNames = new Map<string, string>();
+  const senders = new Map<string, string>();
   if (doc.kind === "payment") {
     payment =
       ((
@@ -208,12 +211,40 @@ export default async function DocumentDetail({
           .eq("duplicate_of", payment.id)
           .order("created_at"),
         partyId
-          ? db.from(payment.customer_id ? "customers" : "suppliers").select("currency").eq("organization_id", organizationId).eq("id", partyId).maybeSingle()
+          ? db.from(payment.customer_id ? "customers" : "suppliers").select("name,currency").eq("organization_id", organizationId).eq("id", partyId).maybeSingle()
           : Promise.resolve({ data: null }),
       ]);
+      const own = partyResult.data as { name: string } | null;
+      if (own && partyId) partyNames.set(partyId, own.name);
+      // Повтор мог прислать и другой клиент — имена всех из справочника.
+      const otherCustomers = [...new Set(repeats.map((r) => r.customer_id).filter((c): c is string => !!c && !partyNames.has(c)))];
+      const otherSuppliers = [...new Set(repeats.map((r) => r.supplier_id).filter((c): c is string => !!c && !partyNames.has(c)))];
+      const [moreCustomers, moreSuppliers] = await Promise.all([
+        otherCustomers.length
+          ? db.from("customers").select("id,name").eq("organization_id", organizationId).in("id", otherCustomers)
+          : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+        otherSuppliers.length
+          ? db.from("suppliers").select("id,name").eq("organization_id", organizationId).in("id", otherSuppliers)
+          : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      ]);
+      for (const p of [...(moreCustomers.data ?? []), ...(moreSuppliers.data ?? [])]) partyNames.set(p.id, p.name);
       firstPayment = (firstResult.data as DuplicatePayment | null) ?? null;
       repeats = (repeatsResult.data ?? []) as DuplicatePayment[];
       paymentCurrency = partyCurrency(partyResult.data as { currency: string | null } | null, shopCurrency);
+      // Отправитель с чека у повторов — из их распознавания (одним запросом).
+      const repeatDocs = repeats.map((r) => r.document_id).filter(Boolean) as string[];
+      if (repeatDocs.length) {
+        const { data: repeatExtractions } = await db
+          .from("document_extractions")
+          .select("document_id,payload")
+          .eq("organization_id", organizationId)
+          .in("document_id", repeatDocs)
+          .order("created_at", { ascending: false });
+        for (const e of repeatExtractions ?? []) {
+          const sender = (e.payload as { extracted?: { sender_name?: string | null } } | null)?.extracted?.sender_name;
+          if (sender && !senders.has(e.document_id)) senders.set(e.document_id, String(sender));
+        }
+      }
       if (firstPayment?.document_id) {
         firstDigitizedAt =
           (
@@ -229,6 +260,16 @@ export default async function DocumentDetail({
       }
     }
   }
+  // «клиент Ержан · по чеку: Тестов Тест» — кто прислал запись.
+  const nameOf = (p: DuplicatePayment) => partyNames.get((p.customer_id ?? p.supplier_id) as string) ?? null;
+  const whoSent = (p: DuplicatePayment, sender: string | null | undefined) =>
+    [
+      p.created_by ? "внёс продавец" : null,
+      `${p.supplier_id ? "поставщик" : "клиент"}${nameOf(p) ? ` ${nameOf(p)}` : ""}`,
+      sender ? `по чеку: ${sender}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   const statusOf = (p: DuplicatePayment) =>
     p.reversed_at
       ? "отменена"
@@ -315,16 +356,16 @@ export default async function DocumentDetail({
       </Link>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">
+          <span className="eyebrow">ДОКУМЕНТ</span>
+          <h1>
             {doc.kind === "purchase"
-              ? "ПРИХОД"
+              ? "Приход"
               : doc.kind === "sale"
-                ? "ПРОДАЖА"
+                ? "Продажа"
                 : doc.kind === "expense"
-                  ? "РАСХОД"
-                  : "ОПЛАТА"}
-          </span>
-          <h1>Документ</h1>
+                  ? "Расход"
+                  : "Оплата"}
+          </h1>
         </div>
         {(doc.kind === "purchase" || doc.kind === "sale") && (
           <div className="page-heading-actions">
@@ -411,46 +452,58 @@ export default async function DocumentDetail({
             </form>
           )}
         </div>
-        {payment?.duplicate_of && (
+        {(payment?.duplicate_of || repeats.length > 0) && (
           <div className="duplicate-warning">
-            <strong>Дубликат{payment.created_by ? "" : " от клиента"}</strong>
-            <p>
-              Этот чек уже учтён в оплате
-              {firstPayment
-                ? ` от ${when(firstPayment.occurred_at)} на ${money(firstPayment.amount, paymentCurrency)} (${statusOf(firstPayment)})`
-                : ""}
-              {firstDigitizedAt ? `; её чек оцифрован ${when(firstDigitizedAt)}` : ""}. Эта запись — {statusOf(payment)},
-              внесена {when(payment.created_at)}.
-            </p>
-            {firstPayment && firstPaymentHref(firstPayment) && (
-              <Link className="duplicate-link" href={firstPaymentHref(firstPayment)!}>
-                Первая запись →
-              </Link>
+            {payment?.duplicate_of && (
+              <>
+                <strong>
+                  Дубликат{payment.created_by ? "" : ` от клиента${nameOf(payment) ? ` ${nameOf(payment)}` : ""}`}
+                </strong>
+                {receiptFields?.sender_name && <p>Отправитель по чеку: {receiptFields.sender_name}</p>}
+                <p>
+                  Этот чек уже учтён в оплате
+                  {firstPayment
+                    ? ` от ${when(firstPayment.occurred_at)} на ${money(firstPayment.amount, paymentCurrency)} (${statusOf(firstPayment)})`
+                    : ""}
+                  {firstDigitizedAt ? `; её чек оцифрован ${when(firstDigitizedAt)}` : ""}. Эта запись —{" "}
+                  {statusOf(payment)}, внесена {when(payment.created_at)}.
+                </p>
+                {firstPayment && firstPaymentHref(firstPayment) && (
+                  <Link className="duplicate-link" href={firstPaymentHref(firstPayment)!}>
+                    Первая запись →
+                  </Link>
+                )}
+              </>
             )}
-          </div>
-        )}
-        {repeats.length > 0 && (
-          <div className="duplicate-warning">
-            <strong>Этот чек повторили: {repeats.length}</strong>
-            <ul className="duplicate-repeats">
-              {repeats.map((r) => {
-                const href = firstPaymentHref(r);
-                return (
-                  <li key={r.id}>
-                    {when(r.created_at)} · {r.created_by ? "продавец" : "клиент"} · {money(r.amount, paymentCurrency)} ·{" "}
-                    {statusOf(r)}
-                    {href && (
-                      <>
-                        {" · "}
-                        <Link className="duplicate-link" href={href}>
-                          открыть →
-                        </Link>
-                      </>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+            {repeats.length > 0 && (
+              <>
+                {payment?.duplicate_of ? (
+                  <p className="duplicate-subtitle">Этот же чек прислали ещё раз: {repeats.length}</p>
+                ) : (
+                  <strong>Этот чек повторили: {repeats.length}</strong>
+                )}
+                <ul className="duplicate-repeats">
+                  {repeats.map((r) => {
+                    const href = firstPaymentHref(r);
+                    return (
+                      <li key={r.id}>
+                        {when(r.created_at)} · {whoSent(r, r.document_id ? senders.get(r.document_id) : null)} ·{" "}
+                        {money(r.amount, paymentCurrency)} ·{" "}
+                        {statusOf(r)}
+                        {href && (
+                          <>
+                            {" · "}
+                            <Link className="duplicate-link" href={href}>
+                              открыть →
+                            </Link>
+                          </>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
           </div>
         )}
         {doc.error_message &&

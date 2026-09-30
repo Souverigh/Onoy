@@ -1460,6 +1460,19 @@ test("client claim with an already counted receipt is marked duplicate (same pho
   await db.query("select note_claim_receipt($1,$2,'CLAIM-REF-1','gemini','m','v3',$3,100,0.0005)", [token, otherPhoto, extraction]);
   assert.deepEqual(await row(otherPhoto), { status: "pending", duplicate_of: first, bank_reference: "CLAIM-REF-1" });
 
+  // Тот же файл, что у заявки-дубликата, — ссылка на исходную оплату, не на заявку.
+  const chained = await claim(await claimDoc(`claims/${token}/b2.jpg`, "hash-dup-2"));
+  assert.equal((await row(chained)).duplicate_of, first);
+  // Номер перевода важнее совпадения по фото (и тоже на исходную).
+  await db.query("select note_claim_receipt($1,$2,'CLAIM-REF-1','gemini','m','v3',null,null,null)", [token, chained]);
+  assert.equal((await row(chained)).duplicate_of, first);
+  await owner();
+  const docStatus = (await db.query(
+    "select d.status from documents d join payments p on p.document_id=d.id where p.id=$1", [otherPhoto],
+  )).rows[0].status;
+  assert.equal(docStatus, "digitized");
+  await db.exec("SET ROLE anon; SELECT set_config('request.jwt.claim.sub','',false);");
+
   // 3) Новый номер — не дубликат, номер сохраняется.
   const fresh = await claim(await claimDoc(`claims/${token}/c.jpg`, "hash-dup-3"));
   await db.query("select note_claim_receipt($1,$2,'CLAIM-REF-NEW','gemini','m','v3',null,null,null)", [token, fresh]);
