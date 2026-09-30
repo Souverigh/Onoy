@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
-import { DOCUMENT_ACCEPT } from "@/lib/pages";
 import { createAnonClient } from "@/lib/supabase/server";
 import { money } from "@/lib/format";
 import { dayMonth } from "@/lib/promise";
 import { paymentLabel, type PaymentKind } from "@/lib/entry-labels";
 import { CURRENCIES, CURRENCY_SIGN, isCurrency, type Currency } from "@/lib/currency";
 import { submitClaim } from "./actions";
+import { ClaimPhotoField } from "@/components/claim-photo-field";
 
 type Statement = {
   currency?: string;
@@ -118,10 +118,7 @@ export default async function ClientPage({
             Комментарий (необязательно)
             <input name="comment" maxLength={500} placeholder="Например: перевёл на карту" />
           </label>
-          <label className="photo-field">
-            Фото, скриншот или PDF квитанции (необязательно)
-            <input name="photo" type="file" accept={DOCUMENT_ACCEPT} />
-          </label>
+          <ClaimPhotoField />
           <button className="button primary" type="submit">
             Отправить
           </button>

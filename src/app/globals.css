@@ -3477,7 +3477,7 @@ form label.expense-chip {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 40px 8px 8px;
+  padding: 8px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff;
@@ -3495,8 +3495,21 @@ form label.expense-chip {
   font-size: 14px;
   line-height: 1.4;
 }
+/* «× Убрать» у выбранного чека — заметная кнопка, а не крошечный крестик. */
 .receipt-remove {
-  top: 50%;
-  transform: translateY(-50%);
-  right: 8px;
+  margin-left: auto;
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+  color: #a34836;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.receipt-picked-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

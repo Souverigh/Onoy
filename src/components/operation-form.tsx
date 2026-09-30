@@ -685,11 +685,11 @@ export function OperationForm({
                 </span>
                 <button
                   type="button"
-                  className="page-thumb-remove receipt-remove"
+                  className="receipt-remove"
                   aria-label="Убрать чек"
                   onClick={() => void pickReceipt(null)}
                 >
-                  ×
+                  × Убрать
                 </button>
               </div>
             ) : (
