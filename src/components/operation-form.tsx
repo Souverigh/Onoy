@@ -721,20 +721,11 @@ export function OperationForm({
                 </button>
               </div>
             ) : pages.length < MAX_PAGES && (
-              <div className="page-add-actions">
-                {/* Камера сразу — capture; файлом — фото из галереи или PDF. */}
+              <div className="page-add-actions single">
+                {/* Одна кнопка, как у чека оплаты: без capture телефон сам
+                    предлагает камеру, галерею и файлы. */}
                 <label className="button page-add">
-                  {pages.length ? "+ Ещё страница" : "Сфотографировать"}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="sr-only"
-                    onChange={addPages}
-                  />
-                </label>
-                <label className="button page-add">
-                  {pages.length ? "+ Файл" : "Фото или PDF"}
+                  {pages.length ? "+ Ещё страница" : "Сфотографировать или выбрать накладную"}
                   <input
                     type="file"
                     accept={DOCUMENT_ACCEPT}
@@ -1247,9 +1238,6 @@ export function OperationForm({
                 ? "Приложите фото накладной"
                 : confirmLabel}
           </Submit>
-          <Link className="text-button" href="/money">
-            Отмена
-          </Link>
         </div>
         <p className="operation-hint">
           {kind === "purchase"

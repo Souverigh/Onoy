@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { unstable_rethrow } from "next/navigation";
 import {
@@ -351,9 +350,6 @@ export function ExpenseForm({
         <Submit pending={saving} disabled={preparing || checking}>
           {preparing ? "Готовим фото…" : checking ? "Читаем чек…" : "Записать расход"}
         </Submit>
-        <Link className="text-button" href="/">
-          Отмена
-        </Link>
       </div>
       <p className="operation-hint">Расход уменьшит деньги за день в «Итоге дня». Долги клиентов и поставщиков не меняются.</p>
     </form>

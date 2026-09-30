@@ -12,7 +12,7 @@ export function Submit({
 }) {
   const pending = useFormStatus().pending || pendingProp;
   return (
-    <button className="button primary" disabled={pending || disabled} type="submit">
+    <button className="button primary" disabled={pending || disabled} type="submit" data-own-pending>
       {pending ? "Сохраняем…" : children}
     </button>
   );

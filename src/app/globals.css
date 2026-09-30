@@ -1171,7 +1171,7 @@ td small {
   min-width: 0;
   padding-left: 8px;
   padding-right: 8px;
-  white-space: nowrap;
+  text-align: center;
 }
 /* «Сколько?» и валюта одной строкой — компактный переключатель. */
 .amount-head {
@@ -3578,4 +3578,116 @@ form label.expense-chip {
 .receipt-picked-text {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* Отклик на нажатие (NavFeedback): видно, что нажали и что идёт загрузка. */
+a,
+button,
+summary,
+label.button {
+  -webkit-tap-highlight-color: rgba(36, 93, 76, 0.12);
+  transition: opacity 0.12s, transform 0.12s, background-color 0.12s;
+}
+a:active,
+summary:active,
+.button:active,
+button:not(:disabled):active {
+  opacity: 0.65;
+}
+.button:not(:disabled):active,
+.quick-action:active,
+.debt-card:active,
+a.notice:active {
+  transform: scale(0.98);
+}
+/* Нажатая ссылка/кнопка ждёт ответа: пульсирует, второй раз не нажать. */
+[data-pending] {
+  pointer-events: none;
+  cursor: progress;
+  animation: pending-pulse 1s ease-in-out 0.1s infinite;
+}
+.button[data-pending]::after {
+  content: "";
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: pending-spin 0.7s linear infinite;
+}
+@keyframes pending-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+@keyframes pending-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* Полоска загрузки сверху — появляется, если ответ дольше 0,1 с. */
+.nav-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  height: 3px;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+}
+.nav-progress.is-active {
+  animation: pending-fade 0.2s ease 0.1s forwards;
+}
+.nav-progress.is-active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  background: var(--green);
+  border-radius: 0 3px 3px 0;
+  animation: nav-progress-slide 1.1s ease-in-out infinite;
+}
+@keyframes pending-fade {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes nav-progress-slide {
+  from {
+    left: -40%;
+  }
+  to {
+    left: 100%;
+  }
+}
+/* Строка таблицы нажимается целиком — ссылка-стрелка растянута на строку. */
+tr.row-link {
+  position: relative;
+  cursor: pointer;
+}
+tr.row-link:hover {
+  background: #f1f4ee;
+}
+tr.row-link a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+tr.row-link:has(a[data-pending]) {
+  animation: pending-pulse 1s ease-in-out 0.1s infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-pending],
+  tr.row-link:has(a[data-pending]),
+  .nav-progress.is-active::before {
+    animation: none;
+  }
+  .nav-progress.is-active::before {
+    left: 0;
+    width: 100%;
+  }
 }

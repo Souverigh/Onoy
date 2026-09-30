@@ -76,6 +76,12 @@ export function Dashboard({
           {overdue.amounts.map((a) => money(a.amount, a.currency)).join(" + ")} →
         </Link>
       )}
+      {reviewCount > 0 && (
+        <Link className="notice" href={href("/documents")}>
+          Проверить накладные: {reviewCount} {plural(reviewCount, "накладная", "накладные", "накладных")} с
+          расхождением или ошибкой →
+        </Link>
+      )}
       {!staff && summary && (
         <section className="debt-cards" aria-label="Долги">
           <Link className="debt-card" href={href("/customers")}>
@@ -120,12 +126,6 @@ export function Dashboard({
             </small>
           </span>
           <span aria-hidden="true">→</span>
-        </Link>
-      )}
-      {reviewCount > 0 && (
-        <Link className="notice" href={href("/documents")}>
-          Проверить накладные: {reviewCount} {plural(reviewCount, "накладная", "накладные", "накладных")} с
-          расхождением или ошибкой →
         </Link>
       )}
       <form className="search dashboard-search" action={href("/customers")}>

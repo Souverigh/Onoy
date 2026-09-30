@@ -118,7 +118,7 @@ export default async function Documents() {
                 {documents.map((doc) => {
                   const status = statusLabel[doc.status] ?? statusLabel.uploaded;
                   return (
-                    <tr key={doc.id}>
+                    <tr key={doc.id} className="row-link">
                       <td>{doc.kind ? kindLabel[doc.kind] : "—"}</td>
                       <td>
                         {parties.get(doc.id) ? (
