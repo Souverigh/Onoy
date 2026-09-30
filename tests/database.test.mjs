@@ -1382,6 +1382,23 @@ test("get_invoice_by_token: only a digitized, active sale of the link's own cust
   await owner();
   await assert.rejects(db.query("select get_invoice_by_token($1,$2)", [token, ok.sale]), /invalid_token/);
 });
+
+test("anon checks a claim token without reading share_links", async () => {
+  await owner();
+  await user(a);
+  const customer = (await db.query(
+    "select id from customers where organization_id=$1 and archived_at is null limit 1", [orgA],
+  )).rows[0].id;
+  const token = (await db.query("select create_share_link($1,$2) as token", [orgA, customer])).rows[0].token;
+  await owner();
+  await db.exec("SET ROLE anon; SELECT set_config('request.jwt.claim.sub','',false);");
+  const active = async (t) => (await db.query("select claim_token_active($1) as ok", [t])).rows[0].ok;
+  assert.equal(await active(token), true);
+  assert.equal(await active("0".repeat(32)), false);
+  assert.equal(await active(null), false);
+  await assert.rejects(db.query("select 1 from share_links"), /permission denied/);
+  await owner();
+});
 test("document_lines: a discount line may have a negative price, quantity stays positive", async () => {
   await owner();
   const doc = (
