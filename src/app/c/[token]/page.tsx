@@ -4,7 +4,7 @@ import { createAnonClient } from "@/lib/supabase/server";
 import { money } from "@/lib/format";
 import { dayMonth } from "@/lib/promise";
 import { paymentLabel, type PaymentKind } from "@/lib/entry-labels";
-import { CURRENCY_SIGN, type Currency } from "@/lib/currency";
+import { CURRENCIES, CURRENCY_SIGN, isCurrency, type Currency } from "@/lib/currency";
 import { submitClaim } from "./actions";
 
 type Statement = {
@@ -34,7 +34,7 @@ export default async function ClientPage({
   searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ claimed?: string; error?: string }>;
+  searchParams: Promise<{ claimed?: string; error?: string; fromReceipt?: string }>;
 }) {
   const { token } = await params;
   if (!/^[a-f0-9]{32}$/i.test(token)) notFound();
@@ -42,9 +42,13 @@ export default async function ClientPage({
   const { data, error } = await anon.rpc("get_statement_by_token", { p_token: token });
   if (error || !data) notFound();
   const statement = data as Statement;
-  const { claimed, error: submitError } = await searchParams;
+  const { claimed, error: submitError, fromReceipt } = await searchParams;
   const balance = Number(statement.balance);
   const cur = statement.currency ?? "KGS";
+  // Валюта перевода: сначала валюта долга, дальше остальные — клиент мог
+  // перевести в сомах при долге в рублях (курс подставит сервер).
+  const debtCurrency: Currency = isCurrency(cur) ? cur : "KGS";
+  const claimCurrencies = [debtCurrency, ...CURRENCIES.filter((c) => c !== debtCurrency)];
 
   return (
     <main className="client-page">
@@ -69,23 +73,43 @@ export default async function ClientPage({
       </section>
       {claimed && (
         <p className="notice success" role="status">
-          Заявка отправлена. Магазин подтвердит оплату — долг обновится после этого.
+          Заявка отправлена.{fromReceipt ? " Сумму прочитали с чека." : ""} Магазин подтвердит оплату — долг
+          обновится после этого.
         </p>
       )}
       {submitError && (
         <p className="form-error" role="alert">
           {submitError === "photo"
             ? "Не удалось загрузить фото. Попробуйте без фото или другим файлом."
-            : "Проверьте сумму и попробуйте снова."}
+            : submitError === "amount"
+              ? "Введите сумму или приложите чек — тогда сумму прочитаем с него."
+              : submitError === "unread"
+                ? "Не смогли прочитать сумму на чеке — введите её вручную."
+            : submitError === "rate"
+              ? "Курс сейчас недоступен — укажите сумму в валюте долга или попробуйте позже."
+              : "Проверьте сумму и попробуйте снова."}
         </p>
       )}
       <section className="panel client-claim-panel">
         <h2>Я оплатил</h2>
         <form action={submitClaim} className="simple-operation-form">
           <input type="hidden" name="token" value={token} />
+          <fieldset className="amount-currency claim-currency">
+            <legend>В какой валюте перевели?</legend>
+            {claimCurrencies.map((c) => (
+              <label key={c} className="party-suggestion">
+                <input type="radio" name="currency" value={c} defaultChecked={c === debtCurrency} />
+                {CURRENCY_SIGN[c]}
+              </label>
+            ))}
+          </fieldset>
           <label className="amount-field">
-            Сколько, {CURRENCY_SIGN[cur as Currency] ?? "сом"}?
-            <input name="amount" inputMode="decimal" required pattern="[0-9]+([.,][0-9]{1,2})?" placeholder="0" />
+            Сколько перевели?
+            <input name="amount" inputMode="decimal" pattern="[0-9 ]+([.,][0-9]{1,2})?" placeholder="0" />
+            <small className="muted">
+              Можно не вводить, если приложите чек, — сумму и валюту прочитаем с него. Ваш долг — в{" "}
+              {CURRENCY_SIGN[debtCurrency]}; перевод в другой валюте пересчитаем по курсу Нацбанка на сегодня.
+            </small>
           </label>
           <label>
             Комментарий (необязательно)

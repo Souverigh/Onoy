@@ -215,12 +215,46 @@ export async function recognizeNotebook(pages: PhotoPage[]) {
   };
 }
 
+/** Распознанная квитанция заявки клиента — с данными вызова для кеша. */
+export type ClaimReceipt = {
+  result: ReceiptResult;
+  raw: unknown;
+  provider: string;
+  model: string;
+  latencyMs: number;
+  costUsd: number | null;
+};
+
 /**
- * Квитанция к заявке клиента «Я оплатил» — клиент без входа, кеша через
- * cache_extraction нет (он только для участников магазина). Результат и
- * номер перевода пишет note_claim_receipt по токену ссылки — там же отметка
- * «Дубликат», если номер уже есть в оплате магазина. Вызывается из after():
- * ошибки только в лог.
+ * Квитанция к заявке клиента «Я оплатил»: один вызов Gemini. Клиент без
+ * входа — cache_extraction недоступен, поэтому результат отдаём, а
+ * сохраняет его noteClaimReceipt. null — нет ключа или распознать не вышло.
+ */
+export async function recognizeClaimReceipt(photo: Buffer, mimeType: string): Promise<ClaimReceipt | null> {
+  const provider = getProvider();
+  if (!provider) return null;
+  try {
+    const startedAt = Date.now();
+    const call = await provider.recognizeReceipt(photo, mimeType);
+    return {
+      result: call.result as ReceiptResult,
+      raw: call.raw,
+      provider: provider.name,
+      model: provider.model,
+      latencyMs: Date.now() - startedAt,
+      costUsd: call.costUsd,
+    };
+  } catch (err) {
+    console.error("recognizeClaimReceipt: recognition failed", err);
+    return null;
+  }
+}
+
+/**
+ * Результат распознавания и номер перевода пишет note_claim_receipt по
+ * токену ссылки — там же отметка «Дубликат», если номер уже есть в оплате
+ * магазина. `receipt` — уже распознанный чек (сумму брали с него при
+ * отправке), иначе распознаём здесь. Вызывается из after(): ошибки в лог.
  */
 export async function noteClaimReceipt({
   anon,
@@ -228,35 +262,31 @@ export async function noteClaimReceipt({
   paymentId,
   photo,
   mimeType,
+  receipt,
 }: {
   anon: SupabaseClient;
   token: string;
   paymentId: string;
   photo: Buffer;
   mimeType: string;
+  receipt?: ClaimReceipt | null;
 }) {
-  const provider = getProvider();
-  if (!provider) return;
-  try {
-    const startedAt = Date.now();
-    const call = await provider.recognizeReceipt(photo, mimeType);
-    const result = call.result as ReceiptResult;
-    const reference = result.operation_id ? String(result.operation_id).trim().slice(0, 200) : null;
-    const { error } = await anon.rpc("note_claim_receipt", {
-      p_token: token,
-      p_payment: paymentId,
-      p_bank_reference: reference,
-      p_provider: provider.name,
-      p_model: provider.model,
-      p_prompt_version: PROMPT_VERSION,
-      p_raw_json: { kind: "receipt", extracted: result, response: call.raw },
-      p_latency_ms: Date.now() - startedAt,
-      p_cost: call.costUsd,
-    });
-    if (error) console.error("noteClaimReceipt: note_claim_receipt failed", error);
-  } catch (err) {
-    console.error("noteClaimReceipt: recognition failed", err);
-  }
+  const recognized = receipt ?? (await recognizeClaimReceipt(photo, mimeType));
+  if (!recognized) return;
+  const { result } = recognized;
+  const reference = result.operation_id ? String(result.operation_id).trim().slice(0, 200) : null;
+  const { error } = await anon.rpc("note_claim_receipt", {
+    p_token: token,
+    p_payment: paymentId,
+    p_bank_reference: reference,
+    p_provider: recognized.provider,
+    p_model: recognized.model,
+    p_prompt_version: PROMPT_VERSION,
+    p_raw_json: { kind: "receipt", extracted: result, response: recognized.raw },
+    p_latency_ms: recognized.latencyMs,
+    p_cost: recognized.costUsd,
+  });
+  if (error) console.error("noteClaimReceipt: note_claim_receipt failed", error);
 }
 
 export function recognizeReceiptCached(args: CachedArgs) {

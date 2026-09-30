@@ -12,6 +12,9 @@ import { createLink, revokeLink, setPromisedDate } from "@/app/(workspace)/[kind
 import { dayMonth, promiseStatus } from "@/lib/promise";
 import { paymentLabel } from "@/lib/entry-labels";
 import { firstPaymentHref } from "@/lib/duplicates";
+import { checkReceipt, receiptAmounts, receiptDiffers } from "@/lib/claim-receipt";
+import { officialRates } from "@/lib/fx";
+import { CURRENCIES } from "@/lib/currency";
 import { memberLabels } from "@/lib/members";
 import { PartyManage } from "@/components/party-manage";
 import { waPhone } from "@/lib/share";
@@ -105,6 +108,8 @@ export default async function EntryPage({
     duplicate?: boolean;
     /** Ссылка «первая запись» у дубликата. */
     firstHref?: string | null;
+    /** Заявка на проверке: что на чеке и сходится ли с суммой заявки. */
+    receiptNote?: { text: string; differs: boolean } | null;
     opening: boolean;
     /** Комментарий скидки/возврата. */
     note?: string | null;
@@ -148,6 +153,32 @@ export default async function EntryPage({
         ).data ?? []
       : [];
     const firstHrefs = new Map(firsts.map((f) => [f.id, firstPaymentHref(f)]));
+    // Заявки на проверке: сумма с чека против суммы заявки — видно и продавцу.
+    const pendingPays = (pays.data ?? []).filter((p) => p.status === "pending" && p.document_id);
+    const receipts = await receiptAmounts(db, organizationId, pendingPays.map((p) => p.document_id as string));
+    const needRates = pendingPays.some((p) => {
+      const r = receipts.get(p.document_id as string);
+      return r && r.currency !== cur && p.original_currency !== r.currency;
+    });
+    const rates = needRates ? await officialRates([...CURRENCIES]) : {};
+    const receiptNotes = new Map<string, { text: string; differs: boolean }>();
+    for (const p of pendingPays) {
+      const r = receipts.get(p.document_id as string);
+      if (!r) continue;
+      const check = checkReceipt(p, cur, r, rates);
+      const differs = receiptDiffers(check);
+      const approx = check.inDebt != null && r.currency !== cur ? ` ≈ ${money(check.inDebt, cur)}` : "";
+      receiptNotes.set(p.id, {
+        differs,
+        text:
+          `По чеку: ${money(r.amount, r.currency)}${approx}` +
+          (check.diff == null
+            ? " — другая валюта, проверьте сумму"
+            : !differs
+              ? " — совпадает"
+              : ` — на ${money(Math.abs(check.diff), cur)} ${check.diff > 0 ? "больше" : "меньше"}, чем в заявке`),
+      });
+    }
     history = [
       ...(invoices.data ?? []).map((r) => ({
         kind: (kind === "customers" ? "sale" : "purchase") as HistoryRow["kind"],
@@ -183,6 +214,7 @@ export default async function EntryPage({
         pending: p.status === "pending",
         duplicate: Boolean(p.duplicate_of),
         firstHref: p.duplicate_of ? firstHrefs.get(p.duplicate_of) ?? null : null,
+        receiptNote: receiptNotes.get(p.id) ?? null,
         opening: Boolean(p.is_opening),
         createdBy: p.created_by,
         reversedBy: p.reversed_by,
@@ -552,6 +584,11 @@ export default async function EntryPage({
                     </span>
                   </div>
                   {row.note && <p className="history-comment muted">{row.note}</p>}
+                  {!row.reversed && row.pending && row.receiptNote && (
+                    <p className={`history-comment ${row.receiptNote.differs ? "receipt-differs" : "muted"}`}>
+                      {row.receiptNote.text}
+                    </p>
+                  )}
                   {!row.reversed && row.duplicate && row.pending && row.firstHref && (
                     <p className="history-comment">
                       <Link className="duplicate-link" href={row.firstHref}>

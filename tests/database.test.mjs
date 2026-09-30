@@ -1490,6 +1490,36 @@ test("client claim with an already counted receipt is marked duplicate (same pho
   assert.equal(cached, 1);
 });
 
+test("client claim in another currency is converted to the debt currency, original kept until the owner edits the amount", async () => {
+  await owner();
+  await user(a);
+  const customer = (await db.query(
+    "insert into customers(organization_id,name,currency) values($1,'Клиент в рублях','RUB') returning id", [orgA],
+  )).rows[0].id;
+  const token = (await db.query("select create_share_link($1,$2) as token", [orgA, customer])).rows[0].token;
+  await owner();
+  await db.exec("SET ROLE anon; SELECT set_config('request.jwt.claim.sub','',false);");
+  const claim = async () =>
+    (await db.query("select submit_payment_claim($1,null,null,null,'1250','KGS','1.0365') as id", [token])).rows[0].id;
+  const first = await claim();
+  const second = await claim();
+  await assert.rejects(
+    db.query("select submit_payment_claim($1,null,null,null,'1250','RUB','1')", [token]),
+    /invalid_currency/,
+  );
+  await owner();
+  const row = async (id) =>
+    (await db.query("select amount,original_amount,original_currency,fx_rate from payments where id=$1", [id])).rows[0];
+  assert.deepEqual(await row(first), { amount: "1205.98", original_amount: "1250.00", original_currency: "KGS", fx_rate: "1.036500" });
+
+  await user(a);
+  await db.query("select confirm_payment_claim($1,$2,'1205.98')", [orgA, first]);
+  assert.equal((await row(first)).original_currency, "KGS");
+  await db.query("select confirm_payment_claim($1,$2,'1200.00')", [orgA, second]);
+  assert.deepEqual(await row(second), { amount: "1200.00", original_amount: null, original_currency: null, fx_rate: null });
+  await owner();
+});
+
 test("anon checks a claim token without reading share_links", async () => {
   await owner();
   await user(a);

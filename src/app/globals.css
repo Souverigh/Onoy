@@ -1681,6 +1681,49 @@ tr.line-mismatch {
 .doc-party small {
   font-size: 12px;
 }
+/* «Документы» на телефоне — список вместо широкой таблицы. */
+.doc-list-mobile {
+  display: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+@media (max-width: 560px) {
+  .doc-table {
+    display: none;
+  }
+  .doc-list-mobile {
+    display: block;
+  }
+}
+.doc-list-mobile li + li {
+  border-top: 1px solid var(--line);
+}
+.doc-list-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 10px 2px;
+  color: inherit;
+  text-decoration: none;
+}
+.doc-list-main {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+.doc-list-party small {
+  font-size: 12px;
+}
+.doc-list-meta {
+  font-size: 12px;
+}
+.doc-list-item .tag {
+  justify-self: end;
+}
 .invoice-lines {
   list-style: none;
   margin: 0;
@@ -1797,6 +1840,15 @@ tr.line-mismatch {
   background: #fff1b8;
   border-left: 4px solid #e0a800;
   padding-left: 10px;
+}
+.claim-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+.history-comment.receipt-differs {
+  color: #8a5a00;
+  font-weight: 600;
 }
 .duplicate-subtitle {
   margin-top: 6px !important;
@@ -3130,6 +3182,37 @@ a.debt-card:hover {
 }
 .amount-currency .party-suggestion {
   min-width: 56px;
+}
+/* Страница клиента: валюта перевода — радиокнопки в виде кнопок. */
+.claim-currency {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.claim-currency legend {
+  padding: 0;
+  margin-bottom: 8px;
+}
+.claim-currency .party-suggestion {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.claim-currency input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.claim-currency .party-suggestion:has(input:checked) {
+  border-color: var(--green);
+  background: #edf4e9;
+  color: var(--green);
+  font-weight: 600;
+}
+.claim-currency .party-suggestion:has(input:focus-visible) {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
 }
 .fx-field {
   display: grid;

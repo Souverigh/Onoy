@@ -31,6 +31,15 @@ const dateTime = new Intl.DateTimeFormat("ru-RU", {
   timeZone: "Asia/Bishkek",
 });
 
+// Список на телефоне — коротко, без года: «30.09, 07:59».
+const shortDateTime = new Intl.DateTimeFormat("ru-RU", {
+  day: "2-digit",
+  month: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Asia/Bishkek",
+});
+
 const roleLabel = { customer: "клиент", supplier: "поставщик", expense: "расход магазина" } as const;
 
 export default async function Documents() {
@@ -64,7 +73,34 @@ export default async function Documents() {
       </div>
       {documents.length ? (
         <section className="panel">
-          <div className="table-wrap">
+          {/* Телефон: компактный список — строка документа целиком нажимается. */}
+          <ul className="doc-list-mobile">
+            {documents.map((doc) => {
+              const status = statusLabel[doc.status] ?? statusLabel.uploaded;
+              const party = parties.get(doc.id);
+              return (
+                <li key={doc.id}>
+                  <Link href={`/documents/${doc.id}`} className="doc-list-item">
+                    <span className="doc-list-main">
+                      <strong>{doc.kind ? kindLabel[doc.kind] : "Документ"}</strong>
+                      {party ? (
+                        <span className="doc-list-party">
+                          {" · "}
+                          {party.name} <small className="muted">{roleLabel[party.role]}</small>
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className={status.className}>{status.label}</span>
+                    <span className="doc-list-meta muted">
+                      {shortDateTime.format(new Date(doc.created_at))}
+                    </span>
+                    {duplicates.has(doc.id) && <span className="tag duplicate-tag">дубликат</span>}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="table-wrap doc-table">
             <table>
               <thead>
                 <tr>

@@ -1,6 +1,8 @@
 import { requireOwner } from "@/lib/context";
-import { money } from "@/lib/format";
-import { partyCurrency } from "@/lib/currency";
+import { money, originalAmountText } from "@/lib/format";
+import { CURRENCIES, CURRENCY_SIGN, partyCurrency } from "@/lib/currency";
+import { checkReceipt, receiptAmounts, receiptDiffers } from "@/lib/claim-receipt";
+import { officialRates } from "@/lib/fx";
 import { signedPhotoUrl } from "@/lib/storage";
 import { confirmClaim, rejectClaim } from "./actions";
 import Link from "next/link";
@@ -18,6 +20,9 @@ type Claim = {
   bank_reference: string | null;
   duplicate_of: string | null;
   created_by: string | null;
+  original_amount: string | null;
+  original_currency: string | null;
+  fx_rate: string | null;
 };
 type FirstPayment = {
   id: string;
@@ -31,6 +36,9 @@ type FirstPayment = {
   supplier_id: string | null;
 };
 type Party = { id: string; name: string; currency: string | null };
+
+// «чек в сомах, а заявка в рублях».
+const IN_CURRENCY: Record<string, string> = { KGS: "сомах", RUB: "рублях", USD: "долларах" };
 
 const dateTime = new Intl.DateTimeFormat("ru-RU", {
   dateStyle: "short",
@@ -47,7 +55,7 @@ export default async function Claims({
   const { error, done } = await searchParams;
   const { data, error: loadError } = await db
     .from("payments")
-    .select("id,customer_id,supplier_id,amount,claim_comment,document_id,occurred_at,bank_reference,duplicate_of,created_by")
+    .select("id,customer_id,supplier_id,amount,claim_comment,document_id,occurred_at,bank_reference,duplicate_of,created_by,original_amount,original_currency,fx_rate")
     .eq("organization_id", organizationId)
     .eq("status", "pending")
     .order("occurred_at", { ascending: false });
@@ -84,6 +92,15 @@ export default async function Claims({
   const documents = new Map(
     (documentLookup.data ?? []).map((d) => [d.id, d.storage_path]),
   );
+  // Что распознано на чеке заявки — сверить сумму с заявкой в валюте долга.
+  const receipts = await receiptAmounts(db, organizationId, claims.map((c) => c.document_id).filter(Boolean) as string[]);
+  // Официальный курс нужен, только если чек в другой валюте, а клиент её не указал.
+  const needRates = claims.some((c) => {
+    const r = c.document_id ? receipts.get(c.document_id) : undefined;
+    const debt = partyCurrency(parties.get((c.customer_id ?? c.supplier_id) as string), shopCurrency);
+    return r && r.currency !== debt && c.original_currency !== r.currency;
+  });
+  const rates = needRates ? await officialRates([...CURRENCIES]) : {};
   const photoUrls = new Map<string, string>();
   for (const claim of claims) {
     if (!claim.document_id) continue;
@@ -129,6 +146,10 @@ export default async function Claims({
             const currency = partyCurrency(party, shopCurrency);
             const first = claim.duplicate_of ? firstPayments.get(claim.duplicate_of) : undefined;
             const firstHref = first ? firstPaymentHref(first) : null;
+            const original = originalAmountText(claim);
+            const receipt = claim.document_id ? receipts.get(claim.document_id) : undefined;
+            const check = receipt ? checkReceipt(claim, currency, receipt, rates) : null;
+            const differs = check ? receiptDiffers(check) : false;
             return (
               <section className="panel claim-card" key={claim.id}>
                 <div className="section-title">
@@ -154,9 +175,26 @@ export default async function Claims({
                     )}
                   </div>
                 )}
+                {original && (
+                  <p className="muted">
+                    Клиент указал {original} → {money(claim.amount, currency)}
+                  </p>
+                )}
+                {check && (
+                  <p className={differs ? "photo-check-mismatch" : "photo-check-ok"}>
+                    По чеку: {money(check.receipt.amount, check.receipt.currency)}
+                    {check.inDebt != null && check.receipt.currency !== currency && <> ≈ {money(check.inDebt, currency)}</>}
+                    {check.diff == null
+                      ? ` — чек в ${IN_CURRENCY[check.receipt.currency]}, курс сейчас недоступен. Проверьте сумму перед подтверждением.`
+                      : !differs
+                        ? " — совпадает с заявкой."
+                        : ` — клиент указал ${money(claim.amount, currency)}, по чеку на ${money(Math.abs(check.diff), currency)} ${check.diff > 0 ? "больше" : "меньше"}.`}
+                  </p>
+                )}
                 {claim.claim_comment && (
                   <p className="muted">«{claim.claim_comment}»</p>
                 )}
+                <div className="claim-links">
                 {photoUrls.has(claim.id) && (
                   <a
                     className="claim-photo-link"
@@ -172,11 +210,12 @@ export default async function Claims({
                     История {claim.customer_id ? "клиента" : "поставщика"}
                   </a>
                 )}
+                </div>
                 <div className="claim-actions">
                   <form action={confirmClaim} className="claim-confirm-form">
                     <input type="hidden" name="id" value={claim.id} />
                     <label>
-                      Сумма
+                      Сумма, {CURRENCY_SIGN[currency]}
                       <input
                         name="amount"
                         inputMode="decimal"
@@ -187,6 +226,13 @@ export default async function Claims({
                     </label>
                     <Submit>Подтвердить</Submit>
                   </form>
+                  {check && differs && check.inDebt != null && check.inDebt > 0 && (
+                    <form action={confirmClaim} className="claim-confirm-form">
+                      <input type="hidden" name="id" value={claim.id} />
+                      <input type="hidden" name="amount" value={check.inDebt.toFixed(2)} />
+                      <Submit>Подтвердить по чеку: {money(check.inDebt, currency)}</Submit>
+                    </form>
+                  )}
                   <form action={rejectClaim} className="claim-reject-form">
                     <input type="hidden" name="id" value={claim.id} />
                     <input
