@@ -2,10 +2,11 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getContext, requireOwner } from "@/lib/context";
+import { storedPhone } from "@/lib/contacts";
 
 export async function updateShop(form: FormData) {
   const name = String(form.get("name") ?? "").trim();
-  const phone = String(form.get("phone") ?? "").trim();
+  const phone = storedPhone(String(form.get("phone") ?? ""));
   const blockDuplicatePhotos = form.get("block_duplicate_photos") === "on";
   const currency = String(form.get("currency") ?? "");
   // Как магазин написан на накладных — по строке на вариант (classify.ts).

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getContext, requireOwner } from "@/lib/context";
 import { isDirectory, directoryInput } from "@/lib/validation";
+import { storedPhone } from "@/lib/contacts";
 import { promisedDateInput } from "@/lib/promise";
 import { bishkekDate } from "@/lib/day-summary";
 
@@ -18,6 +19,8 @@ export async function saveEntry(form: FormData) {
   let input: Record<string, unknown>;
   try {
     input = directoryInput(kind, Object.fromEntries(form));
+    // Телефон в одном виде (+996… / +7…) — иначе один номер «разный».
+    if (typeof input.phone === "string") input.phone = storedPhone(input.phone).slice(0, 40);
   } catch {
     redirect(`/${kind}/${id || "new"}?error=invalid`);
   }

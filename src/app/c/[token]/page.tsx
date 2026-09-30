@@ -6,6 +6,7 @@ import { paymentLabel, type PaymentKind } from "@/lib/entry-labels";
 import { CURRENCIES, CURRENCY_SIGN, isCurrency, type Currency } from "@/lib/currency";
 import { submitClaim } from "./actions";
 import { ClaimPhotoField } from "@/components/claim-photo-field";
+import { normalizePhone } from "@/lib/contacts";
 
 type Statement = {
   currency?: string;
@@ -58,7 +59,7 @@ export default async function ClientPage({
         <strong>{statement.shop_name}</strong>
         {statement.shop_phone && (
           <a
-            href={`https://wa.me/${statement.shop_phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent("Здравствуйте, у меня вопрос по долгу")}`}
+            href={`https://wa.me/${normalizePhone(statement.shop_phone).replace(/\D/g, "")}?text=${encodeURIComponent("Здравствуйте, у меня вопрос по долгу")}`}
             className="text-button"
           >
             Написать в WhatsApp
