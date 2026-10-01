@@ -76,12 +76,17 @@ export default async function Login({
                 <Link className="forgot-link" href="/forgot">
                   Забыли пароль?
                 </Link>
-                {error && (
+                {error === "link" ? (
+                  <p role="alert" className="form-error">
+                    Ссылка из письма устарела или уже открыта. Если email
+                    подтверждён — просто войдите.
+                  </p>
+                ) : error ? (
                   <p role="alert" className="form-error">
                     Не удалось войти. Проверьте email и пароль и повторите
                     попытку.
                   </p>
-                )}
+                ) : null}
                 <Submit>Войти в Depter</Submit>
               </form>
               <small className="muted">

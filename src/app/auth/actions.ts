@@ -11,6 +11,15 @@ function nextPath(form: FormData) {
   return /^\/join\/[a-f0-9]{32}$/i.test(next) ? next : "/";
 }
 
+/**
+ * Адрес сайта для ссылок в письмах (→ /auth/confirm). Должен быть в Supabase →
+ * Authentication → URL Configuration → Redirect URLs, иначе Supabase подставит Site URL.
+ */
+async function siteOrigin() {
+  const h = await headers();
+  return `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
+}
+
 export async function login(form: FormData) {
   if (!configured()) redirect("/login?error=setup");
   const next = nextPath(form);
@@ -47,7 +56,11 @@ export async function signUp(form: FormData) {
   if (!email || email.length > 254 || password.length < 6 || password.length > 1024)
     redirect("/signup?error=invalid");
   const db = await createClient();
-  const { data, error } = await db.auth.signUp({ email, password });
+  const { data, error } = await db.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/onboarding` },
+  });
   if (error)
     redirect(`/signup?error=${error.message.toLowerCase().includes("disabled") ? "disabled" : "invalid"}`);
   if (!data.session) redirect("/signup?check=email");
@@ -74,7 +87,11 @@ export async function signUpByInvite(form: FormData) {
   const invite = await createAnonClient().rpc("get_invite", { p_token: token });
   if (invite.error) redirect(back);
   const db = await createClient();
-  const { data, error } = await db.auth.signUp({ email, password });
+  const { data, error } = await db.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=${back}` },
+  });
   if (error) redirect(`${back}?error=${error.message.toLowerCase().includes("disabled") ? "signup_disabled" : "signup"}`);
   if (!data.session) redirect(`${back}?check=email`);
   const joined = await db.rpc("accept_invite", { p_token: token });
@@ -135,11 +152,9 @@ export async function requestPasswordReset(form: FormData) {
   if (!configured()) redirect("/login?error=setup");
   const email = String(form.get("email") ?? "").trim();
   if (!email || email.length > 254 || !email.includes("@")) redirect("/forgot?error=email");
-  const h = await headers();
-  const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
   const db = await createClient();
   const { error } = await db.auth.resetPasswordForEmail(email, {
-    redirectTo: `${origin}/auth/confirm?next=/reset-password`,
+    redirectTo: `${await siteOrigin()}/auth/confirm?next=/reset-password`,
   });
   // Лимит писем Supabase (несколько в час) — просим подождать; прочее не раскрываем.
   if (error?.status === 429) redirect("/forgot?error=rate");
