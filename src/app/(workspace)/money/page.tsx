@@ -6,7 +6,8 @@ import { firstPaymentHref } from "@/lib/duplicates";
 import { money } from "@/lib/format";
 
 type PartyBalance = { id: string; name: string; balance: string; currency: string | null };
-type PartyName = { id: string; name: string; currency: string | null };
+/** Контрагент, встроенный в запись (PostgREST по составному FK). */
+type PartyName = { name: string; currency: string | null } | null;
 type Activity = {
   id: string;
   kind: "purchase" | "sale" | "payment";
@@ -61,21 +62,21 @@ export default async function Money({
         .limit(8),
       db
         .from("purchases")
-        .select("id,supplier_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id")
+        .select("id,supplier_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id,suppliers(name,currency)")
         .eq("organization_id", organizationId)
         .eq("status", "posted")
         .order("occurred_at", { ascending: false })
         .limit(8),
       db
         .from("sales")
-        .select("id,customer_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id")
+        .select("id,customer_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id,customers(name,currency)")
         .eq("organization_id", organizationId)
         .eq("status", "posted")
         .order("occurred_at", { ascending: false })
         .limit(8),
       db
         .from("payments")
-        .select("id,customer_id,supplier_id,direction,amount,occurred_at,reversed_at,reversal_comment,is_opening,kind,document_id")
+        .select("id,customer_id,supplier_id,direction,amount,occurred_at,reversed_at,reversal_comment,is_opening,kind,document_id,customers(name,currency),suppliers(name,currency)")
         .eq("organization_id", organizationId)
         .eq("status", "confirmed")
         .order("occurred_at", { ascending: false })
@@ -98,7 +99,7 @@ export default async function Money({
   const customers = (customerResult.data ?? []) as PartyBalance[];
   const suppliers = (supplierResult.data ?? []) as PartyBalance[];
   const pendingClaims = claimsResult.count ?? 0;
-  const purchases = (purchaseResult.data ?? []) as {
+  const purchases = (purchaseResult.data ?? []) as unknown as {
     id: string;
     supplier_id: string;
     total: string;
@@ -107,8 +108,9 @@ export default async function Money({
     is_opening?: boolean;
     reversal_comment: string | null;
     document_id: string | null;
+    suppliers: PartyName;
   }[];
-  const sales = (saleResult.data ?? []) as {
+  const sales = (saleResult.data ?? []) as unknown as {
     id: string;
     customer_id: string;
     total: string;
@@ -117,8 +119,9 @@ export default async function Money({
     is_opening?: boolean;
     reversal_comment: string | null;
     document_id: string | null;
+    customers: PartyName;
   }[];
-  const payments = (paymentResult.data ?? []) as {
+  const payments = (paymentResult.data ?? []) as unknown as {
     id: string;
     customer_id: string | null;
     supplier_id: string | null;
@@ -130,68 +133,18 @@ export default async function Money({
     reversal_comment: string | null;
     kind: PaymentKind;
     document_id: string | null;
+    customers: PartyName;
+    suppliers: PartyName;
   }[];
-  const customerIds = [
-    ...new Set([
-      ...sales.map((row) => row.customer_id),
-      ...payments.flatMap((row) =>
-        row.direction === "incoming" && row.customer_id ? [row.customer_id] : [],
-      ),
-    ]),
-  ];
-  const supplierIds = [
-    ...new Set([
-      ...purchases.map((row) => row.supplier_id),
-      ...payments.flatMap((row) =>
-        row.direction === "outgoing" && row.supplier_id ? [row.supplier_id] : [],
-      ),
-    ]),
-  ];
-  const [customerLookup, supplierLookup] = await Promise.all([
-    customerIds.length
-      ? db
-          .from("customers")
-          .select("id,name,currency")
-          .eq("organization_id", organizationId)
-          .in("id", customerIds)
-      : Promise.resolve({ data: [], error: null }),
-    supplierIds.length
-      ? db
-          .from("suppliers")
-          .select("id,name,currency")
-          .eq("organization_id", organizationId)
-          .in("id", supplierIds)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-  if (customerLookup.error || supplierLookup.error)
-    throw new Error("Не удалось загрузить участников операций");
-  const customerNames = new Map(
-    ((customerLookup.data ?? []) as PartyName[]).map((entry) => [
-      entry.id,
-      entry.name,
-    ]),
-  );
-  const supplierNames = new Map(
-    ((supplierLookup.data ?? []) as PartyName[]).map((entry) => [
-      entry.id,
-      entry.name,
-    ]),
-  );
-  // Валюта долга контрагента — в суммах журнала.
-  const partyCurrencies = new Map(
-    [...((customerLookup.data ?? []) as PartyName[]), ...((supplierLookup.data ?? []) as PartyName[])].map((p) => [
-      p.id,
-      p.currency ?? shopCurrency,
-    ]),
-  );
-  const currencyOf = (id: string | null) => (id && partyCurrencies.get(id)) || shopCurrency;
+  // Имя и валюта долга контрагента пришли вместе с записью — без второго запроса.
+  const currencyOf = (party: PartyName) => party?.currency ?? shopCurrency;
   const activities: Activity[] = [
     ...purchases.map((row) => ({
       id: row.id,
       kind: "purchase" as const,
-      party: supplierNames.get(row.supplier_id) ?? "Поставщик",
+      party: row.suppliers?.name ?? "Поставщик",
       amount: row.total,
-      currency: currencyOf(row.supplier_id),
+      currency: currencyOf(row.suppliers),
       occurred_at: row.occurred_at,
       reversed: Boolean(row.reversed_at),
       reversalComment: row.reversal_comment ?? undefined,
@@ -201,9 +154,9 @@ export default async function Money({
     ...sales.map((row) => ({
       id: row.id,
       kind: "sale" as const,
-      party: customerNames.get(row.customer_id) ?? "Клиент",
+      party: row.customers?.name ?? "Клиент",
       amount: row.total,
-      currency: currencyOf(row.customer_id),
+      currency: currencyOf(row.customers),
       occurred_at: row.occurred_at,
       reversed: Boolean(row.reversed_at),
       reversalComment: row.reversal_comment ?? undefined,
@@ -215,10 +168,10 @@ export default async function Money({
       kind: "payment" as const,
       party:
         row.direction === "incoming"
-          ? (customerNames.get(row.customer_id ?? "") ?? "Клиент")
-          : (supplierNames.get(row.supplier_id ?? "") ?? "Поставщик"),
+          ? (row.customers?.name ?? "Клиент")
+          : (row.suppliers?.name ?? "Поставщик"),
       amount: row.amount,
-      currency: currencyOf(row.customer_id ?? row.supplier_id),
+      currency: currencyOf(row.customers ?? row.suppliers),
       occurred_at: row.occurred_at,
       direction: row.direction,
       paymentKind: row.kind,

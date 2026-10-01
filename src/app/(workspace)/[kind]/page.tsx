@@ -26,45 +26,51 @@ export default async function DirectoryPage({
   const current = Math.max(1, Math.min(10000, parseInt(page) || 1));
   const query = q.trim().slice(0, 100);
   const { db, organizationId, currency: shopCurrency } = await getContext();
-  let overdueIds: string[] | null = null;
-  if (overdue) {
-    const late = await db
-      .from("customer_debt_aging")
-      .select("customer_id")
+  // Давность долга > 30 дней — одним запросом на весь магазин: из него и
+  // метки «долг N дн.» в строках, и фильтр «Просрочено 30/60/90» (пороги ≥ 30).
+  const lateRequest =
+    kind === "customers"
+      ? db
+          .from("customer_debt_aging")
+          .select("customer_id,oldest_days")
+          .eq("organization_id", organizationId)
+          .gt("oldest_days", 30)
+          .range(0, 4999)
+          .then((late) => {
+            // Без фильтра давность — только метки: список покажем и без них.
+            if (late.error && overdue) throw new Error("Не удалось загрузить просроченные долги");
+            return (late.data ?? []) as { customer_id: string; oldest_days: number }[];
+          })
+      : Promise.resolve([]);
+  const listRequest = (overdueIds: string[] | null) => {
+    let request = db
+      .from(meta.view)
+      .select("*", { count: "exact" })
       .eq("organization_id", organizationId)
-      .gt("oldest_days", overdue)
-      .range(0, 4999);
-    if (late.error) throw new Error("Не удалось загрузить просроченные долги");
-    overdueIds = (late.data ?? []).map((row) => row.customer_id as string);
-  }
-  let request = db
-    .from(meta.view)
-    .select("*", { count: "exact" })
-    .eq("organization_id", organizationId)
-    .order("name")
-    .order("id")
-    .range((current - 1) * 25, current * 25 - 1);
-  if (kind !== "products") request = archived ? request.not("archived_at", "is", null) : request.is("archived_at", null);
-  if (overdueIds)
-    request = request.in("id", overdueIds.length ? overdueIds : ["00000000-0000-0000-0000-000000000000"]);
-  if (query)
-    request = request.ilike(
-      "name",
-      "%" + query.replace(/[\\%_]/g, "\\$&") + "%",
-    );
-  const { data, error, count } = await request;
+      .order("name")
+      .order("id")
+      .range((current - 1) * 25, current * 25 - 1);
+    if (kind !== "products") request = archived ? request.not("archived_at", "is", null) : request.is("archived_at", null);
+    if (overdueIds)
+      request = request.in("id", overdueIds.length ? overdueIds : ["00000000-0000-0000-0000-000000000000"]);
+    if (query)
+      request = request.ilike(
+        "name",
+        "%" + query.replace(/[\\%_]/g, "\\$&") + "%",
+      );
+    return request;
+  };
+  // Без фильтра «Просрочено» список и давность — параллельно; с фильтром
+  // список ждёт id просроченных.
+  const [late, { data, error, count }] = overdue
+    ? await lateRequest.then(async (rows) => [
+        rows,
+        await listRequest(rows.filter((row) => row.oldest_days > overdue).map((row) => row.customer_id)),
+      ] as const)
+    : await Promise.all([lateRequest, listRequest(null)]);
   if (error) throw new Error("Не удалось загрузить справочник");
   const entries = (data ?? []) as Entry[];
-  // Давность долга для строк этой страницы — одним запросом.
-  const oldestDays = new Map<string, number>();
-  if (kind === "customers" && entries.length) {
-    const aging = await db
-      .from("customer_debt_aging")
-      .select("customer_id,oldest_days")
-      .eq("organization_id", organizationId)
-      .in("customer_id", entries.map((e) => e.id));
-    for (const row of aging.data ?? []) oldestDays.set(row.customer_id as string, row.oldest_days as number);
-  }
+  const oldestDays = new Map(late.map((row) => [row.customer_id, row.oldest_days]));
   const today = bishkekDate();
   const listHref = (extra: Record<string, string | number>) => {
     const params = new URLSearchParams();

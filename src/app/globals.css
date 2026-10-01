@@ -3787,3 +3787,100 @@ tr.row-link:has(a[data-pending]) {
     width: 100%;
   }
 }
+
+/* Серые макеты страниц на время загрузки (src/components/skeleton.tsx). */
+.skeleton {
+  display: block;
+  max-width: 100%;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #eceee8 25%, #f5f6f2 50%, #eceee8 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.3s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+.skeleton-heading > div {
+  display: grid;
+  gap: 10px;
+}
+.skeleton-tile {
+  display: grid;
+  gap: 12px;
+  min-height: 92px;
+  align-content: center;
+}
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.skeleton-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.skeleton-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 13px 0;
+  border-top: 1px solid var(--line);
+}
+.skeleton-list li:first-child {
+  border-top: 0;
+}
+.skeleton-list li > span:not(.skeleton) {
+  display: grid;
+  gap: 7px;
+  flex: 1;
+}
+.skeleton-list li > .skeleton {
+  flex: none;
+}
+.skeleton-page > .panel,
+.skeleton-page > .skeleton-document {
+  margin-bottom: 18px;
+}
+.skeleton-form {
+  display: grid;
+  gap: 18px;
+  max-width: 640px;
+}
+.skeleton-form > div {
+  display: grid;
+  gap: 8px;
+}
+.skeleton-dropzone {
+  height: 96px;
+  border-radius: 10px;
+}
+.skeleton-document {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+}
+.skeleton-photo {
+  min-height: 420px;
+  border-radius: 11px;
+}
+@media (max-width: 900px) {
+  .skeleton-document {
+    grid-template-columns: 1fr;
+  }
+  .skeleton-photo {
+    min-height: 260px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}

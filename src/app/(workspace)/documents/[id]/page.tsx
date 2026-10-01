@@ -84,30 +84,57 @@ export default async function DocumentDetail({
   const { db, organizationId, organizationName, currency: shopCurrency, isOwner } = await getContext();
   const params2 = await searchParams;
 
-  const docResult = await db
-    .from("documents")
-    .select("id,storage_path,status,kind,error_message,created_at")
-    .eq("organization_id", organizationId)
-    .eq("id", id)
-    .maybeSingle();
+  // Всё, что зависит только от id документа, — одним кругом (раньше до 7–10
+  // запросов подряд): документ, строки, распознавание, страницы фото, названия
+  // магазина и запись, к которой он приложен (контрагент — встроенно, по FK).
+  const [docResult, linesResult, extractionResult, pages, orgResult, purchaseResult, saleResult, expenseResult, paymentResult] =
+    await Promise.all([
+      db
+        .from("documents")
+        .select("id,storage_path,status,kind,error_message,created_at")
+        .eq("organization_id", organizationId)
+        .eq("id", id)
+        .maybeSingle(),
+      db
+        .from("document_lines")
+        .select("id,n,name_raw,qty,unit,price,sum,confidence")
+        .eq("organization_id", organizationId)
+        .eq("document_id", id)
+        .order("n"),
+      db
+        .from("document_extractions")
+        .select("payload,provider,model_version,latency_ms,cost,created_at")
+        .eq("organization_id", organizationId)
+        .eq("document_id", id)
+        .order("created_at", { ascending: false })
+        .limit(10),
+      documentPages(db, organizationId, id),
+      db.from("organizations").select("document_names").eq("id", organizationId).maybeSingle(),
+      db
+        .from("purchases")
+        .select("id,total,supplier_id,original_amount,original_currency,reversed_at,suppliers(id,name,aliases,currency)")
+        .eq("organization_id", organizationId)
+        .eq("document_id", id)
+        .maybeSingle(),
+      db
+        .from("sales")
+        .select("id,total,customer_id,original_amount,original_currency,reversed_at,customers(id,name,aliases,currency)")
+        .eq("organization_id", organizationId)
+        .eq("document_id", id)
+        .maybeSingle(),
+      db
+        .from("expenses")
+        .select("id,amount,currency,category,note")
+        .eq("organization_id", organizationId)
+        .eq("document_id", id)
+        .maybeSingle(),
+      db.from("payments").select(DUPLICATE_COLUMNS).eq("organization_id", organizationId).eq("document_id", id).maybeSingle(),
+    ]);
   if (docResult.error || !docResult.data) notFound();
   const doc = docResult.data as DocRow;
+  // Ссылки на фото — пока считается остальное (ждём ниже).
+  const photoUrlsRequest = Promise.all(pages.map((page) => signedPhotoUrl(db, page.storage_path)));
 
-  const [linesResult, extractionResult] = await Promise.all([
-    db
-      .from("document_lines")
-      .select("id,n,name_raw,qty,unit,price,sum,confidence")
-      .eq("organization_id", organizationId)
-      .eq("document_id", id)
-      .order("n"),
-    db
-      .from("document_extractions")
-      .select("payload,provider,model_version,latency_ms,cost,created_at")
-      .eq("organization_id", organizationId)
-      .eq("document_id", id)
-      .order("created_at", { ascending: false })
-      .limit(10),
-  ]);
   const lines = (linesResult.data ?? []) as Line[];
   // Последняя строка — итог оцифровки; задержка вызова Gemini записана в
   // строке кеша (cache_extraction), поэтому берём её из последней, где она есть.
@@ -130,63 +157,41 @@ export default async function DocumentDetail({
   const recordTotal = (row: { total: string | number; original_amount: string | null; original_currency: string | null }) =>
     row.original_amount != null ? Number(row.original_amount) : Number(row.total);
   let party: { id: string; name: string; aliases: string[]; kind: "customer" | "supplier" } | null = null;
+  type RecordRow = {
+    id: string;
+    total: string;
+    original_amount: string | null;
+    original_currency: string | null;
+    reversed_at: string | null;
+  };
+  type PartyRow = { id: string; name: string; aliases: string[] | null; currency: string | null } | null;
   if (doc.kind === "purchase") {
-    const row = await db
-      .from("purchases")
-      .select("id,total,supplier_id,original_amount,original_currency,reversed_at")
-      .eq("organization_id", organizationId)
-      .eq("document_id", id)
-      .maybeSingle();
-    declaredTotal = row.data ? recordTotal(row.data) : null;
-    if (row.data) record = { kind: "purchase", id: row.data.id, reversed: Boolean(row.data.reversed_at) };
-    if (row.data) {
-      const supplier = await db
-        .from("suppliers")
-        .select("id,name,aliases,currency")
-        .eq("organization_id", organizationId)
-        .eq("id", row.data.supplier_id)
-        .maybeSingle();
-      if (supplier.data)
-        party = { id: supplier.data.id, name: supplier.data.name, aliases: supplier.data.aliases ?? [], kind: "supplier" };
-      docCurrency = row.data.original_currency ?? supplier.data?.currency ?? shopCurrency;
+    const row = purchaseResult.data as unknown as (RecordRow & { suppliers: PartyRow }) | null;
+    declaredTotal = row ? recordTotal(row) : null;
+    if (row) {
+      record = { kind: "purchase", id: row.id, reversed: Boolean(row.reversed_at) };
+      const supplier = row.suppliers;
+      if (supplier) party = { id: supplier.id, name: supplier.name, aliases: supplier.aliases ?? [], kind: "supplier" };
+      docCurrency = row.original_currency ?? supplier?.currency ?? shopCurrency;
     }
   } else if (doc.kind === "sale") {
-    const row = await db
-      .from("sales")
-      .select("id,total,customer_id,original_amount,original_currency,reversed_at")
-      .eq("organization_id", organizationId)
-      .eq("document_id", id)
-      .maybeSingle();
-    declaredTotal = row.data ? recordTotal(row.data) : null;
-    saleId = row.data?.id ?? null;
-    if (row.data) record = { kind: "sale", id: row.data.id, reversed: Boolean(row.data.reversed_at) };
-    if (row.data) {
-      const customer = await db
-        .from("customers")
-        .select("id,name,aliases,currency")
-        .eq("organization_id", organizationId)
-        .eq("id", row.data.customer_id)
-        .maybeSingle();
-      if (customer.data)
-        party = { id: customer.data.id, name: customer.data.name, aliases: customer.data.aliases ?? [], kind: "customer" };
-      docCurrency = row.data.original_currency ?? customer.data?.currency ?? shopCurrency;
+    const row = saleResult.data as unknown as (RecordRow & { customers: PartyRow }) | null;
+    declaredTotal = row ? recordTotal(row) : null;
+    saleId = row?.id ?? null;
+    if (row) {
+      record = { kind: "sale", id: row.id, reversed: Boolean(row.reversed_at) };
+      const customer = row.customers;
+      if (customer) party = { id: customer.id, name: customer.name, aliases: customer.aliases ?? [], kind: "customer" };
+      docCurrency = row.original_currency ?? customer?.currency ?? shopCurrency;
     }
   }
 
   // Расход: сумма в записи — третья сторона сверки с чеком.
   let expense: { id: string; amount: string; currency: string; category: string; note: string | null } | null = null;
-  if (doc.kind === "expense") {
-    const row = await db
-      .from("expenses")
-      .select("id,amount,currency,category,note")
-      .eq("organization_id", organizationId)
-      .eq("document_id", id)
-      .maybeSingle();
-    if (row.data) {
-      expense = row.data;
-      declaredTotal = Number(row.data.amount);
-      docCurrency = row.data.currency;
-    }
+  if (doc.kind === "expense" && expenseResult.data) {
+    expense = expenseResult.data;
+    declaredTotal = Number(expenseResult.data.amount);
+    docCurrency = expenseResult.data.currency;
   }
   // Оплата-дубликат: какая запись повторена (и когда её чек оцифровали), и
   // обратное — какие записи повторили эту оплату.
@@ -199,10 +204,7 @@ export default async function DocumentDetail({
   const partyNames = new Map<string, string>();
   const senders = new Map<string, string>();
   if (doc.kind === "payment") {
-    payment =
-      ((
-        await db.from("payments").select(DUPLICATE_COLUMNS).eq("organization_id", organizationId).eq("document_id", id).maybeSingle()
-      ).data as DuplicatePayment | null) ?? null;
+    payment = (paymentResult.data as DuplicatePayment | null) ?? null;
     if (payment) {
       const partyId = payment.customer_id ?? payment.supplier_id;
       const [firstResult, repeatsResult, partyResult] = await Promise.all([
@@ -219,41 +221,33 @@ export default async function DocumentDetail({
           ? db.from(payment.customer_id ? "customers" : "suppliers").select("name,currency").eq("organization_id", organizationId).eq("id", partyId).maybeSingle()
           : Promise.resolve({ data: null }),
       ]);
+      firstPayment = (firstResult.data as DuplicatePayment | null) ?? null;
+      repeats = (repeatsResult.data ?? []) as DuplicatePayment[];
+      paymentCurrency = partyCurrency(partyResult.data as { currency: string | null } | null, shopCurrency);
       const own = partyResult.data as { name: string } | null;
       if (own && partyId) partyNames.set(partyId, own.name);
-      // Повтор мог прислать и другой клиент — имена всех из справочника.
+      // Повтор мог прислать и другой клиент — имена всех из справочника; отправитель
+      // с чека у повторов — из их распознавания; когда оцифрован чек первой записи.
       const otherCustomers = [...new Set(repeats.map((r) => r.customer_id).filter((c): c is string => !!c && !partyNames.has(c)))];
       const otherSuppliers = [...new Set(repeats.map((r) => r.supplier_id).filter((c): c is string => !!c && !partyNames.has(c)))];
-      const [moreCustomers, moreSuppliers] = await Promise.all([
+      const repeatDocs = repeats.map((r) => r.document_id).filter(Boolean) as string[];
+      const [moreCustomers, moreSuppliers, repeatExtractions, firstDigitized] = await Promise.all([
         otherCustomers.length
           ? db.from("customers").select("id,name").eq("organization_id", organizationId).in("id", otherCustomers)
           : Promise.resolve({ data: [] as { id: string; name: string }[] }),
         otherSuppliers.length
           ? db.from("suppliers").select("id,name").eq("organization_id", organizationId).in("id", otherSuppliers)
           : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-      ]);
-      for (const p of [...(moreCustomers.data ?? []), ...(moreSuppliers.data ?? [])]) partyNames.set(p.id, p.name);
-      firstPayment = (firstResult.data as DuplicatePayment | null) ?? null;
-      repeats = (repeatsResult.data ?? []) as DuplicatePayment[];
-      paymentCurrency = partyCurrency(partyResult.data as { currency: string | null } | null, shopCurrency);
-      // Отправитель с чека у повторов — из их распознавания (одним запросом).
-      const repeatDocs = repeats.map((r) => r.document_id).filter(Boolean) as string[];
-      if (repeatDocs.length) {
-        const { data: repeatExtractions } = await db
-          .from("document_extractions")
-          .select("document_id,payload")
-          .eq("organization_id", organizationId)
-          .in("document_id", repeatDocs)
-          .order("created_at", { ascending: false });
-        for (const e of repeatExtractions ?? []) {
-          const sender = (e.payload as { extracted?: { sender_name?: string | null } } | null)?.extracted?.sender_name;
-          if (sender && !senders.has(e.document_id)) senders.set(e.document_id, String(sender));
-        }
-      }
-      if (firstPayment?.document_id) {
-        firstDigitizedAt =
-          (
-            await db
+        repeatDocs.length
+          ? db
+              .from("document_extractions")
+              .select("document_id,payload")
+              .eq("organization_id", organizationId)
+              .in("document_id", repeatDocs)
+              .order("created_at", { ascending: false })
+          : Promise.resolve({ data: [] as { document_id: string; payload: unknown }[] }),
+        firstPayment?.document_id
+          ? db
               .from("document_extractions")
               .select("created_at")
               .eq("organization_id", organizationId)
@@ -261,8 +255,14 @@ export default async function DocumentDetail({
               .order("created_at", { ascending: false })
               .limit(1)
               .maybeSingle()
-          ).data?.created_at ?? null;
+          : Promise.resolve({ data: null as { created_at: string } | null }),
+      ]);
+      for (const p of [...(moreCustomers.data ?? []), ...(moreSuppliers.data ?? [])]) partyNames.set(p.id, p.name);
+      for (const e of repeatExtractions.data ?? []) {
+        const sender = (e.payload as { extracted?: { sender_name?: string | null } } | null)?.extracted?.sender_name;
+        if (sender && !senders.has(e.document_id)) senders.set(e.document_id, String(sender));
       }
+      firstDigitizedAt = firstDigitized.data?.created_at ?? null;
     }
   }
   // «клиент Ержан · по чеку: Тестов Тест» — кто прислал запись.
@@ -285,8 +285,7 @@ export default async function DocumentDetail({
           : "подтверждена";
   const expenseFields = doc.kind === "expense" ? (extraction?.payload?.extracted as ExpenseResult | undefined) : undefined;
 
-  const pages = await documentPages(db, organizationId, doc.id);
-  const photoUrls = await Promise.all(pages.map((page) => signedPhotoUrl(db, page.storage_path)));
+  const photoUrls = await photoUrlsRequest;
   const linesTotal = lines.reduce((sum, line) => sum + Number(line.sum), 0);
   const totalsMismatch =
     declaredTotal != null && Math.abs(linesTotal - declaredTotal) > TOLERANCE;
@@ -315,9 +314,7 @@ export default async function DocumentDetail({
     paperTotal != null && lines.length > 0 && Math.abs(linesTotal - paperTotal) > TOLERANCE;
   // Тип документа и сторона магазина — как в форме (classify.ts): контрагент —
   // другая сторона накладной, а не название нашего магазина.
-  const org = invoiceFields
-    ? await db.from("organizations").select("document_names").eq("id", organizationId).maybeSingle()
-    : null;
+  const org = invoiceFields ? orgResult : null;
   const verdict =
     invoiceFields && (doc.kind === "purchase" || doc.kind === "sale")
       ? checkDocument(

@@ -3,10 +3,9 @@ import { SkeletonHeading, SkeletonList, SkeletonPage, SkeletonTiles } from "@/co
 export default function Loading() {
   return (
     <SkeletonPage>
-      <SkeletonHeading subtitle={false} />
-      <SkeletonTiles count={2} className="debt-cards" />
-      <SkeletonTiles count={4} className="quick-actions" />
-      <SkeletonList rows={5} />
+      <SkeletonHeading />
+      <SkeletonTiles count={4} className="operation-actions" />
+      <SkeletonList rows={8} />
     </SkeletonPage>
   );
 }

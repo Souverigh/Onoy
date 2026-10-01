@@ -53,40 +53,128 @@ export default async function EntryPage({
   const { db, organizationId, organizationName, isOwner, currency: shopCurrency } = await getContext();
   const { error, saved, linked, revoked, reversed, promised, adjusted, archived, restored, merged, unmerged } =
     await searchParams;
+  const isParty = kind === "customers" || kind === "suppliers";
+  const known = id !== "new";
+  if (known && !/^[a-f0-9-]{36}$/i.test(id)) notFound();
+  const partyColumn = kind === "customers" ? "customer_id" : "supplier_id";
+  // Всё, что зависит только от id из адреса, — одним кругом вместе с самой
+  // записью (раньше ~7 запросов подряд). Запрос supabase-js уходит только
+  // при then/await — Promise.resolve запускает его сразу; ниже их ждут.
+  const start = <T,>(query: PromiseLike<T>) => Promise.resolve(query);
+  const skip = <T,>(value: T) => Promise.resolve(value);
+  const entryRequest = known
+    ? start(db.from(directoryMeta[kind].view).select("*").eq("organization_id", organizationId).eq("id", id).maybeSingle())
+    : null;
+  const agingRequest =
+    known && kind === "customers"
+      ? start(
+          db
+            .from("customer_debt_aging")
+            .select("due_0_30,due_31_60,due_61_90,due_over_90,oldest_days")
+            .eq("organization_id", organizationId)
+            .eq("customer_id", id)
+            .maybeSingle(),
+        )
+      : skip({ data: null });
+  const linksRequest =
+    known && kind === "customers"
+      ? start(
+          db
+            .from("share_links")
+            .select("id,token,revoked_at")
+            .eq("organization_id", organizationId)
+            .eq("customer_id", id)
+            .is("revoked_at", null)
+            .order("created_at", { ascending: false })
+            .limit(1),
+        )
+      : skip({ data: [] as ShareLink[] });
+  const invoicesRequest =
+    known && isParty
+      ? start(
+          db
+            .from(kind === "customers" ? "sales" : "purchases")
+            .select("id,total,occurred_at,reversed_at,reversal_comment,document_id,is_opening,created_by,reversed_by,original_amount,original_currency,fx_rate")
+            .eq("organization_id", organizationId)
+            .eq(partyColumn, id)
+            .eq("status", "posted")
+            .order("occurred_at", { ascending: false })
+            .limit(20),
+        )
+      : null;
+  const paysRequest =
+    known && isParty
+      ? start(
+          db
+            .from("payments")
+            .select("id,amount,occurred_at,reversed_at,reversal_comment,document_id,status,is_opening,kind,note,created_by,reversed_by,original_amount,original_currency,fx_rate,duplicate_of")
+            .eq("organization_id", organizationId)
+            .eq(partyColumn, id)
+            .eq("direction", kind === "customers" ? "incoming" : "outgoing")
+            .neq("status", "rejected")
+            .order("occurred_at", { ascending: false })
+            .limit(20),
+        )
+      : null;
+  const membersRequest = known && isOwner && isParty ? memberLabels(db, organizationId) : null;
+  const manageRequest =
+    known && isParty
+      ? Promise.all([
+          start(
+            db
+              .from(kind === "customers" ? "sales" : "purchases")
+              .select("id", { count: "exact", head: true })
+              .eq("organization_id", organizationId)
+              .eq(partyColumn, id),
+          ),
+          start(
+            db
+              .from("payments")
+              .select("id", { count: "exact", head: true })
+              .eq("organization_id", organizationId)
+              .eq(partyColumn, id),
+          ),
+          isOwner
+            ? start(
+                db
+                  .from(kind)
+                  .select("id,name")
+                  .eq("organization_id", organizationId)
+                  .is("merged_into_id", null)
+                  .is("archived_at", null)
+                  .neq("id", id)
+                  .order("name")
+                  .range(0, 999),
+              )
+            : skip({ data: [] as { id: string; name: string }[] }),
+          isOwner
+            ? start(
+                db
+                  .from("party_merges")
+                  .select("id,from_id")
+                  .eq("organization_id", organizationId)
+                  .eq("into_id", id)
+                  .is("undone_at", null)
+                  .gt("created_at", new Date(Date.now() - 86400000).toISOString()),
+              )
+            : skip({ data: [] as { id: string; from_id: string }[] }),
+        ])
+      : null;
+
   let entry: Entry | undefined;
-  if (id !== "new") {
-    if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
-    const result = await db
-      .from(directoryMeta[kind].view)
-      .select("*")
-      .eq("organization_id", organizationId)
-      .eq("id", id)
-      .maybeSingle();
+  if (entryRequest) {
+    const result = await entryRequest;
     if (result.error) throw new Error("Не удалось открыть запись");
     if (!result.data) notFound();
     entry = result.data as Entry;
   }
 
-  const isParty = kind === "customers" || kind === "suppliers";
   let activeLink: ShareLink | undefined;
   let origin = "";
   let aging: Aging | null = null;
   if (entry && kind === "customers") {
-    const agingResult = await db
-      .from("customer_debt_aging")
-      .select("due_0_30,due_31_60,due_61_90,due_over_90,oldest_days")
-      .eq("organization_id", organizationId)
-      .eq("customer_id", entry.id)
-      .maybeSingle();
+    const [agingResult, links] = await Promise.all([agingRequest, linksRequest]);
     aging = (agingResult.data as Aging | null) ?? null;
-    const links = await db
-      .from("share_links")
-      .select("id,token,revoked_at")
-      .eq("organization_id", organizationId)
-      .eq("customer_id", entry.id)
-      .is("revoked_at", null)
-      .order("created_at", { ascending: false })
-      .limit(1);
     activeLink = (links.data ?? [])[0] as ShareLink | undefined;
     const h = await headers();
     origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
@@ -120,42 +208,25 @@ export default async function EntryPage({
     reversedBy: string | null;
   };
   let history: HistoryRow[] = [];
-  if (entry && isParty) {
-    const partyColumn = kind === "customers" ? "customer_id" : "supplier_id";
-    const invoiceTable = kind === "customers" ? "sales" : "purchases";
-    const [invoices, pays] = await Promise.all([
-      db
-        .from(invoiceTable)
-        .select("id,total,occurred_at,reversed_at,reversal_comment,document_id,is_opening,created_by,reversed_by,original_amount,original_currency,fx_rate")
-        .eq("organization_id", organizationId)
-        .eq(partyColumn, entry.id)
-        .eq("status", "posted")
-        .order("occurred_at", { ascending: false })
-        .limit(20),
-      db
-        .from("payments")
-        .select("id,amount,occurred_at,reversed_at,reversal_comment,document_id,status,is_opening,kind,note,created_by,reversed_by,original_amount,original_currency,fx_rate,duplicate_of")
-        .eq("organization_id", organizationId)
-        .eq(partyColumn, entry.id)
-        .eq("direction", kind === "customers" ? "incoming" : "outgoing")
-        .neq("status", "rejected")
-        .order("occurred_at", { ascending: false })
-        .limit(20),
-    ]);
+  if (entry && invoicesRequest && paysRequest) {
+    const [invoices, pays] = await Promise.all([invoicesRequest, paysRequest]);
     const firstIds = [...new Set((pays.data ?? []).map((p) => p.duplicate_of).filter(Boolean) as string[])];
-    const firsts = firstIds.length
-      ? (
-          await db
-            .from("payments")
-            .select("id,document_id,customer_id,supplier_id")
-            .eq("organization_id", organizationId)
-            .in("id", firstIds)
-        ).data ?? []
-      : [];
-    const firstHrefs = new Map(firsts.map((f) => [f.id, firstPaymentHref(f)]));
     // Заявки на проверке: сумма с чека против суммы заявки — видно и продавцу.
     const pendingPays = (pays.data ?? []).filter((p) => p.status === "pending" && p.document_id);
-    const receipts = await receiptAmounts(db, organizationId, pendingPays.map((p) => p.document_id as string));
+    // Первые записи дубликатов и чеки заявок — вместе, вторым кругом.
+    const [firsts, receipts] = await Promise.all([
+      firstIds.length
+        ? start(
+            db
+              .from("payments")
+              .select("id,document_id,customer_id,supplier_id")
+              .eq("organization_id", organizationId)
+              .in("id", firstIds),
+          ).then((result) => result.data ?? [])
+        : skip([]),
+      receiptAmounts(db, organizationId, pendingPays.map((p) => p.document_id as string)),
+    ]);
+    const firstHrefs = new Map(firsts.map((f) => [f.id, firstPaymentHref(f)]));
     const needRates = pendingPays.some((p) => {
       const r = receipts.get(p.document_id as string);
       return r && r.currency !== cur && p.original_currency !== r.currency;
@@ -230,59 +301,27 @@ export default async function EntryPage({
       : null;
 
   // Журнал «кто внёс, кто отменил» — владельцу, когда есть сотрудники.
-  const members = isOwner && entry && isParty ? await memberLabels(db, organizationId) : new Map();
+  const members = (membersRequest ? await membersRequest : null) ?? new Map();
   const showAuthors = [...members.values()].some((m) => m.role === "staff");
   const who = (id: string | null) => (id ? (members.get(id)?.name ?? "бывший сотрудник") : null);
 
   // Управление контрагентом: есть ли записи (включая отменённые и заявки),
   // с кем можно объединить, недавние объединения (отмена в течение суток).
   let manage: React.ComponentProps<typeof PartyManage> | null = null;
-  if (entry && isParty) {
-    const partyColumn = kind === "customers" ? "customer_id" : "supplier_id";
-    const [docs, pays, others, merges, into] = await Promise.all([
-      db
-        .from(kind === "customers" ? "sales" : "purchases")
-        .select("id", { count: "exact", head: true })
-        .eq("organization_id", organizationId)
-        .eq(partyColumn, entry.id),
-      db
-        .from("payments")
-        .select("id", { count: "exact", head: true })
-        .eq("organization_id", organizationId)
-        .eq(partyColumn, entry.id),
-      isOwner
-        ? db
-            .from(kind)
-            .select("id,name")
-            .eq("organization_id", organizationId)
-            .is("merged_into_id", null)
-            .is("archived_at", null)
-            .neq("id", entry.id)
-            .order("name")
-            .range(0, 999)
-        : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-      isOwner
-        ? db
-            .from("party_merges")
-            .select("id,from_id")
-            .eq("organization_id", organizationId)
-            .eq("into_id", entry.id)
-            .is("undone_at", null)
-            .gt("created_at", new Date(Date.now() - 86400000).toISOString())
-        : Promise.resolve({ data: [] as { id: string; from_id: string }[] }),
-      entry.merged_into_id
-        ? db.from(kind).select("id,name").eq("organization_id", organizationId).eq("id", entry.merged_into_id).maybeSingle()
-        : Promise.resolve({ data: null }),
-    ]);
+  if (entry && isParty && manageRequest) {
+    const [docs, pays, others, merges] = await manageRequest;
     const mergeRows = (merges.data ?? []) as { id: string; from_id: string }[];
-    const fromNames = mergeRows.length
-      ? new Map(
-          ((await db.from(kind).select("id,name").in("id", mergeRows.map((m) => m.from_id))).data ?? []).map((p) => [
-            p.id as string,
-            p.name as string,
-          ]),
-        )
-      : new Map<string, string>();
+    // Куда объединили и имена объединённых — зависят от ответов выше.
+    const [into, fromNames] = await Promise.all([
+      entry.merged_into_id
+        ? start(db.from(kind).select("id,name").eq("organization_id", organizationId).eq("id", entry.merged_into_id).maybeSingle())
+        : skip({ data: null }),
+      mergeRows.length
+        ? start(db.from(kind).select("id,name").in("id", mergeRows.map((m) => m.from_id))).then(
+            (result) => new Map((result.data ?? []).map((p) => [p.id as string, p.name as string])),
+          )
+        : skip(new Map<string, string>()),
+    ]);
     manage = {
       kind: kind as "customers" | "suppliers",
       id: entry.id,

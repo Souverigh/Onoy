@@ -19,6 +19,14 @@ export default async function Settings({
   // Сколько продавцов можно по тарифам (таблица plan_limits, меняется в SQL).
   let staffLimits: Record<string, number> = {};
   let origin = "";
+  // Магазин — параллельно с сотрудниками, а не после них. Запрос supabase-js
+  // уходит только при .then/await — .then запускает его сразу.
+  const orgRequest = db
+    .from("organizations")
+    .select("phone,block_duplicate_photos,document_names")
+    .eq("id", organizationId)
+    .maybeSingle()
+    .then((result) => result);
   if (isOwner) {
     const [m, i, l] = await Promise.all([
       db
@@ -44,11 +52,7 @@ export default async function Settings({
     const h = await headers();
     origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
   }
-  const org = await db
-    .from("organizations")
-    .select("phone,block_duplicate_photos,document_names")
-    .eq("id", organizationId)
-    .maybeSingle();
+  const org = await orgRequest;
 
   return (
     <>
