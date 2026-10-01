@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { login } from "../auth/actions";
 import { configured } from "@/lib/supabase/server";
 import { Submit } from "@/components/submit";
@@ -72,6 +73,9 @@ export default async function Login({
                     maxLength={1024}
                   />
                 </label>
+                <Link className="forgot-link" href="/forgot">
+                  Забыли пароль?
+                </Link>
                 {error && (
                   <p role="alert" className="form-error">
                     Не удалось войти. Проверьте email и пароль и повторите

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createAnonClient, createClient, configured } from "@/lib/supabase/server";
 import { getUserContext } from "@/lib/context";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { EXPIRED_COOKIE } from "@/lib/session-timeout";
 /** Куда вернуть после входа: только страница приглашения, иначе главная. */
 function nextPath(form: FormData) {
@@ -123,4 +123,47 @@ export async function createOrganization(form: FormData) {
   }
   revalidatePath("/", "layout");
   redirect("/");
+}
+
+/**
+ * «Забыли пароль?»: Supabase отправляет письмо со ссылкой на /auth/confirm
+ * (адрес должен быть в Supabase → Authentication → URL Configuration →
+ * Redirect URLs). Ответ одинаковый, есть такой email или нет, — чтобы по
+ * форме нельзя было проверить, кто зарегистрирован.
+ */
+export async function requestPasswordReset(form: FormData) {
+  if (!configured()) redirect("/login?error=setup");
+  const email = String(form.get("email") ?? "").trim();
+  if (!email || email.length > 254 || !email.includes("@")) redirect("/forgot?error=email");
+  const h = await headers();
+  const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
+  const db = await createClient();
+  const { error } = await db.auth.resetPasswordForEmail(email, {
+    redirectTo: `${origin}/auth/confirm?next=/reset-password`,
+  });
+  // Лимит писем Supabase (несколько в час) — просим подождать; прочее не раскрываем.
+  if (error?.status === 429) redirect("/forgot?error=rate");
+  if (error) console.warn("requestPasswordReset:", error.status, error.message);
+  redirect("/forgot?sent=1");
+}
+
+/** Новый пароль после ссылки из письма (сессия восстановления уже открыта). */
+export async function updatePassword(form: FormData) {
+  if (!configured()) redirect("/login?error=setup");
+  const password = String(form.get("password") ?? ""),
+    repeat = String(form.get("repeat") ?? "");
+  if (password.length < 6 || password.length > 1024) redirect("/reset-password?error=short");
+  if (password !== repeat) redirect("/reset-password?error=mismatch");
+  const db = await createClient();
+  const { data } = await db.auth.getClaims();
+  if (!data?.claims?.sub) redirect("/forgot?error=link");
+  const { error } = await db.auth.updateUser({ password });
+  if (error)
+    redirect(
+      `/reset-password?error=${error.code === "same_password" ? "same" : error.code === "weak_password" ? "weak" : "failed"}`,
+    );
+  // Старый пароль мог знать кто-то ещё — его входы на других устройствах закрываем.
+  await db.auth.signOut({ scope: "others" });
+  revalidatePath("/", "layout");
+  redirect("/?password=changed");
 }

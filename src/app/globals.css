@@ -3884,3 +3884,11 @@ tr.row-link:has(a[data-pending]) {
     animation: none;
   }
 }
+
+/* «Забыли пароль?» под полем пароля на странице входа. */
+.forgot-link {
+  display: inline-block;
+  margin: -6px 0 14px;
+  font-size: 14px;
+  color: var(--green);
+}

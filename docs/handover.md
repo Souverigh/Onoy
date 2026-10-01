@@ -40,6 +40,18 @@
   (HTML + копия `globals.css` в scratchpad, `wrap.html` с iframe 390 px,
   headless Chrome). Живьём (с входом) формы после переделки не открывались.
 
+**Сделать позже — отложено пользователем 30.09.2026 (п. 85, восстановление
+пароля):**
+- Supabase → Authentication → Emails → Reset Password: ссылку в шаблоне на
+  `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password`
+  (+ текст по-русски). Пока стандартная — ссылка работает только в том же
+  браузере, где просили письмо (PKCE).
+- Свой SMTP (Resend / Brevo…) в Authentication → Emails → SMTP Settings.
+  **Пока его нет, письма сброса пароля (и подтверждения регистрации)
+  доходят только участникам команды Supabase-проекта, ~2 в час —
+  клиентам не придут.** Redirect URLs (пункт 1 в п. 85) — нужен в любом
+  случае; сделан ли — не подтверждено.
+
 **Технический долг (вопросы отложены пользователем 30.09.2026 — не
 спрашивать заново и не решать самому, пока он не вернётся к ним):**
 - Показывать ли долларовый долг ещё и в сомах по сегодняшнему курсу
@@ -1361,6 +1373,32 @@ security-definer RPC. Перед работой с API Next.js — читать
       дубликатами. Попутно исправлено: имена других клиентов, повторивших
       чек, не подгружались (`repeats` читался до присваивания).
     Живьём (с входом) не проверялось.
+
+85. **Восстановление пароля** (30.09.2026, без миграции). Вход → «Забыли
+    пароль?» → `/forgot` (email; ответ одинаковый, есть такой email или
+    нет; 429 → «подождите») → `resetPasswordForEmail` с `redirectTo =
+    <origin>/auth/confirm?next=/reset-password` → письмо → route handler
+    `src/app/auth/confirm/route.ts`: `?code=` (стандартный шаблон, PKCE —
+    только в том же браузере) или `?token_hash=…&type=recovery` (свой
+    шаблон — из любого браузера) → сессия → `/reset-password` (пароль
+    дважды, ≥ 6) → `updateUser` + `signOut({scope:'others'})` → главная
+    «Пароль изменён». `next` — только из белого списка. Ошибки ссылки →
+    `/forgot?error=link`. Проверено на `next start`: страницы, неверные
+    ссылки; отправка письма и полный путь — нет.
+    **Нужно в Supabase (делает пользователь):**
+    1. Authentication → URL Configuration → Redirect URLs:
+       `https://depter.kg/auth/confirm`, `https://www.depter.kg/auth/confirm`,
+       `https://onoy.vercel.app/auth/confirm`, `http://localhost:3000/auth/confirm`;
+       Site URL — основной адрес (depter.kg). Без этого Supabase отправит
+       ссылку на Site URL, а не на /auth/confirm.
+    2. Authentication → Emails → Reset Password: ссылку заменить на
+       `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password`
+       (иначе письмо, открытое в Gmail-приложении/другом браузере, не
+       сработает — PKCE). Текст письма — по-русски.
+    3. Свой SMTP (Authentication → Emails → SMTP Settings: Resend / Brevo /
+       Mailgun…): встроенная почта Supabase шлёт только адресам участников
+       команды проекта и ~2 письма в час — настоящим клиентам письма не
+       дойдут.
 
 ### Этап 1 — что ещё осталось по ТЗ (решено идти по порядку, 26.09.2026)
 

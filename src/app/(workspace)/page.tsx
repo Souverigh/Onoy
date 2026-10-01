@@ -3,9 +3,16 @@ import { Dashboard, type Summary } from "@/components/dashboard";
 import { dayHistory, unclosedDays } from "@/lib/day-summary";
 import { recentRecords } from "@/lib/recent";
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function Home({ searchParams }: { searchParams: Promise<{ error?: string; password?: string }> }) {
   const { db, organizationId, isOwner, currency: shopCurrency } = await getContext();
-  const { error } = await searchParams;
+  const { error, password } = await searchParams;
+  // После «Забыли пароль?» → новый пароль (src/app/auth/actions.ts, updatePassword).
+  const passwordNotice =
+    password === "changed" ? (
+      <p className="notice success" role="status">
+        Пароль изменён. Вход на других устройствах закрыт — там нужно войти с новым паролем.
+      </p>
+    ) : null;
   const review = db
     .from("documents")
     .select("id", { count: "exact", head: true })
@@ -15,13 +22,16 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
   if (!isOwner) {
     const [recent, reviewResult] = await Promise.all([recentRecords(db, organizationId), review]);
     return (
-      <Dashboard
-        summary={null}
-        staff
-        ownerOnlyNotice={error === "owner"}
-        recent={recent}
-        reviewCount={reviewResult.count ?? 0}
-      />
+      <>
+        {passwordNotice}
+        <Dashboard
+          summary={null}
+          staff
+          ownerOnlyNotice={error === "owner"}
+          recent={recent}
+          reviewCount={reviewResult.count ?? 0}
+        />
+      </>
     );
   }
   const [customerBalances, supplierBalances, unclosed, late, history, claims, reviewResult, recent] = await Promise.all([
@@ -79,18 +89,21 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
   };
   const todayRow = history[0]; // за 1 день — одна строка, сегодня
   return (
-    <Dashboard
-      summary={{ debts: debtTotals } satisfies Summary}
-      unclosedDays={unclosed}
-      overdue={overdue}
-      today={
-        todayRow
-          ? { sold: todayRow.sold, collected: todayRow.collected, expenses: todayRow.expenses, currency: shopCurrency }
-          : undefined
-      }
-      pendingClaims={claims.count ?? 0}
-      reviewCount={reviewResult.count ?? 0}
-      recent={recent}
-    />
+    <>
+      {passwordNotice}
+      <Dashboard
+        summary={{ debts: debtTotals } satisfies Summary}
+        unclosedDays={unclosed}
+        overdue={overdue}
+        today={
+          todayRow
+            ? { sold: todayRow.sold, collected: todayRow.collected, expenses: todayRow.expenses, currency: shopCurrency }
+            : undefined
+        }
+        pendingClaims={claims.count ?? 0}
+        reviewCount={reviewResult.count ?? 0}
+        recent={recent}
+      />
+    </>
   );
 }
