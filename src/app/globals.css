@@ -1861,18 +1861,30 @@ tr.line-mismatch {
   border-top: 1px solid var(--line);
 }
 .op-list-item {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 2px 12px;
   padding: 10px 2px;
 }
+/* Строка нажимается целиком: ссылка растянута на всю строку, «Отменить» — поверх. */
 .op-list-main {
+  color: inherit;
+  text-decoration: none;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 15px;
+}
+.op-list-main::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.op-list-item:has(.op-list-main:active) {
+  background: #f1f4ee;
 }
 .op-list-main strong {
   font-weight: 600;
@@ -1890,6 +1902,8 @@ tr.line-mismatch {
   min-height: 28px;
 }
 .op-list-action {
+  position: relative;
+  z-index: 1;
   justify-self: end;
   display: inline-flex;
   align-items: center;

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { plural } from "@/components/dashboard";
 import { paymentLabelWithSide, type PaymentKind } from "@/lib/entry-labels";
 import { getContext } from "@/lib/context";
+import { firstPaymentHref } from "@/lib/duplicates";
 import { money } from "@/lib/format";
 
 type PartyBalance = { id: string; name: string; balance: string; currency: string | null };
@@ -18,6 +19,8 @@ type Activity = {
   reversed: boolean;
   opening?: boolean;
   reversalComment?: string;
+  /** Куда ведёт строка: документ с фото, иначе карточка контрагента. */
+  href: string;
 };
 
 const dateTime = (value: string) =>
@@ -58,21 +61,21 @@ export default async function Money({
         .limit(8),
       db
         .from("purchases")
-        .select("id,supplier_id,total,occurred_at,reversed_at,reversal_comment,is_opening")
+        .select("id,supplier_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id")
         .eq("organization_id", organizationId)
         .eq("status", "posted")
         .order("occurred_at", { ascending: false })
         .limit(8),
       db
         .from("sales")
-        .select("id,customer_id,total,occurred_at,reversed_at,reversal_comment,is_opening")
+        .select("id,customer_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id")
         .eq("organization_id", organizationId)
         .eq("status", "posted")
         .order("occurred_at", { ascending: false })
         .limit(8),
       db
         .from("payments")
-        .select("id,customer_id,supplier_id,direction,amount,occurred_at,reversed_at,reversal_comment,is_opening,kind")
+        .select("id,customer_id,supplier_id,direction,amount,occurred_at,reversed_at,reversal_comment,is_opening,kind,document_id")
         .eq("organization_id", organizationId)
         .eq("status", "confirmed")
         .order("occurred_at", { ascending: false })
@@ -103,6 +106,7 @@ export default async function Money({
     reversed_at: string | null;
     is_opening?: boolean;
     reversal_comment: string | null;
+    document_id: string | null;
   }[];
   const sales = (saleResult.data ?? []) as {
     id: string;
@@ -112,6 +116,7 @@ export default async function Money({
     reversed_at: string | null;
     is_opening?: boolean;
     reversal_comment: string | null;
+    document_id: string | null;
   }[];
   const payments = (paymentResult.data ?? []) as {
     id: string;
@@ -124,6 +129,7 @@ export default async function Money({
     is_opening?: boolean;
     reversal_comment: string | null;
     kind: PaymentKind;
+    document_id: string | null;
   }[];
   const customerIds = [
     ...new Set([
@@ -190,6 +196,7 @@ export default async function Money({
       reversed: Boolean(row.reversed_at),
       reversalComment: row.reversal_comment ?? undefined,
       opening: Boolean(row.is_opening),
+      href: row.document_id ? `/documents/${row.document_id}` : `/suppliers/${row.supplier_id}`,
     })),
     ...sales.map((row) => ({
       id: row.id,
@@ -201,6 +208,7 @@ export default async function Money({
       reversed: Boolean(row.reversed_at),
       reversalComment: row.reversal_comment ?? undefined,
       opening: Boolean(row.is_opening),
+      href: row.document_id ? `/documents/${row.document_id}` : `/customers/${row.customer_id}`,
     })),
     ...payments.map((row) => ({
       id: row.id,
@@ -217,6 +225,10 @@ export default async function Money({
       reversed: Boolean(row.reversed_at),
       reversalComment: row.reversal_comment ?? undefined,
       opening: Boolean(row.is_opening),
+      // Без чека — строка оплаты в истории контрагента (якорь pay-<id>).
+      href:
+        firstPaymentHref(row) ??
+        (row.direction === "incoming" ? "/customers" : "/suppliers"),
     })),
   ].sort(
     (a, b) =>
@@ -396,11 +408,11 @@ export default async function Money({
                 key={`${activity.kind}-${activity.id}`}
                 className={activity.reversed ? "op-list-item reversed" : "op-list-item"}
               >
-                <span className="op-list-main">
+                <Link className="op-list-main" href={activity.href}>
                   <strong>{activityLabel(activity)}</strong>
                   {" · "}
                   {activity.party}
-                </span>
+                </Link>
                 <strong className="op-list-amount">{money(activity.amount, activity.currency)}</strong>
                 <span className="op-list-meta muted">
                   {shortDateTime(activity.occurred_at)}
@@ -440,7 +452,9 @@ export default async function Money({
                     className={activity.reversed ? "reversed-row" : ""}
                   >
                     <td>
-                      {activityLabel(activity)}
+                      <Link className="entry-link" href={activity.href}>
+                        {activityLabel(activity)}
+                      </Link>
                       {activity.reversed && (
                         <span className="tag reversed-tag">отменена</span>
                       )}
