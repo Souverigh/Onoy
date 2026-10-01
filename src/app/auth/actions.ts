@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createAnonClient, createClient, configured } from "@/lib/supabase/server";
 import { getUserContext } from "@/lib/context";
+import { cookies } from "next/headers";
+import { EXPIRED_COOKIE } from "@/lib/session-timeout";
 /** Куда вернуть после входа: только страница приглашения, иначе главная. */
 function nextPath(form: FormData) {
   const next = String(form.get("next") ?? "");
@@ -20,6 +22,8 @@ export async function login(form: FormData) {
   const db = await createClient();
   const { error } = await db.auth.signInWithPassword({ email, password });
   if (error) redirect(failed);
+  // Пояснение «вышли по бездействию» больше не нужно.
+  (await cookies()).delete(EXPIRED_COOKIE);
   revalidatePath("/", "layout");
   // Администратор Depter без своего магазина — сразу в админку.
   if (next === "/") {

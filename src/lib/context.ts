@@ -3,12 +3,27 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient, configured } from "./supabase/server";
 import { isCurrency, type Currency } from "./currency";
+/** Вошедший пользователь — из проверенного токена (подпись ES256, см. ниже). */
+export type SessionUser = { id: string; email: string | null; phone: string | null };
+
+/**
+ * Вход проверяется по подписи токена (getClaims, ключи ES256 проекта
+ * кешируются в процессе на 10 мин), без запроса в Supabase Auth на каждой
+ * странице. Удалённый продавец считается вошедшим до истечения токена
+ * (≤ 1 ч), но данных не увидит: членство в магазине проверяет RLS.
+ */
 export const getUserContext = cache(async () => {
   if (!configured()) redirect("/login");
   const db = await createClient();
-  const { data, error } = await db.auth.getUser();
-  if (error || !data.user) redirect("/login");
-  return { db, user: data.user };
+  const { data, error } = await db.auth.getClaims();
+  const claims = data?.claims;
+  if (error || !claims?.sub) redirect("/login");
+  const user: SessionUser = {
+    id: claims.sub,
+    email: typeof claims.email === "string" && claims.email ? claims.email : null,
+    phone: typeof claims.phone === "string" && claims.phone ? claims.phone : null,
+  };
+  return { db, user };
 });
 export const getContext = cache(async () => {
   const { db, user } = await getUserContext();

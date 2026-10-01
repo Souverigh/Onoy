@@ -1,6 +1,8 @@
 import { login } from "../auth/actions";
 import { configured } from "@/lib/supabase/server";
 import { Submit } from "@/components/submit";
+import { cookies } from "next/headers";
+import { EXPIRED_COOKIE, INACTIVITY_LIMIT_MS } from "@/lib/session-timeout";
 export default async function Login({
   searchParams,
 }: {
@@ -8,6 +10,9 @@ export default async function Login({
 }) {
   const { error } = await searchParams;
   const ready = configured();
+  // Прокси вышел из сессии после бездействия (src/proxy.ts) — объясняем.
+  const expired = (await cookies()).has(EXPIRED_COOKIE);
+  const limitHours = INACTIVITY_LIMIT_MS / 3_600_000;
   return (
     <main className="auth">
       <section className="auth-intro">
@@ -41,6 +46,11 @@ export default async function Login({
             </div>
           ) : (
             <>
+              {expired && !error && (
+                <p className="notice" role="status">
+                  Вы вышли автоматически: {limitHours} ч без действий. Войдите снова — данные на месте.
+                </p>
+              )}
               <form action={login}>
                 <label>
                   Email
