@@ -15,6 +15,11 @@ const statusText: Record<string, string> = {
   error: "Не удалось выполнить действие. Обновите страницу и попробуйте снова.",
 };
 
+/** Первая буква имени (или email) — для кружка-аватара. */
+function initial(name: string | null, email: string | null) {
+  return (name?.trim() || email || "?").charAt(0).toUpperCase();
+}
+
 /** Сотрудники магазина (только владелец): приглашения по ссылке, имена, удаление. */
 export function StaffPanel({
   members,
@@ -44,12 +49,21 @@ export function StaffPanel({
   const date = (iso: string) =>
     new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", day: "numeric", month: "long" }).format(new Date(iso));
   return (
-    <section className="panel staff-panel" id="staff">
-      <h2>Сотрудники</h2>
-      <p className="muted">
-        Продавец оформляет продажи, приходы и оплаты. Отменять записи, делать скидки, подтверждать заявки,
-        смотреть итоги и закрывать день может только владелец.
-      </p>
+    <section className="panel settings-card staff-panel" id="staff">
+      <header className="settings-card-head">
+        <div>
+          <h2>Сотрудники</h2>
+          <p className="muted">
+            Продавец оформляет продажи, приходы и оплаты. Отмена записей, скидки, заявки, итоги и закрытие
+            дня — только у владельца.
+          </p>
+        </div>
+        {staffLimit !== undefined && (
+          <span className="settings-badge" title={`Тариф «${plan === "business" ? "Бизнес" : "Базовый"}»`}>
+            {used} из {staffLimit}
+          </span>
+        )}
+      </header>
       {status && statusText[status] && (
         <p className={["error", "name", "limit", "plan"].includes(status) ? "form-error" : "notice success"} role="status">
           {statusText[status]}
@@ -58,32 +72,43 @@ export function StaffPanel({
       <ul className="staff-list">
         {members.map((m) => (
           <li key={m.user_id}>
-            <form action={renameMember} className="staff-rename">
-              <input type="hidden" name="user_id" value={m.user_id} />
-              <input
-                name="name"
-                defaultValue={m.display_name ?? ""}
-                placeholder={m.role === "owner" ? "Владелец" : "Имя"}
-                maxLength={80}
-                aria-label="Имя в журнале"
-              />
-              <button className="text-button" type="submit">
-                Сохранить имя
-              </button>
-            </form>
-            <span className="muted">
-              {m.role === "owner" ? "владелец" : "продавец"}
-              {m.email ? ` · ${m.email}` : ""}
-              {m.user_id === currentUserId ? " · это вы" : ""}
+            <span className="staff-avatar" aria-hidden="true">
+              {initial(m.display_name, m.email)}
             </span>
-            {m.role === "staff" && (
-              <form action={removeMember}>
-                <input type="hidden" name="user_id" value={m.user_id} />
-                <button className="text-button danger-text" type="submit">
-                  Удалить
-                </button>
-              </form>
-            )}
+            <span className="staff-who">
+              <strong>{m.display_name || (m.role === "owner" ? "Владелец" : "Без имени")}</strong>
+              <small className="muted">
+                {m.role === "owner" ? "владелец" : "продавец"}
+                {m.email ? ` · ${m.email}` : ""}
+                {m.user_id === currentUserId ? " · это вы" : ""}
+              </small>
+            </span>
+            <details className="staff-edit">
+              <summary className="text-button">Изменить</summary>
+              <div className="staff-edit-body">
+                <form action={renameMember} className="staff-rename">
+                  <input type="hidden" name="user_id" value={m.user_id} />
+                  <input
+                    name="name"
+                    defaultValue={m.display_name ?? ""}
+                    placeholder={m.role === "owner" ? "Владелец" : "Имя"}
+                    maxLength={80}
+                    aria-label="Имя в журнале"
+                  />
+                  <button className="button" type="submit">
+                    Сохранить
+                  </button>
+                </form>
+                {m.role === "staff" && (
+                  <form action={removeMember}>
+                    <input type="hidden" name="user_id" value={m.user_id} />
+                    <button className="text-button danger-text" type="submit">
+                      Удалить из магазина
+                    </button>
+                  </form>
+                )}
+              </div>
+            </details>
           </li>
         ))}
       </ul>
@@ -95,9 +120,14 @@ export function StaffPanel({
               const link = `${origin}/join/${invite.token}`;
               const text = `Здравствуйте, ${invite.display_name}! Вас пригласили в Depter, магазин «${shopName}». Откройте ссылку, чтобы начать работу: ${link}`;
               return (
-                <li key={invite.id}>
-                  <strong>{invite.display_name}</strong>
-                  <span className="muted">ссылка действует до {date(invite.expires_at)}</span>
+                <li key={invite.id} className="staff-invite-row">
+                  <span className="staff-avatar pending" aria-hidden="true">
+                    {initial(invite.display_name, null)}
+                  </span>
+                  <span className="staff-who">
+                    <strong>{invite.display_name}</strong>
+                    <small className="muted">ссылка действует до {date(invite.expires_at)}</small>
+                  </span>
                   <code className="staff-link">{link}</code>
                   <span className="staff-actions">
                     <a
@@ -111,7 +141,7 @@ export function StaffPanel({
                     <form action={revokeInvite}>
                       <input type="hidden" name="id" value={invite.id} />
                       <button className="text-button" type="submit">
-                        Отменить приглашение
+                        Отменить
                       </button>
                     </form>
                   </span>
@@ -120,11 +150,6 @@ export function StaffPanel({
             })}
           </ul>
         </>
-      )}
-      {staffLimit !== undefined && (
-        <p className="muted staff-count">
-          Продавцов: {used} из {staffLimit} · тариф «{plan === "business" ? "Бизнес" : "Базовый"}»
-        </p>
       )}
       {!full ? (
         <form action={createInvite} className="staff-invite">

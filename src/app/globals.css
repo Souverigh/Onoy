@@ -2990,22 +2990,6 @@ tr.line-mismatch {
   white-space: nowrap;
 }
 
-/* Выгрузка в Excel (настройки). */
-.export-panel {
-  display: grid;
-  gap: 12px;
-  justify-items: start;
-}
-.export-panel h2,
-.export-panel p {
-  margin: 0;
-}
-.export-tables {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
-}
-
 /* Скидка или возврат: выбор вида записи. */
 .adjustment-kind {
   display: flex;
@@ -3039,16 +3023,202 @@ tr.line-mismatch {
   margin-bottom: 12px;
 }
 
-/* Сотрудники (настройки). */
-.staff-panel {
+/* Настройки: разделы слева (на телефоне — строкой сверху), карточки справа. */
+.settings {
   display: grid;
-  gap: 12px;
+  grid-template-columns: 180px minmax(0, 760px);
+  gap: 28px;
+  align-items: start;
 }
-.staff-panel h2,
-.staff-panel h3,
-.staff-panel p {
+.settings-nav {
+  position: sticky;
+  top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-nav a {
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 15px;
+}
+.settings-nav a:hover {
+  background: #eef1ec;
+  color: var(--ink);
+}
+.settings-body,
+.settings-form {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.settings-body > .notice,
+.settings-body > .form-error {
   margin: 0;
 }
+.settings-card {
+  display: grid;
+  gap: 16px;
+  scroll-margin-top: 20px;
+}
+.settings-card h2,
+.settings-card h3,
+.settings-card p {
+  margin: 0;
+}
+.settings-card header {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.settings-card header p {
+  font-size: 14px;
+}
+.settings-card h3 {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.settings-card form label,
+.settings-form label {
+  margin-bottom: 0;
+}
+.settings-card label small {
+  line-height: 1.45;
+}
+.settings-card-head {
+  display: flex !important;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.settings-card-head > div {
+  display: grid;
+  gap: 4px;
+}
+.settings-badge {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eef1ec;
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.settings-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.settings-hint {
+  margin-top: -6px;
+  line-height: 1.45;
+}
+/* Переключатель вместо флажка: подпись слева, тумблер справа. */
+.setting-switch {
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px !important;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--ink) !important;
+}
+.setting-switch > span {
+  display: grid;
+  gap: 2px;
+}
+.setting-switch strong {
+  font-weight: 500;
+  font-size: 15px;
+}
+.setting-switch input {
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 46px;
+  height: 28px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #cfd6cf;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.setting-switch input::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(20, 30, 25, 0.25);
+  transition: transform 0.15s;
+}
+.setting-switch input:checked {
+  background: var(--green);
+}
+.setting-switch input:checked::after {
+  transform: translateX(18px);
+}
+/* «Сохранить» видно, пока листаете форму магазина. */
+.settings-save {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding: 12px 0;
+  background: linear-gradient(to bottom, rgba(246, 247, 244, 0), var(--bg) 35%);
+}
+.settings-export-all {
+  justify-self: start;
+}
+.settings-export-tables {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.settings-export-tables a {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 14px;
+}
+.settings-export-tables a:hover {
+  background: #f1f4ee;
+}
+.settings-details {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 12px 16px;
+  margin: 0;
+  font-size: 15px;
+}
+.settings-details dt {
+  color: var(--muted);
+}
+.settings-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.settings-account-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+/* Сотрудники (настройки). */
 .staff-list {
   list-style: none;
   margin: 0;
@@ -3058,20 +3228,77 @@ tr.line-mismatch {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 14px;
-  padding: 10px 0;
+  gap: 8px 12px;
+  padding: 12px 0;
   border-bottom: 1px solid var(--line);
+}
+.staff-list li:last-child {
+  border-bottom: 0;
+}
+.staff-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #e3efe0;
+  color: var(--green);
+  font-weight: 600;
+}
+.staff-avatar.pending {
+  background: #fff4d8;
+  color: #74623b;
+}
+.staff-who {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+.staff-who small {
+  overflow-wrap: anywhere;
+}
+.staff-edit {
+  flex: none;
+}
+.staff-edit summary {
+  list-style: none;
+  min-height: 36px;
+  color: var(--green);
+}
+.staff-edit summary::-webkit-details-marker {
+  display: none;
+}
+.staff-edit[open] {
+  flex-basis: 100%;
+  order: 3;
+}
+.staff-edit[open] summary {
+  display: none;
+}
+.staff-edit-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #f6f7f4;
 }
 .staff-rename {
   display: flex;
+  flex: 1;
   gap: 8px;
   align-items: center;
+  min-width: 240px;
 }
 .staff-rename input {
-  max-width: 200px;
+  max-width: 260px;
 }
 .staff-link {
   flex-basis: 100%;
+  padding-left: 50px;
   font-size: 12px;
   overflow-wrap: anywhere;
   color: var(--muted);
@@ -3081,15 +3308,70 @@ tr.line-mismatch {
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+  padding-left: 50px;
 }
 .staff-invite {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   align-items: flex-end;
+  padding: 14px;
+  border-radius: 10px;
+  background: #f6f7f4;
+}
+.staff-invite label {
+  flex: 1;
+  min-width: 200px;
 }
 .danger-text {
   color: #a34836;
+}
+@media (max-width: 900px) {
+  .settings {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .settings-nav {
+    position: static;
+    flex-direction: row;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin: 0 -2px;
+  }
+  .settings-nav a {
+    flex: none;
+    padding: 6px 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 14px;
+  }
+}
+@media (max-width: 560px) {
+  .settings-row {
+    grid-template-columns: 1fr;
+  }
+  .settings-details {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .settings-details dd {
+    margin-bottom: 10px;
+  }
+  .settings-save {
+    bottom: calc(var(--bottom-nav) + env(safe-area-inset-bottom));
+  }
+  .settings-save .button {
+    width: 100%;
+  }
+  .staff-link,
+  .staff-actions {
+    padding-left: 0;
+  }
+  .staff-actions .button {
+    flex: 1;
+  }
 }
 
 /* Магазин приостановлен админом. */
