@@ -74,8 +74,15 @@ export function SendInvoice({ phone, text, fileText, pdfUrl, fileName, pending }
         return;
       }
     }
+    const data: ShareData = { files: [pdf], text: fileText };
+    // Пробный файл прошёл, а настоящий могут отклонить (имя, размер) — тогда
+    // share() падает без окна, и кнопка «ничего не делает».
+    if (!navigator.canShare(data)) {
+      setState("error");
+      return;
+    }
     try {
-      await navigator.share({ files: [pdf], text: fileText });
+      await navigator.share(data);
       setState("idle");
     } catch (error) {
       const name = error instanceof DOMException ? error.name : "";

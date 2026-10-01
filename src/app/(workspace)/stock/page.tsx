@@ -73,7 +73,7 @@ export default async function StockPage({
           </h1>
           <p className="muted">Остатки, цены и коды. Продажа товарами списывает остаток сама.</p>
         </div>
-        <div className="heading-actions">
+        <div className="heading-actions stock-heading-actions">
           <Link className="button" href="/stock/import">
             Из Excel
           </Link>
@@ -180,6 +180,16 @@ export default async function StockPage({
           </nav>
         )}
       </section>
+      {/* Телефон: кнопки внизу, над нижней панелью — под большим пальцем. */}
+      <div className="stock-bottom-actions">
+        <Link className="button" href="/stock/import">
+          Из Excel
+        </Link>
+        <Link className="button primary" href="/stock/new">
+          <Icon name="plus" />
+          Товар
+        </Link>
+      </div>
     </>
   );
 }

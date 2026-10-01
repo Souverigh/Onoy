@@ -4248,3 +4248,40 @@ tr.row-link:has(a[data-pending]) {
 .qty-stepper-wide button {
   width: 52px;
 }
+/* Поле с − и + не должно распирать колонку формы: ширину задаёт колонка. */
+.qty-stepper-wide input {
+  width: 0;
+  min-width: 0;
+}
+.form-grid > * {
+  min-width: 0;
+}
+/* «Склад» на телефоне: «Из Excel» и «+ Товар» — внизу, над нижней панелью. */
+.stock-bottom-actions {
+  display: none;
+}
+@media (max-width: 560px) {
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .stock-heading-actions {
+    display: none;
+  }
+  .stock-bottom-actions {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--bottom-nav) + env(safe-area-inset-bottom));
+    z-index: 20;
+    display: grid;
+    grid-template-columns: 1fr 1.4fr;
+    gap: 10px;
+    padding: 10px 16px;
+    background: #fff;
+    border-top: 1px solid var(--line);
+  }
+  /* Последний товар списка не прячется под кнопками. */
+  .content:has(.stock-bottom-actions) {
+    padding-bottom: calc(var(--bottom-nav) + 24px + 70px);
+  }
+}

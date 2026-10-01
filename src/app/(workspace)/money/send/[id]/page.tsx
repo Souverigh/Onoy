@@ -232,7 +232,9 @@ export default async function SendSalePage({
                   ? `/documents/${sale.document_id}/pdf`
                   : null
             }
-            fileName={`Накладная ${date}.pdf`}
+            // Латиница без пробелов: Chrome на Android отклоняет share() с
+            // «Накладная 1 окт. 2026 г..pdf» (кириллица, пробелы, «..»).
+            fileName={`nakladnaya-${new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bishkek" }).format(new Date(sale.occurred_at))}.pdf`}
             pending={pending}
           />
         </section>
