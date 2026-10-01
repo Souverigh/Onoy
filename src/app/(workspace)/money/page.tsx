@@ -26,6 +26,15 @@ const dateTime = (value: string) =>
     timeStyle: "short",
     timeZone: "Asia/Bishkek",
   }).format(new Date(value));
+// «28.09, 16:15» — для списка на телефоне.
+const shortDateTime = (value: string) =>
+  new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Bishkek",
+  }).format(new Date(value));
 
 export default async function Money({
   searchParams,
@@ -213,6 +222,17 @@ export default async function Money({
     (a, b) =>
       new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime(),
   );
+  const activityLabel = (activity: Activity) =>
+    activity.opening
+      ? activity.kind === "payment"
+        ? "Аванс из тетради"
+        : "Долг из тетради"
+      : activity.kind === "purchase"
+        ? "Приход"
+        : activity.kind === "sale"
+          ? "Продажа"
+          : paymentLabelWithSide(activity.paymentKind, activity.direction ?? "incoming");
+  const recentActivities = activities.slice(0, 15);
   const params = await searchParams;
   const successText =
     params.created === "purchase"
@@ -368,7 +388,39 @@ export default async function Money({
           <span className="tag">Недавние</span>
         </div>
         {activities.length ? (
-          <div className="table-wrap">
+          <>
+          {/* Телефон: список вместо широкой таблицы — всё видно без прокрутки вбок. */}
+          <ul className="op-list-mobile">
+            {recentActivities.map((activity) => (
+              <li
+                key={`${activity.kind}-${activity.id}`}
+                className={activity.reversed ? "op-list-item reversed" : "op-list-item"}
+              >
+                <span className="op-list-main">
+                  <strong>{activityLabel(activity)}</strong>
+                  {" · "}
+                  {activity.party}
+                </span>
+                <strong className="op-list-amount">{money(activity.amount, activity.currency)}</strong>
+                <span className="op-list-meta muted">
+                  {shortDateTime(activity.occurred_at)}
+                  {activity.reversed && <span className="tag reversed-tag">отменена</span>}
+                </span>
+                {!activity.reversed && isOwner && (
+                  <Link
+                    className="op-list-action"
+                    href={`/money/reverse/${activity.kind}/${activity.id}`}
+                  >
+                    Отменить
+                  </Link>
+                )}
+                {activity.reversed && activity.reversalComment && (
+                  <span className="op-list-note muted">Причина: {activity.reversalComment}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+          <div className="table-wrap op-table">
             <table>
               <thead>
                 <tr>
@@ -382,21 +434,13 @@ export default async function Money({
                 </tr>
               </thead>
               <tbody>
-                {activities.slice(0, 15).map((activity) => (
+                {recentActivities.map((activity) => (
                   <tr
                     key={`${activity.kind}-${activity.id}`}
                     className={activity.reversed ? "reversed-row" : ""}
                   >
                     <td>
-                      {activity.opening
-                        ? activity.kind === "payment"
-                          ? "Аванс из тетради"
-                          : "Долг из тетради"
-                        : activity.kind === "purchase"
-                          ? "Приход"
-                          : activity.kind === "sale"
-                            ? "Продажа"
-                            : paymentLabelWithSide(activity.paymentKind, activity.direction ?? "incoming")}
+                      {activityLabel(activity)}
                       {activity.reversed && (
                         <span className="tag reversed-tag">отменена</span>
                       )}
@@ -423,6 +467,7 @@ export default async function Money({
               </tbody>
             </table>
           </div>
+          </>
         ) : (
           <div className="empty">
             <h2>Операций пока нет</h2>
