@@ -3892,3 +3892,359 @@ tr.row-link:has(a[data-pending]) {
   font-size: 14px;
   color: var(--green);
 }
+
+/* --- Склад (30.09.2026) ------------------------------------------------- */
+/* Список товаров и движение — одной колонкой на любой ширине (строка как
+   у «Последних операций» на телефоне). */
+.stock-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.stock-list li + li {
+  border-top: 1px solid var(--line);
+}
+.stock-list .op-list-amount.warning,
+.stock-low-tag {
+  color: #a4762f;
+}
+.stock-low-tag {
+  justify-self: end;
+}
+.stock-plus {
+  color: var(--green);
+}
+.stock-now {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 18px;
+}
+.stock-now strong {
+  font-size: 30px;
+  font-weight: 650;
+}
+.stock-adjust .payment-direction label:last-child {
+  margin-bottom: 0;
+}
+.stock-archive {
+  margin: 4px 0 28px;
+}
+.stock-import {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.stock-import h2 {
+  margin: 10px 0 0;
+}
+.stock-import-columns {
+  gap: 0 16px;
+}
+.stock-import-preview td,
+.stock-import-preview th {
+  white-space: nowrap;
+}
+.stock-import-preview tr.warning td {
+  background: #fff8e6;
+}
+.stock-import-warnings {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+.sale-mode-tabs {
+  margin-top: -6px;
+}
+
+/* Продажа товарами: поиск, частые, строки накладной. */
+.product-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fafbf9;
+}
+.product-picker-title {
+  font-weight: 600;
+}
+.product-picker-hint {
+  font-size: 13px;
+}
+.product-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+.product-results li + li {
+  border-top: 1px solid var(--line);
+}
+.product-results button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 12px;
+  border: 0;
+  background: none;
+  text-align: left;
+  color: inherit;
+}
+.product-results button:active,
+.product-results button:hover {
+  background: #f1f4ee;
+}
+.product-results button.in-cart .product-result-name::after {
+  content: " ✓";
+  color: var(--green);
+}
+.product-result-name {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.product-results .product-new {
+  color: var(--green);
+  font-weight: 600;
+  justify-content: center;
+}
+/* Частые — кнопками в строку, переносятся. */
+.product-chips {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 0;
+  background: none;
+  overflow: visible;
+}
+.product-chips li + li {
+  border-top: 0;
+}
+.product-chips button {
+  width: auto;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid #dbe1da;
+  border-radius: 999px;
+  background: #fff;
+}
+.product-chips .product-result-name {
+  font-size: 14px;
+}
+.product-chips button.in-cart {
+  border-color: var(--green);
+  background: #edf4e9;
+}
+.product-create {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.product-create-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+.sale-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sale-line {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  transition: background 0.4s;
+}
+.sale-line.flash {
+  background: #edf4e9;
+}
+.sale-line-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 15px;
+}
+.sale-line-head strong,
+.sale-line-head a {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+.sale-line-n {
+  color: var(--muted);
+}
+.sale-line-remove {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  margin: -6px -6px 0 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+}
+.sale-line-body {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+.sale-line-body input {
+  min-height: 44px;
+  padding: 8px 10px;
+  text-align: center;
+}
+.qty-stepper {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid #dce2d9;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.qty-stepper input {
+  width: 72px;
+  border: 0;
+  border-radius: 0;
+}
+.qty-stepper button {
+  width: 40px;
+  border: 0;
+  background: #f1f4ee;
+  font-size: 20px;
+  color: var(--ink);
+}
+.sale-line-price {
+  width: 104px !important;
+}
+.sale-line-unit {
+  color: var(--muted);
+  font-size: 14px;
+}
+.sale-line-sum {
+  margin-left: auto;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sale-line small {
+  font-size: 12px;
+}
+.sale-lines-readonly .sale-line-body {
+  font-size: 14px;
+}
+.sale-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 2px;
+  border-top: 2px solid var(--line);
+  margin: 0;
+}
+.sale-total strong {
+  font-size: 24px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+/* Приём на склад по накладной прихода. */
+.receive-lines {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.receive-line {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.receive-line.off {
+  opacity: 0.6;
+}
+.receive-line-head {
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 10px !important;
+  font-size: 15px;
+  margin: 0 !important;
+}
+.receive-line-head input {
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+  flex: none;
+  margin-top: 1px;
+}
+.receive-line-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0 0 32px;
+}
+@media (max-width: 560px) {
+  .stock-import-columns,
+  .stock-adjust .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .sale-line-price {
+    width: 92px !important;
+  }
+  .qty-stepper input {
+    width: 60px;
+  }
+}
+/* У form label общий отступ снизу 18px — внутри этих блоков отступы задаёт gap. */
+.product-picker label,
+.product-create label,
+.receive-line-body label,
+.stock-import-columns label {
+  margin-bottom: 0;
+}
+.stock-import-columns label {
+  margin-bottom: 12px;
+}
+.sale-items-form .product-picker,
+.sale-items-form .sale-lines,
+.sale-items-form .contact-row {
+  margin-bottom: 18px;
+}
+.sale-items-form .cash-toggle {
+  margin-top: 6px;
+}
+.product-create .button {
+  white-space: normal;
+}
+/* Количество в обычной форме — во всю ширину поля, − и + по бокам. */
+.qty-stepper-wide {
+  display: flex;
+}
+.qty-stepper-wide input {
+  flex: 1;
+  width: auto;
+  text-align: center;
+  min-height: 48px;
+}
+.qty-stepper-wide button {
+  width: 52px;
+}

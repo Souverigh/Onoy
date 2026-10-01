@@ -2,7 +2,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
-import { money, originalAmountText } from "@/lib/format";
+import { money, originalAmountText, quantity } from "@/lib/format";
 import { partyCurrency } from "@/lib/currency";
 import { invoiceMessage } from "@/lib/invoice-message";
 import { SendInvoice } from "@/components/send-invoice";
@@ -11,6 +11,7 @@ import { ensureShareToken, waPhone } from "@/lib/share";
 
 // Отправка клиенту накладной и ссылки на долг (ТЗ §4 Б). PDF — только когда
 // накладная сверена (документ «оцифрована»); до этого уходит текст с долгом.
+// Продажа товарами со склада (sale_items) — накладная готова сразу.
 export default async function SendSalePage({
   params,
   searchParams,
@@ -32,7 +33,7 @@ export default async function SendSalePage({
   const sale = saleResult.data;
   if (saleResult.error || !sale || sale.status !== "posted") notFound();
 
-  const [customerResult, docResult, shopResult, share] = await Promise.all([
+  const [customerResult, docResult, shopResult, share, itemsResult] = await Promise.all([
     db
       .from("customer_balances")
       .select("id,name,phone,balance,currency")
@@ -49,7 +50,23 @@ export default async function SendSalePage({
       : Promise.resolve({ data: null }),
     db.from("organizations").select("name").eq("id", organizationId).maybeSingle(),
     ensureShareToken(db, organizationId, sale.customer_id),
+    db
+      .from("sale_items")
+      .select("id,n,name_snapshot,unit,qty,price,line_total,product_id")
+      .eq("organization_id", organizationId)
+      .eq("sale_id", sale.id)
+      .order("n"),
   ]);
+  const items = (itemsResult.data ?? []) as {
+    id: string;
+    n: number | null;
+    name_snapshot: string;
+    unit: string | null;
+    qty: string;
+    price: string;
+    line_total: string;
+    product_id: string;
+  }[];
   const customer = customerResult.data;
   if (!customer) notFound();
 
@@ -58,7 +75,8 @@ export default async function SendSalePage({
   const h = await headers();
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
   const status = docResult.data?.status ?? null;
-  const checked = status === "digitized" && !sale.reversed_at && !sale.is_opening;
+  const hasItems = items.length > 0;
+  const checked = (hasItems || status === "digitized") && !sale.reversed_at && !sale.is_opening;
   const pending = status === "uploaded" || status === "processing";
   const date = new Intl.DateTimeFormat("ru-RU", {
     dateStyle: "medium",
@@ -130,13 +148,45 @@ export default async function SendSalePage({
         </div>
       </div>
 
+      {hasItems && (
+        <section className="panel">
+          <h2>Накладная</h2>
+          <ol className="sale-lines sale-lines-readonly">
+            {items.map((item) => (
+              <li key={item.id} className="sale-line">
+                <div className="sale-line-head">
+                  <Link href={`/stock/${item.product_id}`}>{item.name_snapshot}</Link>
+                </div>
+                <div className="sale-line-body muted">
+                  {quantity(item.qty)} {item.unit ?? "шт"} × {money(item.price, sale.original_currency ?? cur)}
+                  <span className="sale-line-sum">{money(item.line_total, sale.original_currency ?? cur)}</span>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <p className="sale-total">
+            <span>Итого</span>
+            <strong>{money(sale.original_amount ?? sale.total, sale.original_currency ?? cur)}</strong>
+          </p>
+          {sale.original_amount != null && (
+            <p className="muted">В долг клиенту: {money(sale.total, cur)} по курсу {Number(sale.fx_rate)}.</p>
+          )}
+          {!sale.reversed_at && (
+            <a className="button" href={`/money/send/${sale.id}/pdf`}>
+              Скачать PDF
+            </a>
+          )}
+        </section>
+      )}
       {sale.reversed_at ? (
         <p className="form-error" role="alert">
           Эта продажа отменена — отправлять её клиенту не нужно.
         </p>
       ) : (
         <section className="panel send-invoice-panel">
-          {checked ? (
+          {hasItems ? (
+            <p className="notice success">Накладная готова — клиент получит PDF и ссылку на долг.</p>
+          ) : checked ? (
             <p className="notice success">Накладная сверена — клиент получит PDF и ссылку на долг.</p>
           ) : pending ? (
             <p className="notice">
@@ -175,7 +225,13 @@ export default async function SendSalePage({
             phone={waPhone(customer.phone)}
             text={text}
             fileText={message(true)}
-            pdfUrl={checked && sale.document_id ? `/documents/${sale.document_id}/pdf` : null}
+            pdfUrl={
+              checked && hasItems
+                ? `/money/send/${sale.id}/pdf`
+                : checked && sale.document_id
+                  ? `/documents/${sale.document_id}/pdf`
+                  : null
+            }
             fileName={`Накладная ${date}.pdf`}
             pending={pending}
           />

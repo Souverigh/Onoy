@@ -57,3 +57,69 @@ export function bestMatches<T extends MatchCandidate>(
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
 }
+
+/**
+ * Поиск товара в форме продажи: по коду, названию и синонимам. Без запроса —
+ * частые (сколько раз продавали за 90 дней), затем по алфавиту. С запросом:
+ * точный код → все слова запроса есть в названии/синониме (раньше — где
+ * начало совпало) → похожие по написанию (опечатки, «вввг» вместо «ввг»).
+ */
+export type SearchableProduct = {
+  id: string;
+  name: string;
+  sku?: string | null;
+  aliases?: string[] | null;
+  sold_count?: number | null;
+};
+
+export function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    // 3*2,5 / 3x2.5 / 3х2,5 — одно и то же
+    .replace(/(\d)\s*[x×х*]\s*(?=\d)/g, "$1x")
+    .replace(/(\d),(\d)/g, "$1.$2")
+    .replace(/[^\p{L}\p{N}.\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function rank(raw: string, query: string, words: string[], product: SearchableProduct): number {
+  // Код сравниваем как есть: «C-400» без нормализации (дефис — часть кода).
+  const sku = (product.sku ?? "").toLowerCase().trim();
+  if (sku && (sku === raw || sku === query)) return 1000;
+  const texts = [product.name, ...(product.aliases ?? [])].map(normalizeText);
+  let best = 0;
+  for (const text of texts) {
+    if (words.every((w) => text.includes(w))) {
+      const score = text.startsWith(words[0]) ? 500 : text.split(" ").some((t) => t.startsWith(words[0])) ? 400 : 300;
+      best = Math.max(best, score);
+    }
+  }
+  if (sku && (sku.startsWith(raw) || sku.startsWith(query))) best = Math.max(best, 450);
+  if (best) return best;
+  // Опечатки: похожесть по биграммам всего названия и каждого слова.
+  let fuzzy = 0;
+  for (const text of texts) {
+    fuzzy = Math.max(fuzzy, similarity(query, text));
+    const tokens = text.split(" ");
+    const perWord = words.map((w) => Math.max(0, ...tokens.map((t) => similarity(w, t))));
+    fuzzy = Math.max(fuzzy, perWord.reduce((s, x) => s + x, 0) / perWord.length);
+  }
+  return fuzzy >= 0.55 ? Math.round(fuzzy * 100) : 0;
+}
+
+export function searchProducts<T extends SearchableProduct>(query: string, products: T[], limit = 20): T[] {
+  const q = normalizeText(query);
+  const byPopularity = (a: T, b: T) =>
+    (b.sold_count ?? 0) - (a.sold_count ?? 0) || a.name.localeCompare(b.name, "ru");
+  if (!q) return [...products].sort(byPopularity).slice(0, limit);
+  const raw = query.trim().toLowerCase();
+  const words = q.split(" ");
+  return products
+    .map((product) => ({ product, score: rank(raw, q, words, product) }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score || byPopularity(a.product, b.product))
+    .slice(0, limit)
+    .map((x) => x.product);
+}

@@ -9,7 +9,9 @@ import { documentPages, signedPhotoUrl } from "@/lib/storage";
 import { DocumentPhotos } from "@/components/document-photos";
 import { retryRecognition, confirmDocument, updateLine, saveAlias, addLine, deleteLine } from "../actions";
 import { ConfirmButton } from "@/components/confirm-button";
-import { similarity } from "@/lib/match";
+import { bestMatches, similarity } from "@/lib/match";
+import { ReceiveStock, type ReceiveLine } from "@/components/receive-stock";
+import { STOCK_ERROR_TEXT, normalizeUnit } from "@/lib/stock";
 import { TOLERANCE } from "@/lib/adre/reconcile";
 import { firstPaymentHref } from "@/lib/duplicates";
 import { partyCurrency } from "@/lib/currency";
@@ -77,6 +79,8 @@ export default async function DocumentDetail({
     retried?: string;
     aliasSaved?: string;
     error?: string;
+    stocked?: string;
+    stock_error?: string;
   }>;
 }) {
   const { id } = await params;
@@ -112,7 +116,7 @@ export default async function DocumentDetail({
       db.from("organizations").select("document_names").eq("id", organizationId).maybeSingle(),
       db
         .from("purchases")
-        .select("id,total,supplier_id,original_amount,original_currency,reversed_at,suppliers(id,name,aliases,currency)")
+        .select("id,total,supplier_id,original_amount,original_currency,reversed_at,stocked_at,suppliers(id,name,aliases,currency)")
         .eq("organization_id", organizationId)
         .eq("document_id", id)
         .maybeSingle(),
@@ -184,6 +188,38 @@ export default async function DocumentDetail({
       if (customer) party = { id: customer.id, name: customer.name, aliases: customer.aliases ?? [], kind: "customer" };
       docCurrency = row.original_currency ?? customer?.currency ?? shopCurrency;
     }
+  }
+
+  // Приход по распознанной накладной — строки можно принять на склад
+  // (товары предлагаем по названию и синонимам).
+  const purchaseRow = doc.kind === "purchase" ? (purchaseResult.data as { id: string; reversed_at: string | null; stocked_at: string | null } | null) : null;
+  const canStock = Boolean(purchaseRow && !purchaseRow.reversed_at && !purchaseRow.stocked_at && lines.some((l) => Number(l.qty) > 0));
+  let receiveLines: ReceiveLine[] = [];
+  if (canStock) {
+    const productResult = await db
+      .from("products")
+      .select("id,name,aliases,unit")
+      .eq("organization_id", organizationId)
+      .is("archived_at", null)
+      .range(0, 4999);
+    const products = (productResult.data ?? []) as { id: string; name: string; aliases: string[]; unit: string }[];
+    receiveLines = lines
+      .filter((l) => Number(l.qty) > 0 && Number(l.price) >= 0)
+      .map((l) => ({
+        id: l.id,
+        n: l.n,
+        name: l.name_raw,
+        qty: String(l.qty),
+        unit: normalizeUnit(l.unit),
+        rawUnit: l.unit,
+        price: String(l.price),
+        matches: bestMatches(l.name_raw, products, 3, 0.45).map((m) => ({
+          id: m.candidate.id,
+          name: m.candidate.name,
+          unit: m.candidate.unit,
+          score: m.score,
+        })),
+      }));
   }
 
   // Расход: сумма в записи — третья сторона сверки с чеком.
@@ -834,6 +870,36 @@ export default async function DocumentDetail({
           </section>
         )}
       </div>
+      {params2.stocked && (
+        <p className="notice success" role="status">
+          Принято на склад строк: {params2.stocked}. <Link href="/stock">Открыть склад</Link>
+        </p>
+      )}
+      {params2.stock_error && (
+        <p className="form-error" role="alert">
+          {STOCK_ERROR_TEXT[params2.stock_error] ?? STOCK_ERROR_TEXT.save}
+        </p>
+      )}
+      {purchaseRow?.stocked_at && !params2.stocked && (
+        <p className="muted">
+          Накладная принята на склад{" "}
+          {new Intl.DateTimeFormat("ru-RU", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Bishkek" }).format(
+            new Date(purchaseRow.stocked_at),
+          )}
+          . <Link href="/stock">Склад</Link>
+        </p>
+      )}
+      {canStock && receiveLines.length > 0 && (
+        <section className="panel">
+          <div className="section-title">
+            <h2>Принять на склад</h2>
+          </div>
+          <p className="muted">
+            Остатки вырастут на количество из накладной. Сначала проверьте строки выше — после приёма их не пересчитать.
+          </p>
+          <ReceiveStock purchaseId={purchaseRow!.id} documentId={doc.id} lines={receiveLines} currency={docCurrency} />
+        </section>
+      )}
     </>
   );
 }

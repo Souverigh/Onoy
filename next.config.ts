@@ -9,6 +9,14 @@ const config: NextConfig = {
       bodySizeLimit: "4mb",
     },
   },
+  // Товары живут в «Складе» (остатки, импорт, движение); старые адреса
+  // справочника /products ведут туда же.
+  async redirects() {
+    return [
+      { source: "/products", destination: "/stock", permanent: false },
+      { source: "/products/:id", destination: "/stock/:id", permanent: false },
+    ];
+  },
   async headers() {
     return [
       {

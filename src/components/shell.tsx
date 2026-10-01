@@ -6,12 +6,13 @@ import { Icon, type IconName } from "./icon";
 
 type NavItem = [string, string, IconName];
 
-// Товары/склад — Этап 2 по ТЗ, из навигации Этапа 1 скрыты (код и таблицы не убраны).
+// Склад — с 30.09.2026 (товары, остатки, продажа товарами); на телефоне — в «Ещё».
 const nav: NavItem[] = [
   ["/", "Главная", "home"],
   ["/customers", "Клиенты", "people"],
   ["/suppliers", "Поставщики", "truck"],
   ["/money", "Деньги", "wallet"],
+  ["/stock", "Склад", "box"],
   ["/day", "Итог дня", "file"],
   ["/reports", "Итоги", "chart"],
   ["/claims", "Заявки", "check"],
@@ -27,6 +28,8 @@ const EXTRA_TITLES: [string, string][] = [
   ["/money/adjustment", "Скидка или возврат"],
   ["/money/reverse", "Отменить запись"],
   ["/import", "Перенос из тетради"],
+  ["/stock/new", "Новый товар"],
+  ["/stock/import", "Товары из Excel"],
 ];
 
 /**

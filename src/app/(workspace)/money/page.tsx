@@ -161,7 +161,12 @@ export default async function Money({
       reversed: Boolean(row.reversed_at),
       reversalComment: row.reversal_comment ?? undefined,
       opening: Boolean(row.is_opening),
-      href: row.document_id ? `/documents/${row.document_id}` : `/customers/${row.customer_id}`,
+      // Продажа товарами со склада (без фото) — её накладная на экране отправки.
+      href: row.document_id
+        ? `/documents/${row.document_id}`
+        : row.is_opening
+          ? `/customers/${row.customer_id}`
+          : `/money/send/${row.id}`,
     })),
     ...payments.map((row) => ({
       id: row.id,

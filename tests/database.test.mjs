@@ -2180,3 +2180,159 @@ test("expenses: any member records, owner reverses, author undoes, other shops s
     /not_a_member/,
   );
 });
+
+test("warehouse: products with codes, sale lines write off stock, reversal returns it, receive and import", async () => {
+  await user(a);
+  const stock = async (id) => (await db.query("select stock from product_balances where id=$1", [id])).rows[0].stock;
+  // Код присваивается сам (1, 2…), если не задан; занятый код и повтор названия — отказ.
+  const cable = (
+    await db.query("select save_product($1,null,'Кабель ВВГнг 3х2,5',null,'м','85.50','60','10',array['ввг 3*2.5'],'100') as id", [orgA])
+  ).rows[0].id;
+  const cement = (await db.query("select save_product($1,null,'Цемент М400','C-400','мешок','520') as id", [orgA])).rows[0].id;
+  const row = (await db.query("select sku,unit,aliases from products where id=$1", [cable])).rows[0];
+  assert.match(row.sku, /^\d+$/);
+  assert.deepEqual([row.unit, row.aliases], ["м", ["ввг 3*2.5"]]);
+  assert.equal(await stock(cable), "100.000");
+  await assert.rejects(db.query("select save_product($1,null,'Другое','c-400','шт','1')", [orgA]), /sku_taken/);
+  await assert.rejects(db.query("select save_product($1,null,' цемент   м400 ',null,'шт','1')", [orgA]), /name_taken/);
+  await assert.rejects(db.query("select save_product($1,null,'Труба',null,'ведро','1')", [orgA]), /invalid_unit/);
+  // Правка: цена меняется, код остаётся.
+  await db.query("select save_product($1,$2,'Цемент М400',null,'мешок','540')", [orgA, cement]);
+  assert.deepEqual(
+    Object.values((await db.query("select sku,sale_price from products where id=$1", [cement])).rows[0]),
+    ["C-400", "540.00"],
+  );
+
+  // «Пришло», «списать» (с причиной), «пересчёт»; повтор ключа — без второго движения.
+  const k = (n) => `aaaa5555-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
+  assert.equal(Number((await db.query("select adjust_stock($1,$2,'receipt','40',null,$3) as s", [orgA, cement, k(1)])).rows[0].s), 40);
+  assert.equal(Number((await db.query("select adjust_stock($1,$2,'receipt','40',null,$3) as s", [orgA, cement, k(1)])).rows[0].s), 40);
+  await assert.rejects(db.query("select adjust_stock($1,$2,'writeoff','2',' ',$3)", [orgA, cement, k(2)]), /note_required/);
+  await db.query("select adjust_stock($1,$2,'writeoff','2','Порван мешок',$3)", [orgA, cement, k(3)]);
+  await db.query("select adjust_stock($1,$2,'count','35',null,$3)", [orgA, cement, k(4)]);
+  assert.equal(await stock(cement), "35.000");
+
+  // Продажа строками: сумма = сумма строк, строки и остаток списаны.
+  const buyer = (await db.query("insert into customers(organization_id,name) values ($1,'Прораб Нурлан') returning id", [orgA])).rows[0].id;
+  const lines = JSON.stringify([
+    { product: cable, qty: "12.5", price: "85.50" },
+    { product: cement, qty: "10", price: "540" },
+  ]);
+  const saleKey = k(10);
+  const sale = (await db.query("select commit_sale_items($1,$2,$3,false,$4) as id", [orgA, buyer, lines, saleKey])).rows[0].id;
+  assert.equal((await db.query("select total,document_id from sales where id=$1", [sale])).rows[0].total, "6468.75");
+  assert.deepEqual(
+    (await db.query("select n,name_snapshot,unit,qty,line_total from sale_items where sale_id=$1 order by n", [sale])).rows.map(Object.values),
+    [[1, "Кабель ВВГнг 3х2,5", "м", "12.500", "1068.75"], [2, "Цемент М400", "мешок", "10.000", "5400.00"]],
+  );
+  assert.equal(await stock(cable), "87.500");
+  assert.equal(await stock(cement), "25.000");
+  assert.equal((await db.query("select balance from customer_balances where id=$1", [buyer])).rows[0].balance, "6468.75");
+  // Повтор — та же продажа; другие строки с тем же ключом — конфликт; пустая/кривая — отказ.
+  assert.equal((await db.query("select commit_sale_items($1,$2,$3,false,$4) as id", [orgA, buyer, lines, saleKey])).rows[0].id, sale);
+  await assert.rejects(
+    db.query("select commit_sale_items($1,$2,$3,false,$4)", [orgA, buyer, JSON.stringify([{ product: cable, qty: "1", price: "85.50" }]), saleKey]),
+    /idempotency_conflict/,
+  );
+  await assert.rejects(db.query("select commit_sale_items($1,$2,'[]',false,$3)", [orgA, buyer, k(5)]), /invalid_sale/);
+  await assert.rejects(
+    db.query("select commit_sale_items($1,$2,$3,false,$4)", [orgA, buyer, JSON.stringify([{ product: cable, qty: "0", price: "1" }]), k(6)]),
+    /invalid_line/,
+  );
+  // Клиент в долларах: строки в сомах магазина, долг — по курсу.
+  const usdBuyer = (await db.query("insert into customers(organization_id,name,currency) values ($1,'Клиент $','USD') returning id", [orgA])).rows[0].id;
+  const usdSale = (
+    await db.query("select commit_sale_items($1,$2,$3,false,$4,'87.8') as id", [
+      orgA, usdBuyer, JSON.stringify([{ product: cement, qty: "1", price: "878" }]), k(7),
+    ])
+  ).rows[0].id;
+  assert.deepEqual(
+    Object.values((await db.query("select total,original_amount,original_currency from sales where id=$1", [usdSale])).rows[0]),
+    ["10.00", "878.00", "KGS"],
+  );
+  await assert.rejects(
+    db.query("select commit_sale_items($1,$2,$3,false,$4)", [orgA, usdBuyer, JSON.stringify([{ product: cement, qty: "1", price: "878" }]), k(8)]),
+    /invalid_currency/,
+  );
+  // Отмена продажи возвращает остаток (вид не считает отменённые движения).
+  assert.equal(await stock(cement), "24.000");
+  await db.query("select reverse_sale($1,$2,'Вернули товар')", [orgA, usdSale]);
+  assert.equal(await stock(cement), "25.000");
+
+  // Клиент по ссылке видит накладную строками и флаг invoice на своей странице.
+  const token = (await db.query("select create_share_link($1,$2) as token", [orgA, buyer])).rows[0].token;
+  await owner();
+  await db.exec("SET ROLE anon;");
+  const invoice = (await db.query("select get_invoice_by_token($1,$2) as data", [token, sale])).rows[0].data;
+  assert.equal(invoice.total, "6468.75");
+  assert.deepEqual(invoice.lines.map((l) => [l.name_raw, l.qty, l.unit, l.sum]), [
+    ["Кабель ВВГнг 3х2,5", "12.500", "м", "1068.75"],
+    ["Цемент М400", "10.000", "мешок", "5400.00"],
+  ]);
+  const statement = (await db.query("select get_statement_by_token($1) as data", [token])).rows[0].data;
+  assert.equal(statement.entries.find((e) => e.id === sale).invoice, true);
+
+  // Приём на склад по накладной прихода: известный товар по id, новый — создаётся;
+  // название со строки запоминается синонимом; второй раз — отказ.
+  await owner();
+  const supplier = (await db.query("insert into suppliers(organization_id,name) values ($1,'Склад №1') returning id", [orgA])).rows[0].id;
+  const doc = (
+    await db.query(
+      "insert into documents(organization_id,storage_path,file_hash,mime_type,kind,status) values ($1,'wh-1','wh-1','image/jpeg','purchase','digitized') returning id",
+      [orgA],
+    )
+  ).rows[0].id;
+  const [l1, l2] = (
+    await db.query(
+      "insert into document_lines(organization_id,document_id,n,name_raw,qty,unit,price) values ($1,$2,1,'Цемент М-400 50кг',20,'шт',480),($1,$2,2,'Гвозди 100мм',5,'кг',150) returning id",
+      [orgA, doc],
+    )
+  ).rows.map((r) => r.id);
+  await user(a);
+  const purchase = (
+    await db.query("select commit_purchase($1,$2,'10350',$3,$4) as id", [orgA, supplier, k(9), doc])
+  ).rows[0].id;
+  const items = JSON.stringify([{ line: l1, product: cement }, { line: l2, unit: "кг", sale_price: "200" }]);
+  assert.equal((await db.query("select receive_purchase_lines($1,$2,$3) as n", [orgA, purchase, items])).rows[0].n, 2);
+  assert.equal(await stock(cement), "45.000");
+  const nails = (await db.query("select id,unit,sale_price,purchase_price from products where organization_id=$1 and name='Гвозди 100мм'", [orgA])).rows[0];
+  assert.deepEqual([nails.unit, nails.sale_price, nails.purchase_price, await stock(nails.id)], ["кг", "200.00", "150.00", "5.000"]);
+  const cementRow = (await db.query("select aliases,purchase_price from products where id=$1", [cement])).rows[0];
+  assert.deepEqual([cementRow.aliases, cementRow.purchase_price], [["Цемент М-400 50кг"], "480.00"]);
+  await assert.rejects(db.query("select receive_purchase_lines($1,$2,$3)", [orgA, purchase, items]), /already_stocked/);
+  // Отменённый приход больше не в остатке.
+  await db.query("select reverse_purchase($1,$2,'Не тот поставщик')", [orgA, purchase]);
+  assert.equal(await stock(cement), "25.000");
+
+  // Импорт: по коду обновляет, по названию находит, новые создаёт, остаток — пересчётом;
+  // плохие строки пропускаются с причиной.
+  const imported = (
+    await db.query("select import_products($1,$2) as r", [
+      orgA,
+      JSON.stringify([
+        { name: "Цемент М400", sku: "C-400", sale_price: "560", stock: "30" },
+        { name: "кабель ввгнг 3х2,5", stock: "90" },
+        { name: "Профиль 60х27", unit: "шт", sale_price: "210", stock: "50" },
+        { name: "", sale_price: "1" },
+        { name: "Шпатель", sale_price: "abc" },
+      ]),
+    ])
+  ).rows[0].r;
+  assert.deepEqual([imported.created, imported.updated], [1, 2]);
+  assert.deepEqual(imported.errors, [{ row: 4, error: "invalid_name" }, { row: 5, error: "invalid_price" }]);
+  assert.equal(await stock(cement), "30.000");
+  assert.equal(await stock(cable), "90.000");
+  assert.equal((await db.query("select sale_price from products where id=$1", [cement])).rows[0].sale_price, "560.00");
+  // Найден по названию в другом регистре — своё название остаётся.
+  assert.equal((await db.query("select name from products where id=$1", [cable])).rows[0].name, "Кабель ВВГнг 3х2,5");
+
+  // Архив: товар скрыт, вернуть можно; чужой магазин не видит и не продаёт.
+  await db.query("select set_product_archived($1,$2,true)", [orgA, cable]);
+  assert.ok((await db.query("select archived_at from product_balances where id=$1", [cable])).rows[0].archived_at);
+  await db.query("select set_product_archived($1,$2,false)", [orgA, cable]);
+  assert.ok((await db.query("select sold_count from product_balances where id=$1", [cable])).rows[0].sold_count >= 1);
+  await user(b);
+  assert.equal((await db.query("select count(*)::int as n from product_balances where organization_id=$1", [orgA])).rows[0].n, 0);
+  await assert.rejects(db.query("select save_product($1,null,'Чужой','','шт','1')", [orgA]), /not_a_member/);
+  await assert.rejects(db.query("select adjust_stock($1,$2,'receipt','1',null,$3)", [orgA, cable, k(11)]), /not_a_member/);
+});

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAnonClient } from "@/lib/supabase/server";
-import { renderInvoicePdf, type InvoiceLine } from "@/lib/pdf/invoice";
+import { renderInvoicePdf, ITEMS_FOOTER, type InvoiceLine } from "@/lib/pdf/invoice";
+import { quantity } from "@/lib/format";
 
 type Invoice = {
   shop_name: string;
@@ -10,6 +11,8 @@ type Invoice = {
   currency?: string;
   occurred_at: string;
   lines: InvoiceLine[];
+  /** Продажа товарами со склада — накладная из приложения, не по фото. */
+  items?: boolean;
 };
 
 // PDF накладной для клиента по ссылке, без входа. Что можно отдать, решает
@@ -38,8 +41,9 @@ export async function GET(
     ),
     total: Number(invoice.total),
     currency: invoice.currency ?? "KGS",
-    lines: invoice.lines,
+    lines: invoice.items ? invoice.lines.map((l) => ({ ...l, qty: quantity(l.qty) })) : invoice.lines,
     digitized: true,
+    footer: invoice.items ? ITEMS_FOOTER : undefined,
   });
 
   return new NextResponse(new Uint8Array(pdf), {

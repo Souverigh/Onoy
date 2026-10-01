@@ -7,3 +7,6 @@ node_modules/
 supabase/.temp/
 supabase/.branches/
 .handover/
+
+# Хендовер для следующей сессии — только локально (просьба пользователя 30.09.2026).
+docs/handover.md

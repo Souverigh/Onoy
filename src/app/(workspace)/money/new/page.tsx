@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { OperationForm } from "@/components/operation-form";
+import { SaleItemsForm } from "@/components/sale-items-form";
+import type { QuickProduct } from "../../stock/actions";
 import { getContext } from "@/lib/context";
 import { officialRates } from "@/lib/fx";
 import { isCurrency } from "@/lib/currency";
@@ -24,6 +26,7 @@ export default async function NewOperation({
     suggest?: string;
     party?: string;
     undone?: string;
+    mode?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -31,7 +34,19 @@ export default async function NewOperation({
     notFound();
   const kind = params.type as Operation;
   const { db, organizationId, currency: shopCurrency } = await getContext();
-  const [customerResult, supplierResult, rates] = await Promise.all([
+  // Продажа: товарами со склада или по фото накладной. Товары грузим сразу —
+  // от их наличия зависит, какой вид открыть по умолчанию.
+  const productsRequest =
+    kind === "sale" && !params.documentId && params.mode !== "photo"
+      ? db
+          .from("product_balances")
+          .select("id,name,sku,unit,sale_price,stock,aliases,sold_count")
+          .eq("organization_id", organizationId)
+          .is("archived_at", null)
+          .order("name")
+          .range(0, 4999)
+      : Promise.resolve({ data: [] as QuickProduct[], error: null });
+  const [customerResult, supplierResult, rates, productResult] = await Promise.all([
     db
       .from("customer_balances")
       .select("id,name,balance,credit_limit,currency")
@@ -48,7 +63,16 @@ export default async function NewOperation({
       .range(0, 999),
     // Курс НБКР / ЦБ РФ — для суммы в другой валюте, чем долг (кеш на час).
     officialRates(["KGS", "USD", "RUB"]),
+    productsRequest,
   ]);
+  const products = (productResult.data ?? []) as QuickProduct[];
+  // По умолчанию — товарами, если склад не пуст; фото из другой формы — всегда фото.
+  const saleMode =
+    kind !== "sale" || params.documentId || params.mode === "photo"
+      ? "photo"
+      : params.mode === "items" || products.length > 0
+        ? "items"
+        : "photo";
   if (customerResult.error || supplierResult.error)
     throw new Error("Не удалось подготовить форму операции");
 
@@ -125,6 +149,22 @@ export default async function NewOperation({
           <h1>{title}</h1>
         </div>
       </div>
+      {kind === "sale" && !params.documentId && needsParty && (
+        <nav className="tabs sale-mode-tabs" aria-label="Как оформить продажу">
+          <Link
+            className={saleMode === "items" ? "selected" : ""}
+            href={`/money/new?type=sale&mode=items${initialParty ? `&party=${initialParty}` : ""}`}
+          >
+            Товары со склада
+          </Link>
+          <Link
+            className={saleMode === "photo" ? "selected" : ""}
+            href={`/money/new?type=sale&mode=photo${initialParty ? `&party=${initialParty}` : ""}`}
+          >
+            По фото накладной
+          </Link>
+        </nav>
+      )}
       {params.undone && (
         <p className="notice success" role="status">
           Прошлая запись отменена — введите заново.
@@ -153,6 +193,17 @@ export default async function NewOperation({
               Назад
             </Link>
           </div>
+        </section>
+      ) : saleMode === "items" ? (
+        <section className="panel simple-operation-panel">
+          <SaleItemsForm
+            customers={customers}
+            products={products}
+            shopCurrency={shopCurrency}
+            rates={rates}
+            idempotencyKey={randomUUID()}
+            initialParty={initialParty}
+          />
         </section>
       ) : (
         <section className="panel simple-operation-panel">

@@ -25,6 +25,8 @@ const styles = StyleSheet.create({
   footer: { position: "absolute", bottom: 24, left: 36, right: 36, fontSize: 9, color: "#9aa39a" },
 });
 
+export const ITEMS_FOOTER = "Накладная оформлена в Depter по складу магазина.";
+
 export type InvoiceLine = { n: number; name_raw: string; qty: string; unit: string; price: string; sum: string };
 export type InvoiceData = {
   shopName: string;
@@ -39,6 +41,8 @@ export type InvoiceData = {
   debtNote?: string | null;
   lines: InvoiceLine[];
   digitized: boolean;
+  /** Своя подпись внизу (накладная из приложения — не по фото). */
+  footer?: string;
 };
 
 function InvoiceDocument({ data }: { data: InvoiceData }) {
@@ -80,9 +84,10 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
         </View>
         {data.debtNote && <Text style={styles.footer}>{data.debtNote}</Text>}
         <Text style={styles.footer}>
-          {data.digitized
+          {data.footer ??
+            (data.digitized
             ? "Позиции сверены автоматическим распознаванием (ADRE)."
-            : "Итог указан продавцом вручную; позиции — по фото оригинала."}
+            : "Итог указан продавцом вручную; позиции — по фото оригинала.")}
         </Text>
       </Page>
     </Document>
