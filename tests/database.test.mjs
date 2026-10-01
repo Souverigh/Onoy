@@ -32,7 +32,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 21);
+  assert.equal(rows.length, 22);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -1744,11 +1744,7 @@ test("staff roles: invite link, seller can sell but not reverse/discount/close d
   ).rows[0].id;
 
   await user(a);
-  // Сотрудники — только на тарифе «Бизнес».
-  await assert.rejects(db.query("select create_invite($1,'Айбек')", [orgA]), /business_plan/);
-  await owner();
-  await db.query("update organizations set plan='business' where id=$1", [orgA]);
-  await user(a);
+  // Сотрудники — на любом тарифе, лимит — из plan_limits (по умолчанию «Базовый»).
   const token = (await db.query("select create_invite($1,'Айбек') as t", [orgA])).rows[0].t;
   assert.equal(token.length, 32);
 
@@ -1786,9 +1782,27 @@ test("staff roles: invite link, seller can sell but not reverse/discount/close d
   await user(a);
   assert.equal((await db.query("select * from organization_members where organization_id=$1", [orgA])).rows.length, 2);
   await assert.rejects(db.query("select accept_invite($1)", [(await db.query("select create_invite($1,'Сам') as t", [orgA])).rows[0].t]), /already_member/);
-  // Лимит 5: продавец Айбек + «Сам» (приглашение) + ещё 3 — шестое нельзя.
+  // «Базовый» — 5: продавец Айбек + «Сам» (приглашение) + ещё 3 — шестое нельзя.
   for (const name of ["П1", "П2", "П3"]) await db.query("select create_invite($1,$2)", [orgA, name]);
   await assert.rejects(db.query("select create_invite($1,'П4')", [orgA]), /staff_limit/);
+  // «Бизнес» — 20; лимит меняется одной строкой в plan_limits, без кода.
+  await owner();
+  await db.query("update organizations set plan='business' where id=$1", [orgA]);
+  await user(a);
+  await db.query("select create_invite($1,'П4')", [orgA]);
+  await owner();
+  await db.query("update plan_limits set max_staff=6 where plan='business'");
+  await user(a);
+  await assert.rejects(db.query("select create_invite($1,'П5')", [orgA]), /staff_limit/);
+  // Менять лимиты из приложения нельзя — только читать.
+  assert.deepEqual(
+    (await db.query("select plan,max_staff from plan_limits order by plan")).rows,
+    [{ plan: "basic", max_staff: 5 }, { plan: "business", max_staff: 6 }],
+  );
+  await assert.rejects(db.query("update plan_limits set max_staff=100"), /permission denied/);
+  await owner();
+  await db.query("update plan_limits set max_staff=20 where plan='business'");
+  await user(a);
   await assert.rejects(db.query("select remove_member($1,$2)", [orgA, a]), /cannot_remove_self/);
   await db.query("select remove_member($1,$2)", [orgA, c]);
 

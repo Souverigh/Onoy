@@ -10,7 +10,7 @@ const statusText: Record<string, string> = {
   removed: "Сотрудник удалён — больше не войдёт в магазин.",
   renamed: "Имя сохранено.",
   name: "Введите имя (до 80 символов).",
-  limit: "Не больше 5 сотрудников вместе с неиспользованными приглашениями.",
+  limit: "Лимит тарифа исчерпан: продавцы вместе с неиспользованными приглашениями.",
   plan: "Сотрудники доступны на тарифе «Бизнес». Напишите в Depter, чтобы подключить.",
   error: "Не удалось выполнить действие. Обновите страницу и попробуйте снова.",
 };
@@ -23,7 +23,9 @@ export function StaffPanel({
   shopName,
   currentUserId,
   status,
-  businessPlan,
+  plan,
+  staffLimit,
+  businessStaffLimit,
 }: {
   members: Member[];
   invites: Invite[];
@@ -31,9 +33,14 @@ export function StaffPanel({
   shopName: string;
   currentUserId: string;
   status?: string;
-  /** Приглашать сотрудников можно только на тарифе «Бизнес». */
-  businessPlan: boolean;
+  plan: "basic" | "business";
+  /** Сколько продавцов можно на тарифе магазина (plan_limits); нет — решает база. */
+  staffLimit?: number;
+  businessStaffLimit?: number;
 }) {
+  // Как в create_invite: продавцы + действующие приглашения.
+  const used = members.filter((m) => m.role === "staff").length + invites.length;
+  const full = staffLimit !== undefined && used >= staffLimit;
   const date = (iso: string) =>
     new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", day: "numeric", month: "long" }).format(new Date(iso));
   return (
@@ -114,7 +121,12 @@ export function StaffPanel({
           </ul>
         </>
       )}
-      {businessPlan ? (
+      {staffLimit !== undefined && (
+        <p className="muted staff-count">
+          Продавцов: {used} из {staffLimit} · тариф «{plan === "business" ? "Бизнес" : "Базовый"}»
+        </p>
+      )}
+      {!full ? (
         <form action={createInvite} className="staff-invite">
           <label>
             Пригласить продавца
@@ -124,7 +136,10 @@ export function StaffPanel({
         </form>
       ) : (
         <p className="notice">
-          Приглашать продавцов можно на тарифе «Бизнес» (до 5 сотрудников). Напишите в Depter, чтобы подключить.
+          {plan === "basic" && businessStaffLimit !== undefined && businessStaffLimit > staffLimit!
+            ? `На тарифе «Базовый» — до ${staffLimit} продавцов. На «Бизнес» — до ${businessStaffLimit}: напишите в Depter, чтобы подключить. `
+            : `На вашем тарифе — до ${staffLimit} продавцов. `}
+          Освободить место: удалите продавца или отмените приглашение.
         </p>
       )}
     </section>

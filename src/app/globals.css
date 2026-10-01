@@ -3251,11 +3251,22 @@ tr.line-mismatch {
     min-height: 44px;
     font-weight: 600;
   }
+  /* Счётчик — на правом верхнем углу иконки (20 px по центру кнопки), с белой
+     обводкой. display: inline-flex — иначе правило для span выше (block)
+     сбивает цифру с центра кружка. */
   .sidebar nav.nav-compact .nav-badge {
+    display: inline-flex;
     position: absolute;
-    top: 2px;
-    right: calc(50% - 22px);
+    top: 0;
+    left: calc(50% + 5px);
+    right: auto;
     margin: 0;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    font-size: 10px;
+    line-height: 1;
+    box-shadow: 0 0 0 2px #fff;
   }
   .content {
     padding-bottom: calc(var(--bottom-nav) + 24px);

@@ -16,9 +16,11 @@ export default async function Settings({
   // Сотрудники и приглашения — только владельцу (RLS тоже не отдаст продавцу).
   let members: Member[] = [];
   let invites: Invite[] = [];
+  // Сколько продавцов можно по тарифам (таблица plan_limits, меняется в SQL).
+  let staffLimits: Record<string, number> = {};
   let origin = "";
   if (isOwner) {
-    const [m, i] = await Promise.all([
+    const [m, i, l] = await Promise.all([
       db
         .from("organization_members")
         .select("user_id,role,display_name,email")
@@ -32,9 +34,13 @@ export default async function Settings({
         .is("revoked_at", null)
         .gt("expires_at", new Date().toISOString())
         .order("created_at", { ascending: false }),
+      db.from("plan_limits").select("plan,max_staff"),
     ]);
     members = (m.data ?? []) as Member[];
     invites = (i.data ?? []) as Invite[];
+    staffLimits = Object.fromEntries(
+      ((l.data ?? []) as { plan: string; max_staff: number }[]).map((row) => [row.plan, row.max_staff]),
+    );
     const h = await headers();
     origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
   }
@@ -130,7 +136,9 @@ export default async function Settings({
           shopName={organizationName}
           currentUserId={user.id}
           status={staff}
-          businessPlan={plan === "business"}
+          plan={plan === "business" ? "business" : "basic"}
+          staffLimit={staffLimits[plan === "business" ? "business" : "basic"]}
+          businessStaffLimit={staffLimits.business}
         />
       )}
       {isOwner && (
