@@ -34,13 +34,14 @@ export default async function NewOperation({
     notFound();
   const kind = params.type as Operation;
   const { db, organizationId, currency: shopCurrency } = await getContext();
-  // Продажа: товарами со склада или по фото накладной. Товары грузим сразу —
-  // от их наличия зависит, какой вид открыть по умолчанию.
+  // Продажа и приход: товарами со склада или по фото накладной. Товары грузим
+  // сразу — от их наличия зависит, какой вид открыть по умолчанию.
+  const itemsKind = kind === "sale" || kind === "purchase";
   const productsRequest =
-    kind === "sale" && !params.documentId && params.mode !== "photo"
+    itemsKind && !params.documentId && params.mode !== "photo" && (kind === "sale" || params.mode === "items")
       ? db
           .from("product_balances")
-          .select("id,name,sku,unit,sale_price,stock,aliases,sold_count")
+          .select("id,name,sku,unit,sale_price,purchase_price,stock,aliases,sold_count")
           .eq("organization_id", organizationId)
           .is("archived_at", null)
           .order("name")
@@ -66,11 +67,12 @@ export default async function NewOperation({
     productsRequest,
   ]);
   const products = (productResult.data ?? []) as QuickProduct[];
-  // По умолчанию — товарами, если склад не пуст; фото из другой формы — всегда фото.
+  // Продажа по умолчанию — товарами, если склад не пуст; приход — по фото
+  // (накладная поставщика обычно бумажная); фото из другой формы — всегда фото.
   const saleMode =
-    kind !== "sale" || params.documentId || params.mode === "photo"
+    !itemsKind || params.documentId || params.mode === "photo"
       ? "photo"
-      : params.mode === "items" || products.length > 0
+      : params.mode === "items" || (kind === "sale" && products.length > 0)
         ? "items"
         : "photo";
   if (customerResult.error || supplierResult.error)
@@ -149,17 +151,17 @@ export default async function NewOperation({
           <h1>{title}</h1>
         </div>
       </div>
-      {kind === "sale" && !params.documentId && needsParty && (
-        <nav className="tabs sale-mode-tabs" aria-label="Как оформить продажу">
+      {itemsKind && !params.documentId && needsParty && (
+        <nav className="tabs sale-mode-tabs" aria-label={kind === "sale" ? "Как оформить продажу" : "Как оформить приход"}>
           <Link
             className={saleMode === "items" ? "selected" : ""}
-            href={`/money/new?type=sale&mode=items${initialParty ? `&party=${initialParty}` : ""}`}
+            href={`/money/new?type=${kind}&mode=items${initialParty ? `&party=${initialParty}` : ""}`}
           >
-            Товары со склада
+            {kind === "sale" ? "Товары со склада" : "Товары на склад"}
           </Link>
           <Link
             className={saleMode === "photo" ? "selected" : ""}
-            href={`/money/new?type=sale&mode=photo${initialParty ? `&party=${initialParty}` : ""}`}
+            href={`/money/new?type=${kind}&mode=photo${initialParty ? `&party=${initialParty}` : ""}`}
           >
             По фото накладной
           </Link>
@@ -197,7 +199,8 @@ export default async function NewOperation({
       ) : saleMode === "items" ? (
         <section className="panel simple-operation-panel">
           <SaleItemsForm
-            customers={customers}
+            kind={kind === "purchase" ? "purchase" : "sale"}
+            customers={kind === "purchase" ? suppliers : customers}
             products={products}
             shopCurrency={shopCurrency}
             rates={rates}

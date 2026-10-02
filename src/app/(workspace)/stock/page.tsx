@@ -71,11 +71,14 @@ export default async function StockPage({
           <h1>
             Товары <span className="count">{total}</span>
           </h1>
-          <p className="muted">Остатки, цены и коды. Продажа товарами списывает остаток сама.</p>
+          <p className="muted">Остатки, цены и коды. Приход товаром прибавляет остаток, продажа — списывает.</p>
         </div>
         <div className="heading-actions stock-heading-actions">
           <Link className="button" href="/stock/import">
             Из Excel
+          </Link>
+          <Link className="button" href="/money/new?type=purchase&mode=items">
+            + Приход товара
           </Link>
           <Link className="button primary" href="/stock/new">
             <Icon name="plus" />

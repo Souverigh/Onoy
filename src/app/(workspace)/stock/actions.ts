@@ -21,10 +21,11 @@ function failureCode(message: string | undefined): string {
     "invalid_sku",
     "note_required",
     "already_stocked",
+    "invalid_supplier",
     "invalid_currency",
     "idempotency_conflict",
   ])
-    if (text.includes(code)) return code === "idempotency_conflict" ? "retry" : code;
+    if (text.includes(code)) return code === "idempotency_conflict" ? "retry" : code === "invalid_supplier" ? "party" : code;
   if (text.includes("shop_blocked")) return "blocked";
   return "save";
 }
@@ -114,21 +115,24 @@ export type QuickProduct = {
   sku: string | null;
   unit: string;
   sale_price: string;
+  purchase_price: string;
   stock: string;
   aliases: string[];
   sold_count: number;
 };
 
-/** Новый товар прямо из формы продажи — без перехода на склад. */
+/** Новый товар прямо из формы продажи или прихода — без перехода на склад. */
 export async function quickAddProduct(input: {
   name: string;
   unit: string;
   salePrice: string;
+  purchasePrice?: string;
 }): Promise<{ product: QuickProduct } | { error: string }> {
   try {
     if (!isProductUnit(input.unit)) return { error: "invalid_unit" };
     const price = stockNumber(input.salePrice || "0", 2);
-    if (price === null) return { error: "invalid_price" };
+    const cost = stockNumber(input.purchasePrice || "0", 2);
+    if (price === null || cost === null) return { error: "invalid_price" };
     const { db, organizationId } = await getContext();
     const result = await db.rpc("save_product", {
       p_org: organizationId,
@@ -137,11 +141,12 @@ export async function quickAddProduct(input: {
       p_sku: null,
       p_unit: input.unit,
       p_sale_price: price,
+      p_purchase_price: cost,
     });
     if (result.error || !result.data) return { error: failureCode(result.error?.message) };
     const row = await db
       .from("product_balances")
-      .select("id,name,sku,unit,sale_price,stock,aliases,sold_count")
+      .select("id,name,sku,unit,sale_price,purchase_price,stock,aliases,sold_count")
       .eq("organization_id", organizationId)
       .eq("id", result.data)
       .single();
@@ -294,4 +299,59 @@ export async function receivePurchase(form: FormData) {
   }
   revalidatePath("/", "layout");
   redirect(`/documents/${documentId}?stocked=${result.data}`);
+}
+
+/**
+ * Приход товарами без фото: поставщик, строки «товар — количество — цена
+ * закупки». Долг поставщику на сумму строк, остаток и закупочная цена — сразу.
+ * Успех — экран результата прихода; ошибка возвращается в форму.
+ */
+export async function commitPurchaseItems(previous: SaleItemsState, form: FormData): Promise<SaleItemsState> {
+  const attempt = (previous.attempt ?? 0) + 1;
+  let purchaseId: string;
+  try {
+    const supplier = text(form, "supplier_id");
+    const key = text(form, "idempotency_key");
+    if (!uuidPattern.test(supplier)) return { error: "party", attempt };
+    if (!uuidPattern.test(key)) return { error: "save", attempt };
+    let lines: SaleLine[];
+    try {
+      lines = JSON.parse(text(form, "lines")) as SaleLine[];
+    } catch {
+      return { error: "lines", attempt };
+    }
+    if (!Array.isArray(lines) || lines.length === 0) return { error: "lines", attempt };
+    if (lines.length > 200) return { error: "too_many", attempt };
+    const clean: SaleLine[] = [];
+    for (const line of lines) {
+      const qty = stockNumber(line.qty, 3);
+      const price = stockNumber(line.price, 2);
+      if (!uuidPattern.test(String(line.product)) || !qty || Number(qty) <= 0) return { error: "qty", attempt };
+      if (price === null) return { error: "price", attempt };
+      clean.push({ product: line.product, qty, price });
+    }
+    const rawRate = text(form, "fx_rate");
+    const rate = rawRate ? rateInput(rawRate) : null;
+    if (rawRate && !rate) return { error: "rate", attempt };
+    const { db, organizationId } = await getContext();
+    const result = await db.rpc("commit_purchase_items", {
+      p_org: organizationId,
+      p_supplier: supplier,
+      p_lines: clean,
+      p_idempotency_key: key,
+      p_fx_rate: rate,
+    });
+    if (result.error || !result.data) {
+      console.error("commitPurchaseItems: RPC failed", { message: result.error?.message, lines: clean.length });
+      const code = failureCode(result.error?.message);
+      return { error: code === "invalid_currency" ? "rate" : code, attempt };
+    }
+    purchaseId = result.data as string;
+  } catch (error) {
+    unstable_rethrow(error);
+    console.error("commitPurchaseItems: unexpected failure", error);
+    return { error: "save", attempt };
+  }
+  revalidatePath("/", "layout");
+  redirect(`/money/done/purchase/${purchaseId}`);
 }

@@ -3,6 +3,7 @@
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { unstable_rethrow } from "next/navigation";
 import {
+  commitPurchaseItems,
   commitSaleItems,
   quickAddProduct,
   type QuickProduct,
@@ -33,16 +34,24 @@ function lineSum(qty: string, price: string): number {
 const asInput = (value: string) => String(Number(value)).replace(".", ",");
 
 const ERROR_TEXT: Record<string, string> = {
-  party: "Выберите клиента из списка.",
   lines: "Добавьте хотя бы один товар.",
   qty: "Проверьте количество — число больше нуля.",
   price: "Проверьте цены — число не меньше нуля.",
+  cost: "Укажите цену закупки у каждого товара.",
   rate: "Укажите курс — число больше нуля.",
   too_many: "В одной накладной — не больше 200 строк.",
-  network: "Нет связи с сервером — продажа не сохранена. Проверьте интернет и нажмите ещё раз: вторая запись не появится.",
+};
+const NETWORK_TEXT = {
+  sale: "Нет связи с сервером — продажа не сохранена. Проверьте интернет и нажмите ещё раз: вторая запись не появится.",
+  purchase: "Нет связи с сервером — приход не сохранён. Проверьте интернет и нажмите ещё раз: вторая запись не появится.",
 };
 
+/**
+ * Накладная товарами со склада: продажа клиенту (остаток уменьшается, цена —
+ * продажная) или приход от поставщика (остаток растёт, цена — закупочная).
+ */
 export function SaleItemsForm({
+  kind = "sale",
   customers,
   products: initialProducts,
   shopCurrency,
@@ -50,6 +59,8 @@ export function SaleItemsForm({
   idempotencyKey,
   initialParty,
 }: {
+  kind?: "sale" | "purchase";
+  /** Клиенты для продажи, поставщики для прихода. */
   customers: Customer[];
   products: QuickProduct[];
   shopCurrency: Currency;
@@ -57,6 +68,8 @@ export function SaleItemsForm({
   idempotencyKey: string;
   initialParty?: string;
 }) {
+  const purchase = kind === "purchase";
+  const priceOf = (p: QuickProduct) => (purchase ? p.purchase_price : p.sale_price);
   const [products, setProducts] = useState(initialProducts);
   const [contactCustomers, setContactCustomers] = useState<Customer[]>([]);
   const [contactNote, setContactNote] = useState<string | null>(null);
@@ -77,10 +90,10 @@ export function SaleItemsForm({
 
   const [state, commit, saving] = useActionState(async (previous: SaleItemsState, form: FormData) => {
     try {
-      return await commitSaleItems(previous, form);
+      return await (purchase ? commitPurchaseItems : commitSaleItems)(previous, form);
     } catch (err) {
       unstable_rethrow(err);
-      console.error("commitSaleItems failed", err);
+      console.error(purchase ? "commitPurchaseItems failed" : "commitSaleItems failed", err);
       return { error: "network", attempt: (previous.attempt ?? 0) + 1 };
     }
   }, {});
@@ -97,7 +110,7 @@ export function SaleItemsForm({
   const rate = foreign ? rateInput(rateValue || (quote ? String(quote.rate) : "")) : null;
   const total = Math.round(lines.reduce((s, l) => s + lineSum(l.qty, l.price), 0) * 100) / 100;
   const debt = foreign ? (rate ? convertAmount(total, shopCurrency, debtCurrency, Number(rate)) : 0) : total;
-  const overLimit = customer ? creditLimitExceeded(customer.balance ?? 0, customer.credit_limit, debt, paidNow) : null;
+  const overLimit = customer && !purchase ? creditLimitExceeded(customer.balance ?? 0, customer.credit_limit, debt, paidNow) : null;
 
   const trimmed = query.trim();
   const inCart = new Set(lines.map((l) => l.product.id));
@@ -115,7 +128,7 @@ export function SaleItemsForm({
       setFlash(existing.key);
     } else {
       const key = ++lineKey.current;
-      setLines((all) => [...all, { key, product, qty: "1", price: asInput(product.sale_price) }]);
+      setLines((all) => [...all, { key, product, qty: "1", price: Number(priceOf(product)) > 0 ? asInput(priceOf(product)) : "" }]);
       setFlash(key);
     }
     setQuery("");
@@ -150,7 +163,11 @@ export function SaleItemsForm({
     setCreateSaving(true);
     setCreateError(null);
     try {
-      const result = await quickAddProduct({ name: creating.name.trim(), unit: creating.unit, salePrice: creating.price });
+      const result = await quickAddProduct(
+        purchase
+          ? { name: creating.name.trim(), unit: creating.unit, salePrice: "0", purchasePrice: creating.price }
+          : { name: creating.name.trim(), unit: creating.unit, salePrice: creating.price },
+      );
       if ("error" in result) {
         // Такой уже есть — найдём и добавим его.
         if (result.error === "name_taken") {
@@ -177,6 +194,8 @@ export function SaleItemsForm({
     if (!lines.length) return setLocalError("lines");
     if (lines.some((l) => !(Number(stockNumber(l.qty, 3)) > 0))) return setLocalError("qty");
     if (lines.some((l) => stockNumber(l.price || "0", 2) === null)) return setLocalError("price");
+    // Приход без цены закупки — себестоимость потеряется; просим указать.
+    if (purchase && lines.some((l) => !l.price.trim())) return setLocalError("cost");
     if (foreign && !rate) return setLocalError("rate");
     setLocalError(null);
     const form = new FormData(e.currentTarget);
@@ -189,14 +208,22 @@ export function SaleItemsForm({
   }
 
   const error = localError ?? state.error;
-  const errorText = error ? (ERROR_TEXT[error] ?? STOCK_ERROR_TEXT[error] ?? STOCK_ERROR_TEXT.save) : null;
+  const errorText = error
+    ? error === "party"
+      ? purchase
+        ? "Выберите поставщика из списка."
+        : "Выберите клиента из списка."
+      : error === "network"
+        ? NETWORK_TEXT[kind]
+        : (ERROR_TEXT[error] ?? STOCK_ERROR_TEXT[error] ?? STOCK_ERROR_TEXT.save)
+    : null;
 
   return (
     <form onSubmit={submit} className="simple-operation-form sale-items-form">
       <input type="hidden" name="idempotency_key" value={idempotencyKey} />
       <label>
-        Клиент
-        <select name="customer_id" required value={party} onChange={(e) => setParty(e.target.value)}>
+        {purchase ? "Поставщик" : "Клиент"}
+        <select name={purchase ? "supplier_id" : "customer_id"} required value={party} onChange={(e) => setParty(e.target.value)}>
           <option value="">Выберите из списка</option>
           {allCustomers.map((c) => (
             <option key={c.id} value={c.id}>
@@ -205,6 +232,7 @@ export function SaleItemsForm({
           ))}
         </select>
       </label>
+      {!purchase && (
       <div className="contact-row">
         <ContactPicker
           compact
@@ -227,6 +255,7 @@ export function SaleItemsForm({
         />
         {contactNote && <small className="muted">{contactNote}</small>}
       </div>
+      )}
 
       <div className="product-picker">
         <label htmlFor="product-search" className="product-picker-title">
@@ -262,7 +291,7 @@ export function SaleItemsForm({
                   {trimmed && (
                     <small className="muted">
                       {p.sku ? `${p.sku} · ` : ""}
-                      {money(p.sale_price, shopCurrency)} · есть {quantity(p.stock)} {p.unit}
+                      {Number(priceOf(p)) > 0 ? `${purchase ? "закупка " : ""}${money(priceOf(p), shopCurrency)} · ` : ""}есть {quantity(p.stock)} {p.unit}
                     </small>
                   )}
                 </button>
@@ -303,7 +332,7 @@ export function SaleItemsForm({
                 </select>
               </label>
               <label>
-                Цена, {CURRENCY_SIGN[shopCurrency]}
+                {purchase ? "Цена закупки" : "Цена"}, {CURRENCY_SIGN[shopCurrency]}
                 <input
                   inputMode="decimal"
                   autoComplete="off"
@@ -340,7 +369,7 @@ export function SaleItemsForm({
         <ol className="sale-lines">
           {lines.map((line, i) => {
             const qtyNum = Number(stockNumber(line.qty, 3) ?? 0);
-            const short = qtyNum > Number(line.product.stock);
+            const short = !purchase && qtyNum > Number(line.product.stock);
             return (
               <li key={line.key} className={flash === line.key ? "sale-line flash" : "sale-line"}>
                 <div className="sale-line-head">
@@ -389,9 +418,12 @@ export function SaleItemsForm({
                     На складе {quantity(line.product.stock)} {line.product.unit} — продать можно, остаток уйдёт в минус.
                   </small>
                 )}
-                {line.price && stockNumber(line.price, 2) !== null && Number(stockNumber(line.price, 2)) !== Number(line.product.sale_price) && (
-                  <small className="muted">Цена на складе — {money(line.product.sale_price, shopCurrency)}.</small>
+                {line.price && Number(priceOf(line.product)) > 0 && stockNumber(line.price, 2) !== null && Number(stockNumber(line.price, 2)) !== Number(priceOf(line.product)) && (
+                  <small className="muted">
+                    {purchase ? "Прошлая закупка" : "Цена на складе"} — {money(priceOf(line.product), shopCurrency)}.
+                  </small>
                 )}
+                {purchase && !line.price && <small className="muted">Укажите цену закупки за {line.product.unit}.</small>}
               </li>
             );
           })}
@@ -417,17 +449,18 @@ export function SaleItemsForm({
               }}
             />
             <small className="muted">
-              Долг клиента ведётся в {CURRENCY_SIGN[debtCurrency]}.{" "}
+              {purchase ? "Долг поставщику" : "Долг клиента"} ведётся в {CURRENCY_SIGN[debtCurrency]}.{" "}
               {quote ? `${quote.source} на ${quote.date}: ${formatRate(quote.rate)}. Можно поправить.` : "Официальный курс сейчас недоступен — введите курс."}
             </small>
           </label>
           {debt > 0 && (
             <p className="photo-check-ok">
-              Долг клиента изменится на {money(debt.toFixed(2), debtCurrency)}
+              {purchase ? "Долг поставщику" : "Долг клиента"} изменится на {money(debt.toFixed(2), debtCurrency)}
             </p>
           )}
         </div>
       )}
+      {!purchase && (
       <label className="cash-toggle">
         <input
           type="checkbox"
@@ -438,6 +471,7 @@ export function SaleItemsForm({
         />
         Клиент оплатил наличными
       </label>
+      )}
       {overLimit && (
         <p className="form-error limit-warning" role="alert">
           Долг станет {money(overLimit.debtAfter, debtCurrency)} — больше лимита {money(overLimit.limit, debtCurrency)}. Продать
@@ -451,11 +485,13 @@ export function SaleItemsForm({
       )}
       <div className="simple-operation-actions">
         <Submit pending={saving} disabled={!lines.length}>
-          {lines.length ? `Записать продажу · ${money(total.toFixed(2), shopCurrency)}` : "Добавьте товары"}
+          {lines.length ? `Записать ${purchase ? "приход" : "продажу"} · ${money(total.toFixed(2), shopCurrency)}` : "Добавьте товары"}
         </Submit>
       </div>
       <p className="operation-hint">
-        Остаток на складе уменьшится, сумма добавится к долгу клиента. Клиенту можно сразу отправить накладную PDF.
+        {purchase
+          ? "Остаток на складе вырастет, цена закупки запомнится у товара, сумма добавится к долгу поставщику."
+          : "Остаток на складе уменьшится, сумма добавится к долгу клиента. Клиенту можно сразу отправить накладную PDF."}
       </p>
     </form>
   );

@@ -216,8 +216,8 @@ export default async function EntryPage({
     const firstIds = [...new Set((pays.data ?? []).map((p) => p.duplicate_of).filter(Boolean) as string[])];
     // Заявки на проверке: сумма с чека против суммы заявки — видно и продавцу.
     const pendingPays = (pays.data ?? []).filter((p) => p.status === "pending" && p.document_id);
-    const saleIds = kind === "customers" ? (invoices.data ?? []).map((r) => r.id) : [];
-    // Первые записи дубликатов, чеки заявок и товары продаж — вместе, вторым кругом.
+    const invoiceIds = (invoices.data ?? []).filter((r) => !r.document_id).map((r) => r.id);
+    // Первые записи дубликатов, чеки заявок и товары продаж/приходов — вместе, вторым кругом.
     const [firsts, receipts, saleItems] = await Promise.all([
       firstIds.length
         ? start(
@@ -229,23 +229,28 @@ export default async function EntryPage({
           ).then((result) => result.data ?? [])
         : skip([]),
       receiptAmounts(db, organizationId, pendingPays.map((p) => p.document_id as string)),
-      saleIds.length
+      invoiceIds.length
         ? start(
             db
-              .from("sale_items")
-              .select("sale_id,name_snapshot")
+              .from(kind === "customers" ? "sale_items" : "purchase_items")
+              .select(`${kind === "customers" ? "sale_id" : "purchase_id"},name_snapshot`)
               .eq("organization_id", organizationId)
-              .in("sale_id", saleIds)
+              .in(kind === "customers" ? "sale_id" : "purchase_id", invoiceIds)
               .order("n"),
-          ).then((result) => (result.data ?? []) as { sale_id: string; name_snapshot: string }[])
-        : skip([] as { sale_id: string; name_snapshot: string }[]),
+          ).then((result) =>
+            ((result.data ?? []) as unknown as Record<string, string>[]).map((row) => ({
+              owner: row.sale_id ?? row.purchase_id,
+              name: row.name_snapshot,
+            })),
+          )
+        : skip([] as { owner: string; name: string }[]),
     ]);
     const itemsBySale = new Map<string, { names: string[]; count: number }>();
     for (const item of saleItems) {
-      const entry = itemsBySale.get(item.sale_id) ?? { names: [], count: 0 };
-      if (entry.names.length < 2) entry.names.push(item.name_snapshot);
+      const entry = itemsBySale.get(item.owner) ?? { names: [], count: 0 };
+      if (entry.names.length < 2) entry.names.push(item.name);
       entry.count += 1;
-      itemsBySale.set(item.sale_id, entry);
+      itemsBySale.set(item.owner, entry);
     }
     const firstHrefs = new Map(firsts.map((f) => [f.id, firstPaymentHref(f)]));
     const needRates = pendingPays.some((p) => {

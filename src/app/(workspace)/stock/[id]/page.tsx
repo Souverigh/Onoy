@@ -15,6 +15,8 @@ type Movement = {
   qty_delta: string;
   reason: "purchase" | "sale" | "opening" | "adjustment" | "receipt";
   note: string | null;
+  unit_cost: string | null;
+  cost_currency: string | null;
   sale_id: string | null;
   purchase_id: string | null;
   sales: { reversed_at: string | null; customers: { name: string } | null } | null;
@@ -48,7 +50,7 @@ export default async function ProductPage({
     db
       .from("inventory_movements")
       .select(
-        "id,created_at,qty_delta,reason,note,sale_id,purchase_id,sales(reversed_at,customers(name)),purchases(reversed_at,document_id,suppliers(name))",
+        "id,created_at,qty_delta,reason,note,unit_cost,cost_currency,sale_id,purchase_id,sales(reversed_at,customers(name)),purchases(reversed_at,document_id,suppliers(name))",
       )
       .eq("organization_id", organizationId)
       .eq("product_id", id)
@@ -121,17 +123,19 @@ export default async function ProductPage({
           </strong>
           {low && <small className="warning">{decimalLessThan("0", product.stock) ? "Меньше минимума" : "Закончился"}</small>}
         </div>
+        <div className="stock-receive">
+          <Link className="button primary" href="/money/new?type=purchase&mode=items">
+            + Приход товара
+          </Link>
+          <small className="muted">Поставщик, количество и цена закупки — долг поставщику и остаток сразу.</small>
+        </div>
         <form action={adjustStock} className="stock-adjust">
           <input type="hidden" name="id" value={product.id} />
           <input type="hidden" name="idempotency_key" value={randomUUID()} />
           <fieldset className="payment-direction">
-            <legend>Что сделать с остатком?</legend>
+            <legend>Исправить остаток</legend>
             <label>
-              <input type="radio" name="mode" value="receipt" defaultChecked={!mode || mode === "receipt"} />
-              Пришло (+)
-            </label>
-            <label>
-              <input type="radio" name="mode" value="writeoff" defaultChecked={mode === "writeoff"} />
+              <input type="radio" name="mode" value="writeoff" defaultChecked={!mode || mode === "writeoff" || mode === "receipt"} />
               Списать (−)
             </label>
             <label>
@@ -179,6 +183,9 @@ export default async function ProductPage({
                   </span>
                   <span className="op-list-meta muted">
                     {date(m.created_at)}
+                    {m.unit_cost != null && Number(m.unit_cost) > 0
+                      ? ` · по ${money(m.unit_cost, (m.cost_currency as Parameters<typeof money>[1]) ?? currency)}`
+                      : ""}
                     {l.reversed ? " · отменена — в остатке не считается" : ""}
                     {m.note && !["Пересчёт", "Импорт", "Начальный остаток"].includes(m.note) && m.reason !== "opening" ? ` · ${m.note}` : ""}
                   </span>

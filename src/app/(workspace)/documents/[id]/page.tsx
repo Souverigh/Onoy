@@ -895,7 +895,9 @@ export default async function DocumentDetail({
             <h2>Принять на склад</h2>
           </div>
           <p className="muted">
-            Остатки вырастут на количество из накладной. Сначала проверьте строки выше — после приёма их не пересчитать.
+            {doc.status === "review"
+              ? "Подтвердите строки выше — товар придёт на склад сам. Или примите сейчас, выбрав товар для каждой строки:"
+              : "Остатки вырастут на количество из накладной. Сначала проверьте строки выше — после приёма их не пересчитать."}
           </p>
           <ReceiveStock purchaseId={purchaseRow!.id} documentId={doc.id} lines={receiveLines} currency={docCurrency} />
         </section>
