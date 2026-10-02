@@ -2439,3 +2439,15 @@ test("auto stock: a checked purchase invoice goes to stock by itself; purchase l
   await user(b);
   await assert.rejects(db.query("select commit_purchase_items($1,$2,$3,$4)", [orgA, supplier, lines, k(8)]), /not_a_member/);
 });
+
+test("member email follows a confirmed email change in auth.users", async () => {
+  await owner();
+  await db.query("update auth.users set email='old@shop.kg' where id=$1", [a]);
+  await db.query("update auth.users set email='new@shop.kg' where id=$1", [a]);
+  const emails = (await db.query("select distinct email from organization_members where user_id=$1", [a])).rows;
+  assert.deepEqual(emails, [{ email: "new@shop.kg" }]);
+  // Другой пользователь не задет.
+  assert.ok(
+    (await db.query("select email from organization_members where user_id=$1", [b])).rows.every((r) => r.email !== "new@shop.kg"),
+  );
+});

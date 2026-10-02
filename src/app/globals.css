@@ -3438,6 +3438,26 @@ tr.line-mismatch {
   margin: 0;
   overflow-wrap: anywhere;
 }
+/* «Сменить пароль» / «Сменить email» — свёрнуты, раскрываются по нажатию. */
+.settings-fold {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.settings-fold[open] > summary {
+  margin-bottom: 14px;
+}
+.settings-account-form {
+  display: grid;
+  gap: 14px;
+  max-width: 520px;
+}
+.settings-account-form small {
+  margin-top: -6px;
+}
+.settings-card > .notice,
+.settings-card > .form-error {
+  margin: 0;
+}
 .settings-account-footer {
   display: flex;
   justify-content: space-between;

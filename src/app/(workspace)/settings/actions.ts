@@ -1,7 +1,8 @@
 "use server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { getContext, requireOwner } from "@/lib/context";
+import { headers } from "next/headers";
+import { getContext, getUserContext, requireOwner } from "@/lib/context";
 import { storedPhone } from "@/lib/contacts";
 
 export async function updateShop(form: FormData) {
@@ -95,4 +96,68 @@ export async function renameMember(form: FormData) {
   if (result.error) redirect("/settings?staff=error#staff");
   revalidatePath("/", "layout");
   redirect("/settings?staff=renamed#staff");
+}
+
+const accountBack = (code: string) => `/settings?account=${code}#account`;
+
+/**
+ * Смена пароля: сначала текущий пароль (вход им же — так Supabase считает
+ * вход свежим и разрешает смену), потом новый. Другие устройства выходят.
+ */
+export async function changePassword(form: FormData) {
+  const current = String(form.get("current") ?? ""),
+    password = String(form.get("password") ?? ""),
+    repeat = String(form.get("repeat") ?? "");
+  if (!current || current.length > 1024) redirect(accountBack("current"));
+  if (password.length < 6 || password.length > 1024) redirect(accountBack("short"));
+  if (password !== repeat) redirect(accountBack("mismatch"));
+  if (password === current) redirect(accountBack("same"));
+  const { db, user } = await getUserContext();
+  if (!user.email) redirect(accountBack("failed"));
+  const check = await db.auth.signInWithPassword({ email: user.email, password: current });
+  if (check.error) redirect(accountBack(check.error.status === 429 ? "rate" : "current"));
+  const { error } = await db.auth.updateUser({ password });
+  if (error) {
+    console.warn("changePassword:", error.status, error.code);
+    redirect(
+      accountBack(error.code === "same_password" ? "same" : error.code === "weak_password" ? "weak" : "failed"),
+    );
+  }
+  await db.auth.signOut({ scope: "others" });
+  redirect(accountBack("password_changed"));
+}
+
+/**
+ * Смена email: подтверждаем текущим паролем, Supabase шлёт ссылку на новый
+ * адрес (и на старый, если включено «Secure email change»). Ссылка ведёт на
+ * /auth/confirm → обратно в настройки. До подтверждения вход — по старому.
+ */
+export async function changeEmail(form: FormData) {
+  const email = String(form.get("email") ?? "").trim().toLowerCase(),
+    current = String(form.get("current") ?? "");
+  if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) redirect(accountBack("email_invalid"));
+  if (!current || current.length > 1024) redirect(accountBack("email_current"));
+  const { db, user } = await getUserContext();
+  if (!user.email) redirect(accountBack("failed"));
+  if (email === user.email.toLowerCase()) redirect(accountBack("email_same"));
+  const check = await db.auth.signInWithPassword({ email: user.email, password: current });
+  if (check.error) redirect(accountBack(check.error.status === 429 ? "rate" : "email_current"));
+  const h = await headers();
+  const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
+  const { error } = await db.auth.updateUser({ email }, { emailRedirectTo: `${origin}/auth/confirm?next=/settings` });
+  if (error) {
+    console.warn("changeEmail:", error.status, error.code);
+    redirect(
+      accountBack(
+        error.status === 429
+          ? "rate"
+          : error.code === "email_exists"
+            ? "email_taken"
+            : error.code === "email_address_invalid"
+              ? "email_invalid"
+              : "failed",
+      ),
+    );
+  }
+  redirect(`/settings?account=email_sent&to=${encodeURIComponent(email)}#account`);
 }

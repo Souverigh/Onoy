@@ -3,16 +3,39 @@ import { LogoutButton } from "@/components/logout-button";
 import { getContext } from "@/lib/context";
 import { StaffPanel, type Invite, type Member } from "@/components/staff-panel";
 import { Submit } from "@/components/submit";
-import { updateShop } from "./actions";
+import { changeEmail, changePassword, updateShop } from "./actions";
 import { EXPORT_TABLES } from "@/lib/export-data";
+
+/** Итог смены пароля / email (?account=… от settings/actions.ts и /auth/confirm). */
+const ACCOUNT_TEXT: Record<string, string> = {
+  password_changed: "Пароль изменён. На других устройствах нужно войти заново.",
+  email_sent: "Письмо со ссылкой отправлено на новый адрес.",
+  email_half: "Одна ссылка подтверждена. Откройте письмо и на второй почте — тогда email сменится.",
+  email_changed: "Email изменён — теперь входите с новым адресом.",
+  current: "Текущий пароль не подошёл.",
+  short: "Новый пароль — не короче 6 символов.",
+  mismatch: "Новые пароли не совпадают.",
+  same: "Новый пароль совпадает со старым.",
+  weak: "Слишком простой пароль — добавьте цифры или буквы.",
+  email_invalid: "Проверьте новый email.",
+  email_same: "Это ваш текущий email.",
+  email_taken: "Этот email уже занят другим аккаунтом.",
+  email_current: "Пароль не подошёл — email не изменён.",
+  rate: "Слишком много попыток. Подождите несколько минут и повторите.",
+  link: "Ссылка из письма устарела или уже открыта. Попробуйте ещё раз.",
+  failed: "Не получилось. Обновите страницу и попробуйте снова.",
+};
+const ACCOUNT_OK = new Set(["password_changed", "email_sent", "email_half", "email_changed"]);
+const PASSWORD_ERRORS = new Set(["current", "short", "mismatch", "same", "weak"]);
+const EMAIL_ERRORS = new Set(["email_invalid", "email_same", "email_taken", "email_current"]);
 
 export default async function Settings({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string; staff?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string; staff?: string; account?: string; to?: string }>;
 }) {
   const { db, organizationId, organizationName, user, isOwner, plan, paidUntil, currency } = await getContext();
-  const { saved, error, staff } = await searchParams;
+  const { saved, error, staff, account, to } = await searchParams;
   // Сотрудники и приглашения — только владельцу (RLS тоже не отдаст продавцу).
   let members: Member[] = [];
   let invites: Invite[] = [];
@@ -213,6 +236,16 @@ export default async function Settings({
             <header>
               <h2>Аккаунт</h2>
             </header>
+            {account && ACCOUNT_TEXT[account] && (
+              <p
+                className={ACCOUNT_OK.has(account) ? "notice success" : "form-error"}
+                role={ACCOUNT_OK.has(account) ? "status" : "alert"}
+              >
+                {account === "email_sent" && to
+                  ? `Письмо со ссылкой отправлено на ${to}. Откройте его — после подтверждения входите с новым email. До этого — со старым.`
+                  : ACCOUNT_TEXT[account]}
+              </p>
+            )}
             <dl className="settings-details">
               <dt>Email</dt>
               <dd>{user.email}</dd>
@@ -226,6 +259,56 @@ export default async function Settings({
               <dt>Часовой пояс</dt>
               <dd>Бишкек (UTC+6)</dd>
             </dl>
+            <details className="party-fold settings-fold" open={PASSWORD_ERRORS.has(account ?? "")}>
+              <summary>
+                <span>
+                  <strong>Сменить пароль</strong>
+                  <small className="muted">Нужен текущий пароль. На других устройствах выйдет из аккаунта.</small>
+                </span>
+              </summary>
+              <form action={changePassword} className="settings-account-form">
+                <input type="email" name="username" autoComplete="username" defaultValue={user.email ?? ""} hidden readOnly />
+                <label>
+                  Текущий пароль
+                  <input name="current" type="password" autoComplete="current-password" required maxLength={1024} />
+                </label>
+                <div className="settings-row">
+                  <label>
+                    Новый пароль
+                    <input name="password" type="password" autoComplete="new-password" required minLength={6} maxLength={1024} />
+                  </label>
+                  <label>
+                    Повторите новый
+                    <input name="repeat" type="password" autoComplete="new-password" required minLength={6} maxLength={1024} />
+                  </label>
+                </div>
+                <small className="muted">Не короче 6 символов.</small>
+                <div className="actions">
+                  <Submit>Сменить пароль</Submit>
+                </div>
+              </form>
+            </details>
+            <details className="party-fold settings-fold" open={EMAIL_ERRORS.has(account ?? "")}>
+              <summary>
+                <span>
+                  <strong>Сменить email</strong>
+                  <small className="muted">Придёт письмо со ссылкой на новый адрес — email сменится после неё.</small>
+                </span>
+              </summary>
+              <form action={changeEmail} className="settings-account-form">
+                <label>
+                  Новый email
+                  <input name="email" type="email" autoComplete="email" required maxLength={254} />
+                </label>
+                <label>
+                  Текущий пароль
+                  <input name="current" type="password" autoComplete="current-password" required maxLength={1024} />
+                </label>
+                <div className="actions">
+                  <Submit>Отправить ссылку</Submit>
+                </div>
+              </form>
+            </details>
             <div className="settings-account-footer">
               <LogoutButton />
               <small className="muted">Depter 0.3</small>

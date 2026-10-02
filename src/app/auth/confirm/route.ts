@@ -4,16 +4,19 @@ import { createClient, configured } from "@/lib/supabase/server";
 
 /** Куда можно вернуть после ссылки из письма — только свои страницы. */
 function allowedNext(next: string | null) {
-  return next === "/reset-password" || next === "/onboarding" || /^\/join\/[a-f0-9]{32}$/i.test(next ?? "")
+  return next === "/reset-password" ||
+    next === "/onboarding" ||
+    next === "/settings" ||
+    /^\/join\/[a-f0-9]{32}$/i.test(next ?? "")
     ? next!
     : null;
 }
 
-const OTP_TYPES = new Set<EmailOtpType>(["recovery", "signup", "email"]);
+const OTP_TYPES = new Set<EmailOtpType>(["recovery", "signup", "email", "email_change"]);
 
 /**
- * Ссылка из письма Supabase: сброс пароля или подтверждение регистрации.
- * Два вида:
+ * Ссылка из письма Supabase: сброс пароля, подтверждение регистрации или
+ * нового email (next=/settings — смена в настройках). Два вида:
  * - стандартный шаблон: Supabase проверяет ссылку сам и присылает сюда ?code=
  *   (PKCE — работает только в том же браузере, где просили письмо);
  * - свой шаблон со ссылкой
@@ -21,18 +24,28 @@ const OTP_TYPES = new Set<EmailOtpType>(["recovery", "signup", "email"]);
  *   (для «Confirm signup» — type=email&next=/onboarding)
  *   — работает из любого браузера и с другого телефона.
  * Успех — сессия в куках и переход на next; иначе — пояснение: для сброса
- * пароля на /forgot, для регистрации на /login (email мог уже подтвердиться).
+ * пароля на /forgot, для смены email — в настройки, для регистрации на
+ * /login (email мог уже подтвердиться).
  */
 export async function GET(request: NextRequest) {
   const url = request.nextUrl;
   const type = url.searchParams.get("type") as EmailOtpType | null;
-  const next = allowedNext(url.searchParams.get("next")) ?? (type && type !== "recovery" ? "/onboarding" : "/reset-password");
+  const next =
+    allowedNext(url.searchParams.get("next")) ??
+    (type === "email_change" ? "/settings" : type && type !== "recovery" ? "/onboarding" : "/reset-password");
+  const settings = (code: string) => new URL(`/settings?account=${code}#account`, url.origin);
   const fail = NextResponse.redirect(
-    new URL(next === "/reset-password" ? "/forgot?error=link" : "/login?error=link", url.origin),
+    next === "/settings"
+      ? settings("link")
+      : new URL(next === "/reset-password" ? "/forgot?error=link" : "/login?error=link", url.origin),
   );
   if (!configured()) return fail;
   const code = url.searchParams.get("code");
   const tokenHash = url.searchParams.get("token_hash");
+  // «Secure email change»: после первой из двух ссылок (старый или новый
+  // адрес) Supabase присылает сюда только ?message=…, без кода — ждём вторую.
+  if (next === "/settings" && !code && !tokenHash && url.searchParams.get("message"))
+    return NextResponse.redirect(settings("email_half"));
   const db = await createClient();
   const { error } = code
     ? await db.auth.exchangeCodeForSession(code)
@@ -43,5 +56,5 @@ export async function GET(request: NextRequest) {
     console.warn("auth/confirm:", error.message);
     return fail;
   }
-  return NextResponse.redirect(new URL(next, url.origin));
+  return NextResponse.redirect(next === "/settings" ? settings("email_changed") : new URL(next, url.origin));
 }
