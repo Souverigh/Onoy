@@ -3,6 +3,7 @@ import { LogoutButton } from "@/components/logout-button";
 import { getContext } from "@/lib/context";
 import { StaffPanel, type Invite, type Member } from "@/components/staff-panel";
 import { Submit } from "@/components/submit";
+import { NoAutofillInput } from "@/components/no-autofill-input";
 import { changeEmail, changePassword, updateShop } from "./actions";
 import { EXPORT_TABLES } from "@/lib/export-data";
 
@@ -267,19 +268,18 @@ export default async function Settings({
                 </span>
               </summary>
               <form action={changePassword} className="settings-account-form">
-                <input type="email" name="username" autoComplete="username" defaultValue={user.email ?? ""} hidden readOnly />
                 <label>
                   Текущий пароль
-                  <input name="current" type="password" autoComplete="current-password" required maxLength={1024} />
+                  <NoAutofillInput name="current" type="password" required maxLength={1024} />
                 </label>
                 <div className="settings-row">
                   <label>
                     Новый пароль
-                    <input name="password" type="password" autoComplete="new-password" required minLength={6} maxLength={1024} />
+                    <NoAutofillInput name="password" type="password" required minLength={6} maxLength={1024} />
                   </label>
                   <label>
                     Повторите новый
-                    <input name="repeat" type="password" autoComplete="new-password" required minLength={6} maxLength={1024} />
+                    <NoAutofillInput name="repeat" type="password" required minLength={6} maxLength={1024} />
                   </label>
                 </div>
                 <small className="muted">Не короче 6 символов.</small>
@@ -298,11 +298,11 @@ export default async function Settings({
               <form action={changeEmail} className="settings-account-form">
                 <label>
                   Новый email
-                  <input name="email" type="email" autoComplete="email" required maxLength={254} />
+                  <NoAutofillInput name="email" type="email" required maxLength={254} />
                 </label>
                 <label>
                   Текущий пароль
-                  <input name="current" type="password" autoComplete="current-password" required maxLength={1024} />
+                  <NoAutofillInput name="current" type="password" required maxLength={1024} />
                 </label>
                 <div className="actions">
                   <Submit>Отправить ссылку</Submit>
