@@ -36,9 +36,18 @@ export function PartyManage({
   recentMerges: { id: string; fromName: string }[];
 }) {
   const who = kind === "customers" ? "клиента" : "поставщика";
+  // Свёрнуто, пока не нужно: открываем сами, если есть что отменить или объединено.
   return (
-    <section className="panel party-manage">
-      <h2>Управление</h2>
+    <details className="panel party-fold party-manage" open={Boolean(mergedInto) || recentMerges.length > 0}>
+      <summary>
+        <span>
+          <strong>Управление</strong>
+          <small className="muted">
+            {hasRecords ? "Архив" : "Удаление"}
+            {isOwner && others.length > 0 ? ", объединение дублей" : ""}
+          </small>
+        </span>
+      </summary>
       {mergedInto && (
         <p className="notice">
           Объединён с <Link href={`/${kind}/${mergedInto.id}`}>{mergedInto.name}</Link> — все записи там.
@@ -116,6 +125,6 @@ export function PartyManage({
           </ConfirmButton>
         </form>
       )}
-    </section>
+    </details>
   );
 }

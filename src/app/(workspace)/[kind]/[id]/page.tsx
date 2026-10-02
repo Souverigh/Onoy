@@ -17,6 +17,7 @@ import { officialRates } from "@/lib/fx";
 import { CURRENCIES } from "@/lib/currency";
 import { memberLabels } from "@/lib/members";
 import { PartyManage } from "@/components/party-manage";
+import { CopyButton } from "@/components/copy-button";
 import { waPhone } from "@/lib/share";
 import { bishkekDate } from "@/lib/day-summary";
 
@@ -206,6 +207,8 @@ export default async function EntryPage({
     /** Кто внёс и кто отменил (журнал для владельца). */
     createdBy: string | null;
     reversedBy: string | null;
+    /** Товары продажи со склада (sale_items) — первые названия и сколько всего. */
+    items?: { names: string[]; count: number } | null;
   };
   let history: HistoryRow[] = [];
   if (entry && invoicesRequest && paysRequest) {
@@ -213,8 +216,9 @@ export default async function EntryPage({
     const firstIds = [...new Set((pays.data ?? []).map((p) => p.duplicate_of).filter(Boolean) as string[])];
     // Заявки на проверке: сумма с чека против суммы заявки — видно и продавцу.
     const pendingPays = (pays.data ?? []).filter((p) => p.status === "pending" && p.document_id);
-    // Первые записи дубликатов и чеки заявок — вместе, вторым кругом.
-    const [firsts, receipts] = await Promise.all([
+    const saleIds = kind === "customers" ? (invoices.data ?? []).map((r) => r.id) : [];
+    // Первые записи дубликатов, чеки заявок и товары продаж — вместе, вторым кругом.
+    const [firsts, receipts, saleItems] = await Promise.all([
       firstIds.length
         ? start(
             db
@@ -225,7 +229,24 @@ export default async function EntryPage({
           ).then((result) => result.data ?? [])
         : skip([]),
       receiptAmounts(db, organizationId, pendingPays.map((p) => p.document_id as string)),
+      saleIds.length
+        ? start(
+            db
+              .from("sale_items")
+              .select("sale_id,name_snapshot")
+              .eq("organization_id", organizationId)
+              .in("sale_id", saleIds)
+              .order("n"),
+          ).then((result) => (result.data ?? []) as { sale_id: string; name_snapshot: string }[])
+        : skip([] as { sale_id: string; name_snapshot: string }[]),
     ]);
+    const itemsBySale = new Map<string, { names: string[]; count: number }>();
+    for (const item of saleItems) {
+      const entry = itemsBySale.get(item.sale_id) ?? { names: [], count: 0 };
+      if (entry.names.length < 2) entry.names.push(item.name_snapshot);
+      entry.count += 1;
+      itemsBySale.set(item.sale_id, entry);
+    }
     const firstHrefs = new Map(firsts.map((f) => [f.id, firstPaymentHref(f)]));
     const needRates = pendingPays.some((p) => {
       const r = receipts.get(p.document_id as string);
@@ -265,6 +286,7 @@ export default async function EntryPage({
         opening: Boolean(r.is_opening),
         createdBy: r.created_by,
         reversedBy: r.reversed_by,
+        items: itemsBySale.get(r.id) ?? null,
       })),
       ...(pays.data ?? []).map((p) => ({
         kind: "payment" as const,
@@ -304,6 +326,19 @@ export default async function EntryPage({
   const members = (membersRequest ? await membersRequest : null) ?? new Map();
   const showAuthors = [...members.values()].some((m) => m.role === "staff");
   const who = (id: string | null) => (id ? (members.get(id)?.name ?? "бывший сотрудник") : null);
+  // «1 окт., 09:28»; год — только если не текущий.
+  const historyDate = (iso: string) => {
+    const d = new Date(iso);
+    const year = new Intl.DateTimeFormat("en", { year: "numeric", timeZone: "Asia/Bishkek" }).format(d);
+    return new Intl.DateTimeFormat("ru-RU", {
+      day: "numeric",
+      month: "short",
+      ...(year !== bishkekDate().slice(0, 4) ? { year: "numeric" } : {}),
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Asia/Bishkek",
+    }).format(d);
+  };
 
   // Управление контрагентом: есть ли записи (включая отменённые и заявки),
   // с кем можно объединить, недавние объединения (отмена в течение суток).
@@ -352,9 +387,17 @@ export default async function EntryPage({
         ? ` Срок оплаты — ${dayMonth(promise.date)}.`
         : "";
   // Аудит ТЗ 15.1 п. 14: название магазина, без «долг в», страница не «оплатить», а посмотреть.
+  // Минус — клиент заплатил вперёд: не «ваш долг -3 000», а аванс (как в invoiceMessage).
+  const reminderBalance = Number(entry?.balance ?? 0);
   const reminderText =
     entry && kind === "customers"
-      ? `Магазин «${organizationName}»: ваш долг ${money(entry.balance ?? 0, cur)}.${promiseLine}${
+      ? `Магазин «${organizationName}»: ${
+          reminderBalance > 0
+            ? `ваш долг ${money(reminderBalance, cur)}.${promiseLine}`
+            : reminderBalance < 0
+              ? `долга нет, ваш аванс ${money(-reminderBalance, cur)}.`
+              : "долга нет."
+        }${
           activeLink ? ` Накладные и история: ${origin}/c/${activeLink.token}` : ""
         }`
       : "";
@@ -362,29 +405,104 @@ export default async function EntryPage({
     entry?.phone && reminderText
       ? `https://wa.me/${waPhone(entry.phone)}?text=${encodeURIComponent(reminderText)}`
       : undefined;
+  // Подпись к балансу словами, без минуса: плюс — долг, минус — аванс.
+  const balanceLabel =
+    reminderBalance > 0
+      ? kind === "customers"
+        ? "Должен вам"
+        : "Вы должны"
+      : reminderBalance < 0
+        ? kind === "customers"
+          ? "Аванс клиента"
+          : "Ваш аванс у поставщика"
+        : "Долга нет";
+  const balanceTone = reminderBalance > 0 ? (overLimit || promise.kind === "broken" ? "late" : "debt") : "clear";
+  // Ошибка формы данных или управления — раскрываем свёрнутый блок, чтобы её было видно.
+  const formError = error && !["link", "reversal", "promise", "has_records", "party", "merge", "merge_opening", "merge_expired", "merge_currency"].includes(error);
 
   return (
     <>
       <Link className="back-link" href={`/${kind}`}>
         ← {directoryMeta[kind].title}
       </Link>
-      <div className="page-heading">
-        <div>
-          <h1>
-            {entry?.name ??
-              `Добавить: ${directoryMeta[kind].single.toLowerCase()}`}
-          </h1>
-          <p className="muted">
-            {entry
-              ? kind === "products"
-                ? `Остаток: ${quantity(entry.stock ?? 0)} ${entry.unit}`
-                : `Долг / аванс: ${money(entry.balance ?? 0, cur)}`
-              : "Заполните основные данные."}
-            {entry?.credit_limit != null && ` · лимит ${money(entry.credit_limit, cur)}`}
-            {overLimit && <span className="tag reversed-tag">больше лимита</span>}
-          </p>
+      {entry && isParty ? (
+        <section className="panel party-hero">
+          <div className="party-hero-top">
+            <div className="party-hero-who">
+              <span className="eyebrow">
+                {kind === "customers" ? "КЛИЕНТ" : "ПОСТАВЩИК"}
+                {entry.archived_at ? " · В АРХИВЕ" : ""}
+              </span>
+              <h1>{entry.name}</h1>
+              {entry.phone ? (
+                <a className="party-hero-phone" href={`tel:${entry.phone}`}>
+                  {entry.phone}
+                </a>
+              ) : (
+                <span className="muted party-hero-phone">Телефон не указан</span>
+              )}
+              {entry.notes && <p className="muted party-hero-notes">{entry.notes}</p>}
+            </div>
+            <div className={`party-hero-balance ${balanceTone}`}>
+              <span>{balanceLabel}</span>
+              <strong>{money(Math.abs(reminderBalance), cur)}</strong>
+              {entry.credit_limit != null && (
+                <small>
+                  лимит {money(entry.credit_limit, cur)}
+                  {overLimit && <span className="party-hero-over"> · превышен</span>}
+                </small>
+              )}
+              {promise.kind === "broken" ? (
+                <small className="party-hero-late">
+                  обещал до {dayMonth(promise.date)} — просрочено {promise.daysLate} дн.
+                </small>
+              ) : promise.kind === "upcoming" ? (
+                <small>
+                  обещал до {dayMonth(promise.date)}
+                  {promise.daysLeft === 0 ? " — сегодня" : ` — через ${promise.daysLeft} дн.`}
+                </small>
+              ) : null}
+            </div>
+          </div>
+          <div className="party-hero-actions">
+            <Link className="button primary" href={newOperationHref(kind === "customers" ? "sale" : "purchase")}>
+              + {kind === "customers" ? "Продажа" : "Приход"}
+            </Link>
+            <Link className="button primary" href={newOperationHref("payment")}>
+              + Оплата
+            </Link>
+            {waHref && (
+              <a className="button whatsapp" href={waHref} target="_blank" rel="noreferrer">
+                {reminderBalance > 0 && kind === "customers" ? "Напомнить в WhatsApp" : "WhatsApp"}
+              </a>
+            )}
+            <Link className="button" href={`/${kind}/${entry.id}/statement`}>
+              Акт сверки
+            </Link>
+            {isOwner && (
+              <Link className="button" href={`/money/adjustment?party=${entry.id}`}>
+                Скидка / возврат
+              </Link>
+            )}
+          </div>
+        </section>
+      ) : (
+        <div className="page-heading">
+          <div>
+            <h1>
+              {entry?.name ??
+                `Добавить: ${directoryMeta[kind].single.toLowerCase()}`}
+            </h1>
+            <p className="muted">
+              {entry
+                ? kind === "products"
+                  ? `Остаток: ${quantity(entry.stock ?? 0)} ${entry.unit}`
+                  : `Долг / аванс: ${money(entry.balance ?? 0, cur)}`
+                : "Заполните основные данные."}
+            </p>
+          </div>
         </div>
-      </div>
+      )}
       {saved && (
         <p className="notice success" role="status">
           Изменения сохранены.
@@ -462,209 +580,233 @@ export default async function EntryPage({
           Не удалось выполнить действие со ссылкой.
         </p>
       )}
-      {entry && isParty && (
-        <section className="panel party-actions">
-          {waHref && (
-            <a className="button primary" href={waHref} target="_blank" rel="noreferrer">
-              Напомнить в WhatsApp
-            </a>
-          )}
-          <Link className="button" href={`/${kind}/${entry.id}/statement`}>
-            Акт сверки
-          </Link>
-          <Link className="button" href={newOperationHref(kind === "customers" ? "sale" : "purchase")}>
-            {kind === "customers" ? "Продажа" : "Приход"}
-          </Link>
-          <Link className="button" href={newOperationHref("payment")}>
-            Оплата
-          </Link>
-          {isOwner && (
-            <Link className="button" href={`/money/adjustment?party=${entry.id}`}>
-              Скидка / возврат
-            </Link>
-          )}
-        </section>
-      )}
-      {entry && kind === "customers" && (
-        <section className="panel debt-terms">
-          <h2>Срок и давность долга</h2>
-          {promise.kind === "broken" ? (
-            <p className="form-error">
-              Обещал оплатить до {dayMonth(promise.date)} — прошло {promise.daysLate} дн.
-            </p>
-          ) : promise.kind === "upcoming" ? (
-            <p>
-              Обещал оплатить до <strong>{dayMonth(promise.date)}</strong>
-              {promise.daysLeft === 0 ? " — сегодня" : ` — через ${promise.daysLeft} дн.`}
-            </p>
-          ) : (
-            <p className="muted">Обещанной даты нет.</p>
-          )}
-          <form action={setPromisedDate} className="promise-form">
-            <input type="hidden" name="customer_id" value={entry.id} />
-            <label>
-              Обещал оплатить до
-              <input
-                type="date"
-                name="promised_date"
-                min={today}
-                defaultValue={entry.promised_date ?? ""}
-              />
-            </label>
-            <button className="button" type="submit">
-              Сохранить
-            </button>
-          </form>
-          {aging ? (
-            <dl className="aging">
-              <div>
-                <dt>до 30 дней</dt>
-                <dd>{money(aging.due_0_30, cur)}</dd>
+      {entry && isParty ? (
+        <div className="party-layout">
+          <div className="party-main">
+            <section className="panel">
+              <div className="section-title party-history-title">
+                <h2>История</h2>
+                <span className="muted party-history-legend">
+                  <span className="up">+</span> долг вырос · <span className="down">−</span> долг уменьшился
+                </span>
               </div>
-              <div className={Number(aging.due_31_60) > 0 ? "aging-late" : ""}>
-                <dt>31–60 дней</dt>
-                <dd>{money(aging.due_31_60, cur)}</dd>
-              </div>
-              <div className={Number(aging.due_61_90) > 0 ? "aging-late" : ""}>
-                <dt>61–90 дней</dt>
-                <dd>{money(aging.due_61_90, cur)}</dd>
-              </div>
-              <div className={Number(aging.due_over_90) > 0 ? "aging-late" : ""}>
-                <dt>больше 90 дней</dt>
-                <dd>{money(aging.due_over_90, cur)}</dd>
-              </div>
-            </dl>
-          ) : (
-            <p className="muted">Долга нет — давность не считается.</p>
-          )}
-        </section>
-      )}
-      {entry && kind === "customers" && (
-        <section className="panel share-link-panel">
-          <h2>Страница клиента без входа</h2>
-          {activeLink ? (
-            <>
-              <p className="muted">
-                {origin}/c/{activeLink.token}
-              </p>
-              <form action={revokeLink} className="simple-operation-actions">
-                <input type="hidden" name="customer_id" value={entry.id} />
-                <input type="hidden" name="link_id" value={activeLink.id} />
-                <button className="button" type="submit">
-                  Отозвать ссылку
-                </button>
-              </form>
-            </>
-          ) : (
-            <form action={createLink} className="simple-operation-actions">
-              <input type="hidden" name="customer_id" value={entry.id} />
-              <button className="button primary" type="submit">
-                Создать ссылку для клиента
-              </button>
-            </form>
-          )}
-        </section>
-      )}
-      {entry && isParty && (
-        <section className="panel">
-          <h2>История</h2>
-          {history.length ? (
-            <ul className="history-list">
-              {history.map((row) => (
-                <li
-                  key={row.kind + row.id}
-                  id={row.kind === "payment" ? `pay-${row.id}` : undefined}
-                  className={`history-item${row.reversed ? " reversed-row" : row.duplicate && row.pending ? " duplicate-row" : ""}`}
-                >
-                  <div className="history-main">
-                    <span className="history-kind">
-                      {row.label}
-                      {row.reversed && <span className="tag reversed-tag">отменена</span>}
-                      {!row.reversed && row.duplicate && row.pending && <span className="tag duplicate-tag">дубликат</span>}
-                    </span>
-                    <strong className="history-amount">
-                      {money(row.amount, cur)}
-                      {row.original && <small className="muted history-original">{row.original}</small>}
-                    </strong>
-                  </div>
-                  <div className="history-meta">
-                    <span className="muted">
-                      {new Intl.DateTimeFormat("ru-RU", {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                        timeZone: "Asia/Bishkek",
-                      }).format(new Date(row.occurred_at))}
-                    </span>
-                    <span className="history-actions">
-                      {row.kind === "sale" && !row.reversed && !row.opening && (
-                        <Link className="text-button" href={`/money/send/${row.id}`}>
-                          Отправить
-                        </Link>
-                      )}
-                      {row.documentId && (
-                        <Link className="text-button" href={`/documents/${row.documentId}`}>
-                          Фото
-                        </Link>
-                      )}
-                      {!isOwner ? null : row.pending ? (
-                        <Link className="text-button" href="/claims">
-                          Рассмотреть
-                        </Link>
-                      ) : (
-                        !row.reversed && (
-                          <Link
-                            className="text-button"
-                            href={`/money/reverse/${row.kind}/${row.id}?back=${encodeURIComponent(`/${kind}/${entry.id}`)}`}
-                          >
-                            Отменить
+              {history.length ? (
+                <ul className="party-history">
+                  {history.map((row) => {
+                    // Продажа/приход увеличивают долг, оплата, скидка и возврат — уменьшают.
+                    const up = row.kind !== "payment";
+                    // Что открыть по нажатию: продажа — накладная и отправка, остальное — фото документа.
+                    const open =
+                      row.kind === "sale" && !row.opening
+                        ? { href: `/money/send/${row.id}`, label: row.items || row.documentId ? "Накладная" : "Открыть" }
+                        : row.documentId
+                          ? { href: `/documents/${row.documentId}`, label: row.kind === "payment" ? "Фото чека" : "Фото накладной" }
+                          : null;
+                    const extraPhoto = row.kind === "sale" && !row.opening && row.documentId && !row.items;
+                    const author = showAuthors ? who(row.createdBy) : null;
+                    const reverser = showAuthors && row.reversed ? who(row.reversedBy) : null;
+                    const status = row.reversed
+                      ? { text: "отменена", className: "reversed" }
+                      : row.duplicate && row.pending
+                        ? { text: "дубликат", className: "duplicate" }
+                        : row.pending
+                          ? { text: "на проверке", className: "pending" }
+                          : null;
+                    const head = (
+                      <>
+                        <span className={`party-history-icon ${up ? "up" : "down"}`} aria-hidden="true">
+                          {up ? "+" : "−"}
+                        </span>
+                        <span className="party-history-what">
+                          <strong>
+                            {row.label}
+                            {status && <span className={`party-history-status ${status.className}`}>{status.text}</span>}
+                          </strong>
+                          <small className="muted">
+                            {historyDate(row.occurred_at)}
+                            {author ? ` · ${author}` : ""}
+                          </small>
+                        </span>
+                        <span className="party-history-sum">
+                          <strong className={up ? "up" : "down"}>
+                            {up ? "+" : "−"}
+                            {money(row.amount, cur)}
+                          </strong>
+                          {row.original && <small className="muted">{row.original}</small>}
+                        </span>
+                      </>
+                    );
+                    return (
+                      <li
+                        key={row.kind + row.id}
+                        id={row.kind === "payment" ? `pay-${row.id}` : undefined}
+                        className={`history-item party-history-item${row.reversed ? " reversed-row" : row.duplicate && row.pending ? " duplicate-row" : ""}`}
+                      >
+                        {open ? (
+                          <Link className="party-history-head" href={open.href}>
+                            {head}
                           </Link>
-                        )
-                      )}
-                    </span>
-                  </div>
-                  {row.note && <p className="history-comment muted">{row.note}</p>}
-                  {!row.reversed && row.pending && row.receiptNote && (
-                    <p className={`history-comment ${row.receiptNote.differs ? "receipt-differs" : "muted"}`}>
-                      {row.receiptNote.text}
-                    </p>
-                  )}
-                  {!row.reversed && row.duplicate && row.pending && row.firstHref && (
-                    <p className="history-comment">
-                      <Link className="duplicate-link" href={row.firstHref}>
-                        Первая запись →
-                      </Link>
-                    </p>
-                  )}
-                  {showAuthors && (who(row.createdBy) || (row.reversed && who(row.reversedBy))) && (
-                    <p className="history-comment muted">
-                      {who(row.createdBy) && <>Внёс: {who(row.createdBy)}</>}
-                      {row.reversed && who(row.reversedBy) && <> · отменил: {who(row.reversedBy)}</>}
-                    </p>
-                  )}
-                  {row.reversed && row.reversalComment && (
-                    <p className="history-comment muted">Причина отмены: {row.reversalComment}</p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">Операций пока нет.</p>
-          )}
+                        ) : (
+                          <div className="party-history-head">{head}</div>
+                        )}
+                        {row.items && (
+                          <p className="party-history-note muted">
+                            {row.items.names.join(", ")}
+                            {row.items.count > row.items.names.length ? ` и ещё ${row.items.count - row.items.names.length}` : ""}
+                          </p>
+                        )}
+                        {row.note && <p className="party-history-note muted">{row.note}</p>}
+                        {!row.reversed && row.pending && row.receiptNote && (
+                          <p className={`party-history-note ${row.receiptNote.differs ? "receipt-differs" : "muted"}`}>
+                            {row.receiptNote.text}
+                          </p>
+                        )}
+                        {row.reversed && (reverser || row.reversalComment) && (
+                          <p className="party-history-note muted">
+                            {reverser ? `Отменил: ${reverser}` : "Отменена"}
+                            {row.reversalComment ? ` · причина: ${row.reversalComment}` : ""}
+                          </p>
+                        )}
+                        {(open || extraPhoto || (!row.reversed && row.duplicate && row.pending && row.firstHref) || isOwner) && (
+                          <div className="party-history-actions">
+                            {open && (
+                              <Link className="party-history-chip primary" href={open.href}>
+                                {open.label}
+                              </Link>
+                            )}
+                            {extraPhoto && (
+                              <Link className="party-history-chip" href={`/documents/${row.documentId}`}>
+                                Фото
+                              </Link>
+                            )}
+                            {!row.reversed && row.duplicate && row.pending && row.firstHref && (
+                              <Link className="party-history-chip duplicate-link" href={row.firstHref}>
+                                Первая запись →
+                              </Link>
+                            )}
+                            {!isOwner ? null : row.pending ? (
+                              <Link className="party-history-chip" href="/claims">
+                                Рассмотреть
+                              </Link>
+                            ) : (
+                              !row.reversed && (
+                                <Link
+                                  className="party-history-chip danger"
+                                  href={`/money/reverse/${row.kind}/${row.id}?back=${encodeURIComponent(`/${kind}/${entry.id}`)}`}
+                                >
+                                  Отменить
+                                </Link>
+                              )
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="muted">Операций пока нет.</p>
+              )}
+            </section>
+          </div>
+          <aside className="party-side">
+            {kind === "customers" && (reminderBalance > 0 || entry.promised_date) && (
+              <section className="panel debt-terms">
+                <h2>Срок оплаты</h2>
+                {promise.kind === "broken" && (
+                  <p className="form-error">
+                    Обещал оплатить до {dayMonth(promise.date)} — прошло {promise.daysLate} дн.
+                  </p>
+                )}
+                <form action={setPromisedDate} className="promise-form">
+                  <input type="hidden" name="customer_id" value={entry.id} />
+                  <label>
+                    Обещал оплатить до
+                    <input type="date" name="promised_date" min={today} defaultValue={entry.promised_date ?? ""} />
+                  </label>
+                  <button className="button" type="submit">
+                    Сохранить
+                  </button>
+                </form>
+                {aging && (
+                  <>
+                    <h3>Давность долга</h3>
+                    <dl className="aging">
+                      <div>
+                        <dt>до 30 дней</dt>
+                        <dd>{money(aging.due_0_30, cur)}</dd>
+                      </div>
+                      <div className={Number(aging.due_31_60) > 0 ? "aging-late" : ""}>
+                        <dt>31–60 дней</dt>
+                        <dd>{money(aging.due_31_60, cur)}</dd>
+                      </div>
+                      <div className={Number(aging.due_61_90) > 0 ? "aging-late" : ""}>
+                        <dt>61–90 дней</dt>
+                        <dd>{money(aging.due_61_90, cur)}</dd>
+                      </div>
+                      <div className={Number(aging.due_over_90) > 0 ? "aging-late" : ""}>
+                        <dt>больше 90 дней</dt>
+                        <dd>{money(aging.due_over_90, cur)}</dd>
+                      </div>
+                    </dl>
+                  </>
+                )}
+              </section>
+            )}
+            {kind === "customers" && (
+              <section className="panel share-link-panel">
+                <h2>Ссылка для клиента</h2>
+                <span className="muted share-link-hint">
+                  Без входа: клиент видит свой долг и накладные и может сообщить об оплате.
+                </span>
+                {activeLink ? (
+                  <>
+                    <code className="share-link-url">
+                      {origin}/c/{activeLink.token}
+                    </code>
+                    <div className="share-link-actions">
+                      <CopyButton text={`${origin}/c/${activeLink.token}`} />
+                      <a className="button" href={`/c/${activeLink.token}`} target="_blank" rel="noreferrer">
+                        Открыть
+                      </a>
+                      <form action={revokeLink}>
+                        <input type="hidden" name="customer_id" value={entry.id} />
+                        <input type="hidden" name="link_id" value={activeLink.id} />
+                        <button className="text-button danger-text" type="submit">
+                          Отозвать
+                        </button>
+                      </form>
+                    </div>
+                  </>
+                ) : (
+                  <form action={createLink}>
+                    <input type="hidden" name="customer_id" value={entry.id} />
+                    <button className="button primary" type="submit">
+                      Создать ссылку
+                    </button>
+                  </form>
+                )}
+              </section>
+            )}
+            <details className="panel party-fold" open={Boolean(formError)}>
+              <summary>
+                <span>
+                  <strong>Данные {kind === "customers" ? "клиента" : "поставщика"}</strong>
+                  <small className="muted">
+                    Имя, телефон, валюта{kind === "customers" ? ", лимит долга" : ""}, заметка
+                  </small>
+                </span>
+              </summary>
+              <EntryForm kind={kind} entry={entry} shopCurrency={shopCurrency} error={formError ? error : undefined} />
+            </details>
+            {manage && <PartyManage {...manage} />}
+          </aside>
+        </div>
+      ) : (
+        <section className="panel form-panel">
+          <EntryForm kind={kind} entry={entry} shopCurrency={shopCurrency} error={formError ? error : undefined} />
         </section>
       )}
-      {manage && <PartyManage {...manage} />}
-      <section className="panel form-panel">
-        <EntryForm
-          kind={kind}
-          entry={entry}
-          shopCurrency={shopCurrency}
-          error={
-            error && ["link", "reversal", "promise", "has_records", "party", "merge", "merge_opening", "merge_expired", "merge_currency"].includes(error)
-              ? undefined
-              : error
-          }
-        />
-      </section>
     </>
   );
 }

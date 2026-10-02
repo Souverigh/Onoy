@@ -1636,6 +1636,235 @@ div.photo-field {
   margin-bottom: 14px;
 }
 
+/* Карточка клиента/поставщика: шапка с долгом, история слева, остальное справа. */
+.party-hero {
+  display: grid;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+.party-hero-top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px 28px;
+}
+.party-hero-who {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+.party-hero-who .eyebrow {
+  margin-bottom: 2px;
+}
+.party-hero-who h1 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.party-hero-phone {
+  justify-self: start;
+  font-size: 15px;
+  color: var(--green);
+}
+.party-hero-notes {
+  margin: 4px 0 0;
+  font-size: 14px;
+  white-space: pre-line;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.party-hero-balance {
+  display: grid;
+  gap: 2px;
+  min-width: 220px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: #eef1ec;
+}
+.party-hero-balance > span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.party-hero-balance strong {
+  font-size: 30px;
+  letter-spacing: -0.8px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.party-hero-balance small {
+  font-size: 13px;
+  color: var(--muted);
+}
+.party-hero-balance.debt {
+  background: #fdf3ee;
+}
+.party-hero-balance.debt strong {
+  color: #a34836;
+}
+.party-hero-balance.late {
+  background: #fbe5de;
+  box-shadow: inset 0 0 0 1px #f0c4b6;
+}
+.party-hero-balance.late strong,
+.party-hero-over,
+.party-hero-late {
+  color: #a34836 !important;
+  font-weight: 600;
+}
+.party-hero-balance.clear {
+  background: #eaf4e5;
+}
+.party-hero-balance.clear strong {
+  color: var(--green);
+}
+.party-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.button.whatsapp {
+  background: #e7f6ec;
+  border-color: #bfe3cb;
+  color: #17683a;
+}
+.button.whatsapp:hover {
+  background: #d8f0e0;
+}
+.party-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.party-main,
+.party-side {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+.party-side .panel {
+  padding: 20px;
+}
+.party-side h2 {
+  font-size: 16px;
+  margin: 0;
+}
+.debt-terms h3 {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.debt-terms .promise-form label {
+  flex: 1;
+  margin-bottom: 0;
+}
+.debt-terms .aging {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.share-link-panel {
+  display: grid;
+  gap: 10px;
+}
+.share-link-hint {
+  font-size: 13px;
+  line-height: 1.45;
+}
+.share-link-url {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f7f8f4;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+.share-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.share-link-actions form {
+  margin-left: auto;
+}
+/* Свёрнутые блоки: данные контрагента, управление. */
+.party-fold {
+  display: block;
+}
+.party-fold > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+}
+.party-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.party-fold > summary::after {
+  content: "›";
+  font-size: 22px;
+  line-height: 1;
+  color: var(--muted);
+  transform: rotate(90deg);
+  transition: transform 0.15s;
+}
+.party-fold[open] > summary::after {
+  transform: rotate(-90deg);
+}
+.party-fold > summary > span {
+  display: grid;
+  gap: 2px;
+}
+.party-fold > summary small {
+  font-size: 13px;
+}
+.party-fold[open] > summary {
+  padding-bottom: 14px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.party-fold.party-manage[open] {
+  display: grid;
+}
+@media (max-width: 1100px) {
+  .party-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 560px) {
+  .party-hero {
+    gap: 16px;
+  }
+  .party-hero-balance {
+    width: 100%;
+    min-width: 0;
+  }
+  .party-hero-balance strong {
+    font-size: 26px;
+  }
+  .party-hero-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .party-hero-actions .button {
+    padding-left: 8px;
+    padding-right: 8px;
+    white-space: normal;
+    text-align: center;
+  }
+  .party-hero-actions .button.whatsapp {
+    grid-column: 1 / -1;
+  }
+}
+
 /* Итог дня */
 .day-grid {
   display: grid;
@@ -3832,6 +4061,180 @@ a.debt-card:hover {
   display: block;
   font-weight: 400;
   font-size: 12px;
+}
+
+/* История в карточке клиента/поставщика: что, когда, ± к долгу, «Открыть». */
+.party-history-title {
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.party-history-legend {
+  font-size: 12px;
+}
+.party-history-legend .up,
+.party-history-sum .up {
+  color: #a34836;
+}
+.party-history-legend .down,
+.party-history-sum .down {
+  color: var(--green);
+}
+.party-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.party-history-item {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+.party-history-item.duplicate-row {
+  padding-left: 12px;
+}
+.party-history-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  color: inherit;
+}
+a.party-history-head:hover .party-history-what strong {
+  color: var(--green);
+}
+.party-history-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+.party-history-icon.up {
+  background: #fbe9e4;
+  color: #a34836;
+}
+.party-history-icon.down {
+  background: #e3efe0;
+  color: var(--green);
+}
+.party-history-what {
+  display: grid;
+  min-width: 0;
+}
+.party-history-what strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 15px;
+}
+.party-history-what small {
+  font-size: 13px;
+}
+.party-history-status {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.party-history-status.reversed {
+  background: #fff3df;
+  color: #a4762f;
+}
+.party-history-status.duplicate {
+  background: #e0a800;
+  color: #fff;
+}
+.party-history-status.pending {
+  background: #eef1ec;
+  color: #536457;
+}
+.party-history-sum {
+  display: grid;
+  justify-items: end;
+  text-align: right;
+}
+.party-history-sum strong {
+  font-size: 16px;
+  white-space: nowrap;
+}
+.party-history-sum small {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.party-history-note {
+  margin: 8px 0 0 46px;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.party-history-note.receipt-differs {
+  color: #8a5a00;
+  font-weight: 600;
+}
+.party-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 0 46px;
+}
+.party-history-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--ink);
+  background: #fff;
+}
+.party-history-chip:hover {
+  background: #f1f4ee;
+}
+.party-history-chip.primary {
+  border-color: var(--green);
+  color: var(--green);
+  font-weight: 600;
+}
+.party-history-chip.danger {
+  margin-left: auto;
+  border-color: transparent;
+  color: #a34836;
+}
+.party-history-item.reversed-row {
+  opacity: 1;
+  background: #fafaf8;
+}
+.party-history-item.reversed-row .party-history-head {
+  opacity: 0.6;
+}
+.party-history-item.reversed-row .party-history-sum strong {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+@media (max-width: 560px) {
+  .party-history-item {
+    padding: 12px;
+  }
+  .party-history-head {
+    gap: 10px;
+  }
+  .party-history-icon {
+    width: 30px;
+    height: 30px;
+    font-size: 16px;
+  }
+  .party-history-note,
+  .party-history-actions {
+    margin-left: 40px;
+  }
 }
 /* Итог дня: блок другой валюты (доллары Хороза) — отдельно от основных цифр. */
 .day-foreign {
