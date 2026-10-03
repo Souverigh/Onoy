@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(*supabase db push*)",
+      "Bash(*supabase db reset*)",
+      "Bash(*supabase migration repair*)",
+      "Bash(*supabase migration squash*)",
+      "Bash(*supabase db query*)",
+      "Bash(*psql*)",
+      "Bash(*pg_restore*)",
+      "PowerShell(*supabase db push*)",
+      "PowerShell(*supabase db reset*)",
+      "PowerShell(*supabase migration repair*)",
+      "PowerShell(*supabase migration squash*)",
+      "PowerShell(*supabase db query*)",
+      "PowerShell(*psql*)",
+      "PowerShell(*pg_restore*)",
+      "mcp__claude_ai_Supabase__apply_migration",
+      "mcp__claude_ai_Supabase__reset_branch",
+      "mcp__claude_ai_Supabase__merge_branch",
+      "mcp__claude_ai_Supabase__delete_branch",
+      "mcp__claude_ai_Supabase__pause_project"
+    ],
+    "ask": [
+      "mcp__claude_ai_Supabase__execute_sql"
+    ]
+  }
+}
