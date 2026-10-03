@@ -1113,6 +1113,22 @@ td small {
   text-align: center;
   padding: 18px;
 }
+/* Сумма с фото — подсказка серым, пока продавец её не взял. */
+.simple-operation-form .amount-field input::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+  font-weight: 500;
+}
+.amount-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: -4px;
+}
+.amount-suggestions .button {
+  flex: 1 1 auto;
+  min-height: 44px;
+}
 .payment-direction {
   border: 1px solid var(--line);
   border-radius: 10px;

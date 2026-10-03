@@ -621,6 +621,28 @@ export function OperationForm({
     paperTotal != null &&
     !noPrices &&
     Math.abs(checkedPhoto!.result!.total_computed - paperTotal) > TOLERANCE;
+  // Сумма с фото: серым в пустом поле, в запись — только по кнопке (просьба
+  // пользователя 02.10.2026). Итоги разошлись — две кнопки, выбирает продавец.
+  const amountSuggestions =
+    checkedPhoto?.result && !noPrices && !amountValue
+      ? paperMismatch
+        ? [
+            { label: "Сумма строк", value: checkedPhoto.result.total_computed },
+            { label: "Итог накладной", value: paperTotal! },
+          ]
+        : [{ label: null, value: checkedPhoto.result.total_computed }]
+      : [];
+  const suggestionCurrency = suggestedCurrency ?? docCurrency;
+
+  function takeSuggestion(value: number) {
+    setAmountValue(String(value));
+    if (localError === "amount") setLocalError(null);
+    // Сумма с накладной — в её валюте (продавец нажал сам).
+    if (suggestedCurrency) {
+      setAmountCurrency(suggestedCurrency === debtCurrency ? null : suggestedCurrency);
+      setRateValue("");
+    }
+  }
 
   return (
     <>
@@ -951,7 +973,9 @@ export function OperationForm({
             autoComplete="off"
             required
             pattern="[0-9 ]+([.,][0-9]{1,2})?"
-            placeholder="0"
+            placeholder={
+              amountSuggestions.length === 1 ? money(amountSuggestions[0].value, suggestionCurrency) : "0"
+            }
             value={amountValue}
             onChange={(e) => {
               setAmountValue(e.target.value);
@@ -960,6 +984,21 @@ export function OperationForm({
             aria-label={`Сумма, ${CURRENCY_SIGN[docCurrency]}`}
           />
         </label>
+        {amountSuggestions.length > 0 && (
+          <div className="amount-suggestions">
+            {amountSuggestions.map((s) => (
+              <button
+                key={s.label ?? "total"}
+                type="button"
+                className="button"
+                onClick={() => takeSuggestion(s.value)}
+              >
+                ✓ {s.label ? `${s.label}: ` : "Взять "}
+                {money(s.value, suggestionCurrency)}
+              </button>
+            ))}
+          </div>
+        )}
         {currencyHint && (
           <div className="photo-check-mismatch document-kind-warning" role="status">
             <p>
@@ -1085,43 +1124,24 @@ export function OperationForm({
             {checkedPhoto?.result && noPrices && (
               <p className="photo-check-mismatch" role="status">
                 Цен в накладной не нашли — введите сумму вручную.
-                {paperTotal != null && <> «Итого» на бумаге: {money(paperTotal, docCurrency)}.</>}
+                {paperTotal != null && <> Итог накладной: {money(paperTotal, docCurrency)}.</>}
               </p>
             )}
             {checkedPhoto?.result && !noPrices && (
               <p className={checkMismatch || paperMismatch ? "photo-check-mismatch" : "photo-check-ok"}>
-                По строкам: {money(checkedPhoto.result.total_computed, docCurrency)}
-                {paperTotal != null && <> · «Итого» на бумаге: {money(paperTotal, docCurrency)}</>}
+                Сумма строк: {money(checkedPhoto.result.total_computed, docCurrency)}
+                {paperTotal != null && <> · итог накладной: {money(paperTotal, docCurrency)}</>}
                 {enteredAmount
                   ? checkMismatch
                     ? " — отличается от введённой суммы"
                     : " — совпадает с введённой суммой"
                   : ""}
-                {!amountValue && (
-                  <>
-                    {" · "}
-                    <button
-                      type="button"
-                      className="text-button"
-                      onClick={() => {
-                        setAmountValue(String(checkedPhoto.result!.total_computed));
-                        // Сумма с накладной — в её валюте (продавец нажал сам).
-                        if (suggestedCurrency) {
-                          setAmountCurrency(suggestedCurrency === debtCurrency ? null : suggestedCurrency);
-                          setRateValue("");
-                        }
-                      }}
-                    >
-                      Подставить
-                    </button>
-                  </>
-                )}
               </p>
             )}
             {paperMismatch && (
               <p className="photo-check-mismatch" role="status">
-                Итог на бумаге не равен сумме строк: возможно, какая-то строка не распозналась
-                или в накладной ошибка в сложении. Проверьте фото и сумму.
+                Сумма строк и итог накладной не сходятся: возможно, какая-то строка не распозналась
+                или в накладной ошибка в сложении. Посмотрите на фото, какая сумма верная.
               </p>
             )}
           </div>
