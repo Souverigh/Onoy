@@ -1122,12 +1122,17 @@ td small {
 .amount-suggestions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
-  margin-top: -4px;
 }
 .amount-suggestions .button {
-  flex: 1 1 auto;
-  min-height: 44px;
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: #eaf4e5;
+  border-color: #cfe3c6;
+  color: #315b3a;
+  font-size: 15px;
 }
 .payment-direction {
   border: 1px solid var(--line);

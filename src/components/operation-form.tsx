@@ -1127,15 +1127,15 @@ export function OperationForm({
                 {paperTotal != null && <> Итог накладной: {money(paperTotal, docCurrency)}.</>}
               </p>
             )}
-            {checkedPhoto?.result && !noPrices && (
-              <p className={checkMismatch || paperMismatch ? "photo-check-mismatch" : "photo-check-ok"}>
+            {/* Сумма не введена — числа уже на кнопках «Взять», плашка не нужна. */}
+            {checkedPhoto?.result && !noPrices && enteredAmount > 0 && !checkMismatch && !paperMismatch && (
+              <p className="photo-check-ok">✓ Совпадает с накладной</p>
+            )}
+            {checkedPhoto?.result && !noPrices && enteredAmount > 0 && (checkMismatch || paperMismatch) && (
+              <p className="photo-check-mismatch">
                 Сумма строк: {money(checkedPhoto.result.total_computed, docCurrency)}
                 {paperTotal != null && <> · итог накладной: {money(paperTotal, docCurrency)}</>}
-                {enteredAmount
-                  ? checkMismatch
-                    ? " — отличается от введённой суммы"
-                    : " — совпадает с введённой суммой"
-                  : ""}
+                {checkMismatch && " — отличается от введённой суммы"}
               </p>
             )}
             {paperMismatch && (
