@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getContext } from "@/lib/context";
 import { renderInvoicePdf } from "@/lib/pdf/invoice";
 import { money } from "@/lib/format";
+import { activeShareToken, balanceNote, saleInvoiceInfo } from "@/lib/sale-invoice";
 
 const kindLabel: Record<string, string> = {
   purchase: "Приходная накладная",
-  sale: "Расходная накладная",
+  sale: "Товарная накладная",
   payment: "Оплата",
 };
 
@@ -28,15 +29,20 @@ export async function GET(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   let partyName = "—";
+  let partyPhone = "";
+  let saleId: string | null = null;
+  let customerId: string | null = null;
   let total = 0;
   let date = doc.data.created_at;
   // Валюта накладной: исходная, если записана в другой валюте, иначе — долга.
   let currency: string | null = null;
   let debtNote: string | null = null;
+  let debtCurrency: string | null = null;
   const applyCurrency = (
     row: { total: string | number; original_amount: string | null; original_currency: string | null; fx_rate: string | null },
     partyCurrency: string | null,
   ) => {
+    debtCurrency = partyCurrency;
     if (row.original_amount != null && row.original_currency) {
       total = Number(row.original_amount);
       currency = row.original_currency;
@@ -55,17 +61,18 @@ export async function GET(
       date = row.data.occurred_at;
       const supplier = await db
         .from("suppliers")
-        .select("name,currency")
+        .select("name,phone,currency")
         .eq("organization_id", organizationId)
         .eq("id", row.data.supplier_id)
         .maybeSingle();
       partyName = supplier.data?.name ?? partyName;
+      partyPhone = supplier.data?.phone ?? "";
       applyCurrency(row.data, supplier.data?.currency ?? null);
     }
   } else if (doc.data.kind === "sale") {
     const row = await db
       .from("sales")
-      .select("total,occurred_at,customer_id,original_amount,original_currency,fx_rate")
+      .select("id,total,occurred_at,customer_id,original_amount,original_currency,fx_rate")
       .eq("organization_id", organizationId)
       .eq("document_id", id)
       .maybeSingle();
@@ -79,11 +86,13 @@ export async function GET(
         .eq("id", row.data.customer_id)
         .maybeSingle();
       partyName = customer.data?.name ?? partyName;
+      saleId = row.data.id;
+      customerId = row.data.customer_id;
       applyCurrency(row.data, customer.data?.currency ?? null);
     }
   }
 
-  const [shop, linesResult] = await Promise.all([
+  const [shop, linesResult, info, token] = await Promise.all([
     db.from("organizations").select("name,phone").eq("id", organizationId).maybeSingle(),
     db
       .from("document_lines")
@@ -91,20 +100,26 @@ export async function GET(
       .eq("organization_id", organizationId)
       .eq("document_id", id)
       .order("n"),
+    saleId ? saleInvoiceInfo(db, organizationId, saleId) : null,
+    customerId ? activeShareToken(db, organizationId, customerId) : null,
   ]);
 
   const origin = new URL(request.url).origin;
+  const isSale = doc.data.kind === "sale";
+  const shopParty = { name: shop.data?.name ?? "Магазин", phone: shop.data?.phone };
   const pdf = await renderInvoicePdf(origin, {
-    shopName: shop.data?.name ?? "Магазин",
-    shopPhone: shop.data?.phone ?? "",
+    shopName: shopParty.name,
     kindLabel: kindLabel[doc.data.kind ?? ""] ?? "Документ",
-    partyName,
-    date: new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium", timeZone: "Asia/Bishkek" }).format(
-      new Date(date),
-    ),
+    number: info?.number,
+    occurredAt: date,
     total,
     currency: currency ?? shopCurrency,
     debtNote,
+    balanceNote: info ? balanceNote(info.debtAfter, debtCurrency ?? shopCurrency) : null,
+    // Продажа: покупатель — клиент; приход: покупатель — магазин.
+    buyer: isSale ? { name: partyName, phone: info?.customerPhone } : shopParty,
+    seller: isSale ? { name: info?.sellerName ?? shopParty.name, phone: shopParty.phone } : { name: partyName, phone: partyPhone },
+    clientUrl: token ? `${origin}/c/${token}` : null,
     lines: (linesResult.data ?? []) as {
       n: number;
       name_raw: string;

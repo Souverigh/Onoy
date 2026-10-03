@@ -1362,6 +1362,12 @@ test("get_invoice_by_token: only a digitized, active sale of the link's own cust
   assert.equal(invoice.total, "960.00");
   assert.equal(invoice.lines.length, 1);
   assert.equal(invoice.lines[0].sum, "960.00");
+  // Шапка по образцу: номер среди продаж магазина и долг после этой накладной
+  // (отменённая позже продажа не считается).
+  assert.equal(typeof invoice.number, "number");
+  assert.ok(invoice.number > 0);
+  assert.equal(invoice.debt_after, "960.00");
+  assert.equal(invoice.customer_phone, "");
   for (const sale of [review.sale, foreign.sale, reversed.sale])
     await assert.rejects(db.query("select get_invoice_by_token($1,$2)", [token, sale]), /invalid_invoice/);
 

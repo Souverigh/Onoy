@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getContext } from "@/lib/context";
 import { renderInvoicePdf, ITEMS_FOOTER } from "@/lib/pdf/invoice";
-import { money, quantity } from "@/lib/format";
+import { money } from "@/lib/format";
 import { partyCurrency } from "@/lib/currency";
+import { activeShareToken, balanceNote, saleInvoiceInfo } from "@/lib/sale-invoice";
 
 // PDF продажи товарами со склада (строки — sale_items). Продажа по фото —
 // /documents/[id]/pdf.
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const [saleResult, itemsResult, shop] = await Promise.all([
     db
       .from("sales")
-      .select("id,total,occurred_at,original_amount,original_currency,fx_rate,customers(name,currency)")
+      .select("id,customer_id,total,occurred_at,original_amount,original_currency,fx_rate,customers(name,currency)")
       .eq("organization_id", organizationId)
       .eq("id", id)
       .maybeSingle(),
@@ -28,6 +29,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const sale = saleResult.data as
     | {
         id: string;
+        customer_id: string;
         total: string;
         occurred_at: string;
         original_amount: string | null;
@@ -40,27 +42,35 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!sale || !items.length) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const debtCurrency = partyCurrency(sale.customers, shopCurrency);
 
-  const pdf = await renderInvoicePdf(new URL(request.url).origin, {
+  const [info, token] = await Promise.all([
+    saleInvoiceInfo(db, organizationId, sale.id),
+    activeShareToken(db, organizationId, sale.customer_id),
+  ]);
+  const origin = new URL(request.url).origin;
+  const pdf = await renderInvoicePdf(origin, {
     shopName: shop.data?.name ?? "Магазин",
-    shopPhone: shop.data?.phone ?? "",
-    kindLabel: "Расходная накладная",
-    partyName: sale.customers?.name ?? "—",
-    date: new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium", timeZone: "Asia/Bishkek" }).format(new Date(sale.occurred_at)),
+    kindLabel: "Товарная накладная",
+    number: info.number,
+    occurredAt: sale.occurred_at,
     total: Number(sale.original_amount ?? sale.total),
     currency: sale.original_currency ?? debtCurrency,
     debtNote:
       sale.original_amount != null
         ? `В долг: ${money(sale.total, debtCurrency)} по курсу ${Number(sale.fx_rate)}.`
         : null,
+    balanceNote: balanceNote(info.debtAfter, debtCurrency),
+    buyer: { name: sale.customers?.name ?? "—", phone: info.customerPhone },
+    seller: { name: info.sellerName ?? shop.data?.name ?? "", phone: shop.data?.phone },
     lines: items.map((item, i) => ({
       n: item.n ?? i + 1,
       name_raw: item.name_snapshot,
-      qty: quantity(item.qty),
+      qty: item.qty,
       unit: item.unit ?? "шт",
-      price: quantity(item.price),
-      sum: quantity(item.line_total),
+      price: item.price,
+      sum: item.line_total,
     })),
     digitized: true,
+    clientUrl: token ? `${origin}/c/${token}` : null,
     footer: ITEMS_FOOTER,
   });
   return new NextResponse(new Uint8Array(pdf), {

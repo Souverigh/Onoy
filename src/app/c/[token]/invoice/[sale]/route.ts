@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAnonClient } from "@/lib/supabase/server";
 import { renderInvoicePdf, ITEMS_FOOTER, type InvoiceLine } from "@/lib/pdf/invoice";
-import { quantity } from "@/lib/format";
+import { balanceNote, parseSaleInvoiceInfo } from "@/lib/sale-invoice";
 
 type Invoice = {
   shop_name: string;
@@ -9,6 +9,8 @@ type Invoice = {
   customer_name: string;
   total: string;
   currency?: string;
+  /** Валюта долга клиента (для строки «Долг после накладной»). */
+  debt_currency?: string;
   occurred_at: string;
   lines: InvoiceLine[];
   /** Продажа товарами со склада — накладная из приложения, не по фото. */
@@ -31,18 +33,22 @@ export async function GET(
   if (error || !data) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const invoice = data as Invoice;
 
-  const pdf = await renderInvoicePdf(new URL(request.url).origin, {
+  const info = parseSaleInvoiceInfo(invoice);
+  const origin = new URL(request.url).origin;
+  const debtCurrency = invoice.debt_currency ?? invoice.currency ?? "KGS";
+  const pdf = await renderInvoicePdf(origin, {
     shopName: invoice.shop_name ?? "Магазин",
-    shopPhone: invoice.shop_phone ?? "",
-    kindLabel: "Расходная накладная",
-    partyName: invoice.customer_name,
-    date: new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium", timeZone: "Asia/Bishkek" }).format(
-      new Date(invoice.occurred_at),
-    ),
+    kindLabel: "Товарная накладная",
+    number: info.number,
+    occurredAt: invoice.occurred_at,
     total: Number(invoice.total),
     currency: invoice.currency ?? "KGS",
-    lines: invoice.items ? invoice.lines.map((l) => ({ ...l, qty: quantity(l.qty) })) : invoice.lines,
+    balanceNote: balanceNote(info.debtAfter, debtCurrency),
+    buyer: { name: invoice.customer_name, phone: info.customerPhone },
+    seller: { name: info.sellerName ?? invoice.shop_name ?? "", phone: invoice.shop_phone },
+    lines: invoice.lines,
     digitized: true,
+    clientUrl: `${origin}/c/${token}`,
     footer: invoice.items ? ITEMS_FOOTER : undefined,
   });
 
