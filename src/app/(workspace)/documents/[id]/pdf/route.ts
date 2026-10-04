@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getContext } from "@/lib/context";
 import { renderInvoicePdf } from "@/lib/pdf/invoice";
 import { money } from "@/lib/format";
+import { shopPromoUrl } from "@/lib/promo";
 import { activeShareToken, balanceNote, saleInvoiceInfo } from "@/lib/sale-invoice";
 
 const kindLabel: Record<string, string> = {
@@ -92,7 +93,8 @@ export async function GET(
     }
   }
 
-  const [shop, linesResult, info, token] = await Promise.all([
+  const origin = new URL(request.url).origin;
+  const [shop, linesResult, info, token, promoUrl] = await Promise.all([
     db.from("organizations").select("name,phone").eq("id", organizationId).maybeSingle(),
     db
       .from("document_lines")
@@ -102,9 +104,9 @@ export async function GET(
       .order("n"),
     saleId ? saleInvoiceInfo(db, organizationId, saleId) : null,
     customerId ? activeShareToken(db, organizationId, customerId) : null,
+    shopPromoUrl(db, origin, organizationId),
   ]);
 
-  const origin = new URL(request.url).origin;
   const isSale = doc.data.kind === "sale";
   const shopParty = { name: shop.data?.name ?? "Магазин", phone: shop.data?.phone };
   const pdf = await renderInvoicePdf(origin, {
@@ -120,6 +122,7 @@ export async function GET(
     buyer: isSale ? { name: partyName, phone: info?.customerPhone } : shopParty,
     seller: isSale ? { name: info?.sellerName ?? shopParty.name, phone: shopParty.phone } : { name: partyName, phone: partyPhone },
     clientUrl: token ? `${origin}/c/${token}` : null,
+    promoUrl,
     lines: (linesResult.data ?? []) as {
       n: number;
       name_raw: string;

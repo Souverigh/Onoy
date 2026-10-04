@@ -38,10 +38,14 @@ const styles = StyleSheet.create({
   signLine: { borderBottom: `0.75 solid ${BLUE}`, alignSelf: "stretch", height: 10 },
   signCaption: { fontSize: 7, color: MUTED, marginTop: 2 },
   phone: { marginTop: 6 },
-  qrBlock: { flexDirection: "row", alignItems: "center", marginTop: 12 },
+  qrRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12 },
+  qrBlock: { flexDirection: "row", alignItems: "center" },
   qrText: { marginLeft: 14, color: MUTED, fontSize: 9, lineHeight: 1.4 },
   footer: { position: "absolute", bottom: 10, left: 40, right: 40, fontSize: 8, color: "#9aa39a" },
 });
+
+/** Реклама Depter внизу накладной — если нет ссылки-счётчика магазина (src/lib/promo.ts). */
+const PROMO_URL = "https://depter.kg";
 
 export const ITEMS_FOOTER = "Накладная оформлена в Depter по складу магазина.";
 
@@ -69,6 +73,8 @@ export type InvoiceData = {
   digitized: boolean;
   /** Ссылка клиента (накладные, долг, оплата) — печатается QR-кодом. */
   clientUrl?: string | null;
+  /** Рекламный QR магазина (/r/<код>) — переходы видны в админке. */
+  promoUrl?: string | null;
   /** Своя подпись внизу (накладная из приложения — не по фото). */
   footer?: string;
 };
@@ -180,14 +186,24 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
           <Party label="ПРОДАВЕЦ" party={data.seller} />
         </View>
 
-        {data.clientUrl && (
-          <View style={styles.qrBlock} wrap={false}>
-            <QrCode text={data.clientUrl} size={54} />
-            <Text style={styles.qrText}>
-              Накладные, долг и оплата —{"\n"}по QR-коду или ссылке: {data.clientUrl.replace(/^https?:\/\//, "")}
+        <View style={styles.qrRow} wrap={false}>
+          {data.clientUrl ? (
+            <View style={styles.qrBlock}>
+              <QrCode text={data.clientUrl} size={54} />
+              <Text style={styles.qrText}>
+                Накладные, долг и оплата —{"\n"}по QR-коду или ссылке: {data.clientUrl.replace(/^https?:\/\//, "")}
+              </Text>
+            </View>
+          ) : (
+            <View />
+          )}
+          <View style={styles.qrBlock}>
+            <Text style={[styles.qrText, { marginLeft: 0, marginRight: 10, textAlign: "right" }]}>
+              Накладная сделана в Depter —{"\n"}учёт долгов и склада: depter.kg
             </Text>
+            <QrCode text={data.promoUrl ?? PROMO_URL} size={54} />
           </View>
-        )}
+        </View>
 
         <Text style={styles.footer} fixed>
           {data.footer ??

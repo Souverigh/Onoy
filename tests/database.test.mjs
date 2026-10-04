@@ -2457,3 +2457,29 @@ test("member email follows a confirmed email change in auth.users", async () => 
     (await db.query("select email from organization_members where user_id=$1", [b])).rows.every((r) => r.email !== "new@shop.kg"),
   );
 });
+
+test("promo QR on invoices: per-shop code, anonymous click tracking, counts only for the platform admin", async () => {
+  await user(a);
+  const ref = (await db.query("select promo_ref($1) as r", [orgA])).rows[0].r;
+  assert.match(ref, /^[a-f0-9]{10}$/);
+  assert.equal((await db.query("select promo_ref($1) as r", [orgA])).rows[0].r, ref); // тот же код
+  await assert.rejects(db.query("select promo_ref($1)", [orgB]), /not_a_member/);
+  await assert.rejects(db.query("select * from admin_promo_clicks()"), /admin_only/); // владелец магазина не видит
+
+  await owner();
+  const link = (await db.query("select token from share_links where organization_id=$1 and revoked_at is null limit 1", [orgA])).rows[0].token;
+  await db.exec("SET ROLE anon; SELECT set_config('request.jwt.claim.sub','',false);");
+  assert.equal((await db.query("select promo_ref_by_token($1) as r", [link])).rows[0].r, ref);
+  assert.equal((await db.query("select promo_ref_by_token('0000') as r")).rows[0].r, null);
+  await db.query("select track_promo_click($1)", [ref]);
+  await db.query("select track_promo_click($1)", [ref]);
+  await db.query("select track_promo_click('ffffffffff')"); // чужой код — пропускается
+  await assert.rejects(db.query("select * from private.promo_clicks"), /permission denied/);
+  await assert.rejects(db.query("select * from admin_promo_clicks()"), /permission denied/);
+
+  await owner();
+  await db.query("insert into private.platform_admins(user_id) values ($1) on conflict do nothing", [b]);
+  await user(b);
+  const rows = (await db.query("select * from admin_promo_clicks()")).rows;
+  assert.deepEqual(rows.map((r) => [r.organization_id, r.clicks_7d, r.clicks_total]), [[orgA, 2, 2]]);
+});

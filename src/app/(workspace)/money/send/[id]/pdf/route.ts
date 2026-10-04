@@ -3,6 +3,7 @@ import { getContext } from "@/lib/context";
 import { renderInvoicePdf, ITEMS_FOOTER } from "@/lib/pdf/invoice";
 import { money } from "@/lib/format";
 import { partyCurrency } from "@/lib/currency";
+import { shopPromoUrl } from "@/lib/promo";
 import { activeShareToken, balanceNote, saleInvoiceInfo } from "@/lib/sale-invoice";
 
 // PDF продажи товарами со склада (строки — sale_items). Продажа по фото —
@@ -42,11 +43,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!sale || !items.length) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const debtCurrency = partyCurrency(sale.customers, shopCurrency);
 
-  const [info, token] = await Promise.all([
+  const origin = new URL(request.url).origin;
+  const [info, token, promoUrl] = await Promise.all([
     saleInvoiceInfo(db, organizationId, sale.id),
     activeShareToken(db, organizationId, sale.customer_id),
+    shopPromoUrl(db, origin, organizationId),
   ]);
-  const origin = new URL(request.url).origin;
   const pdf = await renderInvoicePdf(origin, {
     shopName: shop.data?.name ?? "Магазин",
     kindLabel: "Товарная накладная",
@@ -71,6 +73,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     })),
     digitized: true,
     clientUrl: token ? `${origin}/c/${token}` : null,
+    promoUrl,
     footer: ITEMS_FOOTER,
   });
   return new NextResponse(new Uint8Array(pdf), {

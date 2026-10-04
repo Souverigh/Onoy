@@ -23,6 +23,9 @@ type Shop = {
   signup_code: string | null;
 };
 
+/** Переходы по рекламному QR с накладных магазина (admin_promo_clicks). */
+type PromoClicks = { organization_id: string; clicks_7d: number; clicks_30d: number; clicks_total: number };
+
 const date = (iso: string) =>
   new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", day: "numeric", month: "short", year: "numeric" }).format(
     new Date(iso),
@@ -38,9 +41,11 @@ export default async function AdminShops({
 }) {
   const { db } = await requirePlatformAdmin();
   const { saved, error } = await searchParams;
-  const { data, error: loadError } = await db.rpc("admin_shops");
+  const [{ data, error: loadError }, promo] = await Promise.all([db.rpc("admin_shops"), db.rpc("admin_promo_clicks")]);
   if (loadError) throw new Error("Не удалось загрузить магазины");
   const shops = (data ?? []) as Shop[];
+  // Миграция переходов ещё не применена — показываем прочерк.
+  const clicks = promo.error ? null : new Map(((promo.data ?? []) as PromoClicks[]).map((c) => [c.organization_id, c]));
   const today = bishkekDate();
   const active = shops.filter((s) => !s.blocked_at && s.records_7d >= ACTIVE_PER_WEEK).length;
 
@@ -103,6 +108,14 @@ export default async function AdminShops({
                 <div>
                   <dt>Клиентов</dt>
                   <dd>{s.customers}</dd>
+                </div>
+                <div>
+                  <dt>Переходы по QR с накладных: 7 / 30 дней / всего</dt>
+                  <dd>
+                    {clicks
+                      ? `${clicks.get(s.id)?.clicks_7d ?? 0} / ${clicks.get(s.id)?.clicks_30d ?? 0} / ${clicks.get(s.id)?.clicks_total ?? 0}`
+                      : "—"}
+                  </dd>
                 </div>
                 <div>
                   <dt>Gemini, $</dt>
