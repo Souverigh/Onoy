@@ -5025,3 +5025,153 @@ tr.row-link:has(a[data-pending]) {
     padding-bottom: calc(var(--bottom-nav) + 24px + 70px);
   }
 }
+
+/* --- Страница входа для новых магазинов (04.10.2026) -------------------- */
+/* Слева — о Depter (листается), справа — вход, всегда на экране. На
+   телефоне: заголовок → вход → о Depter. */
+.auth.landing {
+  grid-template-areas: "intro form" "about form";
+  grid-template-rows: auto 1fr;
+}
+.landing .auth-intro {
+  grid-area: intro;
+  gap: 32px;
+  min-height: 82vh;
+}
+.landing .auth-form {
+  grid-area: form;
+  align-self: start;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.landing-more {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 15px;
+}
+.landing-about {
+  grid-area: about;
+  background: #244d40;
+  color: white;
+  padding: 20px 60px 60px;
+}
+.landing-about h2 {
+  font-size: 26px;
+  margin: 0 0 14px;
+}
+.landing-about h2:not(:first-of-type) {
+  margin-top: 48px;
+}
+.landing-about .eyebrow,
+.landing-about small {
+  color: #b8cbb7;
+}
+.landing-about small {
+  display: block;
+  margin-top: 48px;
+}
+.landing-lead {
+  color: #d0d9ce;
+  line-height: 1.7;
+  max-width: 560px;
+}
+.landing-features {
+  list-style: none;
+  padding: 0;
+  margin: 26px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+  gap: 12px;
+}
+.landing-features li {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.landing-features span {
+  color: #d0d9ce;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.landing-steps {
+  margin: 0 0 20px;
+  padding-left: 22px;
+  color: #d0d9ce;
+  line-height: 1.9;
+}
+.contact-links {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.contact-links a {
+  display: inline-flex;
+  font-weight: 600;
+}
+.contact-links svg {
+  display: block;
+}
+.contact-links a:hover svg {
+  opacity: 0.85;
+}
+.landing-feedback {
+  max-width: 460px;
+}
+.landing-about form label {
+  color: #d0d9ce;
+}
+.landing-about .button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.landing-about .button.primary:hover {
+  background: #cbe68c;
+}
+.landing-about .notice {
+  max-width: 460px;
+}
+.landing-trap {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+@media (max-width: 900px) {
+  .auth.landing {
+    display: block;
+  }
+  .landing .auth-intro {
+    min-height: 0;
+  }
+  .landing .auth-form {
+    position: static;
+    height: auto;
+  }
+  .landing-about {
+    padding: 40px;
+  }
+}
+@media (max-width: 560px) {
+  .landing-about {
+    padding: 32px 22px 40px;
+  }
+  .landing-about h2 {
+    font-size: 22px;
+  }
+}
+.admin-feedback-text {
+  white-space: pre-wrap;
+  margin: 12px 0 0;
+  line-height: 1.6;
+}

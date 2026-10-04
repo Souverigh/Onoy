@@ -2483,3 +2483,27 @@ test("promo QR on invoices: per-shop code, anonymous click tracking, counts only
   const rows = (await db.query("select * from admin_promo_clicks()")).rows;
   assert.deepEqual(rows.map((r) => [r.organization_id, r.clicks_7d, r.clicks_total]), [[orgA, 2, 2]]);
 });
+
+test("feedback from the login page: anonymous send with limits, read only by the platform admin", async () => {
+  await owner();
+  await db.exec("SET ROLE anon; SELECT set_config('request.jwt.claim.sub','',false);");
+  await db.query("select send_feedback($1,$2,$3)", [" Айбек ", "+996 555 000 000", "Хочу подключить магазин"]);
+  await assert.rejects(db.query("select send_feedback('', '+996', 'текст')"), /invalid_feedback/);
+  await assert.rejects(db.query("select send_feedback('Айбек', '+996 555', $1)", ["x".repeat(2001)]), /invalid_feedback/);
+  await assert.rejects(db.query("select * from private.feedback_messages"), /permission denied/);
+  await assert.rejects(db.query("select * from admin_feedback()"), /permission denied/);
+
+  await user(a);
+  await assert.rejects(db.query("select * from admin_feedback()"), /admin_only/); // владелец магазина не видит
+
+  await owner();
+  await db.query("insert into private.platform_admins(user_id) values ($1) on conflict do nothing", [b]);
+  await user(b);
+  const rows = (await db.query("select * from admin_feedback()")).rows;
+  assert.deepEqual(rows.map((r) => [r.name, r.contact, r.message]), [["Айбек", "+996 555 000 000", "Хочу подключить магазин"]]);
+
+  await owner();
+  await db.query("insert into private.feedback_messages(name, contact, message) select 'спам', '000', 'спам' from generate_series(1, 29)");
+  await db.exec("SET ROLE anon;");
+  await assert.rejects(db.query("select send_feedback('Ещё', '+996 555', 'текст')"), /too_many/);
+});

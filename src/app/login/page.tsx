@@ -4,18 +4,31 @@ import { configured } from "@/lib/supabase/server";
 import { Submit } from "@/components/submit";
 import { cookies } from "next/headers";
 import { EXPIRED_COOKIE, INACTIVITY_LIMIT_MS } from "@/lib/session-timeout";
+import { ContactLinks } from "@/components/contact-links";
+import { sendFeedback } from "./actions";
+
+// Сюда же ведёт QR с накладных (/r/<код>): новому магазину объясняем, что такое
+// Depter, но вход всегда на виду — справа на компьютере, сразу под заголовком на телефоне.
+const features = [
+  ["Долги клиентов и поставщиков", "Кто сколько должен вам и кому должны вы — с историей каждой продажи и оплаты."],
+  ["Тетрадь по фото", "Сфотографируйте страницу тетради или накладную — Depter сам перенесёт записи."],
+  ["Накладные клиенту", "PDF или ссылка в WhatsApp. Клиент видит свой долг по ссылке, без регистрации."],
+  ["Склад", "Остатки товаров: приход и продажа меняют их автоматически."],
+  ["Продавцы", "У каждого свой вход. Владелец видит, кто и что записал."],
+  ["Итоги дня и отчёты", "Закрытие дня, просроченные обещания оплатить, выгрузка в Excel."],
+];
 export default async function Login({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; feedback?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, feedback } = await searchParams;
   const ready = configured();
   // Прокси вышел из сессии после бездействия (src/proxy.ts) — объясняем.
   const expired = (await cookies()).has(EXPIRED_COOKIE);
   const limitHours = INACTIVITY_LIMIT_MS / 3_600_000;
   return (
-    <main className="auth">
+    <main className="auth landing">
       <section className="auth-intro">
         <a className="brand" href="/">
           Depter<span>учёт долгов без лишнего</span>
@@ -32,8 +45,10 @@ export default async function Login({
             <br />
             Всё нужное в одном месте.
           </p>
+          <a className="landing-more" href="#about">
+            Что такое Depter? ↓
+          </a>
         </div>
-        <small>Сделано для ежедневной работы</small>
       </section>
       <section className="auth-form">
         <div className="auth-card">
@@ -96,6 +111,65 @@ export default async function Login({
             </>
           )}
         </div>
+      </section>
+      <section className="landing-about" id="about">
+        <span className="eyebrow">ЧТО ТАКОЕ DEPTER</span>
+        <h2>Тетрадь долгов магазина — только онлайн</h2>
+        <p className="landing-lead">
+          Depter заменяет бумажную тетрадь: записи не теряются, суммы считаются сами, а клиент в любой момент видит,
+          сколько он должен. Работает в браузере на телефоне и компьютере — ничего устанавливать не нужно.
+        </p>
+        <ul className="landing-features">
+          {features.map(([title, text]) => (
+            <li key={title}>
+              <strong>{title}</strong>
+              <span>{text}</span>
+            </li>
+          ))}
+        </ul>
+
+        <h2>Как подключить магазин</h2>
+        <ol className="landing-steps">
+          <li>Напишите нам в Telegram или WhatsApp либо оставьте заявку ниже.</li>
+          <li>Мы расскажем о тарифах и выдадим код доступа.</li>
+          <li>Зарегистрируйтесь — старую тетрадь поможем перенести по фото.</li>
+        </ol>
+        <ContactLinks showPhone />
+
+        <h2 id="feedback">Оставить заявку или вопрос</h2>
+        {feedback === "sent" ? (
+          <p className="notice success" role="status">
+            Спасибо! Сообщение отправлено — мы ответим в ближайшее время.
+          </p>
+        ) : (
+          <form action={sendFeedback} className="landing-feedback">
+            {feedback && (
+              <p role="alert" className="form-error">
+                {feedback === "invalid"
+                  ? "Заполните имя, телефон или Telegram и сообщение."
+                  : feedback === "busy"
+                    ? "Сейчас слишком много заявок. Попробуйте позже или напишите нам в WhatsApp."
+                    : "Не удалось отправить. Напишите нам в Telegram или WhatsApp."}
+              </p>
+            )}
+            <label>
+              Имя
+              <input name="name" required maxLength={120} autoComplete="name" />
+            </label>
+            <label>
+              Телефон или Telegram
+              <input name="contact" required minLength={3} maxLength={120} autoComplete="tel" />
+            </label>
+            <label>
+              Сообщение
+              <textarea name="message" required maxLength={2000} placeholder="Например: магазин стройматериалов, хотим вести долги клиентов" />
+            </label>
+            {/* Ловушка для ботов: людям не видна. */}
+            <input className="landing-trap" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+            <Submit>Отправить</Submit>
+          </form>
+        )}
+        <small>Сделано для ежедневной работы</small>
       </section>
     </main>
   );
