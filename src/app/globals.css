@@ -5340,6 +5340,12 @@ tr.row-link:has(a[data-pending]) {
   flex-direction: column;
   gap: 2px;
 }
+/* Подпись с «!» — значок в строку рядом с текстом. */
+.day-line > span.label-with-tip {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
 .day-line small {
   font-size: 13px;
 }
