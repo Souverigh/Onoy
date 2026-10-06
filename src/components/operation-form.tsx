@@ -24,6 +24,7 @@ import type { InvoiceResult } from "@/lib/adre/types";
 import { Submit } from "./submit";
 import { RuDateInput, bishkekNow } from "./ru-date-input";
 import { DatePicker } from "./date-picker";
+import { InfoTip } from "./info-tip";
 import { ruDate } from "@/lib/ru-date";
 import { ContactPicker } from "./contact-picker";
 import { PartyPicker, type PickerParty } from "./party-picker";
@@ -884,6 +885,12 @@ export function OperationForm({
             <span className="invoice-dropzone-title">
               Фото накладной
               {pages.length > 0 && <span className="muted"> · страниц: {pages.length}</span>}
+              {pages.length === 0 && !useExisting && (
+                <InfoTip>
+                  {kind === "sale" ? "Клиента" : "Поставщика"} и сумму подставим с фото. Несколько листов — по
+                  порядку, PDF — целиком.
+                </InfoTip>
+              )}
             </span>
             {useExisting && existingDocument && pages.length === 0 && (
               <ol className="page-thumbs">
@@ -958,12 +965,6 @@ export function OperationForm({
                 </label>
               </div>
             )}
-            {pages.length === 0 && !useExisting && (
-              <small className="muted">
-                {kind === "sale" ? "Клиента" : "Поставщика"} и сумму подставим с фото. Несколько листов — по
-                порядку, PDF — целиком.
-              </small>
-            )}
             <input
               ref={pagesInput}
               // Фото уже загружены при проверке — второй раз не отправляем,
@@ -977,7 +978,10 @@ export function OperationForm({
         )}
         {kind === "payment" && !prefill && (
           <div className="photo-field receipt-field">
-            <span>Чек или скриншот перевода (необязательно)</span>
+            <span className="invoice-dropzone-title">
+              Чек или скриншот перевода (необязательно)
+              {!receiptFile && <InfoTip>Сумму, дату, номер перевода и клиента заполним с чека.</InfoTip>}
+            </span>
             {receiptFile ? (
               <div className="receipt-picked">
                 {receiptPreview ? (
@@ -1025,7 +1029,6 @@ export function OperationForm({
                 />
               </label>
             )}
-            {!receiptFile && <small className="muted">Сумму, дату, номер перевода и клиента заполним с чека.</small>}
           </div>
         )}
         {kind === "payment" && !fixedDirection && (
@@ -1126,7 +1129,18 @@ export function OperationForm({
           </div>
         )}
         <div className="amount-head">
-          <span>Сколько?</span>
+          <span className="label-with-tip">
+            Сколько?
+            <InfoTip>
+              {kind === "purchase"
+                ? "Сумма сразу добавится к долгу перед поставщиком. Фото — основание записи."
+                : kind === "sale"
+                  ? "Сумма сразу добавится к долгу клиента. Если клиент заплатил — отметьте наличные."
+                  : direction === "incoming"
+                    ? "Оплата сразу уменьшит долг клиента."
+                    : "Оплата сразу уменьшит ваш долг поставщику."}
+            </InfoTip>
+          </span>
           <span className="currency-pills" role="group" aria-label="Валюта суммы">
             {CURRENCIES.map((c) => (
               <button
@@ -1329,7 +1343,10 @@ export function OperationForm({
         )}
         {kind === "purchase" && (
           <label>
-            Сразу оплатили поставщику, {CURRENCY_SIGN[debtCurrency]} (необязательно)
+            <span className="label-with-tip">
+              Сразу оплатили поставщику, {CURRENCY_SIGN[debtCurrency]} (необязательно)
+              <InfoTip>Запишем оплату поставщику вместе с товаром — долг перед ним вырастет только на остаток.</InfoTip>
+            </span>
             <input
               name="paid_now"
               inputMode="decimal"
@@ -1337,9 +1354,6 @@ export function OperationForm({
               pattern="[0-9 ]+([.,][0-9]{1,2})?"
               placeholder="0"
             />
-            <small className="muted">
-              Запишем оплату поставщику вместе с товаром — долг перед ним вырастет только на остаток.
-            </small>
           </label>
         )}
         {kind === "sale" && (
@@ -1485,13 +1499,6 @@ export function OperationForm({
                 : confirmLabel}
           </Submit>
         </div>
-        <p className="operation-hint">
-          {kind === "purchase"
-            ? "Сумма сразу добавится к долгу перед поставщиком. Фото — основание записи."
-            : kind === "sale"
-              ? "Сумма сразу добавится к долгу клиента. Если клиент заплатил — отметьте наличные."
-              : direction === "incoming" ? "Оплата сразу уменьшит долг клиента." : "Оплата сразу уменьшит ваш долг поставщику."}
-        </p>
       </form>
     </>
   );
