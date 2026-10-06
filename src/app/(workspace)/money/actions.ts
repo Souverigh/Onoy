@@ -881,6 +881,39 @@ export async function commitAdjustment(form: FormData) {
     .eq("id", party)
     .maybeSingle();
   if (current.data && Number(amount) - Math.max(Number(current.data.balance), 0) > 0.005) redirect(`${back}&error=over`);
+  // Возврат строками (этап 2): сумму и проверки считает база по цене покупки.
+  const lines = side === "customers" && kind === "return" ? returnLinesInput(form.get("return_lines")) : null;
+  if (lines?.length) {
+    const returned = await db.rpc("commit_return", {
+      p_org: organizationId,
+      p_customer: party,
+      p_lines: lines,
+      p_note: note,
+      p_idempotency_key: idempotencyKey,
+    });
+    if (!returned.error) {
+      revalidatePath("/", "layout");
+      redirect(`/${side}/${party}?adjusted=${kind}`);
+    }
+    const message = returned.error.message;
+    // Миграция return_items ещё не применена — записываем суммой, как раньше.
+    if (!/commit_return|PGRST202|schema cache/i.test(message) || /return_over_qty|over_debt|invalid_line/.test(message))
+      redirect(
+        `${back}&error=${
+          message.includes("return_over_qty")
+            ? "over_qty"
+            : message.includes("over_debt")
+              ? "over"
+              : message.includes("idempotency_conflict")
+                ? "retry"
+                : message.includes("invalid_note")
+                  ? "note"
+                  : message.includes("invalid_line")
+                    ? "lines"
+                    : "invalid"
+        }`,
+      );
+  }
   const result = await db.rpc("commit_adjustment", {
     p_org: organizationId,
     p_direction: side === "customers" ? "incoming" : "outgoing",
@@ -898,6 +931,25 @@ export async function commitAdjustment(form: FormData) {
   }
   revalidatePath("/", "layout");
   redirect(`/${side}/${party}?adjusted=${kind}`);
+}
+
+/** Строки возврата из формы: [{sale_item|document_line: uuid, qty: "2.5"}]. */
+function returnLinesInput(raw: FormDataEntryValue | null): { sale_item?: string; document_line?: string; qty: string }[] | null {
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed) || parsed.length > 200) return null;
+    const lines = parsed.map((l: { sale_item?: unknown; document_line?: unknown; qty?: unknown }) => {
+      const qty = String(l.qty ?? "");
+      if (!/^[0-9]{1,13}(\.[0-9]{1,3})?$/.test(qty)) throw new Error("qty");
+      if (typeof l.sale_item === "string" && uuidPattern.test(l.sale_item)) return { sale_item: l.sale_item, qty };
+      if (typeof l.document_line === "string" && uuidPattern.test(l.document_line)) return { document_line: l.document_line, qty };
+      throw new Error("line");
+    });
+    return lines;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -1112,8 +1164,20 @@ export async function reverseExpense(form: FormData) {
   redirect(`/money/expense/${id}?reversed=1`);
 }
 
-/** Строка, которую клиент купил: цена — в валюте его долга. */
-export type BoughtLine = { id: string; name: string; qty: number; unit: string; price: number; date: string };
+/**
+ * Строка, которую клиент купил: цена — в валюте его долга; `left` — сколько
+ * ещё можно вернуть (купил минус прошлые возвраты).
+ */
+export type BoughtLine = {
+  id: string;
+  source: "sale_item" | "document_line";
+  name: string;
+  qty: number;
+  left: number;
+  unit: string;
+  price: number;
+  date: string;
+};
 
 const RETURN_DAYS = 90;
 
@@ -1177,6 +1241,24 @@ export async function customerBoughtLines(customerId: string): Promise<BoughtLin
     qty: string;
     price: string;
   }[];
+  // Уже вернули (без отменённых возвратов). Таблицы нет, пока миграция
+  // return_items не применена, — тогда прошлых возвратов строками нет.
+  const returnedResult = await db
+    .from("return_items")
+    .select("sale_item_id,document_line_id,qty,payments!inner(reversed_at)")
+    .eq("organization_id", organizationId)
+    .in("sale_id", sales.map((s) => s.id))
+    .is("payments.reversed_at", null)
+    .range(0, 4999);
+  const returned = new Map<string, number>();
+  for (const r of (returnedResult.error ? [] : (returnedResult.data ?? [])) as {
+    sale_item_id: string | null;
+    document_line_id: string | null;
+    qty: string;
+  }[]) {
+    const key = r.sale_item_id ?? r.document_line_id ?? "";
+    returned.set(key, (returned.get(key) ?? 0) + Number(r.qty));
+  }
   // Продажа в $ при долге в сомах: строки в $, долг — total; множитель — её курс.
   const factor = (s: (typeof sales)[number]) =>
     s.original_amount && Number(s.original_amount) > 0 ? Number(s.total) / Number(s.original_amount) : 1;
@@ -1185,12 +1267,18 @@ export async function customerBoughtLines(customerId: string): Promise<BoughtLin
     const f = factor(s);
     const date = bishkekDate(new Date(s.occurred_at));
     const own = withItems.has(s.id)
-      ? items.filter((i) => i.sale_id === s.id).map((i) => ({ id: i.id, name: i.name_snapshot, unit: i.unit, qty: i.qty, price: i.price }))
-      : docLines.filter((l) => l.document_id === s.document_id).map((l) => ({ id: l.id, name: l.name_raw, unit: l.unit, qty: l.qty, price: l.price }));
+      ? items
+          .filter((i) => i.sale_id === s.id)
+          .map((i) => ({ id: i.id, source: "sale_item" as const, name: i.name_snapshot, unit: i.unit, qty: i.qty, price: i.price }))
+      : docLines
+          .filter((l) => l.document_id === s.document_id)
+          .map((l) => ({ id: l.id, source: "document_line" as const, name: l.name_raw, unit: l.unit, qty: l.qty, price: l.price }));
     for (const l of own) {
       const price = Math.round(Number(l.price) * f * 100) / 100;
-      if (!(Number(l.qty) > 0) || !(price > 0)) continue;
-      out.push({ id: l.id, name: l.name, qty: Number(l.qty), unit: l.unit ?? "шт", price, date });
+      const qty = Number(l.qty);
+      const left = Math.round((qty - (returned.get(l.id) ?? 0)) * 1000) / 1000;
+      if (!(qty > 0) || !(price > 0) || !(left > 0)) continue;
+      out.push({ id: l.id, source: l.source, name: l.name, qty, left, unit: l.unit ?? "шт", price, date });
     }
   }
   return out;

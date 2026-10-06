@@ -81,7 +81,8 @@ export function AdjustmentForm({
   }, [kind, customerId]);
 
   // Сумма и комментарий — из выбранных строк (комментарий, пока его не правили).
-  const itemsTotal = round(picked.reduce((sum, p) => sum + qtyNumber(p.back) * p.price, 0));
+  // Как в базе (commit_return): каждая строка округляется до тыйына.
+  const itemsTotal = round(picked.reduce((sum, p) => sum + round(qtyNumber(p.back) * p.price), 0));
   const itemsNote = picked
     .filter((p) => qtyNumber(p.back) > 0)
     .map((p) => `${quantity(String(qtyNumber(p.back)))} × ${p.name}`)
@@ -106,7 +107,7 @@ export function AdjustmentForm({
     setError(null);
   }
   function step(p: Picked, delta: number) {
-    const next = Math.min(p.qty, Math.max(0, Math.round((qtyNumber(p.back) + delta) * 1000) / 1000));
+    const next = Math.min(p.left, Math.max(0, Math.round((qtyNumber(p.back) + delta) * 1000) / 1000));
     setBack(p.id, next ? String(next).replace(".", ",") : "");
   }
 
@@ -126,9 +127,9 @@ export function AdjustmentForm({
           setError("Выберите клиента или поставщика.");
           return;
         }
-        if (usingItems && picked.some((p) => qtyNumber(p.back) > p.qty)) {
+        if (usingItems && picked.some((p) => qtyNumber(p.back) > p.left)) {
           e.preventDefault();
-          setError("Нельзя вернуть больше, чем клиент брал.");
+          setError("Нельзя вернуть больше, чем клиент брал (за вычетом прошлых возвратов).");
           return;
         }
         const value = amountFromInput(shownAmount);
@@ -148,6 +149,17 @@ export function AdjustmentForm({
     >
       <input type="hidden" name="idempotency_key" value={idempotencyKey} />
       <input type="hidden" name="kind" value={kind} />
+      {usingItems && (
+        <input
+          type="hidden"
+          name="return_lines"
+          value={JSON.stringify(
+            picked
+              .filter((p) => qtyNumber(p.back) > 0)
+              .map((p) => ({ [p.source]: p.id, qty: String(Math.round(qtyNumber(p.back) * 1000) / 1000) })),
+          )}
+        />
+      )}
       <PartyPicker
         label="Клиент или поставщик"
         name="party"
@@ -194,7 +206,7 @@ export function AdjustmentForm({
               Что вернул?
               <InfoTip>
                 Только товары, которые клиент брал за последние 90 дней, — по цене, по которой он купил. Сумма и
-                комментарий посчитаются сами.
+                комментарий посчитаются сами, товар со склада вернётся в остаток.
               </InfoTip>
             </span>
             <input
@@ -224,6 +236,7 @@ export function AdjustmentForm({
                       <span>{l.name}</span>
                       <small className="muted">
                         брал {quantity(String(l.qty))} {l.unit} × {money(l.price, currency)} · {dayMonth(l.date)}
+                        {l.left < l.qty && <> · уже вернул {quantity(String(round(l.qty - l.left)))}</>}
                       </small>
                     </button>
                   </li>
@@ -238,7 +251,7 @@ export function AdjustmentForm({
                   <span className="return-picked-name">
                     {p.name}
                     <small className="muted">
-                      × {money(p.price, currency)} · брал {quantity(String(p.qty))} {p.unit}
+                      × {money(p.price, currency)} · можно вернуть {quantity(String(p.left))} {p.unit}
                     </small>
                   </span>
                   <span className="qty-stepper">
@@ -250,7 +263,7 @@ export function AdjustmentForm({
                       autoComplete="off"
                       aria-label={`Сколько вернул: ${p.name}`}
                       value={p.back}
-                      aria-invalid={qtyNumber(p.back) > p.qty || undefined}
+                      aria-invalid={qtyNumber(p.back) > p.left || undefined}
                       onChange={(e) => setBack(p.id, e.target.value)}
                     />
                     <button type="button" aria-label="Больше" onClick={() => step(p, 1)}>

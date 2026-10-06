@@ -32,7 +32,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 22);
+  assert.equal(rows.length, 23);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -2695,5 +2695,94 @@ test("claims: a confirmation can be undone by its owner within a minute, the cla
   assert.equal(await balance(), "0.00");
   // Второй раз вернуть нечего.
   await assert.rejects(db.query("select undo_confirm_claim($1,$2)", [orgA, claim]), /undo_expired/);
+  await owner();
+});
+
+test("returns by lines: price as bought, no more than bought, stock comes back, reversal undoes it", async () => {
+  await owner();
+  await user(a);
+  const k = (n) => `aaaa7777-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
+  const stock = async (id) => Number((await db.query("select stock from product_balances where id=$1", [id])).rows[0].stock);
+  const balance = async (id) => (await db.query("select balance from customer_balances where id=$1", [id])).rows[0].balance;
+  const breaker = (
+    await db.query("select save_product($1,null,'Автомат 16А возврат',null,'шт','360','300','0',array[]::text[],'20') as id", [orgA])
+  ).rows[0].id;
+  const buyer = (await db.query("insert into customers(organization_id,name) values ($1,'Возврат Медербек') returning id", [orgA])).rows[0].id;
+  const other = (await db.query("insert into customers(organization_id,name) values ($1,'Другой клиент') returning id", [orgA])).rows[0].id;
+  const sale = (
+    await db.query("select commit_sale_items($1,$2,$3,false,$4) as id", [
+      orgA, buyer, JSON.stringify([{ product: breaker, qty: "10", price: "360" }]), k(1),
+    ])
+  ).rows[0].id;
+  const item = (await db.query("select id from sale_items where sale_id=$1", [sale])).rows[0].id;
+  assert.equal(await stock(breaker), 10);
+  assert.equal(await balance(buyer), "3600.00");
+
+  // Вернул 2 шт: сумма по цене покупки, долг и остаток.
+  const ret = (
+    await db.query("select commit_return($1,$2,$3,'Вернул 2 автомата',$4) as id", [orgA, buyer, JSON.stringify([{ sale_item: item, qty: "2" }]), k(2)])
+  ).rows[0].id;
+  assert.deepEqual(
+    (await db.query("select kind,amount from payments where id=$1", [ret])).rows[0],
+    { kind: "return", amount: "720.00" },
+  );
+  assert.equal(await balance(buyer), "2880.00");
+  assert.equal(await stock(breaker), 12);
+  // Повтор ключа — та же запись.
+  assert.equal(
+    (await db.query("select commit_return($1,$2,$3,'Вернул 2 автомата',$4) as id", [orgA, buyer, JSON.stringify([{ sale_item: item, qty: "2" }]), k(2)])).rows[0].id,
+    ret,
+  );
+  // Больше купленного (осталось 8), чужая строка, чужой магазин — отказ.
+  await assert.rejects(
+    db.query("select commit_return($1,$2,$3,'x',$4)", [orgA, buyer, JSON.stringify([{ sale_item: item, qty: "9" }]), k(3)]),
+    /return_over_qty/,
+  );
+  await assert.rejects(
+    db.query("select commit_return($1,$2,$3,'x',$4)", [orgA, other, JSON.stringify([{ sale_item: item, qty: "1" }]), k(4)]),
+    /invalid_line/,
+  );
+  await user(b);
+  await assert.rejects(
+    db.query("select commit_return($1,$2,$3,'x',$4)", [orgA, buyer, JSON.stringify([{ sale_item: item, qty: "1" }]), k(5)]),
+    /not_a_member/,
+  );
+
+  // Продажа по фото: строки распознанной накладной; склад не меняется.
+  await owner();
+  const doc = (
+    await db.query(
+      "insert into documents(organization_id,storage_path,file_hash,mime_type,kind,status) values ($1,'ret-1','ret-1','image/jpeg','sale','digitized') returning id",
+      [orgA],
+    )
+  ).rows[0].id;
+  const line = (
+    await db.query("insert into document_lines(organization_id,document_id,n,name_raw,qty,unit,price) values ($1,$2,1,'Кара 24',5,'шт',100) returning id", [orgA, doc])
+  ).rows[0].id;
+  await db.query(
+    "insert into sales(organization_id,customer_id,total,status,document_id,idempotency_key) values ($1,$2,500,'posted',$3,$4)",
+    [orgA, buyer, doc, k(6)],
+  );
+  await user(a);
+  await db.query("select commit_return($1,$2,$3,'Вернул кару',$4)", [orgA, buyer, JSON.stringify([{ document_line: line, qty: "5" }]), k(7)]);
+  assert.equal(await balance(buyer), "2880.00");
+  await assert.rejects(
+    db.query("select commit_return($1,$2,$3,'x',$4)", [orgA, buyer, JSON.stringify([{ document_line: line, qty: "1" }]), k(8)]),
+    /return_over_qty/,
+  );
+
+  // Отмена возврата: долг и остаток назад, вернуть можно снова; больше долга — отказ.
+  await db.query("select reverse_payment($1,$2,'Ошиблись')", [orgA, ret]);
+  assert.equal(await balance(buyer), "3600.00");
+  assert.equal(await stock(breaker), 10);
+  await db.query("select commit_adjustment($1,'incoming',$2,'discount','1000','Скидка',$3)", [orgA, buyer, k(11)]);
+  assert.equal(await balance(buyer), "2600.00");
+  await assert.rejects(
+    db.query("select commit_return($1,$2,$3,'x',$4)", [orgA, buyer, JSON.stringify([{ sale_item: item, qty: "10" }]), k(9)]),
+    /over_debt/,
+  );
+  await db.query("select commit_return($1,$2,$3,'Вернул 7',$4)", [orgA, buyer, JSON.stringify([{ sale_item: item, qty: "7" }]), k(10)]);
+  assert.equal(await balance(buyer), "80.00");
+  assert.equal(await stock(breaker), 17);
   await owner();
 });

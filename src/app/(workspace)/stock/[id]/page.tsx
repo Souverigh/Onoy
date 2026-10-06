@@ -13,7 +13,7 @@ type Movement = {
   id: string;
   created_at: string;
   qty_delta: string;
-  reason: "purchase" | "sale" | "opening" | "adjustment" | "receipt";
+  reason: "purchase" | "sale" | "opening" | "adjustment" | "receipt" | "return";
   note: string | null;
   unit_cost: string | null;
   cost_currency: string | null;
@@ -21,6 +21,17 @@ type Movement = {
   purchase_id: string | null;
   sales: { reversed_at: string | null; customers: { name: string } | null } | null;
   purchases: { reversed_at: string | null; document_id: string | null; suppliers: { name: string } | null } | null;
+  /** Возврат от клиента (return_items): отменён — запись возврата или сама продажа. */
+  returned?: { customerId: string | null; customer: string | null; reversed: boolean };
+};
+
+type ReturnRow = {
+  id: string;
+  created_at: string;
+  qty: string;
+  price: string;
+  payments: { reversed_at: string | null; customer_id: string | null; customers: { name: string } | null } | null;
+  sales: { reversed_at: string | null } | null;
 };
 
 const STOCKED_TEXT: Record<string, string> = {
@@ -40,7 +51,7 @@ export default async function ProductPage({
   const { error, saved, stocked, restored, mode } = await searchParams;
   if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
   const { db, organizationId, currency } = await getContext();
-  const [productResult, movementsResult] = await Promise.all([
+  const [productResult, movementsResult, returnsResult] = await Promise.all([
     db
       .from("product_balances")
       .select("id,name,sku,unit,sale_price,purchase_price,min_stock,aliases,stock,archived_at,sold_count")
@@ -56,10 +67,38 @@ export default async function ProductPage({
       .eq("product_id", id)
       .order("created_at", { ascending: false })
       .limit(50),
+    db
+      .from("return_items")
+      .select("id,created_at,qty,price,payments(reversed_at,customer_id,customers(name)),sales(reversed_at)")
+      .eq("organization_id", organizationId)
+      .eq("product_id", id)
+      .order("created_at", { ascending: false })
+      .limit(50),
   ]);
   const product = productResult.data as (ProductEntry & { stock: string; archived_at: string | null; sold_count: number }) | null;
   if (productResult.error || !product) notFound();
-  const movements = (movementsResult.data ?? []) as unknown as Movement[];
+  // Возвраты от клиентов — в общей ленте (таблицы нет до миграции return_items).
+  const returns: Movement[] = ((returnsResult.error ? [] : (returnsResult.data ?? [])) as unknown as ReturnRow[]).map((r) => ({
+    id: r.id,
+    created_at: r.created_at,
+    qty_delta: r.qty,
+    reason: "return",
+    note: null,
+    unit_cost: null,
+    cost_currency: null,
+    sale_id: null,
+    purchase_id: null,
+    sales: null,
+    purchases: null,
+    returned: {
+      customerId: r.payments?.customer_id ?? null,
+      customer: r.payments?.customers?.name ?? null,
+      reversed: Boolean(r.payments?.reversed_at || r.sales?.reversed_at),
+    },
+  }));
+  const movements = [...((movementsResult.data ?? []) as unknown as Movement[]), ...returns]
+    .sort((x, y) => y.created_at.localeCompare(x.created_at))
+    .slice(0, 50);
   const low = !decimalLessThan("0", product.stock) || decimalLessThan(product.stock, product.min_stock);
   const date = (iso: string) =>
     new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bishkek" }).format(
@@ -74,6 +113,12 @@ export default async function ProductPage({
         reversed: Boolean(m.purchases?.reversed_at),
       };
     if (m.reason === "receipt") return { text: "Пришло", href: null, reversed: false };
+    if (m.reason === "return")
+      return {
+        text: `Возврат · ${m.returned?.customer ?? "клиент"}`,
+        href: m.returned?.customerId ? `/customers/${m.returned.customerId}` : null,
+        reversed: Boolean(m.returned?.reversed),
+      };
     if (m.reason === "opening") return { text: m.note ?? "Начальный остаток", href: null, reversed: false };
     return { text: Number(m.qty_delta) < 0 && m.note !== "Пересчёт" && m.note !== "Импорт" ? "Списание" : (m.note ?? "Исправление"), href: null, reversed: false };
   };
