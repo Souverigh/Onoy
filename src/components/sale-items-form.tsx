@@ -125,7 +125,7 @@ export function SaleItemsForm({
 
   const trimmed = query.trim();
   const inCart = new Set(lines.map((l) => l.product.id));
-  const results = searchProducts(trimmed, products, trimmed ? 8 : 10);
+  const results = searchProducts(trimmed, products, trimmed ? 8 : 5);
 
   function add(product: QuickProduct) {
     setLocalError(null);

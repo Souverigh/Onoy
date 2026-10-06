@@ -1298,6 +1298,18 @@ div.photo-field {
   align-self: flex-start;
   cursor: pointer;
 }
+/* Длинная надпись кнопки — короче на телефоне. */
+.page-add-short {
+  display: none;
+}
+@media (max-width: 480px) {
+  .page-add-long {
+    display: none;
+  }
+  .page-add-short {
+    display: inline;
+  }
+}
 /* Значок «!» с пояснением рядом с полем. */
 .label-with-tip,
 .invoice-dropzone-title {
@@ -1340,12 +1352,10 @@ div.photo-field {
   background: #f1f6e8;
 }
 .info-tip-popover {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: -12px;
+  /* Место и ширину ставит info-tip.tsx — по экрану, не по форме. */
+  position: fixed;
   z-index: 40;
-  width: max-content;
-  max-width: min(260px, calc(100vw - 48px));
+  box-sizing: border-box;
   padding: 10px 12px;
   border-radius: 10px;
   background: var(--ink);
@@ -5731,11 +5741,10 @@ tr.row-link:has(a[data-pending]) {
   border-color: #cfe3c4;
 }
 .date-picker-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 30;
-  width: min(320px, calc(100vw - 32px));
+  /* Место и ширину ставит date-picker.tsx — по экрану, не по форме. */
+  position: fixed;
+  z-index: 60;
+  box-sizing: border-box;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 14px;

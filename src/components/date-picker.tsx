@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "./icon";
 import { bishkekNow, ruDate } from "@/lib/ru-date";
 
@@ -50,6 +50,11 @@ export function DatePicker({
   const [today, setToday] = useState("");
   const [view, setView] = useState<{ y: number; m: number }>({ y: 2000, m: 0 });
   const box = useRef<HTMLDivElement>(null);
+  const toggleButton = useRef<HTMLButtonElement>(null);
+  const popover = useRef<HTMLDivElement>(null);
+  // Место календаря на экране: под иконкой, а если снизу не влезает
+  // (телефон, нижняя панель) — над ней; по ширине — внутри экрана.
+  const [place, setPlace] = useState<{ top: number; left: number; width: number } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -59,13 +64,36 @@ export function DatePicker({
     const escape = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
+    // Календарь стоит на месте экрана — при прокрутке и повороте закрываем.
+    const close = () => setOpen(false);
     document.addEventListener("pointerdown", outside);
     document.addEventListener("keydown", escape);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
     return () => {
       document.removeEventListener("pointerdown", outside);
       document.removeEventListener("keydown", escape);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
     };
   }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return setPlace(null);
+    const rect = toggleButton.current?.getBoundingClientRect();
+    const height = popover.current?.offsetHeight ?? 0;
+    if (!rect) return;
+    const gutter = 16;
+    const width = Math.min(320, window.innerWidth - gutter * 2);
+    const left = Math.min(Math.max(rect.left, gutter), window.innerWidth - width - gutter);
+    // Нижняя панель телефона закрывает низ экрана.
+    // На телефоне меню (.sidebar) — панелью внизу экрана.
+    const navTop = document.querySelector(".sidebar")?.getBoundingClientRect().top ?? window.innerHeight;
+    const bottomLimit = (navTop > window.innerHeight / 2 ? navTop : window.innerHeight) - 8;
+    const below = rect.bottom + 6;
+    const top = below + height <= bottomLimit ? below : Math.max(8, rect.top - 6 - height);
+    setPlace({ top, left, width });
+  }, [open, view]);
 
   function toggle() {
     if (open) return setOpen(false);
@@ -100,6 +128,7 @@ export function DatePicker({
       </span>
       <button
         type="button"
+        ref={toggleButton}
         className={`date-picker-toggle${open ? " active" : ""}`}
         aria-label="Выбрать дату"
         aria-expanded={open}
@@ -108,7 +137,14 @@ export function DatePicker({
         <Icon name="calendar" />
       </button>
       {open && today && (
-        <div className="date-picker-popover" role="dialog" aria-label="Календарь">
+        <div
+          ref={popover}
+          className="date-picker-popover"
+          role="dialog"
+          aria-label="Календарь"
+          // До замера — невидимо, чтобы не мигнул не на своём месте.
+          style={place ?? { visibility: "hidden", top: 0, left: 0, width: Math.min(320, window.innerWidth - 32) }}
+        >
           <div className="date-picker-head">
             <button type="button" aria-label="Предыдущий месяц" disabled={!canPrev} onClick={() => shift(-1)}>
               ‹

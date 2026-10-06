@@ -954,7 +954,14 @@ export function OperationForm({
                 {/* Одна кнопка, как у чека оплаты: без capture телефон сам
                     предлагает камеру, галерею и файлы. */}
                 <label className="button page-add">
-                  {pages.length ? "+ Ещё страница" : "Сфотографировать или выбрать накладную"}
+                  {pages.length ? (
+                    "+ Ещё страница"
+                  ) : (
+                    <>
+                      <span className="page-add-long">Сфотографировать или выбрать накладную</span>
+                      <span className="page-add-short">Фото или файл накладной</span>
+                    </>
+                  )}
                   <input
                     type="file"
                     accept={DOCUMENT_ACCEPT}
