@@ -23,6 +23,7 @@ import type { DocumentVerdict } from "@/lib/adre/classify";
 import type { InvoiceResult } from "@/lib/adre/types";
 import { Submit } from "./submit";
 import { RuDateInput, bishkekNow } from "./ru-date-input";
+import { DatePicker } from "./date-picker";
 import { ruDate } from "@/lib/ru-date";
 import { ContactPicker } from "./contact-picker";
 import { PartyPicker, type PickerParty } from "./party-picker";
@@ -163,7 +164,6 @@ export function OperationForm({
   const [partyConfirmed, setPartyConfirmed] = useState<string | null>(null);
   // Дата продажи (задача 15): пусто — сегодня.
   const [saleDate, setSaleDate] = useState("");
-  const [saleDateOpen, setSaleDateOpen] = useState(false);
   const allCustomers = [...customers, ...contactCustomers.filter((c) => !customers.some((x) => x.id === c.id))];
   const [checkedPhoto, setCheckedPhoto] = useState<CheckedPhoto | null>(null);
   const [checking, setChecking] = useState(false);
@@ -744,6 +744,91 @@ export function OperationForm({
     }
   }
 
+  // Продажа: клиент — первым полем; в списке сверху «+ Новый клиент» и «Из контактов».
+  const saleActions = (close: () => void) => (
+    <>
+      <button
+        type="button"
+        className="party-picker-action"
+        onClick={() => {
+          close();
+          setNewCustomer({ name: "", phone: "" });
+        }}
+      >
+        + Новый клиент
+      </button>
+      <ContactPicker
+        className="party-picker-action"
+        label="+ Клиент из контактов"
+        onPick={async ({ name, phone }) => {
+          setContactNote("Ищем клиента…");
+          const found = await customerFromContact(name, phone);
+          if ("error" in found) {
+            setContactNote(
+              found.error === "name"
+                ? "У контакта нет имени — добавьте клиента вручную."
+                : "Не удалось добавить клиента. Попробуйте ещё раз.",
+            );
+            return;
+          }
+          setContactCustomers((list) =>
+            list.some((c) => c.id === found.id) ? list : [...list, { id: found.id, name: found.name, balance: found.balance }],
+          );
+          setSelectedParty(found.id);
+          setNewCustomer(null);
+          setContactNote(
+            found.created ? `Добавили нового клиента: ${found.name}.` : `Уже есть в списке: ${found.name}.`,
+          );
+        }}
+      />
+    </>
+  );
+  const partySection = (
+    <>
+      <PartyPicker
+        label={
+          kind === "purchase"
+            ? "Поставщик"
+            : kind === "sale"
+              ? "Клиент"
+              : direction === "incoming"
+                ? "Клиент"
+                : "Поставщик"
+        }
+        name={kind === "purchase" ? "supplier_id" : kind === "sale" ? "customer_id" : "party_id"}
+        parties={parties}
+        value={selectedParty}
+        onChange={(id) => {
+          setSelectedParty(id);
+          if (localError === "party") setLocalError(null);
+          if (id) setNewCustomer(null);
+        }}
+        shopCurrency={shopCurrency}
+        actions={kind === "sale" ? saleActions : undefined}
+      />
+      {kind === "sale" && newCustomer && (
+        <NewCustomerInline
+          key={`${newCustomer.name}|${newCustomer.phone}`}
+          customers={allCustomers}
+          initialName={newCustomer.name}
+          initialPhone={newCustomer.phone}
+          onClose={() => setNewCustomer(null)}
+          onPickExisting={(id) => {
+            setSelectedParty(id);
+            setNewCustomer(null);
+          }}
+          onCreated={(created) => {
+            setContactCustomers((list) => [...list, created]);
+            setSelectedParty(created.id);
+            setNewCustomer(null);
+            setContactNote(`Добавили нового клиента: ${created.name}.`);
+          }}
+        />
+      )}
+      {kind === "sale" && contactNote && <small className="muted contact-note">{contactNote}</small>}
+    </>
+  );
+
   return (
     <>
       <LeaveGuard active={(hasPhoto || Boolean(receiptFile)) && !saving && !pendingConfirm} />
@@ -792,6 +877,7 @@ export function OperationForm({
             {errorText}
           </p>
         )}
+        {kind === "sale" && partySection}
         {!prefill && receiptDocumentId && <input type="hidden" name="document_id" value={receiptDocumentId} />}
         {kind !== "payment" && (
           <div className="photo-field invoice-dropzone">
@@ -987,52 +1073,7 @@ export function OperationForm({
             </div>
           </div>
         )}
-        <PartyPicker
-          label={
-            kind === "purchase"
-              ? "Поставщик"
-              : kind === "sale"
-                ? "Клиент"
-                : direction === "incoming"
-                  ? "Клиент"
-                  : "Поставщик"
-          }
-          name={kind === "purchase" ? "supplier_id" : kind === "sale" ? "customer_id" : "party_id"}
-          parties={parties}
-          value={selectedParty}
-          onChange={(id) => {
-            setSelectedParty(id);
-            if (localError === "party") setLocalError(null);
-            if (id) setNewCustomer(null);
-          }}
-          shopCurrency={shopCurrency}
-          footer={
-            kind === "sale" && !newCustomer ? (
-              <button type="button" className="text-button party-picker-new" onClick={() => setNewCustomer({ name: "", phone: "" })}>
-                + Новый клиент
-              </button>
-            ) : null
-          }
-        />
-        {kind === "sale" && newCustomer && (
-          <NewCustomerInline
-            key={`${newCustomer.name}|${newCustomer.phone}`}
-            customers={allCustomers}
-            initialName={newCustomer.name}
-            initialPhone={newCustomer.phone}
-            onClose={() => setNewCustomer(null)}
-            onPickExisting={(id) => {
-              setSelectedParty(id);
-              setNewCustomer(null);
-            }}
-            onCreated={(created) => {
-              setContactCustomers((list) => [...list, created]);
-              setSelectedParty(created.id);
-              setNewCustomer(null);
-              setContactNote(`Добавили нового клиента: ${created.name}.`);
-            }}
-          />
-        )}
+        {kind !== "sale" && partySection}
         {invoiceName && (
           <div className="party-suggestions">
             <span className="muted">
@@ -1082,34 +1123,6 @@ export function OperationForm({
                 Нет, выбрать другого
               </button>
             </div>
-          </div>
-        )}
-        {kind === "sale" && (
-          <div className="contact-row">
-            <ContactPicker
-              compact
-              label="+ Клиент из контактов"
-              onPick={async ({ name, phone }) => {
-                setContactNote("Ищем клиента…");
-                const found = await customerFromContact(name, phone);
-                if ("error" in found) {
-                  setContactNote(
-                    found.error === "name"
-                      ? "У контакта нет имени — добавьте клиента вручную."
-                      : "Не удалось добавить клиента. Попробуйте ещё раз.",
-                  );
-                  return;
-                }
-                setContactCustomers((list) =>
-                  list.some((c) => c.id === found.id) ? list : [...list, { id: found.id, name: found.name, balance: found.balance }],
-                );
-                setSelectedParty(found.id);
-                setContactNote(
-                  found.created ? `Добавили нового клиента: ${found.name}.` : `Уже есть в списке: ${found.name}.`,
-                );
-              }}
-            />
-            {contactNote && <small className="muted">{contactNote}</small>}
           </div>
         )}
         <div className="amount-head">
@@ -1342,37 +1355,13 @@ export function OperationForm({
           </label>
         )}
         {kind === "sale" && (
-          <div className="sale-date">
-            {saleDateOpen ? (
-              <RuDateInput
-                label="Дата продажи"
-                value={saleDate || bishkekNow().slice(0, 10)}
-                onChange={(next) => {
-                  setSaleDate(next ?? "");
-                  if (localError === "date") setLocalError(null);
-                }}
-                hint={
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() => {
-                      setSaleDate("");
-                      setSaleDateOpen(false);
-                    }}
-                  >
-                    Сегодня
-                  </button>
-                }
-              />
-            ) : (
-              <p>
-                Дата: <strong>сегодня</strong>{" "}
-                <button type="button" className="text-button" onClick={() => setSaleDateOpen(true)}>
-                  Другая дата
-                </button>
-              </p>
-            )}
-          </div>
+          <DatePicker
+            value={saleDate}
+            onChange={(next) => {
+              setSaleDate(next);
+              if (localError === "date") setLocalError(null);
+            }}
+          />
         )}
         {kind === "payment" && (
           <div className="method-row" role="group" aria-label="Наличные или перевод">

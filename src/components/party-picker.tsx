@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { debtMoney, phoneText } from "@/lib/format";
 import { partyCurrency, type Currency } from "@/lib/currency";
 import { searchParties } from "@/lib/party-search";
@@ -27,6 +27,7 @@ export function PartyPicker({
   shopCurrency,
   placeholder,
   footer,
+  actions,
 }: {
   label: string;
   /** Имя поля формы с id выбранного. */
@@ -38,12 +39,27 @@ export function PartyPicker({
   placeholder?: string;
   /** Под списком: «+ Новый клиент». */
   footer?: React.ReactNode;
+  /**
+   * Первые пункты выпадающего списка, выделены: «+ Новый клиент»,
+   * «Из контактов». `close` — закрыть список.
+   */
+  actions?: (close: () => void) => React.ReactNode;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const listId = useId();
+  const box = useRef<HTMLDivElement>(null);
+  // Нажатие мимо поля и списка закрывает список.
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [open]);
   const selected = parties.find((p) => p.id === value);
-  const found = searchParties(query, parties, 8);
+  const found = searchParties(query, parties, actions ? 100 : 8);
 
   if (selected)
     return (
@@ -78,7 +94,7 @@ export function PartyPicker({
     );
 
   return (
-    <div className="party-picker">
+    <div className="party-picker" ref={box}>
       <label className="party-picker-label" htmlFor={`${listId}-q`}>
         {label}
       </label>
@@ -103,10 +119,12 @@ export function PartyPicker({
             e.preventDefault();
             if (found[0]) onChange(found[0].id);
           }
+          if (e.key === "Escape") setOpen(false);
         }}
       />
       {open && (
-        <ul className="party-picker-list" id={listId} role="listbox">
+        <ul className={`party-picker-list${actions ? " dropdown" : ""}`} id={listId} role="listbox">
+          {actions && <li className="party-picker-actions">{actions(() => setOpen(false))}</li>}
           {found.map((p) => (
             <li key={p.id} role="option" aria-selected={false}>
               <button type="button" onClick={() => onChange(p.id)}>

@@ -15,13 +15,16 @@ export function ContactPicker({
   onPick,
   label = "Из контактов телефона",
   compact = false,
+  className,
 }: {
   onPick: (contact: PickedContact) => void;
   label?: string;
   /** Текстовая ссылка вместо кнопки (форма продажи). */
   compact?: boolean;
+  /** Класс кнопки вместо обычного (пункт выпадающего списка). */
+  className?: string;
 }) {
-  const buttonClass = compact ? "text-button" : "button";
+  const buttonClass = className ?? (compact ? "text-button" : "button");
   const [native, setNative] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);

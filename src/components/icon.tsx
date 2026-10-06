@@ -12,7 +12,8 @@ export type IconName =
   | "check"
   | "chart"
   | "menu"
-  | "close";
+  | "close"
+  | "calendar";
 const paths: Record<IconName, string> = {
   home: "M3 10 12 3l9 7v10H3V10Zm6 10v-7h6v7",
   people:
@@ -31,6 +32,7 @@ const paths: Record<IconName, string> = {
   check: "M5 13l4 4L19 7",
   menu: "M4 6h16M4 12h16M4 18h16",
   close: "M6 6l12 12M18 6 6 18",
+  calendar: "M4 6h16v15H4V6Zm0 5h16M8 3v5m8-5v5",
 };
 export function Icon({ name }: { name: IconName }) {
   return (

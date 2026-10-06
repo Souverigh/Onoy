@@ -242,12 +242,43 @@ export function SaleItemsForm({
           if (id) setNewCustomer(false);
         }}
         shopCurrency={shopCurrency}
-        footer={
-          !purchase && !newCustomer ? (
-            <button type="button" className="text-button party-picker-new" onClick={() => setNewCustomer(true)}>
-              + Новый клиент
-            </button>
-          ) : null
+        actions={
+          purchase
+            ? undefined
+            : (close) => (
+                <>
+                  <button
+                    type="button"
+                    className="party-picker-action"
+                    onClick={() => {
+                      close();
+                      setNewCustomer(true);
+                    }}
+                  >
+                    + Новый клиент
+                  </button>
+                  <ContactPicker
+                    className="party-picker-action"
+                    label="+ Клиент из контактов"
+                    onPick={async ({ name, phone }) => {
+                      setContactNote("Ищем клиента…");
+                      const found = await customerFromContact(name, phone);
+                      if ("error" in found) {
+                        setContactNote(
+                          found.error === "name" ? "У контакта нет имени — добавьте клиента вручную." : "Не удалось добавить клиента. Попробуйте ещё раз.",
+                        );
+                        return;
+                      }
+                      setContactCustomers((list) =>
+                        list.some((c) => c.id === found.id) ? list : [...list, { id: found.id, name: found.name, balance: found.balance }],
+                      );
+                      setParty(found.id);
+                      setNewCustomer(false);
+                      setContactNote(found.created ? `Добавили нового клиента: ${found.name}.` : `Уже есть в списке: ${found.name}.`);
+                    }}
+                  />
+                </>
+              )
         }
       />
       {!purchase && newCustomer && (
@@ -266,30 +297,7 @@ export function SaleItemsForm({
           }}
         />
       )}
-      {!purchase && (
-      <div className="contact-row">
-        <ContactPicker
-          compact
-          label="+ Клиент из контактов"
-          onPick={async ({ name, phone }) => {
-            setContactNote("Ищем клиента…");
-            const found = await customerFromContact(name, phone);
-            if ("error" in found) {
-              setContactNote(
-                found.error === "name" ? "У контакта нет имени — добавьте клиента вручную." : "Не удалось добавить клиента. Попробуйте ещё раз.",
-              );
-              return;
-            }
-            setContactCustomers((list) =>
-              list.some((c) => c.id === found.id) ? list : [...list, { id: found.id, name: found.name, balance: found.balance }],
-            );
-            setParty(found.id);
-            setContactNote(found.created ? `Добавили нового клиента: ${found.name}.` : `Уже есть в списке: ${found.name}.`);
-          }}
-        />
-        {contactNote && <small className="muted">{contactNote}</small>}
-      </div>
-      )}
+      {!purchase && contactNote && <small className="muted contact-note">{contactNote}</small>}
 
       <div className="product-picker">
         <label htmlFor="product-search" className="product-picker-title">
