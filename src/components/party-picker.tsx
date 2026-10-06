@@ -99,52 +99,54 @@ export function PartyPicker({
         {label}
       </label>
       <input type="hidden" name={name} value="" />
-      <input
-        id={`${listId}-q`}
-        className="party-picker-search"
-        type="search"
-        autoComplete="off"
-        placeholder={placeholder ?? "Имя или телефон…"}
-        value={query}
-        aria-controls={listId}
-        aria-expanded={open}
-        onFocus={() => setOpen(true)}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setOpen(true);
-        }}
-        onKeyDown={(e) => {
-          // Enter — выбрать первого найденного, а не отправить форму.
-          if (e.key === "Enter") {
-            e.preventDefault();
-            if (found[0]) onChange(found[0].id);
-          }
-          if (e.key === "Escape") setOpen(false);
-        }}
-      />
-      {open && (
-        <ul className={`party-picker-list${actions ? " dropdown" : ""}`} id={listId} role="listbox">
-          {actions && <li className="party-picker-actions">{actions(() => setOpen(false))}</li>}
-          {found.map((p) => (
-            <li key={p.id} role="option" aria-selected={false}>
-              <button type="button" onClick={() => onChange(p.id)}>
-                <span>{p.name}</span>
-                <small className="muted">
-                  {[
-                    p.phone ? phoneText(p.phone) : null,
-                    p.balance != null && Number(p.balance) !== 0
-                      ? debtMoney(p.balance, partyCurrency(p, shopCurrency))
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </small>
-              </button>
-            </li>
-          ))}
-          {found.length === 0 && <li className="muted party-picker-empty">Никого не нашли.</li>}
-        </ul>
-      )}
+      <div className="party-picker-field">
+        <input
+          id={`${listId}-q`}
+          className="party-picker-search"
+          type="search"
+          autoComplete="off"
+          placeholder={placeholder ?? "Имя или телефон…"}
+          value={query}
+          aria-controls={listId}
+          aria-expanded={open}
+          onFocus={() => setOpen(true)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onKeyDown={(e) => {
+            // Enter — выбрать первого найденного, а не отправить форму.
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (found[0]) onChange(found[0].id);
+            }
+            if (e.key === "Escape") setOpen(false);
+          }}
+        />
+        {open && (
+          <ul className="party-picker-list dropdown" id={listId} role="listbox">
+            {actions && <li className="party-picker-actions">{actions(() => setOpen(false))}</li>}
+            {found.map((p) => (
+              <li key={p.id} role="option" aria-selected={false}>
+                <button type="button" onClick={() => onChange(p.id)}>
+                  <span>{p.name}</span>
+                  <small className="muted">
+                    {[
+                      p.phone ? phoneText(p.phone) : null,
+                      p.balance != null && Number(p.balance) !== 0
+                        ? debtMoney(p.balance, partyCurrency(p, shopCurrency))
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </small>
+                </button>
+              </li>
+            ))}
+            {found.length === 0 && <li className="muted party-picker-empty">Никого не нашли.</li>}
+          </ul>
+        )}
+      </div>
       {footer}
     </div>
   );

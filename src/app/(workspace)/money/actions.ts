@@ -175,7 +175,14 @@ async function commitOperationOrRedirect(
         hasParty: uuidPattern.test(party),
         rawAmount: operation === "payment" ? form.get("amount") : form.get("total"),
       });
-      return { error: uuidPattern.test(party) || operation === "payment" ? "amount" : "party" };
+      // «Сумма» — только когда не разобралось число; иначе не путаем продавца.
+      return {
+        error: error.message.startsWith("Введите неотрицательное число")
+          ? "amount"
+          : !uuidPattern.test(party)
+            ? "party"
+            : "invalid",
+      };
     }
     throw error;
   }

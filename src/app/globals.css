@@ -5883,6 +5883,12 @@ tr.row-link:has(a[data-pending]) {
   padding: 10px;
 }
 /* Выпадающий список клиента: поверх формы, сверху выделенные действия. */
+.party-picker-field {
+  position: relative;
+}
+.party-picker-field > .party-picker-search {
+  width: 100%;
+}
 .party-picker-list.dropdown {
   position: absolute;
   top: 100%;

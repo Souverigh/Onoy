@@ -858,6 +858,8 @@ export function OperationForm({
         {kind !== "payment" && invoiceName && <input type="hidden" name="counterparty_name" value={invoiceName} />}
         {confirmedTotal && <input type="hidden" name="amount_confirmed" value={confirmedTotal} />}
         {kind === "payment" && <input type="hidden" name="method" value={effectiveMethod} />}
+        {/* Направление задано экраном — переключателя нет, а сервер ждёт поле. */}
+        {kind === "payment" && fixedDirection && <input type="hidden" name="direction" value={fixedDirection} />}
         {kind === "sale" && saleDate && <input type="hidden" name="sale_date" value={saleDate} />}
         <input type="hidden" name="idempotency_key" value={idempotencyKey} />
         {kind === "purchase" && partPaymentKey && (
