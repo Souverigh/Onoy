@@ -3148,6 +3148,32 @@ tr.line-mismatch {
   margin-left: auto;
   white-space: nowrap;
 }
+/* Отчёт: период рядом со стрелками, проценты значком. */
+.report-switch {
+  margin: 0 4px 0 0;
+}
+.report-delta {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #eef1ee;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.report-delta.up {
+  background: #e3efd6;
+  color: var(--green);
+}
+.report-delta.down {
+  background: #fbe6e3;
+  color: #9a1f18;
+}
+.report-debtors {
+  margin-bottom: 14px;
+}
 .report-table summary {
   cursor: pointer;
   font-weight: 600;

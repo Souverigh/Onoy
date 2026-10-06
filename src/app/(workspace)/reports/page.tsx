@@ -5,6 +5,7 @@ import { bishkekDate } from "@/lib/day-summary";
 import { change, period, type PeriodKind } from "@/lib/periods";
 import { periodReport } from "@/lib/period-report";
 import { DayColumns } from "@/components/day-columns";
+import { InfoTip } from "@/components/info-tip";
 import { CURRENCY_SIGN } from "@/lib/currency";
 
 const fmt = (date: string, options: Intl.DateTimeFormatOptions) =>
@@ -23,16 +24,23 @@ function range(start: string, end: string) {
 /** Прошлый период словами (задача 37): «прошлая неделя», а не «28 сентября». */
 type Against = { to: string; during: string };
 
-function Delta({ current, previous, against, cur }: { current: number; previous: number; against: Against; cur: string }) {
+/** Сравнение с прошлым периодом — значком «▲ 12%»; без прошлых данных — ничего. */
+function Delta({ current, previous, bad }: { current: number; previous: number; bad?: boolean }) {
   const pct = change(current, previous);
-  if (pct === null)
-    return <small className="muted">{current > 0 ? `${against.during} — ${money(0, cur)}` : `${against.during} — нет данных`}</small>;
+  if (pct === null) return null;
+  const tone = pct === 0 ? "" : (pct > 0) !== Boolean(bad) ? " up" : " down";
   return (
-    <small className="muted">
+    <span className={`report-delta${tone}`}>
       {pct > 0 ? "▲" : pct < 0 ? "▼" : "="} {pct > 0 ? "+" : ""}
-      {pct}% к {against.to} ({money(previous, cur)})
-    </small>
+      {pct}%
+    </span>
   );
+}
+
+/** Прошлый период — для текста в «!». */
+function previousText(current: number, previous: number, against: Against, cur: string) {
+  if (previous === 0) return current > 0 ? `${against.during} — ${money(0, cur)}.` : `${against.during} — нет данных.`;
+  return `${against.during} за те же дни — ${money(previous, cur)}.`;
 }
 
 export default async function Reports({
@@ -60,79 +68,139 @@ export default async function Reports({
   const href = (k: PeriodKind, o: number) => `/reports?period=${k}${o ? `&offset=${o}` : ""}`;
   const { current, previous } = report;
   const cur = report.currency;
+  const foreign = report.foreign.filter(
+    (f) => f.current.sold || f.current.collected || f.current.purchased || f.current.paidSuppliers,
+  );
 
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <span className="eyebrow">ОТЧЁТ</span>
-          <h1>{kind === "week" ? "Отчёт за неделю" : "Отчёт за месяц"}</h1>
-          <p className="muted">
-            {title}
-            {offset === 0 && p.through < p.end ? ` · по ${fmt(p.through, { day: "numeric", month: "long" })}` : ""}
-          </p>
-        </div>
+      <div className="page-heading day-heading">
+        <h1 className="label-with-tip">
+          {kind === "week" ? "Отчёт за неделю" : "Отчёт за месяц"}
+          <InfoTip>
+            Сколько продали, собрали и потратили за {kind === "week" ? "неделю" : "месяц"}. Проценты — сравнение с теми
+            же днями {kind === "week" ? "прошлой недели" : "прошлого месяца"}.
+          </InfoTip>
+        </h1>
         <div className="day-nav">
-          <Link className="button" href={href(kind, offset - 1)}>
-            ← {kind === "week" ? "Прошлая неделя" : "Прошлый месяц"}
-          </Link>
-          {offset < 0 && (
-            <Link className="button" href={href(kind, offset + 1)}>
-              {kind === "week" ? "Следующая" : "Следующий"} →
+          <nav className="pill-switch report-switch" aria-label="Период">
+            <Link className={kind === "month" ? "selected" : ""} href={href("month", 0)}>
+              Месяц
             </Link>
+            <Link className={kind === "week" ? "selected" : ""} href={href("week", 0)}>
+              Неделя
+            </Link>
+          </nav>
+          <Link
+            className="day-nav-arrow"
+            href={href(kind, offset - 1)}
+            aria-label={kind === "week" ? "Прошлая неделя" : "Прошлый месяц"}
+          >
+            ‹
+          </Link>
+          {offset < 0 ? (
+            <Link
+              className="day-nav-arrow"
+              href={href(kind, offset + 1)}
+              aria-label={kind === "week" ? "Следующая неделя" : "Следующий месяц"}
+            >
+              ›
+            </Link>
+          ) : (
+            <span className="day-nav-arrow disabled" aria-hidden="true">
+              ›
+            </span>
           )}
         </div>
       </div>
-      <nav className="pill-switch" aria-label="Период">
-        <Link className={kind === "month" ? "selected" : ""} href={href("month", 0)}>
-          Месяц
-        </Link>
-        <Link className={kind === "week" ? "selected" : ""} href={href("week", 0)}>
-          Неделя
-        </Link>
-      </nav>
+      <p className="muted day-date">
+        {title}
+        {offset === 0 && p.through < p.end ? ` · по ${fmt(p.through, { day: "numeric", month: "long" })}` : ""}
+      </p>
 
-      <section className="report-tiles" aria-label="Отчёт">
-        <article className="panel report-tile">
-          <h2>Продано</h2>
-          <p className="day-number">{money(current.sold, cur)}</p>
+      <section className="day-tiles" aria-label="Отчёт">
+        <article className="panel day-tile">
+          <span className="label-with-tip">
+            Продано
+            <InfoTip>
+              Продаж: {current.salesCount}. В долг — {money(current.soldCredit, cur)}, сразу наличными —{" "}
+              {money(current.soldCash, cur)}. {previousText(current.sold, previous.sold, against, cur)}
+            </InfoTip>
+          </span>
+          <strong>{money(current.sold, cur)}</strong>
           <small className="muted">
-            в долг {money(current.soldCredit, cur)} · наличными {money(current.soldCash, cur)} · продаж: {current.salesCount}
+            в долг {money(current.soldCredit, cur)} <Delta current={current.sold} previous={previous.sold} />
           </small>
-          <Delta cur={cur} current={current.sold} previous={previous.sold} against={against} />
         </article>
-        <article className="panel report-tile">
-          <h2>Собрано с клиентов</h2>
-          <p className="day-number">{money(current.collected, cur)}</p>
-          <small className="muted">оплаты долгов, без продаж за наличные</small>
-          <Delta cur={cur} current={current.collected} previous={previous.collected} against={against} />
-        </article>
-        <article className="panel report-tile">
-          <h2>Товар от поставщиков</h2>
-          <p className="day-number">{money(current.purchased, cur)}</p>
-          <Delta cur={cur} current={current.purchased} previous={previous.purchased} against={against} />
-        </article>
-        <article className="panel report-tile">
-          <h2>Оплачено поставщикам</h2>
-          <p className="day-number">{money(current.paidSuppliers, cur)}</p>
-          <Delta cur={cur} current={current.paidSuppliers} previous={previous.paidSuppliers} against={against} />
-        </article>
-        <article className="panel report-tile">
-          <h2>Расходы</h2>
-          <p className="day-number">{money(current.expenses, cur)}</p>
+        <article className="panel day-tile">
+          <span className="label-with-tip">
+            Собрано
+            <InfoTip>
+              Оплаты долгов от клиентов — без продаж за наличные.{" "}
+              {previousText(current.collected, previous.collected, against, cur)}
+            </InfoTip>
+          </span>
+          <strong>{money(current.collected, cur)}</strong>
           <small className="muted">
-            <Link href="/money/expenses">аренда, зарплата, доставка… →</Link>
+            с клиентов <Delta current={current.collected} previous={previous.collected} />
           </small>
-          <Delta cur={cur} current={current.expenses} previous={previous.expenses} against={against} />
+        </article>
+        <article className="panel day-tile">
+          <span className="label-with-tip">
+            Расходы
+            <InfoTip>
+              Аренда, зарплата, доставка и другие расходы магазина.{" "}
+              {previousText(current.expenses, previous.expenses, against, cur)}
+            </InfoTip>
+          </span>
+          <strong>{money(current.expenses, cur)}</strong>
+          <small>
+            <Link href="/money/expenses">все расходы →</Link>{" "}
+            <Delta current={current.expenses} previous={previous.expenses} bad />
+          </small>
         </article>
       </section>
-      {report.foreign.map((f) => (
-        <p key={f.currency} className="notice report-foreign">
-          Отдельно, в валюте {CURRENCY_SIGN[f.currency]}: продано {money(f.current.sold, f.currency)} · собрано{" "}
-          {money(f.current.collected, f.currency)} · товар от поставщиков {money(f.current.purchased, f.currency)} · оплачено
-          поставщикам {money(f.current.paidSuppliers, f.currency)}
-        </p>
-      ))}
+
+      <section className="panel day-debts">
+        <div className="day-line">
+          <span className="label-with-tip">
+            Товар от поставщиков
+            <InfoTip>{previousText(current.purchased, previous.purchased, against, cur)}</InfoTip>
+          </span>
+          <strong>{money(current.purchased, cur)}</strong>
+        </div>
+        <div className="day-line">
+          <span className="label-with-tip">
+            Оплачено поставщикам
+            <InfoTip>{previousText(current.paidSuppliers, previous.paidSuppliers, against, cur)}</InfoTip>
+          </span>
+          <strong>{money(current.paidSuppliers, cur)}</strong>
+        </div>
+      </section>
+
+      {foreign.map((f) => {
+        const sign = CURRENCY_SIGN[f.currency];
+        const lines = [
+          { label: "Продано", value: f.current.sold },
+          { label: "Собрано", value: f.current.collected },
+          { label: "Товар от поставщиков", value: f.current.purchased },
+          { label: "Оплачено поставщикам", value: f.current.paidSuppliers },
+        ].filter((line) => line.value);
+        return (
+          <section key={f.currency} className="panel day-debts">
+            <h2 className="day-foreign-title label-with-tip">
+              В {sign}
+              <InfoTip>Записи в {sign} считаются отдельно и не складываются с основными суммами.</InfoTip>
+            </h2>
+            {lines.map((line) => (
+              <div className="day-line" key={line.label}>
+                <span>{line.label}</span>
+                <strong>{money(line.value, f.currency)}</strong>
+              </div>
+            ))}
+          </section>
+        );
+      })}
 
       <section className="report-charts">
         <div className="panel">
@@ -153,8 +221,11 @@ export default async function Reports({
         </div>
       </section>
 
-      <section className="panel">
-        <h2>Больше всего должны</h2>
+      <section className="panel report-debtors">
+        <h2 className="label-with-tip">
+          Больше всего должны
+          <InfoTip>Долг на сейчас, а не за выбранный период.</InfoTip>
+        </h2>
         {report.topDebtors.length ? (
           <ol className="top-debtors">
             {report.topDebtors.map((d) => (
@@ -170,10 +241,9 @@ export default async function Reports({
         ) : (
           <p className="muted">Никто не должен.</p>
         )}
-        <p className="muted">Долг на сейчас, не за период.</p>
       </section>
 
-      <details className="panel report-table">
+      <details className="panel day-fold report-table">
         <summary>Таблица по дням</summary>
         <div className="table-wrap">
           <table>
