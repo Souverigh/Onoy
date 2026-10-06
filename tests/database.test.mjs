@@ -2663,13 +2663,34 @@ test("delete a photo without a record: only an unused document, only in its own 
   // Фото отменённой продажи — история записи, не удаляем.
   await assert.rejects(db.query("select delete_unused_document($1,$2)", [orgA, used]), /document_in_use/);
   await db.query("select delete_unused_document($1,$2)", [orgA, orphan]);
-  await owner();
+  // Мягкое удаление: участник документа больше не видит, строки остались.
   assert.equal((await db.query("select count(*)::int as n from documents where id=$1", [orphan])).rows[0].n, 0);
-  assert.equal((await db.query("select count(*)::int as n from document_lines where document_id=$1", [orphan])).rows[0].n, 0);
+  await assert.rejects(db.query("select delete_unused_document($1,$2)", [orgA, orphan]), /invalid_document/);
+  await owner();
+  assert.ok((await db.query("select deleted_at from documents where id=$1", [orphan])).rows[0].deleted_at);
+  assert.equal((await db.query("select count(*)::int as n from document_lines where document_id=$1", [orphan])).rows[0].n, 1);
   assert.equal(
     (await db.query("select count(*)::int as n from audit_events where action='document.deleted' and entity_id=$1", [orphan])).rows[0].n,
     1,
   );
+  // «Вернуть»: чужой магазин — нельзя; свой — документ снова виден.
+  await user(b);
+  await assert.rejects(db.query("select restore_document($1,$2)", [orgA, orphan]), /not_a_member/);
+  await user(a);
+  await db.query("select restore_document($1,$2)", [orgA, orphan]);
+  assert.equal((await db.query("select count(*)::int as n from documents where id=$1", [orphan])).rows[0].n, 1);
+  await assert.rejects(db.query("select restore_document($1,$2)", [orgA, orphan]), /invalid_document/);
+  // То же фото, загруженное после удаления, — тот же документ, снова видимый.
+  await db.query("select delete_unused_document($1,$2)", [orgA, orphan]);
+  const again = (
+    await db.query("select create_document($1,'purchase','orphan-1b','orphan-1','image/jpeg') as id", [orgA])
+  ).rows[0].id;
+  assert.equal(again, orphan);
+  assert.deepEqual(
+    (await db.query("select kind from documents where id=$1", [orphan])).rows[0],
+    { kind: "purchase" },
+  );
+  await owner();
 });
 
 test("claims: a confirmation can be undone by its owner within a minute, the claim waits again", async () => {

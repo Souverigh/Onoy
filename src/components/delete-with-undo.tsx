@@ -2,15 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 import { ConfirmDialog } from "./confirm-dialog";
 
 const UNDO_MS = 10_000;
 
 /**
- * «Удалить» (задача 29): окно Depter «Удалить …? Вернуть будет нельзя.» с
- * красной «Да, удалить» и обычной «Нет, оставить»; потом 10 секунд
- * «Удалено · Вернуть» — удаляем только после них (или когда уходят со
- * страницы). `hide` — id элемента, который прячем сразу.
+ * «Удалить» (задача 29): окно Depter «Удалить …?» с красной «Да, удалить» и
+ * обычной «Нет, оставить»; удаляем сразу после «Да». Фото удаляется мягко
+ * (document_soft_delete) — 10 секунд «Удалено · Вернуть»; строки, клиенты и
+ * поставщики — насовсем. `hide` — id элемента, который прячем сразу.
  */
 export function DeleteWithUndo({
   what,
@@ -31,31 +32,39 @@ export function DeleteWithUndo({
   afterHref?: string;
 }) {
   const router = useRouter();
+  const undoable = what === "document";
   const [asking, setAsking] = useState(false);
   const [pending, setPending] = useState(false);
+  // Удалено, можно «Вернуть» (только фото).
+  const [undo, setUndo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sent = useRef(false);
 
-  const body = () => {
-    const form = new FormData();
-    form.set("what", what);
-    form.set("id", id);
-    return form;
-  };
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
   const setHidden = (hidden: boolean) => {
     const el = hide ? document.getElementById(hide) : null;
     if (el) el.hidden = hidden;
   };
+  const send = (restore: boolean) => {
+    const form = new FormData();
+    form.set("what", what);
+    form.set("id", id);
+    if (restore) form.set("restore", "1");
+    return fetch("/delete", { method: "POST", body: form });
+  };
+  const done = () => {
+    if (afterHref) router.push(afterHref);
+    else router.refresh();
+  };
 
   async function commit() {
-    if (sent.current) return;
-    sent.current = true;
     try {
-      const res = await fetch("/delete", { method: "POST", body: body(), keepalive: true });
+      const res = await send(false);
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        sent.current = false;
         setPending(false);
         setHidden(false);
         setError(
@@ -67,37 +76,40 @@ export function DeleteWithUndo({
         );
         return;
       }
-      if (afterHref) router.push(afterHref);
-      else router.refresh();
+      setPending(false);
+      if (!undoable) return done();
+      // Уже удалено (и после обновления страницы не появится); 10 секунд — «Вернуть».
+      setUndo(true);
+      timer.current = setTimeout(() => {
+        setUndo(false);
+        done();
+      }, UNDO_MS);
     } catch {
-      sent.current = false;
       setPending(false);
       setHidden(false);
       setError("Нет связи — не удалено. Попробуйте ещё раз.");
     }
   }
 
-  useEffect(() => {
-    if (!pending) return;
-    // Ушли со страницы раньше 10 секунд — удаляем сразу.
-    const onHide = () => {
-      if (sent.current) return;
-      sent.current = true;
-      navigator.sendBeacon("/delete", body());
-    };
-    window.addEventListener("pagehide", onHide);
-    return () => window.removeEventListener("pagehide", onHide);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- body зависит только от what/id
-  }, [pending]);
-
-  useEffect(() => () => {
+  async function restore() {
     if (timer.current) clearTimeout(timer.current);
-  }, []);
+    timer.current = null;
+    setUndo(false);
+    try {
+      const res = await send(true);
+      if (!res.ok) throw new Error("restore");
+      setHidden(false);
+      router.refresh();
+    } catch {
+      setError("Не удалось вернуть фото.");
+      done();
+    }
+  }
 
   return (
     <>
-      <button type="button" className={className} onClick={() => setAsking(true)} disabled={pending}>
-        {label}
+      <button type="button" className={className} onClick={() => setAsking(true)} disabled={pending || undo}>
+        {pending ? "Удаляем…" : label}
       </button>
       {error && (
         <span className="form-error" role="alert">
@@ -107,7 +119,7 @@ export function DeleteWithUndo({
       <ConfirmDialog
         open={asking}
         title={title}
-        text="Вернуть будет нельзя."
+        text={undoable ? "Вернуть можно будет 10 секунд." : "Вернуть будет нельзя."}
         danger
         confirmLabel="Да, удалить"
         cancelLabel="Нет, оставить"
@@ -117,25 +129,20 @@ export function DeleteWithUndo({
           setError(null);
           setPending(true);
           setHidden(true);
-          timer.current = setTimeout(() => void commit(), UNDO_MS);
+          void commit();
         }}
       />
-      {pending && (
-        <div className="undo-toast" role="status">
-          <span>Удалено</span>
-          <button
-            type="button"
-            onClick={() => {
-              if (timer.current) clearTimeout(timer.current);
-              timer.current = null;
-              setPending(false);
-              setHidden(false);
-            }}
-          >
-            Вернуть
-          </button>
-        </div>
-      )}
+      {/* В body: строка с кнопкой уже спрятана (hide), тост в ней не был бы виден. */}
+      {undo &&
+        createPortal(
+          <div className="undo-toast" role="status">
+            <span>Удалено</span>
+            <button type="button" onClick={() => void restore()}>
+              Вернуть
+            </button>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

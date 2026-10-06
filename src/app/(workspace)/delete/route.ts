@@ -5,9 +5,9 @@ import { getContext } from "@/lib/context";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Удаление после «Удалено · Вернуть» (задача 29): окно Depter спросило, 10
- * секунд можно было вернуть — теперь удаляем. Зовётся fetch или sendBeacon
- * (если продавец ушёл со страницы раньше). Все проверки — в функциях базы.
+ * Удаление после окна Depter «Удалить …?» (задача 29) и «Вернуть» для фото
+ * (restore=1): фото удаляется мягко, его можно вернуть. Все проверки — в
+ * функциях базы.
  */
 export async function POST(request: NextRequest) {
   const form = await request.formData();
@@ -15,8 +15,13 @@ export async function POST(request: NextRequest) {
   const id = String(form.get("id") ?? "");
   if (!uuidPattern.test(id)) return NextResponse.json({ error: "invalid" }, { status: 400 });
   const { db, organizationId } = await getContext();
-  const result =
-    what === "document"
+  // «Вернуть» — только для фото: оно удаляется мягко (document_soft_delete).
+  const restore = form.get("restore") === "1";
+  const result = restore
+    ? what === "document"
+      ? await db.rpc("restore_document", { p_org: organizationId, p_document: id })
+      : null
+    : what === "document"
       ? await db.rpc("delete_unused_document", { p_org: organizationId, p_document: id })
       : what === "line"
         ? await db.rpc("delete_document_line", { p_org: organizationId, p_line: id })
