@@ -46,7 +46,8 @@ export function ClaimPhotoField() {
         </div>
       ) : null}
       <label className={file ? "sr-only" : "button page-add"}>
-        Сфотографировать или выбрать чек
+        <span className="page-add-long">Сфотографировать или выбрать чек</span>
+        <span className="page-add-short">Фото или файл чека</span>
         <input
           ref={input}
           name="photo"

@@ -1101,7 +1101,8 @@ td small {
 /* Форма операции: сумма вручную, фото, одна большая кнопка подтверждения. */
 .simple-operation-panel {
   max-width: 480px;
-  margin: 0 auto;
+  /* На широком экране — слева, под заголовком, не посередине. */
+  margin: 0;
 }
 .simple-operation-form {
   display: flex;
@@ -5615,7 +5616,15 @@ tr.row-link:has(a[data-pending]) {
 .simple-operation-form > .party-picker,
 .simple-operation-form > .new-customer-inline,
 .simple-operation-form > .contact-note {
-  margin-bottom: 18px;
+  margin-bottom: 22px;
+}
+.simple-operation-form > .method-row {
+  margin: 2px 0 20px;
+}
+.simple-operation-form > .more-fields,
+.simple-operation-form > .debt-preview,
+.simple-operation-form > .payment-direction {
+  margin-bottom: 20px;
 }
 .simple-operation-form > .date-picker {
   margin: 2px 0 20px;

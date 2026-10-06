@@ -232,7 +232,14 @@ export function ExpenseForm({
           <div className="page-add-actions single">
             {/* Одна кнопка: телефон сам предложит камеру, галерею или файлы. */}
             <label className="button page-add">
-              {pages.length ? "+ Добавить ещё фото" : "Сфотографировать или выбрать чек"}
+              {pages.length ? (
+                "+ Добавить ещё фото"
+              ) : (
+                <>
+                  <span className="page-add-long">Сфотографировать или выбрать чек</span>
+                  <span className="page-add-short">Фото или файл чека</span>
+                </>
+              )}
               <input type="file" accept={DOCUMENT_ACCEPT} multiple className="sr-only" onChange={addPages} />
             </label>
           </div>

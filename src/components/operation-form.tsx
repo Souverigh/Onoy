@@ -1023,7 +1023,8 @@ export function OperationForm({
               </div>
             ) : (
               <label className="button page-add">
-                Сфотографировать или выбрать чек
+                <span className="page-add-long">Сфотографировать или выбрать чек</span>
+                <span className="page-add-short">Фото или файл чека</span>
                 <input
                   type="file"
                   accept={DOCUMENT_ACCEPT}
