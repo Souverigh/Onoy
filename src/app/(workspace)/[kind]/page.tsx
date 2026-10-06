@@ -5,6 +5,7 @@ import { partyCurrency } from "@/lib/currency";
 import { isDirectory } from "@/lib/validation";
 import { directoryMeta, type Entry } from "@/lib/directory";
 import { debtMoney, money, phoneText, quantity, decimalLessThan } from "@/lib/format";
+import { InfoTip } from "@/components/info-tip";
 import { Icon } from "@/components/icon";
 import { OVERDUE_THRESHOLDS, dayMonth, overdueThreshold, promiseStatus } from "@/lib/promise";
 import { bishkekDate } from "@/lib/day-summary";
@@ -91,11 +92,10 @@ export default async function DirectoryPage({
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">СПРАВОЧНИК МАГАЗИНА</span>
-          <h1>
+          <h1 className="label-with-tip">
             {meta.title} <span className="count">{count ?? 0}</span>
+            <InfoTip>{meta.description}</InfoTip>
           </h1>
-          <p className="muted">{meta.description}</p>
         </div>
         <div className="heading-actions">
           {kind !== "products" && (
@@ -147,6 +147,12 @@ export default async function DirectoryPage({
           <Link className={archived ? "selected" : ""} href={`/${kind}?archived=1`}>
             Архив
           </Link>
+          <InfoTip>
+            {kind === "customers"
+              ? "«Просрочено» — клиенты, чей самый старый неоплаченный долг старше стольких дней. "
+              : ""}
+            «Архив» — скрытые {kind === "customers" ? "клиенты" : "поставщики"}: их нет в списках и при выборе в формах.
+          </InfoTip>
         </nav>
       )}
       <section className="panel">

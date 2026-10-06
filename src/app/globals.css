@@ -1322,6 +1322,7 @@ div.photo-field {
 .info-tip {
   position: relative;
   display: inline-flex;
+  letter-spacing: normal;
 }
 .info-tip-button {
   display: inline-flex;
@@ -1495,6 +1496,7 @@ div.photo-field {
 .overdue-filter,
 .pill-switch {
   display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: wrap;
   margin-bottom: 14px;
@@ -3037,32 +3039,6 @@ tr.line-mismatch {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
-}
-.day-status {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 16px;
-}
-.day-status > div:first-child {
-  flex: 1 1 320px;
-}
-.day-status p {
-  margin: 4px 0 0;
-}
-.day-status-closed {
-  background: #eaf4e5;
-  border-color: #cfe3c4;
-}
-.day-status-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.day-status-actions form {
-  margin: 0;
 }
 .day-after {
   border-color: #f0dfb8;
@@ -5347,14 +5323,6 @@ tr.row-link:has(a[data-pending]) {
 }
 
 /* Итог дня: четыре строки сверху (задача 32) и «В кассе по факту» (задача 33). */
-.day-top {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  margin-bottom: 16px;
-  padding-top: 8px;
-  padding-bottom: 8px;
-}
 .day-line {
   display: flex;
   align-items: baseline;
@@ -5390,10 +5358,6 @@ tr.row-link:has(a[data-pending]) {
   font-weight: 500;
   white-space: normal;
 }
-.day-line-main strong {
-  font-size: 22px;
-  color: var(--green);
-}
 .day-close-form {
   display: flex;
   flex-wrap: wrap;
@@ -5411,6 +5375,184 @@ tr.row-link:has(a[data-pending]) {
   height: 48px;
   min-width: 200px;
   font-size: 16px;
+}
+
+/* Итог дня: касса главной карточкой, три плитки, долги строками. */
+.day-heading {
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.day-heading h1 {
+  margin-bottom: 0;
+}
+.day-date {
+  margin: 0 0 18px;
+  font-size: 15px;
+}
+.day-nav {
+  align-items: center;
+}
+.day-nav .date-picker-text {
+  display: none;
+}
+.day-nav-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1;
+  text-decoration: none;
+}
+.day-nav-arrow:hover {
+  background: #f1f6e8;
+}
+.day-nav-arrow.disabled {
+  opacity: 0.35;
+}
+.day-attention p {
+  margin: 0;
+}
+.day-attention p + p {
+  margin-top: 8px;
+}
+.day-cash {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.day-cash-closed {
+  background: #f4f9ef;
+  border-color: #cfe3c4;
+}
+.day-cash-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.day-cash-sum {
+  font-size: 30px;
+  color: var(--green);
+  white-space: nowrap;
+}
+.day-cash-from > summary,
+.day-fold > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+}
+.day-fold > summary {
+  color: var(--ink);
+  font-size: 16px;
+}
+.day-cash-from[open] > summary {
+  margin-bottom: 6px;
+}
+.day-cash-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.day-cash .day-close-form {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.day-cash .day-close-form label {
+  flex: 1 1 200px;
+}
+.day-cash .day-close-form input {
+  min-width: 0;
+  width: 100%;
+}
+.day-cash .day-close-form .text-button {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+}
+.day-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.day-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  min-width: 0;
+}
+.day-tile > span {
+  font-size: 15px;
+  font-weight: 600;
+}
+.day-tile strong {
+  font-size: 22px;
+  color: var(--green);
+  overflow-wrap: anywhere;
+}
+.day-tile small {
+  font-size: 13px;
+}
+.day-debts {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+}
+.day-debts .day-foreign-title {
+  padding: 10px 0 4px;
+}
+.day-debt-from {
+  font-weight: 500;
+  font-size: 15px;
+}
+.day-lists {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+  align-items: start;
+}
+.day-fold {
+  padding: 16px 20px;
+}
+.day-history-fold {
+  margin-top: 8px;
+}
+.day-history-fold[open] > summary {
+  margin-bottom: 12px;
+}
+@media (max-width: 560px) {
+  .day-tiles {
+    grid-template-columns: 1fr 1fr;
+  }
+  .day-tiles .day-tile:last-child {
+    grid-column: 1 / -1;
+  }
+  .day-lists {
+    grid-template-columns: 1fr;
+  }
+  .day-cash-sum {
+    font-size: 26px;
+  }
+  .day-tile strong {
+    font-size: 19px;
+  }
 }
 
 /* Списки на телефоне — карточками, без прокрутки вбок (задача 23). */
