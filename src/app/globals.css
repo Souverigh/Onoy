@@ -3330,6 +3330,121 @@ tr.line-mismatch {
   gap: 6px;
 }
 
+/* Возврат товара: поиск по тому, что брал клиент. */
+.adjustment-form > .party-picker,
+.adjustment-form > .method-row,
+.adjustment-form > .return-items,
+.adjustment-form > .return-back {
+  margin-bottom: 20px;
+}
+.return-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+form .return-search {
+  margin: 0;
+}
+.return-search input {
+  min-height: 48px;
+  font-size: 16px;
+}
+.return-found,
+.return-picked {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+.return-found button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  font-size: 16px;
+  color: inherit;
+  cursor: pointer;
+}
+.return-found button:hover,
+.return-found button:focus-visible {
+  background: #f1f6e8;
+}
+.return-found small,
+.return-picked small {
+  font-size: 13px;
+}
+.return-picked {
+  padding: 0 12px;
+  border-color: #cfe3c4;
+  background: #f4f9ef;
+}
+.return-picked li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #dfeccf;
+}
+.return-picked li:last-child {
+  border-bottom: 0;
+}
+.return-picked-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.return-picked .qty-stepper {
+  background: #fff;
+}
+.return-picked .qty-stepper input {
+  width: 56px;
+  min-height: 40px;
+  text-align: center;
+}
+.return-picked .qty-stepper input[aria-invalid] {
+  color: #9a1f18;
+}
+.return-picked strong {
+  white-space: nowrap;
+}
+.return-remove {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 20px;
+  cursor: pointer;
+}
+.return-items > .text-button,
+.return-back {
+  align-self: flex-start;
+  min-height: 40px;
+}
+@media (max-width: 480px) {
+  .return-picked li {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .return-picked strong {
+    justify-self: end;
+  }
+  .return-picked-name {
+    grid-column: 1 / -1;
+  }
+}
+
 /* Клиент из контактов телефона. */
 .contact-picker,
 .contact-row {
@@ -4050,13 +4165,35 @@ a.debt-card:hover {
 .party-manage-row {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px 14px;
-  padding-top: 10px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 14px;
+  padding-top: 16px;
+  margin-top: 4px;
   border-top: 1px solid var(--line);
 }
 .party-manage-row > span {
-  flex: 1 1 240px;
+  flex: 1 1 160px;
+}
+.party-manage-row > span.label-with-tip {
+  font-size: 15px;
+}
+/* Выбор дубля и кнопка — одной строкой, кнопка вровень с полем. */
+.party-manage-row:has(.party-merge-field) {
+  align-items: flex-end;
+}
+form .party-merge-field {
+  flex: 1 1 220px;
+  margin: 0;
+  font-size: 15px;
+  color: var(--ink);
+}
+.party-merge-field select {
+  width: 100%;
+  min-height: 48px;
+}
+.party-manage-row .button {
+  min-height: 48px;
 }
 
 /* Ручные строки накладной (аудит 15.1 п. 17). */
@@ -6002,8 +6139,18 @@ tr.row-link:has(a[data-pending]) {
   flex-direction: column;
   gap: 14px;
 }
+/* После продажи: итог и отправка — одной колонкой слева, как формы. */
+.sale-done,
+.send-invoice-panel {
+  max-width: 640px;
+  box-sizing: border-box;
+}
 .invoice-image-link {
   display: block;
+  /* На компьютере — размером с лист, а не на всю ширину экрана. */
+  width: 100%;
+  max-width: 520px;
+  box-sizing: border-box;
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;

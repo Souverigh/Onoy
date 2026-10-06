@@ -1111,3 +1111,87 @@ export async function reverseExpense(form: FormData) {
   revalidatePath("/", "layout");
   redirect(`/money/expense/${id}?reversed=1`);
 }
+
+/** Строка, которую клиент купил: цена — в валюте его долга. */
+export type BoughtLine = { id: string; name: string; qty: number; unit: string; price: number; date: string };
+
+const RETURN_DAYS = 90;
+
+/**
+ * Возврат товара (вариант A): что клиент брал за последние 90 дней — товары
+ * со склада (sale_items) или распознанные строки фото (document_lines). Цена —
+ * по которой купил; продажа в другой валюте — пересчёт по её курсу. Только чтение.
+ */
+export async function customerBoughtLines(customerId: string): Promise<BoughtLine[]> {
+  if (!uuidPattern.test(customerId)) return [];
+  const { db, organizationId } = await getContext();
+  const since = new Date(Date.now() - RETURN_DAYS * 86400000).toISOString();
+  const salesResult = await db
+    .from("sales")
+    .select("id,total,original_amount,occurred_at,document_id")
+    .eq("organization_id", organizationId)
+    .eq("customer_id", customerId)
+    .eq("status", "posted")
+    .eq("is_opening", false)
+    .is("reversed_at", null)
+    .gte("occurred_at", since)
+    .order("occurred_at", { ascending: false })
+    .limit(200);
+  const sales = (salesResult.data ?? []) as {
+    id: string;
+    total: string;
+    original_amount: string | null;
+    occurred_at: string;
+    document_id: string | null;
+  }[];
+  if (!sales.length) return [];
+  const itemsResult = await db
+    .from("sale_items")
+    .select("id,sale_id,name_snapshot,unit,qty,price")
+    .eq("organization_id", organizationId)
+    .in("sale_id", sales.map((s) => s.id))
+    .range(0, 4999);
+  const items = (itemsResult.data ?? []) as {
+    id: string;
+    sale_id: string;
+    name_snapshot: string;
+    unit: string | null;
+    qty: string;
+    price: string;
+  }[];
+  const withItems = new Set(items.map((i) => i.sale_id));
+  const docSales = sales.filter((s) => !withItems.has(s.id) && s.document_id);
+  const linesResult = docSales.length
+    ? await db
+        .from("document_lines")
+        .select("id,document_id,name_raw,unit,qty,price")
+        .eq("organization_id", organizationId)
+        .in("document_id", docSales.map((s) => s.document_id as string))
+        .range(0, 4999)
+    : { data: [] };
+  const docLines = (linesResult.data ?? []) as {
+    id: string;
+    document_id: string;
+    name_raw: string;
+    unit: string | null;
+    qty: string;
+    price: string;
+  }[];
+  // Продажа в $ при долге в сомах: строки в $, долг — total; множитель — её курс.
+  const factor = (s: (typeof sales)[number]) =>
+    s.original_amount && Number(s.original_amount) > 0 ? Number(s.total) / Number(s.original_amount) : 1;
+  const out: BoughtLine[] = [];
+  for (const s of sales) {
+    const f = factor(s);
+    const date = bishkekDate(new Date(s.occurred_at));
+    const own = withItems.has(s.id)
+      ? items.filter((i) => i.sale_id === s.id).map((i) => ({ id: i.id, name: i.name_snapshot, unit: i.unit, qty: i.qty, price: i.price }))
+      : docLines.filter((l) => l.document_id === s.document_id).map((l) => ({ id: l.id, name: l.name_raw, unit: l.unit, qty: l.qty, price: l.price }));
+    for (const l of own) {
+      const price = Math.round(Number(l.price) * f * 100) / 100;
+      if (!(Number(l.qty) > 0) || !(price > 0)) continue;
+      out.push({ id: l.id, name: l.name, qty: Number(l.qty), unit: l.unit ?? "шт", price, date });
+    }
+  }
+  return out;
+}

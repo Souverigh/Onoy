@@ -3,6 +3,7 @@ import { money } from "@/lib/format";
 import { ConfirmButton } from "./confirm-button";
 import { mergeParty, setArchived, undoMerge } from "@/app/(workspace)/[kind]/actions";
 import { DeleteWithUndo } from "./delete-with-undo";
+import { InfoTip } from "./info-tip";
 
 type Other = { id: string; name: string };
 
@@ -72,7 +73,10 @@ export function PartyManage({
       ))}
       {!mergedInto && !hasRecords && (
         <div className="party-manage-row">
-          <span className="muted">Записей нет — можно удалить насовсем.</span>
+          <span className="label-with-tip">
+            Удалить
+            <InfoTip>Записей нет — можно удалить насовсем.</InfoTip>
+          </span>
           <DeleteWithUndo what={kind} id={id} title={`Удалить ${who} «${name}»?`} afterHref={`/${kind}?deleted=1`} />
         </div>
       )}
@@ -81,10 +85,13 @@ export function PartyManage({
           <input type="hidden" name="kind" value={kind} />
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="archived" value={archived ? "false" : "true"} />
-          <span className="muted">
-            {archived
-              ? "В архиве: нет в списках и формах, история и ссылка сохранены."
-              : "Есть записи — удалить нельзя, можно убрать в архив: история и ссылка сохранятся."}
+          <span className="label-with-tip">
+            {archived ? "В архиве" : "Архив"}
+            <InfoTip>
+              {archived
+                ? "В архиве: нет в списках и формах, история и ссылка сохранены."
+                : "Есть записи — удалить нельзя, можно убрать в архив: история и ссылка сохранятся."}
+            </InfoTip>
           </span>
           {archived ? (
             <button className="button" type="submit">
@@ -110,8 +117,14 @@ export function PartyManage({
         <form action={mergeParty} className="party-manage-row">
           <input type="hidden" name="kind" value={kind} />
           <input type="hidden" name="id" value={id} />
-          <label>
-            Дубль? Объединить с
+          <label className="party-merge-field">
+            <span className="label-with-tip">
+              Дубль? Объединить с
+              <InfoTip>
+                Все записи и ссылка «{name}» перейдут к выбранному, имя станет его синонимом. Отменить можно в течение
+                суток.
+              </InfoTip>
+            </span>
             <select name="into" required defaultValue="">
               <option value="">Выберите…</option>
               {others.map((o) => (

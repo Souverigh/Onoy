@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { requireOwner } from "@/lib/context";
 import { AdjustmentForm } from "@/components/adjustment-form";
+import { InfoTip } from "@/components/info-tip";
 
 type Party = { id: string; name: string; phone: string | null; aliases: string[] | null; balance: string; currency: string | null };
 
@@ -35,10 +36,10 @@ export default async function AdjustmentPage({
         ← Назад
       </Link>
       <div className="page-heading">
-        <div>
-          <h1>Скидка или возврат</h1>
-          <p className="muted">Уменьшает долг. Деньгами не считается — в «Собрано» не попадёт.</p>
-        </div>
+        <h1 className="label-with-tip">
+          Скидка или возврат
+          <InfoTip>Уменьшает долг. Деньгами не считается — в «Собрано» не попадёт.</InfoTip>
+        </h1>
       </div>
       {error && (
         <p className="form-error" role="alert">

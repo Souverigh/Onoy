@@ -367,7 +367,18 @@ export function OperationForm({
         ? partyBalance - debtAmount
         : partyBalance + (paidNow ? 0 : debtAmount)
       : null;
-  const suggestions = verdict?.ok ? (checkedPhoto?.suggestions ?? []) : [];
+  // Подсказки сервера — по списку на момент проверки фото; клиентов, добавленных
+  // в форме после этого («+ Новый клиент», из контактов), сверяем здесь.
+  const serverSuggestions = verdict?.ok ? (checkedPhoto?.suggestions ?? []) : [];
+  const suggestions = invoiceName
+    ? [
+        ...serverSuggestions,
+        ...bestMatches(
+          invoiceName,
+          contactCustomers.filter((c) => !serverSuggestions.some((s) => s.id === c.id)),
+        ).map((m) => ({ id: m.candidate.id, name: m.candidate.name, score: m.score })),
+      ].sort((a, b) => b.score - a.score)
+    : serverSuggestions;
   const partyWord =
     kind === "purchase" || (kind === "payment" && direction === "outgoing") ? "поставщика" : "клиента";
   const describeError = (error: string | undefined | null) =>
