@@ -12,9 +12,10 @@ export default async function Onboarding({
     <main className="center">
       <section className="panel onboarding">
         <div className="brand">Depter</div>
-        <h1>Как называется ваш магазин?</h1>
+        <h1>Ваш магазин</h1>
         <p className="muted">
-          Начните с названия. Клиентов и поставщиков можно добавить следующим шагом.
+          Название, имя продавца и телефон — они будут на накладных клиентам. Клиентов и поставщиков можно
+          добавить следующим шагом.
         </p>
         <p className="muted">
           Продавцу магазина здесь ничего создавать не нужно — откройте ссылку-приглашение от владельца.
@@ -29,6 +30,16 @@ export default async function Onboarding({
               required
               maxLength={120}
             />
+          </label>
+          <label>
+            Имя продавца
+            <input name="seller_name" placeholder="Например, Маликнур" required maxLength={80} autoComplete="name" />
+            <small className="muted">Пишется на накладной в строке «Продавец».</small>
+          </label>
+          <label>
+            Телефон
+            <input name="phone" type="tel" placeholder="+996 773 033 399" required maxLength={40} autoComplete="tel" />
+            <small className="muted">На накладной и для WhatsApp — клиенты напишут сюда.</small>
           </label>
           <label>
             Основная валюта
@@ -56,7 +67,9 @@ export default async function Onboarding({
             <p role="alert" className="form-error">
               {error === "code"
                 ? "Код доступа не подошёл или уже использован. Попросите новый у Depter."
-                : "Не удалось создать магазин. Проверьте название и подключение базы."}
+                : error === "seller"
+                  ? "Впишите имя продавца и телефон — они нужны для накладных."
+                  : "Не удалось создать магазин. Проверьте название и подключение базы."}
             </p>
           )}
           <Submit>Открыть магазин</Submit>

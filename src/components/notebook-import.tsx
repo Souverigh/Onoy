@@ -11,6 +11,7 @@ import { bestMatches, similarity } from "@/lib/match";
 import { money } from "@/lib/format";
 import { MULTI_PAGE_MAX_SIDE, shrinkImage } from "@/lib/shrink-image";
 import { DOCUMENT_ACCEPT, MAX_PAGES, MAX_UPLOAD_BYTES } from "@/lib/pages";
+import { RuDateInput } from "./ru-date-input";
 
 export type ImportParty = {
   id: string;
@@ -25,14 +26,16 @@ type Row = {
   name: string;
   phone: string;
   amount: string;
-  /** "" — новый контрагент с этим именем. */
+  /** Дата долга, "ГГГГ-ММ-ДД"; "" — не написана (тогда — день переноса). */
+  date: string;
+  /** "" — новый клиент или поставщик с этим именем. */
   partyId: string;
   doubt: boolean;
   result?: OpeningResult;
 };
 
 const ERRORS: Record<string, string> = {
-  exists: "Долг этого контрагента уже перенесён. Чтобы исправить — отмените прежний в его карточке.",
+  exists: "Долг этого клиента уже перенесён. Чтобы исправить — отмените прежний в его карточке.",
   amount: "Проверьте сумму: число, минус — аванс.",
   invalid: "Обновите страницу и попробуйте снова.",
   save: "Не удалось сохранить. Попробуйте ещё раз.",
@@ -74,8 +77,8 @@ export function NotebookImport({
     return best ? best.candidate.id : "";
   }
 
-  function newRow(name = "", phone = "", amount = "", doubt = false): Row {
-    return { key: crypto.randomUUID(), name, phone, amount, partyId: name ? guessParty(name) : "", doubt };
+  function newRow(name = "", phone = "", amount = "", doubt = false, date = ""): Row {
+    return { key: crypto.randomUUID(), name, phone, amount, date, partyId: name ? guessParty(name) : "", doubt };
   }
 
   function update(key: string, patch: Partial<Row>) {
@@ -113,7 +116,7 @@ export function NotebookImport({
       setRows((current) => [
         ...current.filter((row) => row.name || row.amount),
         ...res.rows.map((r) =>
-          newRow(r.name, r.phone, String(r.amount), r.confidence < 0.8),
+          newRow(r.name, r.phone, String(r.amount), r.confidence < 0.8, r.date),
         ),
       ]);
     } catch (err) {
@@ -145,6 +148,7 @@ export function NotebookImport({
           name: row.name.trim(),
           phone: row.phone.trim(),
           amount: row.amount,
+          date: row.date,
         })),
       );
       const byKey = new Map(results.map((r) => [r.key, r]));
@@ -251,6 +255,14 @@ export function NotebookImport({
                       onChange={(e) => update(row.key, { amount: e.target.value })}
                     />
                   </label>
+                  {!done && (
+                    <RuDateInput
+                      label="Дата долга"
+                      value={row.date}
+                      onChange={(next) => update(row.key, { date: next ?? "" })}
+                      hint={<small className="muted">{row.date ? "Давность — с этой даты" : "Нет даты — с сегодня"}</small>}
+                    />
+                  )}
                   {!row.partyId && (
                     <label>
                       Телефон

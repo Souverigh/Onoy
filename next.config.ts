@@ -1,6 +1,24 @@
 import type { NextConfig } from "next";
+import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+
+// Версия в Настройках (задача 36): из package.json, плюс коммит и дата сборки.
+function appVersion() {
+  const { version } = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as { version: string };
+  let commit = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "";
+  if (!commit)
+    try {
+      commit = execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+    } catch {
+      commit = "";
+    }
+  const date = new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date());
+  return `${version.replace(/\.0$/, "")} · сборка ${date}${commit ? ` (${commit})` : ""}`;
+}
+
 const config: NextConfig = {
   poweredByHeader: false,
+  env: { NEXT_PUBLIC_APP_VERSION: appVersion() },
   experimental: {
     serverActions: {
       // Фото ужимаются в браузере (src/lib/shrink-image.ts) до ~0.5 МБ; запас —

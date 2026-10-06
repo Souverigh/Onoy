@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { money } from "@/lib/format";
 import { ConfirmButton } from "./confirm-button";
-import { deleteParty, mergeParty, setArchived, undoMerge } from "@/app/(workspace)/[kind]/actions";
+import { mergeParty, setArchived, undoMerge } from "@/app/(workspace)/[kind]/actions";
+import { DeleteWithUndo } from "./delete-with-undo";
 
 type Other = { id: string; name: string };
 
@@ -59,20 +60,21 @@ export function PartyManage({
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="merge" value={m.id} />
           <span>Сюда объединён «{m.fromName}».</span>
-          <ConfirmButton className="button danger-outline" message={`Разъединить «${m.fromName}» и «${name}»?`}>
+          <ConfirmButton
+            className="button danger-outline"
+            danger={false}
+            confirmLabel="Да, разъединить"
+            message={`Разъединить «${m.fromName}» и «${name}»?`}
+          >
             Отменить объединение
           </ConfirmButton>
         </form>
       ))}
       {!mergedInto && !hasRecords && (
-        <form action={deleteParty} className="party-manage-row">
-          <input type="hidden" name="kind" value={kind} />
-          <input type="hidden" name="id" value={id} />
+        <div className="party-manage-row">
           <span className="muted">Записей нет — можно удалить насовсем.</span>
-          <ConfirmButton className="button danger-outline" message={`Удалить ${who} «${name}» насовсем?`}>
-            Удалить
-          </ConfirmButton>
-        </form>
+          <DeleteWithUndo what={kind} id={id} title={`Удалить ${who} «${name}»?`} afterHref={`/${kind}?deleted=1`} />
+        </div>
       )}
       {!mergedInto && hasRecords && (
         <form action={setArchived} className="party-manage-row">
@@ -91,6 +93,8 @@ export function PartyManage({
           ) : (
             <ConfirmButton
               className="button danger-outline"
+              danger={false}
+              confirmLabel="Да, в архив"
               message={
                 balance !== 0
                   ? `У «${name}» ${balance > 0 ? "долг" : "аванс"} ${money(Math.abs(balance), currency)}. Всё равно убрать в архив?`
@@ -119,7 +123,10 @@ export function PartyManage({
           </label>
           <ConfirmButton
             className="button"
-            message={`Все записи и ссылка «${name}» перейдут к выбранному, имя «${name}» станет его синонимом. Отменить можно в течение суток. Объединить?`}
+            danger={false}
+            confirmLabel="Да, объединить"
+            message={`Объединить «${name}» с выбранным?`}
+            text={`Все записи и ссылка «${name}» перейдут к выбранному, имя «${name}» станет его синонимом. Отменить можно в течение суток.`}
           >
             Объединить
           </ConfirmButton>

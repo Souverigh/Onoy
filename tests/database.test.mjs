@@ -1348,6 +1348,10 @@ test("get_invoice_by_token: only a digitized, active sale of the link's own cust
     "insert into document_lines(organization_id,document_id,n,name_raw,qty,unit,price) values ($1,$2,1,'Щит-4',4,'шт',240)",
     [orgA, ok.doc],
   );
+  await db.query(
+    "insert into document_extractions(organization_id,document_id,payload,model_version,provider,prompt_version) values ($1,$2,$3,'m','gemini','v3')",
+    [orgA, ok.doc, JSON.stringify({ kind: "invoice", extracted: { number: " 15 " } })],
+  );
   const review = await newSale(customer, 2, "review");
   const foreign = await newSale(other, 3, "digitized");
   const reversed = await newSale(customer, 4, "digitized");
@@ -1366,6 +1370,8 @@ test("get_invoice_by_token: only a digitized, active sale of the link's own cust
   // (отменённая позже продажа не считается).
   assert.equal(typeof invoice.number, "number");
   assert.ok(invoice.number > 0);
+  // Номер с фото — отдельно, без пробелов по краям.
+  assert.equal(invoice.paper_number, "15");
   assert.equal(invoice.debt_after, "960.00");
   assert.equal(invoice.customer_phone, "");
   for (const sale of [review.sale, foreign.sale, reversed.sale])
@@ -2506,4 +2512,188 @@ test("feedback from the login page: anonymous send with limits, read only by the
   await db.query("insert into private.feedback_messages(name, contact, message) select 'спам', '000', 'спам' from generate_series(1, 29)");
   await db.exec("SET ROLE anon;");
   await assert.rejects(db.query("select send_feedback('Ещё', '+996 555', 'текст')"), /too_many/);
+});
+
+test("payment method: cash or transfer is stored; a receipt or bank reference means transfer", async () => {
+  await owner();
+  const customer = (
+    await db.query("insert into customers(organization_id,name) values ($1,'Клиент кассы') returning id", [orgA])
+  ).rows[0].id;
+  await user(a);
+  const pay = async (key, method, reference = null) =>
+    (
+      await db.query(
+        "select commit_payment(p_org=>$1,p_direction=>'incoming',p_party=>$2,p_amount=>'100.00',p_bank_reference=>$3,p_idempotency_key=>$4,p_method=>$5) as id",
+        [orgA, customer, reference, key, method],
+      )
+    ).rows[0].id;
+  const cash = await pay("dddddddd-1005-4000-8000-000000000001", "cash");
+  const transfer = await pay("dddddddd-1005-4000-8000-000000000002", "transfer");
+  const unknown = await pay("dddddddd-1005-4000-8000-000000000003", null);
+  const byReference = await pay("dddddddd-1005-4000-8000-000000000004", null, "MB-1005");
+  const method = async (id) => (await db.query("select method from payments where id=$1", [id])).rows[0].method;
+  assert.equal(await method(cash), "cash");
+  assert.equal(await method(transfer), "transfer");
+  assert.equal(await method(unknown), null);
+  assert.equal(await method(byReference), "transfer");
+  await assert.rejects(pay("dddddddd-1005-4000-8000-000000000005", "card"), /invalid_payment/);
+  // Старый вызов без p_method по-прежнему работает.
+  await db.query("select commit_payment($1,'incoming',$2,'50.00',null,'dddddddd-1005-4000-8000-000000000006')", [orgA, customer]);
+});
+
+test("sale date: a sale can be written for yesterday, not for the future or older than a year", async () => {
+  await owner();
+  const customer = (
+    await db.query("insert into customers(organization_id,name) values ($1,'Клиент вчера') returning id", [orgA])
+  ).rows[0].id;
+  await user(a);
+  const yesterday = new Date(Date.now() - 86400000).toISOString();
+  const sale = (
+    await db.query(
+      "select commit_sale(p_org=>$1,p_customer=>$2,p_amount=>'500.00',p_paid_immediately=>false,p_idempotency_key=>$3,p_occurred_at=>$4) as id",
+      [orgA, customer, "eeeeeeee-1005-4000-8000-000000000001", yesterday],
+    )
+  ).rows[0].id;
+  const row = (await db.query("select occurred_at from sales where id=$1", [sale])).rows[0];
+  assert.equal(new Date(row.occurred_at).toISOString(), yesterday);
+  const tomorrow = new Date(Date.now() + 86400000).toISOString();
+  await assert.rejects(
+    db.query(
+      "select commit_sale(p_org=>$1,p_customer=>$2,p_amount=>'500.00',p_paid_immediately=>false,p_idempotency_key=>$3,p_occurred_at=>$4)",
+      [orgA, customer, "eeeeeeee-1005-4000-8000-000000000002", tomorrow],
+    ),
+    /invalid_date/,
+  );
+  // Без даты — как раньше, «сейчас».
+  await db.query("select commit_sale($1,$2,'10.00',false,'eeeeeeee-1005-4000-8000-000000000003')", [orgA, customer]);
+});
+
+test("client page: a rejected claim shows its reason, reversed records and internal notes are hidden", async () => {
+  await owner();
+  await user(a);
+  const customer = (
+    await db.query("insert into customers(organization_id,name) values($1,'Тимур аке') returning id", [orgA])
+  ).rows[0].id;
+  const token = (await db.query("select create_share_link($1,$2) as token", [orgA, customer])).rows[0].token;
+  await db.query("select commit_sale($1,$2,'500.00',false,'ffffffff-1005-4000-8000-000000000001')", [orgA, customer]);
+  const reversed = (
+    await db.query("select commit_sale($1,$2,'70.00',false,'ffffffff-1005-4000-8000-000000000002') as id", [orgA, customer])
+  ).rows[0].id;
+  await db.query("select reverse_sale($1,$2,'Повтор')", [orgA, reversed]);
+  await db.query(
+    "select commit_adjustment($1,'incoming',$2,'discount','50.00','скидка за опт, не говорить клиенту','ffffffff-1005-4000-8000-000000000003')",
+    [orgA, customer],
+  );
+  await db.exec("RESET ROLE; SET ROLE anon; SELECT set_config('request.jwt.claim.sub','',false);");
+  const claim = (await db.query("select submit_payment_claim($1,'150000',null) as id", [token])).rows[0].id;
+  await owner();
+  await user(a);
+  await db.query("select reject_payment_claim($1,$2,'Денег не пришло')", [orgA, claim]);
+
+  await db.exec("RESET ROLE; SET ROLE anon; SELECT set_config('request.jwt.claim.sub','',false);");
+  const page = (await db.query("select get_client_page_by_token($1) as data", [token])).rows[0].data;
+  const rejected = page.entries.find((e) => e.id === claim);
+  assert.equal(rejected.status, "rejected");
+  assert.equal(rejected.reject_comment, "Денег не пришло");
+  assert.ok(!page.entries.some((e) => e.id === reversed), "отменённая продажа не видна");
+  assert.ok(page.entries.every((e) => !("note" in e)), "внутренние заметки не видны");
+  assert.equal(page.balance, "450.00");
+
+  // Отозванная ссылка: страница знает магазин, но не долг.
+  await owner();
+  await user(a);
+  const link = (await db.query("select id from share_links where token=$1", [token])).rows[0].id;
+  await db.query("select revoke_share_link($1,$2)", [orgA, link]);
+  await db.exec("RESET ROLE; SET ROLE anon; SELECT set_config('request.jwt.claim.sub','',false);");
+  await assert.rejects(db.query("select get_client_page_by_token($1)", [token]), /invalid_token/);
+  const shop = (await db.query("select get_revoked_link_shop($1) as data", [token])).rows[0].data;
+  assert.equal(shop.shop_name, "Магазин A");
+  assert.equal((await db.query("select get_shop_payment_by_token($1) as data", [token])).rows[0].data, null);
+  await owner();
+});
+
+test("notebook import with the debt date: aging counts from the written date", async () => {
+  await owner();
+  await user(a);
+  const date = new Date(Date.now() - 40 * 86400000).toISOString().slice(0, 10);
+  const party = (
+    await db.query(
+      "select import_opening_balance($1,'customer',null,'Канат ака','','1500.00','abababab-1005-4000-8000-000000000001',$2) as id",
+      [orgA, date],
+    )
+  ).rows[0].id;
+  const aging = (await db.query("select oldest_days from customer_debt_aging where customer_id=$1", [party])).rows[0];
+  assert.ok(aging.oldest_days >= 39 && aging.oldest_days <= 41, `oldest_days ${aging.oldest_days}`);
+  const tomorrow = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+  await assert.rejects(
+    db.query(
+      "select import_opening_balance($1,'customer',null,'Завтрашний','','10.00','abababab-1005-4000-8000-000000000002',$2)",
+      [orgA, tomorrow],
+    ),
+    /invalid_opening/,
+  );
+  await owner();
+});
+
+test("delete a photo without a record: only an unused document, only in its own shop", async () => {
+  await owner();
+  const doc = async (key) =>
+    (
+      await db.query(
+        "insert into documents(organization_id,storage_path,file_hash,mime_type,kind,status) values ($1,$2,$2,'image/jpeg','sale','uploaded') returning id",
+        [orgA, "orphan-" + key],
+      )
+    ).rows[0].id;
+  const orphan = await doc(1);
+  const used = await doc(2);
+  await db.query(
+    "insert into document_lines(organization_id,document_id,n,name_raw,qty,unit,price) values ($1,$2,1,'Лампа',1,'шт',10)",
+    [orgA, orphan],
+  );
+  const customer = (await db.query("insert into customers(organization_id,name) values ($1,'Клиент фото') returning id", [orgA])).rows[0].id;
+  await user(a);
+  const sale = (
+    await db.query("select commit_sale($1,$2,'10.00',false,'acacacac-1005-4000-8000-000000000001',$3) as id", [orgA, customer, used])
+  ).rows[0].id;
+  await db.query("select reverse_sale($1,$2,'Повтор')", [orgA, sale]);
+  // Чужой магазин — нельзя.
+  await user(b);
+  await assert.rejects(db.query("select delete_unused_document($1,$2)", [orgA, orphan]), /not_a_member/);
+  await user(a);
+  // Фото отменённой продажи — история записи, не удаляем.
+  await assert.rejects(db.query("select delete_unused_document($1,$2)", [orgA, used]), /document_in_use/);
+  await db.query("select delete_unused_document($1,$2)", [orgA, orphan]);
+  await owner();
+  assert.equal((await db.query("select count(*)::int as n from documents where id=$1", [orphan])).rows[0].n, 0);
+  assert.equal((await db.query("select count(*)::int as n from document_lines where document_id=$1", [orphan])).rows[0].n, 0);
+  assert.equal(
+    (await db.query("select count(*)::int as n from audit_events where action='document.deleted' and entity_id=$1", [orphan])).rows[0].n,
+    1,
+  );
+});
+
+test("claims: a confirmation can be undone by its owner within a minute, the claim waits again", async () => {
+  await owner();
+  await user(a);
+  const customer = (
+    await db.query("insert into customers(organization_id,name) values($1,'Клиент заявки') returning id", [orgA])
+  ).rows[0].id;
+  const token = (await db.query("select create_share_link($1,$2) as token", [orgA, customer])).rows[0].token;
+  await db.exec("RESET ROLE; SET ROLE anon; SELECT set_config('request.jwt.claim.sub','',false);");
+  const claim = (await db.query("select submit_payment_claim($1,'700',null) as id", [token])).rows[0].id;
+  await owner();
+  await user(a);
+  const balance = async () => (await db.query("select balance from customer_balances where id=$1", [customer])).rows[0].balance;
+  await db.query("select confirm_payment_claim($1,$2,'650')", [orgA, claim]);
+  assert.equal(await balance(), "-650.00");
+  await user(b);
+  await assert.rejects(db.query("select undo_confirm_claim($1,$2)", [orgA, claim]), /owner_only/);
+  await user(a);
+  await db.query("select undo_confirm_claim($1,$2)", [orgA, claim]);
+  const row = (await db.query("select status, amount from payments where id=$1", [claim])).rows[0];
+  assert.deepEqual(row, { status: "pending", amount: "700.00" });
+  assert.equal(await balance(), "0.00");
+  // Второй раз вернуть нечего.
+  await assert.rejects(db.query("select undo_confirm_claim($1,$2)", [orgA, claim]), /undo_expired/);
+  await owner();
 });

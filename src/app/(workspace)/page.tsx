@@ -1,10 +1,17 @@
+import { headers } from "next/headers";
 import { getContext } from "@/lib/context";
-import { Dashboard, type Summary } from "@/components/dashboard";
-import { dayHistory, unclosedDays } from "@/lib/day-summary";
+import { Dashboard, type Reminder, type Summary } from "@/components/dashboard";
+import { bishkekDate, dayHistory } from "@/lib/day-summary";
 import { recentRecords } from "@/lib/recent";
+import { dayMonth } from "@/lib/promise";
+import { reminderMessage } from "@/lib/reminder";
+import { waPhone } from "@/lib/share";
+
+/** Сколько клиентов показываем в «Кому напомнить сегодня». */
+const REMIND_LIMIT = 6;
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ error?: string; password?: string }> }) {
-  const { db, organizationId, isOwner, currency: shopCurrency } = await getContext();
+  const { db, organizationId, organizationName, isOwner, currency: shopCurrency } = await getContext();
   const { error, password } = await searchParams;
   // После «Забыли пароль?» → новый пароль (src/app/auth/actions.ts, updatePassword).
   const passwordNotice =
@@ -34,15 +41,19 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
       </>
     );
   }
-  const [customerBalances, supplierBalances, unclosed, late, history, claims, reviewResult, recent] = await Promise.all([
+  const today = bishkekDate();
+  const [customerBalances, supplierBalances, late, history, claims, reviewResult, recent] = await Promise.all([
     // Долги — по валютам: доллары Хороза со сомами не складываем.
-    db.from("customer_balances").select("id,balance,currency").eq("organization_id", organizationId).range(0, 4999),
+    db
+      .from("customer_balances")
+      .select("id,name,phone,balance,currency,promised_date,archived_at,merged_into_id")
+      .eq("organization_id", organizationId)
+      .range(0, 4999),
     db.from("supplier_balances").select("balance,currency").eq("organization_id", organizationId).range(0, 4999),
-    unclosedDays(db, organizationId),
-    // Просрочено больше 30 дней: неоплаченные продажи старше месяца.
+    // Долг старше 30 дней: неоплаченные продажи старше месяца.
     db
       .from("customer_debt_aging")
-      .select("customer_id,due_31_60,due_61_90,due_over_90")
+      .select("customer_id,oldest_days")
       .eq("organization_id", organizationId)
       .gt("oldest_days", 30)
       .range(0, 4999),
@@ -71,30 +82,83 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
     receivable: d.receivable / 100,
     payable: d.payable / 100,
   }));
-  const customerCurrency = new Map((customerBalances.data ?? []).map((c) => [c.id, c.currency ?? shopCurrency]));
-  const lateRows = late.data ?? [];
-  const lateByCurrency = new Map<string, number>();
-  for (const r of lateRows) {
-    const cur = customerCurrency.get(r.customer_id) ?? shopCurrency;
-    lateByCurrency.set(
-      cur,
-      (lateByCurrency.get(cur) ?? 0) + Math.round((Number(r.due_31_60) + Number(r.due_61_90) + Number(r.due_over_90)) * 100),
-    );
-  }
-  const overdue = {
-    count: lateRows.length,
-    amounts: [...lateByCurrency.entries()]
-      .sort(([a], [b]) => (a === shopCurrency ? -1 : b === shopCurrency ? 1 : 0))
-      .map(([currency, cents]) => ({ currency, amount: cents / 100 })),
+
+  // Кому напомнить сегодня (задача 20): обещал оплатить сегодня или раньше —
+  // первыми, потом долг старше 30 дней (самые старые сверху).
+  type Row = {
+    id: string;
+    name: string;
+    phone: string | null;
+    balance: string;
+    currency: string | null;
+    promised_date: string | null;
+    archived_at: string | null;
+    merged_into_id: string | null;
   };
+  const oldest = new Map(((late.data ?? []) as { customer_id: string; oldest_days: number }[]).map((r) => [r.customer_id, r.oldest_days]));
+  const candidates = ((customerBalances.data ?? []) as Row[])
+    .filter((c) => !c.archived_at && !c.merged_into_id && Number(c.balance) > 0)
+    .map((c) => {
+      const promised = c.promised_date && c.promised_date <= today ? c.promised_date : null;
+      const days = oldest.get(c.id) ?? 0;
+      return { c, promised, days };
+    })
+    .filter((x) => x.promised || x.days > 30)
+    .sort((a, b) =>
+      a.promised && b.promised
+        ? a.promised.localeCompare(b.promised)
+        : a.promised
+          ? -1
+          : b.promised
+            ? 1
+            : b.days - a.days,
+    );
+  const shown = candidates.slice(0, REMIND_LIMIT);
+  const links = shown.length
+    ? await db
+        .from("share_links")
+        .select("customer_id,token")
+        .eq("organization_id", organizationId)
+        .in("customer_id", shown.map((x) => x.c.id))
+        .is("revoked_at", null)
+    : { data: [] as { customer_id: string; token: string }[] };
+  const tokens = new Map((links.data ?? []).map((l) => [l.customer_id as string, l.token as string]));
+  const h = await headers();
+  const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
+  const reminders: Reminder[] = shown.map(({ c, promised, days }) => {
+    const currency = c.currency ?? shopCurrency;
+    const balance = Number(c.balance);
+    const token = tokens.get(c.id);
+    const text = reminderMessage({
+      shopName: organizationName,
+      balance,
+      currency,
+      promisedDate: c.promised_date,
+      today,
+      link: token ? `${origin}/c/${token}` : null,
+    });
+    return {
+      id: c.id,
+      name: c.name,
+      balance,
+      currency,
+      reason: promised
+        ? promised === today
+          ? "обещал оплатить сегодня"
+          : `обещал до ${dayMonth(promised)}`
+        : `долг ${days} дн.`,
+      waHref: c.phone && waPhone(c.phone) ? `https://wa.me/${waPhone(c.phone)}?text=${encodeURIComponent(text)}` : null,
+    };
+  });
+
   const todayRow = history[0]; // за 1 день — одна строка, сегодня
   return (
     <>
       {passwordNotice}
       <Dashboard
         summary={{ debts: debtTotals } satisfies Summary}
-        unclosedDays={unclosed}
-        overdue={overdue}
+        reminders={reminders}
+        remindersMore={candidates.length - shown.length}
         today={
           todayRow
             ? { sold: todayRow.sold, collected: todayRow.collected, expenses: todayRow.expenses, currency: shopCurrency }

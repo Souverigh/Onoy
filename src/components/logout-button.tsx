@@ -1,18 +1,19 @@
 "use client";
 import { logout } from "@/app/auth/actions";
+import { ConfirmButton } from "./confirm-button";
 
 /** «Выйти» — только в Настройках и с подтверждением (аудит ТЗ 15.1 п. 8). */
 export function LogoutButton() {
   return (
-    <form
-      action={logout}
-      onSubmit={(e) => {
-        if (!window.confirm("Выйти из Depter на этом устройстве?")) e.preventDefault();
-      }}
-    >
-      <button type="submit" className="button danger-outline">
+    <form action={logout}>
+      <ConfirmButton
+        className="button danger-outline"
+        danger={false}
+        message="Выйти из Depter на этом устройстве?"
+        confirmLabel="Да, выйти"
+      >
         Выйти из аккаунта
-      </button>
+      </ConfirmButton>
     </form>
   );
 }

@@ -43,12 +43,26 @@ export async function confirmClaim(form: FormData) {
   });
   if (result.error) redirect("/claims?error=invalid");
   revalidatePath("/", "layout");
-  redirect("/claims?done=confirmed");
+  // 5 секунд «Вернуть» (задача 19).
+  redirect(`/claims?done=confirmed&undo=${id}`);
 }
 
+/** «Вернуть» сразу после подтверждения: заявка снова ждёт, долг как был. */
+export async function undoConfirmClaim(id: string): Promise<{ ok: boolean }> {
+  if (!uuidPattern.test(id)) return { ok: false };
+  const { db, organizationId } = await getContext();
+  const result = await db.rpc("undo_confirm_claim", { p_org: organizationId, p_payment: id });
+  if (result.error) return { ok: false };
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/** Причины отказа кнопками (задача 19) или своим текстом. */
 export async function rejectClaim(form: FormData) {
   const id = String(form.get("id") ?? "");
-  const comment = String(form.get("comment") ?? "").trim();
+  const reason = String(form.get("reason") ?? "").trim();
+  const text = String(form.get("comment") ?? "").trim();
+  const comment = (reason && text ? `${reason}: ${text}` : reason || text).slice(0, 500);
   if (!uuidPattern.test(id) || !comment) redirect("/claims?error=invalid");
   const { db, organizationId } = await getContext();
   const result = await db.rpc("reject_payment_claim", {

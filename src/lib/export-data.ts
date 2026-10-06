@@ -9,7 +9,7 @@ export const EXPORT_TABLES = {
   customers: "Клиенты",
   suppliers: "Поставщики",
   sales: "Продажи",
-  purchases: "Приходы",
+  purchases: "Товар от поставщиков",
   payments: "Оплаты",
   expenses: "Расходы",
   lines: "Позиции накладных",

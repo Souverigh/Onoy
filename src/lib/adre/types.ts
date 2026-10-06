@@ -88,6 +88,8 @@ export type ExpenseResult = {
 export type NotebookRow = {
   name_raw: string;
   phone: string | null;
+  /** Дата долга, как написана («15.09»); нет — null. */
+  date?: string | null;
   amount: number;
   confidence: number;
 };

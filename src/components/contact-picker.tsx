@@ -13,7 +13,7 @@ type ContactsManager = {
  */
 export function ContactPicker({
   onPick,
-  label = "Из контактов",
+  label = "Из контактов телефона",
   compact = false,
 }: {
   onPick: (contact: PickedContact) => void;
@@ -68,10 +68,10 @@ export function ContactPicker({
           <button
             type="button"
             className={buttonClass}
-            title="Файл контакта .vcf"
+            title="Контакт из телефона"
             onClick={() => fileInput.current?.click()}
           >
-            {compact ? label : `${label} (.vcf)`}
+            {label}
           </button>
           <input
             ref={fileInput}

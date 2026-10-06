@@ -20,11 +20,11 @@ export default function Preview() {
         today={{ sold: 12400, collected: 5000, expenses: 1500, currency: "KGS" }}
         pendingClaims={3}
         reviewCount={1}
-        unclosedDays={["2026-09-26"]}
+        reminders={[{ id: "1", name: "Медербек", balance: 5850, currency: "KGS", reason: "обещал оплатить сегодня", waHref: null }]}
         recent={[
           { key: "1", label: "Продажа в долг", party: "Медербек", partyHref: "/customers", amount: "5850", currency: "KGS", at: new Date().toISOString(), reversed: false },
           { key: "2", label: "Получена оплата", party: "Асан", partyHref: "/customers", amount: "5000", currency: "KGS", at: new Date().toISOString(), reversed: false },
-          { key: "3", label: "Приход", party: "Horoz Electric", partyHref: "/suppliers", amount: "3006.96", currency: "USD", at: new Date().toISOString(), reversed: true },
+          { key: "3", label: "Товар от поставщика", party: "Horoz Electric", partyHref: "/suppliers", amount: "3006.96", currency: "USD", at: new Date().toISOString(), reversed: true },
         ]}
         preview
       />

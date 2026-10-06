@@ -29,3 +29,6 @@ export function paymentLabelWithSide(kind: PaymentKind | null | undefined, direc
   if (kind === "return") return direction === "incoming" ? "Возврат товара от клиента" : "Возврат товара поставщику";
   return direction === "incoming" ? "Получена оплата" : "Оплата поставщику";
 }
+
+/** Причины отмены кнопками (задача 28); можно своим текстом. */
+export const REVERSAL_REASONS = ["Ошибся суммой", "Не тот клиент", "Повтор", "Пробная запись"] as const;

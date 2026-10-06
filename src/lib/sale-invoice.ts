@@ -4,9 +4,17 @@ import { money } from "./format";
 
 export type SaleInvoiceInfo = {
   number: number | null;
+  /** Номер с фото накладной, если распознан. */
+  paperNumber: string | null;
   debtAfter: string | null;
   customerPhone: string;
   sellerName: string | null;
+  /** Из Настроек → Магазин (задача 34); пусто — имя продавца из сотрудников и телефон магазина. */
+  shopSellerName: string | null;
+  shopSellerPhone: string | null;
+  /** «Долг после этой накладной» и QR — включаются в Настройках, по умолчанию да. */
+  showDebt: boolean;
+  showQr: boolean;
 };
 
 /** Номер, долг после накладной, продавец — для PDF (sale_invoice_info). */
@@ -14,9 +22,14 @@ export function parseSaleInvoiceInfo(raw: unknown): SaleInvoiceInfo {
   const data = (raw ?? {}) as Record<string, unknown>;
   return {
     number: typeof data.number === "number" ? data.number : null,
+    paperNumber: typeof data.paper_number === "string" && data.paper_number.trim() ? data.paper_number.trim() : null,
     debtAfter: typeof data.debt_after === "string" ? data.debt_after : null,
     customerPhone: typeof data.customer_phone === "string" ? data.customer_phone : "",
     sellerName: typeof data.seller_name === "string" ? data.seller_name : null,
+    shopSellerName: typeof data.shop_seller_name === "string" && data.shop_seller_name ? data.shop_seller_name : null,
+    shopSellerPhone: typeof data.shop_seller_phone === "string" && data.shop_seller_phone ? data.shop_seller_phone : null,
+    showDebt: data.show_debt !== false,
+    showQr: data.show_qr !== false,
   };
 }
 

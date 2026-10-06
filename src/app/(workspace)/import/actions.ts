@@ -9,7 +9,7 @@ import { MAX_PAGES, documentMimeType, isAcceptedDocument } from "@/lib/pages";
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type NotebookRowDraft = { name: string; phone: string; amount: number; confidence: number };
+export type NotebookRowDraft = { name: string; phone: string; date: string; amount: number; confidence: number };
 
 /** Фото страниц тетради → список «имя — сумма» для проверки продавцом. Ничего не записывает. */
 export async function recognizeNotebookPhotos(
@@ -45,6 +45,8 @@ export type OpeningInput = {
   name: string;
   phone: string;
   amount: string;
+  /** Дата долга из тетради, "ГГГГ-ММ-ДД"; пусто — сегодня. */
+  date?: string;
 };
 export type OpeningResult = { key: string; ok: boolean; partyId?: string; error?: string };
 
@@ -88,6 +90,7 @@ export async function importOpenings(
       p_phone: String(row.phone ?? ""),
       p_amount: amount,
       p_idempotency_key: row.key,
+      ...(row.date && /^\d{4}-\d{2}-\d{2}$/.test(row.date) ? { p_occurred_on: row.date } : {}),
     });
     if (error || !data) {
       const message = error?.message ?? "";

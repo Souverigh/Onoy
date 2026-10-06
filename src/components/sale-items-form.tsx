@@ -12,6 +12,8 @@ import {
 import { customerFromContact } from "@/app/(workspace)/money/actions";
 import { Submit } from "./submit";
 import { ContactPicker } from "./contact-picker";
+import { PartyPicker } from "./party-picker";
+import { NewCustomerInline } from "./new-customer-inline";
 import { money, quantity } from "@/lib/format";
 import { searchProducts } from "@/lib/match";
 import { PRODUCT_UNITS, STOCK_ERROR_TEXT, stockNumber } from "@/lib/stock";
@@ -19,7 +21,15 @@ import { CURRENCY_SIGN, convertAmount, formatRate, partyCurrency, ratePair, rate
 import { creditLimitExceeded } from "@/lib/credit-limit";
 import type { RateQuotes } from "./operation-form";
 
-type Customer = { id: string; name: string; currency?: string | null; balance?: string; credit_limit?: string | null };
+type Customer = {
+  id: string;
+  name: string;
+  phone?: string | null;
+  aliases?: string[] | null;
+  currency?: string | null;
+  balance?: string;
+  credit_limit?: string | null;
+};
 type Line = { key: number; product: QuickProduct; qty: string; price: string };
 
 /** Количество в тысячных, цена в тийынах — сумма строки как в базе: round(qty*price, 2). */
@@ -75,6 +85,7 @@ export function SaleItemsForm({
   const [contactNote, setContactNote] = useState<string | null>(null);
   const allCustomers = [...customers, ...contactCustomers.filter((c) => !customers.some((x) => x.id === c.id))];
   const [party, setParty] = useState(initialParty ?? "");
+  const [newCustomer, setNewCustomer] = useState(false);
   const [lines, setLines] = useState<Line[]>([]);
   const lineKey = useRef(0);
   const [query, setQuery] = useState("");
@@ -221,17 +232,40 @@ export function SaleItemsForm({
   return (
     <form onSubmit={submit} className="simple-operation-form sale-items-form">
       <input type="hidden" name="idempotency_key" value={idempotencyKey} />
-      <label>
-        {purchase ? "Поставщик" : "Клиент"}
-        <select name={purchase ? "supplier_id" : "customer_id"} required value={party} onChange={(e) => setParty(e.target.value)}>
-          <option value="">Выберите из списка</option>
-          {allCustomers.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <PartyPicker
+        label={purchase ? "Поставщик" : "Клиент"}
+        name={purchase ? "supplier_id" : "customer_id"}
+        parties={allCustomers}
+        value={party}
+        onChange={(id) => {
+          setParty(id);
+          if (id) setNewCustomer(false);
+        }}
+        shopCurrency={shopCurrency}
+        footer={
+          !purchase && !newCustomer ? (
+            <button type="button" className="text-button party-picker-new" onClick={() => setNewCustomer(true)}>
+              + Новый клиент
+            </button>
+          ) : null
+        }
+      />
+      {!purchase && newCustomer && (
+        <NewCustomerInline
+          customers={allCustomers}
+          onClose={() => setNewCustomer(false)}
+          onPickExisting={(id) => {
+            setParty(id);
+            setNewCustomer(false);
+          }}
+          onCreated={(created) => {
+            setContactCustomers((list) => [...list, created]);
+            setParty(created.id);
+            setNewCustomer(false);
+            setContactNote(`Добавили нового клиента: ${created.name}.`);
+          }}
+        />
+      )}
       {!purchase && (
       <div className="contact-row">
         <ContactPicker
@@ -485,7 +519,7 @@ export function SaleItemsForm({
       )}
       <div className="simple-operation-actions">
         <Submit pending={saving} disabled={!lines.length}>
-          {lines.length ? `Записать ${purchase ? "приход" : "продажу"} · ${money(total.toFixed(2), shopCurrency)}` : "Добавьте товары"}
+          {lines.length ? `Записать ${purchase ? "товар" : "продажу"} · ${money(total.toFixed(2), shopCurrency)}` : "Добавьте товары"}
         </Submit>
       </div>
       <p className="operation-hint">

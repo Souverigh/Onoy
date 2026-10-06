@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { money } from "@/lib/format";
-import { undoRecent } from "@/app/(workspace)/money/actions";
+import { debtMoney, money } from "@/lib/format";
+import { UndoForm } from "./undo-form";
 
 /**
  * Экран результата после записи (ТЗ §15.2, аудит 15.1 п. 1): кто, сколько,
@@ -23,6 +23,7 @@ export function RecordResult({
   reversed,
   children,
   notes,
+  partPayment,
 }: {
   title: string;
   party: string;
@@ -42,7 +43,14 @@ export function RecordResult({
   reversed: boolean;
   children?: React.ReactNode;
   notes?: React.ReactNode;
+  /** Приход: «10 $», внесённые сразу вместе с ним (отменяются вместе, задача 6). */
+  partPayment?: string | null;
 }) {
+  // Без минуса (задача 5): после оплаты больше долга — «переплата 850 сом».
+  const after =
+    debtAfter < 0 && kind === "payment" && debtBefore >= 0
+      ? `переплата ${money((-debtAfter).toFixed(2), currency)}`
+      : debtMoney(debtAfter.toFixed(2), currency);
   return (
     <section className={`panel record-result${reversed ? " reversed" : ""}`}>
       <p className="record-result-title">{reversed ? "Запись отменена" : `✓ ${title}`}</p>
@@ -52,21 +60,12 @@ export function RecordResult({
       </p>
       {!reversed && (
         <p className="muted">
-          {debtLabel}: {money(debtBefore, currency)} → <strong>{money(debtAfter, currency)}</strong>
+          {debtLabel}: {debtMoney(debtBefore.toFixed(2), currency)} → <strong>{after}</strong>
         </p>
       )}
       {notes}
       {!reversed && <div className="record-result-actions">{children}</div>}
-      {!reversed && canUndo && (
-        <form action={undoRecent} className="record-result-undo">
-          <input type="hidden" name="kind" value={kind} />
-          <input type="hidden" name="id" value={id} />
-          <button type="submit" className="button danger-outline">
-            Отменить — ошиблись
-          </button>
-          <small className="muted">Можно в течение 2 минут, без причины.</small>
-        </form>
-      )}
+      {!reversed && canUndo && <UndoForm kind={kind} id={id} partPayment={partPayment} />}
     </section>
   );
 }

@@ -5,9 +5,11 @@ import type { RecognitionProvider, InvoiceResult, ReceiptResult, ExpenseResult, 
 import { documentPages } from "@/lib/storage";
 import { normalizeInvoiceResult } from "./normalize";
 import { contentFingerprint } from "./fingerprint";
-import { reconcileInvoice } from "./reconcile";
+import { TOLERANCE, reconcileInvoice } from "./reconcile";
 import { recognizeInvoicePages } from "./pipeline";
 import { expenseMatches, normalizeExpenseResult } from "./expense";
+import { notebookDate } from "../notebook-date";
+import { bishkekDate } from "../day-summary";
 
 // v2 — тип документа, продавец и покупатель, фрагмент (classify.ts). Кеш v1
 // не используется: в нём нет типа, повторное распознавание — новый вызов.
@@ -207,6 +209,7 @@ export async function recognizeNotebook(pages: PhotoPage[]) {
       .map((row) => ({
         name: String(row.name_raw ?? "").trim().replace(/\s+/g, " ").slice(0, 160),
         phone: String(row.phone ?? "").trim().slice(0, 40),
+        date: notebookDate(row.date, bishkekDate()),
         amount: Math.round(Number(row.amount) * 100) / 100,
         confidence: Number(row.confidence) || 0,
       }))
@@ -391,12 +394,15 @@ export async function finalizeInvoiceRecognition({
   documentId,
   result: rawResult,
   declaredTotal,
+  sellerChose = null,
 }: {
   db: SupabaseClient;
   organizationId: string;
   documentId: string;
   result: InvoiceResult;
   declaredTotal: number | null;
+  /** Продавец выбрал одну из двух сумм при расхождении (задача 13). */
+  sellerChose?: "lines" | "paper" | null;
 }): Promise<void> {
   const started = await db.rpc("start_recognition", {
     p_org: organizationId,
@@ -408,7 +414,10 @@ export async function finalizeInvoiceRecognition({
   // ещё раз, это идемпотентно и дёшево, зато не полагается на чужой ввод.
   const result = normalizeInvoiceResult(rawResult);
   await saveFingerprint(db, organizationId, documentId, result);
-  const status = invoiceMatches(result, declaredTotal) ? "digitized" : "review";
+  // Выбор продавца засчитывается, только если записана именно выбранная сумма.
+  const chosen = sellerChose === "lines" ? result.total_computed : sellerChose === "paper" ? Number(result.total_declared) : null;
+  const sellerConfirmed = chosen != null && declaredTotal != null && Math.abs(chosen - declaredTotal) <= TOLERANCE;
+  const status = sellerConfirmed || invoiceMatches(result, declaredTotal) ? "digitized" : "review";
   const save = await db.rpc("save_recognition", {
     p_org: organizationId,
     p_document: documentId,

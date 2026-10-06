@@ -31,7 +31,7 @@ export type StatementEntry = {
 export function statementEntryLabel(entry: Pick<StatementEntry, "kind" | "opening" | "paymentKind">) {
   if (entry.kind === "payment") return paymentLabel(entry.paymentKind, { opening: entry.opening });
   if (entry.opening) return "Долг из тетради";
-  return entry.kind === "sale" ? "Продажа" : "Приход";
+  return entry.kind === "sale" ? "Продажа" : "Товар от поставщика";
 }
 
 export type StatementData = {

@@ -5,9 +5,48 @@ import { headers } from "next/headers";
 import { getContext, getUserContext, requireOwner } from "@/lib/context";
 import { storedPhone } from "@/lib/contacts";
 
+/** Картинка QR для оплаты — в data URL до ~300 КБ (колонка pay_qr_image). */
+async function qrImage(file: File): Promise<string | null> {
+  if (file.size > 4 * 1024 * 1024 || !file.type.startsWith("image/")) return null;
+  try {
+    const sharp = (await import("sharp")).default;
+    const png = await sharp(Buffer.from(await file.arrayBuffer()))
+      .rotate()
+      .resize({ width: 600, height: 600, fit: "inside", withoutEnlargement: true })
+      .png({ compressionLevel: 9, palette: true })
+      .toBuffer();
+    const url = `data:image/png;base64,${png.toString("base64")}`;
+    return url.length <= 400000 ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+const field = (form: FormData, name: string, max: number) => String(form.get(name) ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+
 export async function updateShop(form: FormData) {
   const name = String(form.get("name") ?? "").trim();
   const phone = storedPhone(String(form.get("phone") ?? ""));
+  // Продавец, адрес и реквизиты (задача 34) — только если поля есть в форме.
+  const sellerFields = form.has("seller_name");
+  const details: Record<string, string | boolean | null> = sellerFields
+    ? {
+        seller_name: field(form, "seller_name", 80),
+        seller_phone: storedPhone(field(form, "seller_phone", 40)),
+        address: field(form, "address", 200),
+        pay_mbank: field(form, "pay_mbank", 60),
+        pay_optima: field(form, "pay_optima", 60),
+        pay_odengi: field(form, "pay_odengi", 60),
+        invoice_show_debt: form.get("invoice_show_debt") === "on",
+        invoice_show_qr: form.get("invoice_show_qr") === "on",
+      }
+    : {};
+  const qrFile = form.get("pay_qr");
+  if (qrFile instanceof File && qrFile.size > 0) {
+    const url = await qrImage(qrFile);
+    if (!url) redirect("/settings?error=qr#pay");
+    details.pay_qr_image = url;
+  } else if (form.get("pay_qr_remove") === "on") details.pay_qr_image = null;
   const blockDuplicatePhotos = form.get("block_duplicate_photos") === "on";
   const currency = String(form.get("currency") ?? "");
   // Как магазин написан на накладных — по строке на вариант (classify.ts).
@@ -28,17 +67,26 @@ export async function updateShop(form: FormData) {
   )
     redirect("/settings?error=invalid");
   const { db, organizationId, currency: currentCurrency } = await getContext();
-  const result = await db
+  const base = {
+    name,
+    phone,
+    block_duplicate_photos: blockDuplicatePhotos,
+    document_names: documentNames,
+    // Валюту трогаем, только если сменили: с записями база её не меняет.
+    ...(["KGS", "USD", "RUB"].includes(currency) && currency !== currentCurrency ? { currency } : {}),
+  };
+  let result = await db
     .from("organizations")
-    .update({
-      name,
-      phone,
-      block_duplicate_photos: blockDuplicatePhotos,
-      document_names: documentNames,
-      // Валюту трогаем, только если сменили: с записями база её не меняет.
-      ...(["KGS", "USD", "RUB"].includes(currency) && currency !== currentCurrency ? { currency } : {}),
-    })
+    .update({ ...base, ...details })
     .eq("id", organizationId);
+  // Миграция 20261005100000 ещё не применена — сохраняем хотя бы остальное.
+  if (result.error && Object.keys(details).length && /column|schema/i.test(result.error.message)) {
+    result = await db.from("organizations").update(base).eq("id", organizationId);
+    if (!result.error) {
+      revalidatePath("/", "layout");
+      redirect("/settings?error=migration");
+    }
+  }
   if (result.error)
     redirect(`/settings?error=${result.error.message.includes("currency_locked") ? "currency_locked" : "save"}`);
   revalidatePath("/", "layout");

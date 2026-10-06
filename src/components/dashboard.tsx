@@ -1,11 +1,22 @@
 import Link from "next/link";
-import { money } from "@/lib/format";
-import { UnclosedDays } from "@/components/unclosed-days";
+import { debtMoney, money } from "@/lib/format";
 import type { RecentRecord } from "@/lib/recent";
 
 /** Долги по валютам: первая — валюта магазина, дальше — другие (Хороз в $). */
 export type DebtTotals = { currency: string; receivable: number; payable: number }[];
 export type Summary = { debts: DebtTotals };
+
+/** Клиент в «Кому напомнить сегодня»: обещал оплатить сегодня (или раньше) или долг старше 30 дней. */
+export type Reminder = {
+  id: string;
+  name: string;
+  balance: number;
+  currency: string;
+  /** «обещал сегодня», «обещал до 3 октября», «долг 45 дн.» */
+  reason: string;
+  /** WhatsApp с готовым текстом; нет телефона — откроем карточку. */
+  waHref: string | null;
+};
 
 /** «3 заявки», «1 заявка», «5 заявок» — склонение (аудит ТЗ 15.1 п. 18). */
 export function plural(n: number, one: string, few: string, many: string) {
@@ -16,17 +27,22 @@ export function plural(n: number, one: string, few: string, many: string) {
   return many;
 }
 
+/** Другая валюта под главной суммой: «+ 55 816,76 $» или «аванс 3 229,99 ₽». */
+function extraDebt(value: number, currency: string) {
+  return value < 0 ? debtMoney(value, currency) : `+ ${money(value, currency)}`;
+}
+
 /**
- * Главный экран (ТЗ §7, экран 2; аудит 15.1 п. 7): «Мне должны / Я должен»
- * (кликаются), Продажа / Приход / Оплата / Расход, ждущие заявки, итог дня за
- * сегодня, накладные с расхождением, поиск клиента, последние записи.
- * Продавцу — без сумм магазина (роли, п. 45).
+ * Главный экран (задачи 17, 20, 33): сначала долги и кнопки, потом то, что
+ * ждёт ответа (заявки, накладные), «Кому напомнить сегодня», итог дня, поиск
+ * и последние записи. Незакрытые дни — только в «Итоге дня». Продавцу — без
+ * сумм магазина (роли, п. 45).
  */
 export function Dashboard({
   summary,
   preview = false,
-  unclosedDays = [],
-  overdue,
+  reminders = [],
+  remindersMore = 0,
   staff = false,
   ownerOnlyNotice = false,
   today,
@@ -35,12 +51,11 @@ export function Dashboard({
   recent = [],
 }: {
   summary: Summary | null;
-  events?: { id: string; action: string; created_at: string }[];
   preview?: boolean;
-  /** Прошлые дни с записями, которые не закрыли (напоминание). */
-  unclosedDays?: string[];
-  /** Клиенты с неоплаченными продажами старше 30 дней и сумма этой части долга. */
-  overdue?: { count: number; amounts: { currency: string; amount: number }[] };
+  /** Кому напомнить сегодня — первые несколько. */
+  reminders?: Reminder[];
+  /** Сколько ещё не показано в «Кому напомнить». */
+  remindersMore?: number;
   /** Продавец: итогов магазина не видит (ТЗ), только действия. */
   staff?: boolean;
   /** Продавец открыл владельческую страницу — объясняем, почему вернули сюда. */
@@ -57,6 +72,7 @@ export function Dashboard({
     new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(
       new Date(iso),
     );
+  const main = summary?.debts[0];
   return (
     <div className="simple-dashboard">
       {ownerOnlyNotice && (
@@ -64,39 +80,21 @@ export function Dashboard({
           Этот раздел доступен только владельцу магазина.
         </p>
       )}
-      {!staff && pendingClaims > 0 && (
-        <Link className="notice claims-notice" href={href("/claims")}>
-          Ждут подтверждения: {pendingClaims} {plural(pendingClaims, "оплата", "оплаты", "оплат")} →
-        </Link>
-      )}
-      {!staff && <UnclosedDays days={unclosedDays} />}
-      {!staff && overdue && overdue.count > 0 && (
-        <Link className="notice claims-notice" href={href("/customers?overdue=30")}>
-          Просрочено больше 30 дней: {overdue.count} {plural(overdue.count, "клиент", "клиента", "клиентов")},{" "}
-          {overdue.amounts.map((a) => money(a.amount, a.currency)).join(" + ")} →
-        </Link>
-      )}
-      {reviewCount > 0 && (
-        <Link className="notice" href={href("/documents")}>
-          Проверить накладные: {reviewCount} {plural(reviewCount, "накладная", "накладные", "накладных")} с
-          расхождением или ошибкой →
-        </Link>
-      )}
       {!staff && summary && (
         <section className="debt-cards" aria-label="Долги">
           <Link className="debt-card" href={href("/customers")}>
             <span>Мне должны</span>
-            <strong>{money(summary.debts[0]?.receivable ?? 0, summary.debts[0]?.currency)}</strong>
+            <strong>{debtMoney(main?.receivable ?? 0, main?.currency)}</strong>
             {summary.debts.slice(1).filter((d) => d.receivable !== 0).map((d) => (
-              <small key={d.currency} className="debt-extra">+ {money(d.receivable, d.currency)}</small>
+              <small key={d.currency} className="debt-extra">{extraDebt(d.receivable, d.currency)}</small>
             ))}
             <small>Клиенты →</small>
           </Link>
           <Link className="debt-card supplier-debt" href={href("/suppliers")}>
             <span>Я должен</span>
-            <strong>{money(summary.debts[0]?.payable ?? 0, summary.debts[0]?.currency)}</strong>
+            <strong>{debtMoney(main?.payable ?? 0, main?.currency)}</strong>
             {summary.debts.slice(1).filter((d) => d.payable !== 0).map((d) => (
-              <small key={d.currency} className="debt-extra">+ {money(d.payable, d.currency)}</small>
+              <small key={d.currency} className="debt-extra">{extraDebt(d.payable, d.currency)}</small>
             ))}
             <small>Поставщикам →</small>
           </Link>
@@ -107,15 +105,65 @@ export function Dashboard({
           Продажа
         </Link>
         <Link className="quick-action" href={href("/money/new?type=purchase")}>
-          Приход
+          Товар от поставщика
         </Link>
-        <Link className="quick-action secondary-action" href={href("/money/new?type=payment")}>
-          Оплата
+        <Link className="quick-action secondary-action" href={href("/money/new?type=payment&direction=incoming")}>
+          Клиент принёс деньги
+        </Link>
+        <Link className="quick-action secondary-action" href={href("/money/new?type=payment&direction=outgoing")}>
+          Я заплатил поставщику
         </Link>
         <Link className="quick-action secondary-action" href={href("/money/expense")}>
           Расход
         </Link>
       </section>
+      {!staff && pendingClaims > 0 && (
+        <Link className="notice claims-notice" href={href("/claims")}>
+          Ждут подтверждения: {pendingClaims} {plural(pendingClaims, "оплата", "оплаты", "оплат")} →
+        </Link>
+      )}
+      {reviewCount > 0 && (
+        <Link className="notice" href={href("/documents")}>
+          Проверить накладные: {reviewCount} {plural(reviewCount, "накладная", "накладные", "накладных")} с
+          расхождением или ошибкой →
+        </Link>
+      )}
+      {!staff && reminders.length > 0 && (
+        <section className="panel remind-today" aria-label="Кому напомнить сегодня">
+          <div className="section-title">
+            <h2>Кому напомнить сегодня</h2>
+            <Link className="text-button" href={href("/customers?overdue=30")}>
+              Все просроченные →
+            </Link>
+          </div>
+          <ul className="remind-list">
+            {reminders.map((r) => (
+              <li key={r.id}>
+                <Link className="remind-who" href={href(`/customers/${r.id}`)}>
+                  <strong>{r.name}</strong>
+                  <small className="muted">
+                    {debtMoney(r.balance, r.currency)} · {r.reason}
+                  </small>
+                </Link>
+                {r.waHref ? (
+                  <a className="button whatsapp" href={r.waHref} target="_blank" rel="noreferrer">
+                    Напомнить
+                  </a>
+                ) : (
+                  <Link className="button" href={href(`/customers/${r.id}`)}>
+                    Напомнить
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+          {remindersMore > 0 && (
+            <p className="muted">
+              И ещё {remindersMore} {plural(remindersMore, "клиент", "клиента", "клиентов")}.
+            </p>
+          )}
+        </section>
+      )}
       {!staff && today && (
         <Link className="dashboard-day" href={href("/day")}>
           <span>
@@ -132,7 +180,7 @@ export function Dashboard({
         <label htmlFor="dashboard-search" className="sr-only">
           Найти клиента
         </label>
-        <input id="dashboard-search" name="q" placeholder="Найти клиента…" maxLength={100} />
+        <input id="dashboard-search" name="q" placeholder="Имя или телефон клиента…" maxLength={100} />
         <button className="button">Найти</button>
       </form>
       {recent.length > 0 && (
@@ -147,8 +195,11 @@ export function Dashboard({
             {recent.map((r) => (
               <li key={r.key} className={r.reversed ? "reversed-row" : ""}>
                 <span>
-                  <strong>{r.label}</strong>
-                  {r.reversed && <span className="tag reversed-tag">отменена</span>}
+                  <strong>
+                    {r.label}
+                    {r.reversed && " · "}
+                    {r.reversed && <span className="tag reversed-tag">отменена</span>}
+                  </strong>
                   <small className="muted">
                     {r.partyHref ? <Link href={href(r.partyHref)}>{r.party}</Link> : r.party} · {time(r.at)}
                   </small>

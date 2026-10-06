@@ -10,17 +10,21 @@ export function EntryForm({
   entry,
   error,
   shopCurrency,
+  draft,
 }: {
   kind: Directory;
   entry?: Entry;
   error?: string;
   shopCurrency: Currency;
+  /** Новый, после «Похоже, это Айбек» (задача 24): введённое и «всё равно создать». */
+  draft?: { name: string; phone: string };
 }) {
   const sign = CURRENCY_SIGN[partyCurrency(entry, shopCurrency)];
   return (
     <form action={saveEntry} className="entry-form">
       <input type="hidden" name="kind" value={kind} />
       {entry && <input type="hidden" name="id" value={entry.id} />}
+      {draft && <input type="hidden" name="force" value="1" />}
       {!entry && kind !== "products" && <ContactFill />}
       <label>
         Название / имя
@@ -28,7 +32,7 @@ export function EntryForm({
           name="name"
           required
           maxLength={160}
-          defaultValue={entry?.name}
+          defaultValue={entry?.name ?? draft?.name}
           placeholder={
             kind === "products" ? "Например, Horoz LED 12W" : "Например, Асан"
           }
@@ -82,7 +86,7 @@ export function EntryForm({
             </label>
           </div>
           <p className="muted">
-            Фактический остаток будет меняться при проведении прихода и продажи.
+            Фактический остаток будет меняться с каждым товаром от поставщика и продажей.
           </p>
         </>
       ) : (
@@ -93,7 +97,7 @@ export function EntryForm({
               name="phone"
               type="tel"
               maxLength={40}
-              defaultValue={entry?.phone ?? ""}
+              defaultValue={entry?.phone ?? draft?.phone ?? ""}
             />
           </label>
           <label>
@@ -143,14 +147,14 @@ export function EntryForm({
           {error === "duplicate"
             ? "Товар с таким артикулом уже существует."
             : error === "currency_locked"
-              ? "Валюту нельзя сменить: у контрагента уже есть записи в прежней валюте."
+              ? "Валюту нельзя сменить: у него уже есть записи в прежней валюте."
             : error === "invalid"
               ? "Проверьте заполнение полей. Суммы — неотрицательные числа, до 2 знаков после запятой."
               : "Не удалось сохранить запись. Повторите попытку."}
         </p>
       )}
       <div className="actions">
-        <Submit>{entry ? "Сохранить изменения" : "Добавить"}</Submit>
+        <Submit>{entry ? "Сохранить изменения" : draft ? "Нет, это новый — добавить" : "Добавить"}</Submit>
         <Link className="button" href={`/${kind}`}>
           Назад к списку
         </Link>

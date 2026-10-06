@@ -3,7 +3,7 @@ import { plural } from "@/components/dashboard";
 import { paymentLabelWithSide, type PaymentKind } from "@/lib/entry-labels";
 import { getContext } from "@/lib/context";
 import { firstPaymentHref } from "@/lib/duplicates";
-import { money } from "@/lib/format";
+import { debtMoney, money } from "@/lib/format";
 
 type PartyBalance = { id: string; name: string; balance: string; currency: string | null };
 /** Контрагент, встроенный в запись (PostgREST по составному FK). */
@@ -26,7 +26,7 @@ type Activity = {
 
 const dateTime = (value: string) =>
   new Intl.DateTimeFormat("ru-RU", {
-    dateStyle: "medium",
+    dateStyle: "short",
     timeStyle: "short",
     timeZone: "Asia/Bishkek",
   }).format(new Date(value));
@@ -48,16 +48,21 @@ export default async function Money({
   const { db, organizationId, isOwner, currency: shopCurrency } = await getContext();
   const [customerResult, supplierResult, purchaseResult, saleResult, paymentResult, claimsResult] =
     await Promise.all([
+      // Архивные и объединённые — не здесь (задача 25).
       db
         .from("customer_balances")
         .select("id,name,balance,currency")
         .eq("organization_id", organizationId)
+        .is("archived_at", null)
+        .is("merged_into_id", null)
         .order("name")
         .limit(8),
       db
         .from("supplier_balances")
         .select("id,name,balance,currency")
         .eq("organization_id", organizationId)
+        .is("archived_at", null)
+        .is("merged_into_id", null)
         .order("name")
         .limit(8),
       db
@@ -198,7 +203,7 @@ export default async function Money({
         ? "Аванс из тетради"
         : "Долг из тетради"
       : activity.kind === "purchase"
-        ? "Приход"
+        ? "Товар от поставщика"
         : activity.kind === "sale"
           ? "Продажа"
           : paymentLabelWithSide(activity.paymentKind, activity.direction ?? "incoming");
@@ -206,7 +211,7 @@ export default async function Money({
   const params = await searchParams;
   const successText =
     params.created === "purchase"
-      ? "Приход записан. Долг перед поставщиком обновлён."
+      ? "Товар от поставщика записан. Долг перед поставщиком обновлён."
       : params.created === "sale"
         ? "Продажа записана. Долг клиента обновлён."
         : params.created === "payment"
@@ -220,9 +225,9 @@ export default async function Money({
       <div className="page-heading">
         <div>
           <span className="eyebrow">ОПЕРАЦИИ И РАСЧЁТЫ</span>
-          <h1>Деньги</h1>
+          <h1>Все записи</h1>
           <p className="muted">
-            Приход, продажи, оплаты и текущие долги магазина.
+            Товар от поставщиков, продажи, оплаты и текущие долги магазина.
           </p>
         </div>
       </div>
@@ -241,7 +246,7 @@ export default async function Money({
       )}
       {params.created === "purchase" && params.part === "failed" && (
         <p className="form-error" role="alert">
-          Приход записан, но оплату поставщику записать не удалось. Внесите её через «Оплата».
+          Товар записан, но оплату поставщику записать не удалось. Внесите её через «Я заплатил поставщику».
         </p>
       )}
       {params.created === "purchase" && params.part && /^\d+(\.\d{1,2})?$/.test(params.part) && (
@@ -274,8 +279,8 @@ export default async function Money({
         <Link className="operation-action" href="/money/new?type=purchase">
           <span>＋</span>
           <div>
-            <strong>Приход</strong>
-            <small>Получили товар от поставщика</small>
+            <strong>Товар от поставщика</strong>
+            <small>Получили товар, долг поставщику растёт</small>
           </div>
         </Link>
         <Link className="operation-action" href="/money/new?type=sale">
@@ -285,11 +290,18 @@ export default async function Money({
             <small>Продали клиенту</small>
           </div>
         </Link>
-        <Link className="operation-action" href="/money/new?type=payment">
-          <span>₸</span>
+        <Link className="operation-action" href="/money/new?type=payment&direction=incoming">
+          <span>↓</span>
           <div>
-            <strong>Оплата</strong>
-            <small>От клиента или поставщику</small>
+            <strong>Клиент принёс деньги</strong>
+            <small>Наличными или переводом</small>
+          </div>
+        </Link>
+        <Link className="operation-action" href="/money/new?type=payment&direction=outgoing">
+          <span>↑</span>
+          <div>
+            <strong>Я заплатил поставщику</strong>
+            <small>Наличными или переводом</small>
           </div>
         </Link>
         {isOwner && (
@@ -319,7 +331,7 @@ export default async function Money({
                   key={customer.id}
                 >
                   <span>{customer.name}</span>
-                  <strong>{money(customer.balance, customer.currency ?? shopCurrency)}</strong>
+                  <strong>{debtMoney(customer.balance, customer.currency ?? shopCurrency)}</strong>
                 </Link>
               ))}
             </div>
@@ -343,7 +355,7 @@ export default async function Money({
                   key={supplier.id}
                 >
                   <span>{supplier.name}</span>
-                  <strong>{money(supplier.balance, supplier.currency ?? shopCurrency)}</strong>
+                  <strong>{debtMoney(supplier.balance, supplier.currency ?? shopCurrency)}</strong>
                 </Link>
               ))}
             </div>
@@ -395,7 +407,7 @@ export default async function Money({
               <thead>
                 <tr>
                   <th>Операция</th>
-                  <th>Контрагент</th>
+                  <th>Клиент или поставщик</th>
                   <th>Сумма</th>
                   <th>Дата</th>
                   <th>

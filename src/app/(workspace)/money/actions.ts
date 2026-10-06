@@ -27,6 +27,7 @@ import { bishkekDateTime, receiptDateTime } from "@/lib/receipt-date";
 import { isAdjustmentKind } from "@/lib/entry-labels";
 import { normalizePhone, phoneKey } from "@/lib/contacts";
 import { isCurrency, rateInput, type Currency } from "@/lib/currency";
+import { partPaymentOf } from "@/lib/part-payment";
 
 type Operation = "purchase" | "sale" | "payment";
 const uuidPattern =
@@ -100,6 +101,9 @@ async function commitOperationOrRedirect(
   let paidNow: string | null = null;
   let partPaymentKey = "";
   let paidImmediately = false;
+  // Наличные или перевод (задача 18); пусто — база решит по чеку и номеру перевода.
+  const rawMethod = String(form.get("method") ?? "");
+  const method = rawMethod === "cash" || rawMethod === "transfer" ? rawMethod : null;
   const photos = photosOf(form);
   const photo = photos.length > 0;
   const existingDocumentId = String(form.get("document_id") ?? "").trim();
@@ -135,6 +139,12 @@ async function commitOperationOrRedirect(
       amount = decimalInput(field(form, "total"), 2);
       paidImmediately = form.get("paid_immediately") === "true";
       if (!uuidPattern.test(party)) throw new Error("invalid_input");
+      // Продажа за другой день (задача 15): середина того дня по Бишкеку.
+      const rawDate = String(form.get("sale_date") ?? "").trim();
+      if (rawDate && rawDate !== bishkekDate()) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate) || rawDate > bishkekDate()) return { error: "date" };
+        occurredAt = new Date(`${rawDate}T12:00:00+06:00`).toISOString();
+      }
     } else {
       direction = field(form, "direction");
       party = field(form, "party_id");
@@ -202,8 +212,9 @@ async function commitOperationOrRedirect(
             p_paid_immediately: paidImmediately,
             p_idempotency_key: idempotencyKey,
             p_document: documentId,
+            ...(occurredAt ? { p_occurred_at: occurredAt } : {}),
           })
-        : await db.rpc("commit_payment", {
+        : await commitPayment(db, {
             p_org: organizationId,
             p_direction: direction,
             p_party: party,
@@ -212,6 +223,7 @@ async function commitOperationOrRedirect(
             p_idempotency_key: idempotencyKey,
             p_document: documentId,
             ...(occurredAt ? { p_occurred_at: occurredAt } : {}),
+            ...(method ? { p_method: method } : {}),
           });
   if (result.error || !result.data) {
     console.error("commitOperation: RPC failed", {
@@ -235,6 +247,10 @@ async function commitOperationOrRedirect(
         recognizedResult = null;
       }
     }
+    // Продавец сам выбрал «Сумма строк» или «Итог накладной» при
+    // расхождении (задача 13) — накладная сверена, клиенту видна сразу.
+    const rawConfirmed = String(form.get("amount_confirmed") ?? "");
+    const sellerChose = rawConfirmed === "lines" || rawConfirmed === "paper" ? rawConfirmed : null;
     if (recognizedResult && operation !== "payment") {
       // Продавец уже проверил фото до подтверждения — записываем готовый
       // результат, повторный вызов Gemini не нужен.
@@ -245,6 +261,7 @@ async function commitOperationOrRedirect(
           documentId,
           result: recognizedResult,
           declaredTotal,
+          sellerChose,
         }),
       );
     } else {
@@ -271,18 +288,26 @@ async function commitOperationOrRedirect(
     }
   }
   if (operation === "purchase" && paidNow) {
-    const payment = await db.rpc("commit_payment", {
+    // «Сразу оплатили» — наличными из кассы.
+    const payment = await commitPayment(db, {
       p_org: organizationId,
       p_direction: "outgoing",
       p_party: party,
       p_amount: paidNow,
       p_bank_reference: null,
       p_idempotency_key: partPaymentKey,
+      p_method: "cash",
     });
     if (payment.error) {
       console.error("commitOperation: part payment failed", { message: payment.error.message });
       part = "&part=failed";
     } else part = `&part=${paidNow}`;
+  }
+  // Имя с накладной не совпало с выбранным — запоминаем как другое название
+  // (задача 16): в следующий раз «Horoz Electric Asia» найдёт «Короз электрик».
+  const counterpartyName = String(form.get("counterparty_name") ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
+  if (counterpartyName && operation !== "payment") {
+    after(() => rememberAlias(db, organizationId, operation, party, counterpartyName));
   }
   // Повторы фото разрешены в настройках — запись прошла, но предупреждаем.
   const duplicate =
@@ -296,6 +321,42 @@ async function commitOperationOrRedirect(
       ? `/money/send/${result.data}?done=1${extra}`
       : `/money/done/${operation}/${result.data}?done=1${extra}`,
   );
+}
+
+/** Название с накладной — синонимом поставщика или клиента, если его ещё нет. */
+async function rememberAlias(
+  db: SupabaseClient,
+  organizationId: string,
+  operation: "purchase" | "sale",
+  partyId: string,
+  alias: string,
+) {
+  const table = operation === "purchase" ? "suppliers" : "customers";
+  const { data } = await db.from(table).select("name,aliases").eq("organization_id", organizationId).eq("id", partyId).maybeSingle();
+  if (!data) return;
+  const plain = (v: string) => v.toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
+  const known = [data.name as string, ...((data.aliases as string[] | null) ?? [])].map(plain);
+  if (known.includes(plain(alias))) return;
+  const { error } = await db.rpc("add_counterparty_alias", {
+    p_org: organizationId,
+    p_kind: operation === "purchase" ? "supplier" : "customer",
+    p_id: partyId,
+    p_alias: alias,
+  });
+  if (error) console.error("rememberAlias: add_counterparty_alias failed", error);
+}
+
+/**
+ * commit_payment со способом оплаты. Миграция 20261005110000 ещё не
+ * применена (нет p_method) — та же запись без способа, а не ошибка.
+ */
+async function commitPayment(db: SupabaseClient, params: Record<string, unknown>) {
+  const result = await db.rpc("commit_payment", params);
+  if (result.error && "p_method" in params && /commit_payment|function/i.test(result.error.message) && /p_method|find|exist/i.test(result.error.message)) {
+    const { p_method: _method, ...rest } = params;
+    return db.rpc("commit_payment", rest);
+  }
+  return result;
 }
 
 /** Похожий клиент или поставщик по имени с документа. */
@@ -684,12 +745,18 @@ export async function recognizeReceiptPhoto(form: FormData): Promise<ReceiptChec
 export async function reverseOperation(form: FormData) {
   const kind = String(form.get("kind"));
   const id = String(form.get("id") ?? "");
-  const comment = String(form.get("comment") ?? "").trim();
+  const reason = String(form.get("reason") ?? "").trim();
+  const text = String(form.get("comment") ?? "").trim();
+  const comment = (text ? (reason && reason !== "other" ? `${reason}: ${text}` : text) : reason === "other" ? "" : reason).slice(0, 500);
   // Отмена из карточки клиента/поставщика возвращает туда же.
   const back = safeBackPath(String(form.get("back") ?? ""));
   if (!["sale", "purchase", "payment"].includes(kind) || !uuidPattern.test(id))
     redirect("/money?error=invalid");
+  if (!comment) redirect(`/money/reverse/${kind}/${id}?error=reason${back ? `&back=${encodeURIComponent(back)}` : ""}`);
   const { db, organizationId } = await getContext();
+  // Приход со «Сразу оплатили» — оплату отменяем вместе с ним (задача 6).
+  const withPayment = kind === "purchase" && form.get("with_payment") === "1";
+  const partPayment = withPayment ? await partPaymentForPurchase(db, organizationId, id) : null;
   const rpcName =
     kind === "sale"
       ? "reverse_sale"
@@ -704,8 +771,83 @@ export async function reverseOperation(form: FormData) {
     p_comment: comment,
   });
   if (result.error) redirect(back ? `${back}?error=reversal` : "/money?error=reversal");
+  if (partPayment) {
+    const paymentResult = await db.rpc("reverse_payment", {
+      p_org: organizationId,
+      p_payment: partPayment.id,
+      p_comment: `${comment} (вместе с приходом)`.slice(0, 500),
+    });
+    if (paymentResult.error) console.error("reverseOperation: part payment reversal failed", paymentResult.error);
+  }
   revalidatePath("/", "layout");
-  redirect(back ? `${back}?reversed=${kind}` : "/money?created=reversed");
+  redirect(back ? `${back}?reversed=${kind}&rid=${id}` : `/money?created=reversed&rid=${id}&rkind=${kind}`);
+}
+
+async function partPaymentForPurchase(db: SupabaseClient, organizationId: string, purchaseId: string) {
+  const purchase = await db
+    .from("purchases")
+    .select("supplier_id,created_at,created_by")
+    .eq("organization_id", organizationId)
+    .eq("id", purchaseId)
+    .maybeSingle();
+  return purchase.data ? partPaymentOf(db, organizationId, purchase.data) : null;
+}
+
+/**
+ * Форма «Записать правильно» (задача 28): тот же клиент, та же сумма и то же
+ * фото — фото берётся новым документом (отменённая запись держит старый),
+ * распознавание — из кеша. Клиента в форме можно сменить.
+ */
+async function redoTarget(db: SupabaseClient, organizationId: string, kind: Operation, id: string) {
+  const table = kind === "sale" ? "sales" : kind === "purchase" ? "purchases" : "payments";
+  const { data } = await db
+    .from(table)
+    .select(
+      kind === "payment"
+        ? "customer_id,supplier_id,direction,amount,original_amount,original_currency,document_id"
+        : `${kind === "sale" ? "customer_id" : "supplier_id"},total,original_amount,original_currency,document_id`,
+    )
+    .eq("organization_id", organizationId)
+    .eq("id", id)
+    .maybeSingle();
+  const row = data as Record<string, string | null> | null;
+  const params = new URLSearchParams({ type: kind });
+  if (!row) return `/money/new?${params.toString()}`;
+  const party = row.customer_id ?? row.supplier_id;
+  if (party) params.set("party", party);
+  if (kind === "payment" && row.direction) params.set("direction", row.direction);
+  const amount = row.original_amount ?? row.total ?? row.amount;
+  if (amount) params.set("amount", String(amount));
+  if (row.original_currency) params.set("currency", row.original_currency);
+  if (row.document_id) {
+    const doc = await db
+      .from("documents")
+      .select("storage_path,file_hash,mime_type")
+      .eq("organization_id", organizationId)
+      .eq("id", row.document_id)
+      .maybeSingle();
+    if (doc.data) {
+      const copy = await db.rpc("create_document", {
+        p_org: organizationId,
+        p_kind: kind,
+        p_storage_path: doc.data.storage_path,
+        p_file_hash: doc.data.file_hash,
+        p_mime_type: doc.data.mime_type,
+      });
+      if (!copy.error && copy.data) params.set("documentId", String(copy.data));
+    }
+  }
+  params.set("redo", "1");
+  return `/money/new?${params.toString()}`;
+}
+
+/** «Записать правильно» после отмены — форма с тем же клиентом, суммой и фото. */
+export async function redoRecord(form: FormData) {
+  const kind = String(form.get("kind") ?? "");
+  const id = String(form.get("id") ?? "");
+  if (!["sale", "purchase", "payment"].includes(kind) || !uuidPattern.test(id)) redirect("/money?error=invalid");
+  const { db, organizationId } = await getContext();
+  redirect(await redoTarget(db, organizationId, kind as Operation, id));
 }
 
 /** Скидка или возврат товара — уменьшает долг, только с комментарием. */
@@ -731,6 +873,14 @@ export async function commitAdjustment(form: FormData) {
   }
   if (Number(amount) <= 0) redirect(`${back}&error=invalid`);
   const { db, organizationId } = await getContext();
+  // Больше долга нельзя: скидкой или возвратом аванс не делается (задача 3).
+  const current = await db
+    .from(side === "customers" ? "customer_balances" : "supplier_balances")
+    .select("balance")
+    .eq("organization_id", organizationId)
+    .eq("id", party)
+    .maybeSingle();
+  if (current.data && Number(amount) - Math.max(Number(current.data.balance), 0) > 0.005) redirect(`${back}&error=over`);
   const result = await db.rpc("commit_adjustment", {
     p_org: organizationId,
     p_direction: side === "customers" ? "incoming" : "outgoing",
@@ -786,12 +936,19 @@ export async function customerFromContact(
   return { id: inserted.data.id, name: inserted.data.name, balance: "0.00", created: true };
 }
 
-/** «Отменить — ошиблись» на экране результата: автор, первые 2 минуты. */
+/**
+ * «Отменить — ошиблись» на экране результата: автор, первые 2 минуты. Приход
+ * со «Сразу оплатили» — вместе с оплатой, если продавец не сказал «только
+ * приход» (задача 6). После отмены — та же форма с тем же клиентом, суммой
+ * и фото (задача 28).
+ */
 export async function undoRecent(form: FormData) {
   const kind = String(form.get("kind") ?? "");
   const id = String(form.get("id") ?? "");
   if (!["sale", "purchase", "payment", "expense"].includes(kind) || !uuidPattern.test(id)) redirect("/money?error=invalid");
   const { db, organizationId } = await getContext();
+  const partPayment =
+    kind === "purchase" && form.get("with_payment") !== "0" ? await partPaymentForPurchase(db, organizationId, id) : null;
   const result = await db.rpc("undo_recent", { p_org: organizationId, p_kind: kind, p_id: id });
   if (result.error)
     redirect(
@@ -801,8 +958,21 @@ export async function undoRecent(form: FormData) {
           ? `/money/expense/${id}?undo=expired`
           : `/money/done/${kind}/${id}?undo=expired`,
     );
+  if (partPayment) {
+    const paymentResult = await db.rpc("undo_recent", { p_org: organizationId, p_kind: "payment", p_id: partPayment.id });
+    // Больше 2 минут или оплату вносил не он — отменяем с причиной.
+    if (paymentResult.error) {
+      const reversal = await db.rpc("reverse_payment", {
+        p_org: organizationId,
+        p_payment: partPayment.id,
+        p_comment: "Отменено вместе с приходом",
+      });
+      if (reversal.error) console.error("undoRecent: part payment reversal failed", reversal.error);
+    }
+  }
   revalidatePath("/", "layout");
-  redirect(kind === "expense" ? "/money/expense?undone=1" : `/money/new?type=${kind}&undone=1`);
+  if (kind === "expense") redirect("/money/expense?undone=1");
+  redirect(`${await redoTarget(db, organizationId, kind as Operation, id)}&undone=1`);
 }
 
 /** Итог записи расхода, если не прошла (успех — редирект на экран результата). */

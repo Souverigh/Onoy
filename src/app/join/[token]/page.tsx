@@ -48,7 +48,7 @@ export default async function JoinPage({
             <>
               <h2>{data.shop_name}</h2>
               <p className="muted">
-                {data.display_name}, вас пригласили работать продавцом в Depter: оформлять продажи, приходы и
+                {data.display_name}, вас пригласили работать продавцом в Depter: оформлять продажи, товар от поставщиков и
                 оплаты.
               </p>
               {error && errors[error] && (

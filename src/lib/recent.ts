@@ -86,7 +86,7 @@ export async function recentRecords(db: SupabaseClient, organizationId: string, 
     })),
     ...(purchases.data ?? []).map((r) => ({
       key: `p${r.id}`,
-      label: r.is_opening ? "Долг из тетради" : "Приход",
+      label: r.is_opening ? "Долг из тетради" : "Товар от поставщика",
       party: names.get(r.supplier_id) ?? "Поставщик",
       partyHref: `/suppliers/${r.supplier_id}`,
       amount: String(r.total),

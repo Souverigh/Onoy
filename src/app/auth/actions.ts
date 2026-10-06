@@ -5,6 +5,7 @@ import { createAnonClient, createClient, configured } from "@/lib/supabase/serve
 import { getUserContext } from "@/lib/context";
 import { cookies, headers } from "next/headers";
 import { EXPIRED_COOKIE } from "@/lib/session-timeout";
+import { storedPhone } from "@/lib/contacts";
 /** Куда вернуть после входа: только страница приглашения, иначе главная. */
 function nextPath(form: FormData) {
   const next = String(form.get("next") ?? "");
@@ -124,6 +125,10 @@ export async function createOrganization(form: FormData) {
   if (!name || name.length > 120 || !/^[-0-9a-f]{36}$/i.test(key))
     redirect("/onboarding?error=invalid");
   if (!code || code.length > 40) redirect("/onboarding?error=code");
+  // Шаг первого входа (задача 35): имя продавца и телефон — для накладных.
+  const sellerName = String(form.get("seller_name") ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+  const phone = storedPhone(String(form.get("phone") ?? ""));
+  if (!sellerName || !phone || phone.length > 40) redirect("/onboarding?error=seller");
   // Новый магазин — только с кодом доступа от Depter (см. миграцию shop_signup_codes).
   const { data, error } = await db.rpc("create_organization", {
     org_name: name,
@@ -137,6 +142,16 @@ export async function createOrganization(form: FormData) {
   if (currency !== "KGS" && ["USD", "RUB"].includes(currency)) {
     const update = await db.from("organizations").update({ currency }).eq("id", data);
     if (update.error) console.error("createOrganization: currency not set", update.error);
+  }
+  // Телефон магазина — тот же; продавец — для накладной. Миграция 20261005100000
+  // не применена — сохраняем хотя бы телефон.
+  const seller = await db
+    .from("organizations")
+    .update({ phone, seller_name: sellerName, seller_phone: phone })
+    .eq("id", data);
+  if (seller.error) {
+    console.error("createOrganization: seller not set", seller.error);
+    await db.from("organizations").update({ phone }).eq("id", data);
   }
   revalidatePath("/", "layout");
   redirect("/");

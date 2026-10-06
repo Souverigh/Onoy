@@ -25,7 +25,12 @@ import { Submit } from "./submit";
 import { RuDateInput, bishkekNow } from "./ru-date-input";
 import { ruDate } from "@/lib/ru-date";
 import { ContactPicker } from "./contact-picker";
-import { money } from "@/lib/format";
+import { PartyPicker, type PickerParty } from "./party-picker";
+import { NewCustomerInline } from "./new-customer-inline";
+import { ConfirmDialog } from "./confirm-dialog";
+import { LeaveGuard } from "./leave-guard";
+import { debtMoney, money, quantity } from "@/lib/format";
+import { bestMatches } from "@/lib/match";
 import {
   CURRENCIES,
   CURRENCY_SIGN,
@@ -42,7 +47,7 @@ import { MULTI_PAGE_MAX_SIDE, shrinkImage } from "@/lib/shrink-image";
 import { DOCUMENT_ACCEPT, MAX_PAGES, MAX_UPLOAD_BYTES, isPdf } from "@/lib/pages";
 
 type Operation = "purchase" | "sale" | "payment";
-type Party = { id: string; name: string; currency?: string | null };
+type Party = PickerParty;
 /** Официальный курс пары «1 сильная = rate слабой» (fx.ts), ключ `USD/KGS`. */
 export type RateQuotes = Record<string, { rate: number; date: string; source: string }>;
 /** Клиент с долгом и лимитом — для предупреждения в форме продажи. */
@@ -70,11 +75,13 @@ type ExistingDocument = { documentId: string; pages: { url: string | null; mimeT
 
 /** Подсказку выбираем сами, только если имя совпало почти целиком. */
 const SURE_MATCH = 0.85;
+/** Ниже — имя на накладной и выбранный клиент разные (задача 38). */
+const SAME_PARTY = 0.6;
 
 const OTHER_DOCUMENT_TEXT: Record<Exclude<DocumentVerdict & { ok: false }, { reason: "direction" }>["reason"], string> = {
   receipt: "Похоже, это чек или квитанция об оплате, а не накладная.",
   statement:
-    "Похоже, это выписка или акт сверки поставщика, а не накладная. Приходом его записывать не нужно — импорт сверки появится позже.",
+    "Похоже, это выписка или акт сверки поставщика, а не накладная. Записывать его как товар от поставщика не нужно — импорт сверки появится позже.",
   price_list: "Похоже, это прайс-лист, а не накладная — долг по нему не записывают.",
   notebook: "Похоже, это страница тетради долгов, а не накладная.",
   not_document: "На фото не видно документа. Сфотографируйте накладную целиком.",
@@ -95,6 +102,9 @@ export function OperationForm({
   initialParty,
   shopCurrency,
   rates,
+  fixedDirection,
+  initialAmount,
+  initialCurrency,
 }: {
   kind: Operation;
   idempotencyKey: string;
@@ -109,29 +119,51 @@ export function OperationForm({
   rates: RateQuotes;
   /** Открыто из карточки клиента/поставщика — он уже выбран. */
   initialParty?: string;
+  /** «Клиент принёс деньги» / «Я заплатил поставщику» — направление уже выбрано (задача 17). */
+  fixedDirection?: "incoming" | "outgoing";
+  /** «Записать правильно» — сумма и валюта отменённой записи (задача 28). */
+  initialAmount?: string;
+  initialCurrency?: Currency;
 }) {
   const hasCustomers = customers.length > 0;
   const [direction, setDirection] = useState<"incoming" | "outgoing">(
-    initialParty && suppliers.some((s) => s.id === initialParty)
-      ? "outgoing"
-      : hasCustomers
-        ? "incoming"
-        : "outgoing",
+    fixedDirection ??
+      (initialParty && suppliers.some((s) => s.id === initialParty)
+        ? "outgoing"
+        : hasCustomers
+          ? "incoming"
+          : "outgoing"),
   );
   const [selectedParty, setSelectedParty] = useState(
     prefill?.suggestions[0]?.id ?? initialParty ?? "",
   );
-  const [amountValue, setAmountValue] = useState(prefill?.amount ?? "");
+  const [amountValue, setAmountValue] = useState(prefill?.amount ?? initialAmount ?? "");
   // Валюта суммы: null — как у контрагента (валюта его долга).
-  const [amountCurrency, setAmountCurrency] = useState<Currency | null>(prefill?.currency ?? null);
+  const [amountCurrency, setAmountCurrency] = useState<Currency | null>(prefill?.currency ?? initialCurrency ?? null);
   // Продавец ответил «нет» на подсказку валюты с накладной.
   const [currencyDismissed, setCurrencyDismissed] = useState(false);
   // Курс, введённый продавцом; пусто — официальный (НБКР / ЦБ РФ).
   const [rateValue, setRateValue] = useState("");
   const [paidNow, setPaidNow] = useState(false);
-  // Клиенты, добавленные из контактов прямо в форме (без перезагрузки).
+  // Клиенты, добавленные из контактов или «+ Новый клиент» прямо в форме (без перезагрузки).
   const [contactCustomers, setContactCustomers] = useState<Customer[]>([]);
   const [contactNote, setContactNote] = useState<string | null>(null);
+  // «+ Новый клиент» открыт: имя и телефон — с накладной или пустые.
+  const [newCustomer, setNewCustomer] = useState<{ name: string; phone: string } | null>(null);
+  // Наличные или перевод (задача 18): выбор продавца; без выбора — по чеку.
+  const [methodChoice, setMethodChoice] = useState<"cash" | "transfer" | null>(null);
+  // Продавец выбрал одну из сумм при расхождении (задача 13).
+  const [confirmedTotal, setConfirmedTotal] = useState<"lines" | "paper" | null>(null);
+  // Переплата (задача 4) или клиент не с накладной (задача 38): форма ждёт «Да» в окне.
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    form: FormData;
+    steps: { title: string; text?: string; confirmLabel: string }[];
+  } | null>(null);
+  // Продавец сказал «Да, верно» про клиента не с накладной (задача 38).
+  const [partyConfirmed, setPartyConfirmed] = useState<string | null>(null);
+  // Дата продажи (задача 15): пусто — сегодня.
+  const [saleDate, setSaleDate] = useState("");
+  const [saleDateOpen, setSaleDateOpen] = useState(false);
   const allCustomers = [...customers, ...contactCustomers.filter((c) => !customers.some((x) => x.id === c.id))];
   const [checkedPhoto, setCheckedPhoto] = useState<CheckedPhoto | null>(null);
   const [checking, setChecking] = useState(false);
@@ -236,6 +268,10 @@ export function OperationForm({
       : 0
     : amountFromInput(amountValue);
   const similarAmount = foreign ? (debtAmount ? debtAmount.toFixed(2) : null) : amountValue || null;
+  const selectedRecord = parties.find((p) => p.id === selectedParty);
+  const partyBalance = selectedRecord?.balance != null ? Number(selectedRecord.balance) : null;
+  // С чеком или номером перевода — перевод, пока продавец не выбрал сам.
+  const effectiveMethod = methodChoice ?? (receiptFile || prefill || bankRef.trim() ? "transfer" : "cash");
   // Валюта с накладной (ТЗ §6): предлагаем, молча не подставляем.
   const recognized = checkedPhoto?.result;
   const suggestedCurrency =
@@ -302,14 +338,34 @@ export function OperationForm({
   const confirmLabel =
     verdict && !verdict.ok
       ? kind === "purchase"
-        ? "Всё равно записать приход"
+        ? "Всё равно записать товар"
         : "Всё равно записать продажу"
       : kind === "purchase"
-        ? "Подтвердить приход"
+        ? "Подтвердить товар от поставщика"
         : kind === "sale"
           ? "Подтвердить продажу"
           : "Подтвердить оплату";
   const hasPhoto = pages.length > 0 || useExisting;
+  // Имя на накладной и выбранный клиент не похожи (задача 38) — видно до записи.
+  const invoiceName = verdict?.ok && (kind === "purchase" || kind === "sale") ? verdict.counterparty : null;
+  const partyScore =
+    invoiceName && selectedRecord ? (bestMatches(invoiceName, [selectedRecord], 1, 0)[0]?.score ?? 0) : 1;
+  const partyMismatch = Boolean(invoiceName && selectedRecord && partyConfirmed !== selectedParty && partyScore < SAME_PARTY);
+  // Оплата больше долга (задача 4): «Долг 4 150 сом, вносите 5 000 — переплата 850 сом. Записать?»
+  const over = kind === "payment" && partyBalance != null ? Math.round((debtAmount - Math.max(partyBalance, 0)) * 100) / 100 : 0;
+  const overpayment =
+    kind === "payment" && partyBalance != null && over > 0.005
+      ? partyBalance > 0
+        ? `Долг ${money(partyBalance, debtCurrency)}, вносите ${quantity(debtAmount.toFixed(2))} — переплата ${money(over, debtCurrency)}. Записать?`
+        : `Долга нет${partyBalance < 0 ? ` (уже аванс ${money(-partyBalance, debtCurrency)})` : ""}, вносите ${quantity(debtAmount.toFixed(2))} — переплата ${money(over, debtCurrency)}. Записать?`
+      : null;
+  // Долг до → после записи (задача 18): «Долг 4 150 → станет 2 650».
+  const debtAfter =
+    partyBalance != null && debtAmount > 0 && (kind === "payment" || kind === "sale")
+      ? kind === "payment"
+        ? partyBalance - debtAmount
+        : partyBalance + (paidNow ? 0 : debtAmount)
+      : null;
   const suggestions = verdict?.ok ? (checkedPhoto?.suggestions ?? []) : [];
   const partyWord =
     kind === "purchase" || (kind === "payment" && direction === "outgoing") ? "поставщика" : "клиента";
@@ -329,7 +385,7 @@ export function OperationForm({
             : error === "network"
               ? "Нет связи с сервером — запись не сохранена. Проверьте интернет и нажмите ещё раз: вторая запись не появится."
       : error === "duplicate"
-        ? "Оплата с таким номером перевода уже записана — этот чек уже учтён. Проверьте историю контрагента."
+        ? "Оплата с таким номером перевода уже записана — этот чек уже учтён. Проверьте историю клиента или поставщика."
         : error === "photo"
           ? "Приложите фото накладной — без него запись не сохранится."
           : error === "photo_used"
@@ -337,11 +393,13 @@ export function OperationForm({
             : error === "photo_upload"
               ? "Не удалось загрузить фото. Попробуйте ещё раз."
           : error === "part"
-            ? "Оплаченная часть не может быть больше суммы прихода."
+            ? "Оплаченная часть не может быть больше суммы товара."
           : error === "date"
-            ? "Проверьте дату оплаты: не позже текущего момента и не раньше чем год назад."
+            ? kind === "sale"
+              ? "Проверьте дату продажи: не позже сегодняшнего дня и не раньше чем год назад."
+              : "Проверьте дату оплаты: не позже текущего момента и не раньше чем год назад."
           : error === "invalid"
-            ? "Проверьте сумму и выбранного контрагента."
+            ? `Проверьте сумму и выбранного ${partyWord}.`
             : error === "save"
               ? "Не удалось сохранить запись. Проверьте данные и попробуйте снова."
               : undefined;
@@ -399,6 +457,10 @@ export function OperationForm({
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (saving) return;
+    if (!selectedParty) {
+      setLocalError("party");
+      return;
+    }
     if (!amountFromInput(amountValue)) {
       setLocalError("amount");
       return;
@@ -419,6 +481,35 @@ export function OperationForm({
       // Чек не загрузился при выборе — отправляем файл вместе с оплатой.
       if (receiptFile && !receiptDocumentId && !uploadedDocumentId) form.set("photo", receiptFile);
     }
+    // До записи — то, что продавец должен подтвердить окном.
+    const steps: { title: string; text?: string; confirmLabel: string }[] = [];
+    if (partyMismatch && invoiceName && selectedRecord)
+      steps.push({
+        title: `На накладной «${invoiceName}», а выбран «${selectedRecord.name}». Верно?`,
+        confirmLabel: "Да, верно",
+      });
+    if (overpayment)
+      steps.push({
+        title: overpayment,
+        text: "Переплата останется авансом и уменьшит следующий долг.",
+        confirmLabel: "Да, записать",
+      });
+    if (steps.length) {
+      setPendingConfirm({ form, steps });
+      return;
+    }
+    startTransition(() => commitAction(form));
+  }
+
+  function confirmStep() {
+    if (!pendingConfirm) return;
+    const [, ...rest] = pendingConfirm.steps;
+    if (rest.length) {
+      setPendingConfirm({ ...pendingConfirm, steps: rest });
+      return;
+    }
+    const form = pendingConfirm.form;
+    setPendingConfirm(null);
     startTransition(() => commitAction(form));
   }
 
@@ -512,6 +603,16 @@ export function OperationForm({
       // если продавец ещё никого не выбрал.
       const sure = res.verdict.ok && res.suggestions[0]?.score >= SURE_MATCH ? res.suggestions[0] : null;
       if (sure) setSelectedParty((current) => current || sure.id);
+      // Сумма с фото — сразу в поле (задача 9). Итог на бумаге и сумма строк
+      // разошлись — не подставляем, продавец выбирает одну из двух кнопок.
+      const r = res.result;
+      const paper = r.total_declared != null && r.total_declared > 0 ? r.total_declared : null;
+      const twoTotals = paper != null && Math.abs(r.total_computed - paper) > TOLERANCE;
+      if (r.total_computed > 0 && !twoTotals) {
+        setAmountValue((prev) => (prev.trim() ? prev : String(r.total_computed)));
+        // Валюта написана на накладной ($, ₽) — сумма в ней.
+        if (r.currency_evidence === "symbol" && r.currency) setAmountCurrency((prev) => prev ?? (r.currency as Currency));
+      }
     } else if (res.error === "photo_used") {
       setCheckNote(PHOTO_USED_TEXT);
     } else if (res.documentId) {
@@ -621,21 +722,20 @@ export function OperationForm({
     paperTotal != null &&
     !noPrices &&
     Math.abs(checkedPhoto!.result!.total_computed - paperTotal) > TOLERANCE;
-  // Сумма с фото: серым в пустом поле, в запись — только по кнопке (просьба
-  // пользователя 02.10.2026). Итоги разошлись — две кнопки, выбирает продавец.
+  // Сумма с фото сразу в поле (задача 9, applyCheck). Итоги разошлись — две
+  // кнопки, выбирает продавец; выбор = накладная сверена (задача 13).
   const amountSuggestions =
-    checkedPhoto?.result && !noPrices && !amountValue
-      ? paperMismatch
-        ? [
-            { label: "Сумма строк", value: checkedPhoto.result.total_computed },
-            { label: "Итог накладной", value: paperTotal! },
-          ]
-        : [{ label: null, value: checkedPhoto.result.total_computed }]
+    checkedPhoto?.result && !noPrices && paperMismatch
+      ? [
+          { key: "lines" as const, label: "Сумма строк", value: checkedPhoto.result.total_computed },
+          { key: "paper" as const, label: "Итог накладной", value: paperTotal! },
+        ]
       : [];
   const suggestionCurrency = suggestedCurrency ?? docCurrency;
 
-  function takeSuggestion(value: number) {
+  function takeSuggestion(value: number, key: "lines" | "paper") {
     setAmountValue(String(value));
+    setConfirmedTotal(key);
     if (localError === "amount") setLocalError(null);
     // Сумма с накладной — в её валюте (продавец нажал сам).
     if (suggestedCurrency) {
@@ -646,8 +746,22 @@ export function OperationForm({
 
   return (
     <>
-      <form onSubmit={submit} className="simple-operation-form">
+      <LeaveGuard active={(hasPhoto || Boolean(receiptFile)) && !saving && !pendingConfirm} />
+      <ConfirmDialog
+        open={Boolean(pendingConfirm)}
+        title={pendingConfirm?.steps[0]?.title ?? ""}
+        text={pendingConfirm?.steps[0]?.text}
+        confirmLabel={pendingConfirm?.steps[0]?.confirmLabel ?? "Да"}
+        cancelLabel="Нет, исправить"
+        onCancel={() => setPendingConfirm(null)}
+        onConfirm={confirmStep}
+      />
+      <form onSubmit={submit} className="simple-operation-form" noValidate>
         <input type="hidden" name="kind" value={kind} />
+        {kind !== "payment" && invoiceName && <input type="hidden" name="counterparty_name" value={invoiceName} />}
+        {confirmedTotal && <input type="hidden" name="amount_confirmed" value={confirmedTotal} />}
+        {kind === "payment" && <input type="hidden" name="method" value={effectiveMethod} />}
+        {kind === "sale" && saleDate && <input type="hidden" name="sale_date" value={saleDate} />}
         <input type="hidden" name="idempotency_key" value={idempotencyKey} />
         {kind === "purchase" && partPaymentKey && (
           <input type="hidden" name="part_payment_key" value={partPaymentKey} />
@@ -828,7 +942,7 @@ export function OperationForm({
             {!receiptFile && <small className="muted">Сумму, дату, номер перевода и клиента заполним с чека.</small>}
           </div>
         )}
-        {kind === "payment" && (
+        {kind === "payment" && !fixedDirection && (
           <fieldset className="payment-direction">
             <legend>Кому передали деньги?</legend>
             <label>
@@ -873,50 +987,101 @@ export function OperationForm({
             </div>
           </div>
         )}
-        <label>
-          {kind === "purchase"
-            ? "Поставщик"
-            : kind === "sale"
-              ? "Клиент"
-              : direction === "incoming"
+        <PartyPicker
+          label={
+            kind === "purchase"
+              ? "Поставщик"
+              : kind === "sale"
                 ? "Клиент"
-                : "Поставщик"}
-          <select
-            name={kind === "purchase" ? "supplier_id" : kind === "sale" ? "customer_id" : "party_id"}
-            required
-            value={selectedParty}
-            onChange={(e) => setSelectedParty(e.target.value)}
-          >
-            <option value="">Выберите из списка</option>
-            {parties.map((party) => (
-              <option key={party.id} value={party.id}>
-                {party.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {verdict?.ok && verdict.counterparty && (kind === "purchase" || kind === "sale") && (
+                : direction === "incoming"
+                  ? "Клиент"
+                  : "Поставщик"
+          }
+          name={kind === "purchase" ? "supplier_id" : kind === "sale" ? "customer_id" : "party_id"}
+          parties={parties}
+          value={selectedParty}
+          onChange={(id) => {
+            setSelectedParty(id);
+            if (localError === "party") setLocalError(null);
+            if (id) setNewCustomer(null);
+          }}
+          shopCurrency={shopCurrency}
+          footer={
+            kind === "sale" && !newCustomer ? (
+              <button type="button" className="text-button party-picker-new" onClick={() => setNewCustomer({ name: "", phone: "" })}>
+                + Новый клиент
+              </button>
+            ) : null
+          }
+        />
+        {kind === "sale" && newCustomer && (
+          <NewCustomerInline
+            key={`${newCustomer.name}|${newCustomer.phone}`}
+            customers={allCustomers}
+            initialName={newCustomer.name}
+            initialPhone={newCustomer.phone}
+            onClose={() => setNewCustomer(null)}
+            onPickExisting={(id) => {
+              setSelectedParty(id);
+              setNewCustomer(null);
+            }}
+            onCreated={(created) => {
+              setContactCustomers((list) => [...list, created]);
+              setSelectedParty(created.id);
+              setNewCustomer(null);
+              setContactNote(`Добавили нового клиента: ${created.name}.`);
+            }}
+          />
+        )}
+        {invoiceName && (
           <div className="party-suggestions">
             <span className="muted">
-              На накладной: «{verdict.counterparty}»
+              На накладной: «{invoiceName}»
               {suggestions.length === 0 &&
                 (kind === "sale" ? " — такого клиента нет в списке." : " — такого поставщика нет в списке.")}
               {suggestions.length > 0 && " · похоже, это:"}
             </span>
-            {suggestions.length > 0 && (
-              <div className="party-suggestions-list">
-                {suggestions.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    className={`party-suggestion${selectedParty === s.id ? " active" : ""}`}
-                    onClick={() => setSelectedParty(s.id)}
-                  >
-                    {s.name}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="party-suggestions-list">
+              {suggestions.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`party-suggestion${selectedParty === s.id ? " active" : ""}`}
+                  onClick={() => setSelectedParty(s.id)}
+                >
+                  {s.name}
+                </button>
+              ))}
+              {kind === "sale" && !(suggestions[0]?.score >= SURE_MATCH) && !newCustomer && (
+                <button
+                  type="button"
+                  className="party-suggestion party-suggestion-new"
+                  onClick={() =>
+                    setNewCustomer({
+                      name: invoiceName,
+                      phone: checkedPhoto?.result?.buyer?.phone ?? "",
+                    })
+                  }
+                >
+                  + Создать «{invoiceName}»
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        {partyMismatch && invoiceName && selectedRecord && (
+          <div className="photo-check-mismatch party-mismatch" role="alert">
+            <p>
+              На накладной «{invoiceName}», а выбран «{selectedRecord.name}». Верно?
+            </p>
+            <div className="simple-operation-actions">
+              <button type="button" className="button" onClick={() => setPartyConfirmed(selectedParty)}>
+                Да, верно
+              </button>
+              <button type="button" className="button" onClick={() => setSelectedParty("")}>
+                Нет, выбрать другого
+              </button>
+            </div>
           </div>
         )}
         {kind === "sale" && (
@@ -973,12 +1138,11 @@ export function OperationForm({
             autoComplete="off"
             required
             pattern="[0-9 ]+([.,][0-9]{1,2})?"
-            placeholder={
-              amountSuggestions.length === 1 ? money(amountSuggestions[0].value, suggestionCurrency) : "0"
-            }
+            placeholder="0"
             value={amountValue}
             onChange={(e) => {
               setAmountValue(e.target.value);
+              setConfirmedTotal(null);
               if (localError === "amount") setLocalError(null);
             }}
             aria-label={`Сумма, ${CURRENCY_SIGN[docCurrency]}`}
@@ -988,13 +1152,14 @@ export function OperationForm({
           <div className="amount-suggestions">
             {amountSuggestions.map((s) => (
               <button
-                key={s.label ?? "total"}
+                key={s.key}
                 type="button"
-                className="button"
-                onClick={() => takeSuggestion(s.value)}
+                className={`button${confirmedTotal === s.key ? " primary" : ""}`}
+                aria-pressed={confirmedTotal === s.key}
+                onClick={() => takeSuggestion(s.value, s.key)}
               >
-                ✓ {s.label ? `${s.label}: ` : "Взять "}
-                {money(s.value, suggestionCurrency)}
+                {confirmedTotal === s.key ? "✓ " : ""}
+                {s.label}: {money(s.value, suggestionCurrency)}
               </button>
             ))}
           </div>
@@ -1039,8 +1204,8 @@ export function OperationForm({
                 {verdict.reason === "direction" ? (
                   <p>
                     {verdict.suggestedKind === "purchase"
-                      ? `Это накладная от поставщика${verdict.counterparty ? ` «${verdict.counterparty}»` : ""} вам — похоже на приход, а не продажу.`
-                      : `Это накладная от вашего магазина${verdict.counterparty ? ` покупателю «${verdict.counterparty}»` : ""} — похоже на продажу, а не приход.`}
+                      ? `Это накладная от поставщика${verdict.counterparty ? ` «${verdict.counterparty}»` : ""} вам — похоже на товар от поставщика, а не продажу.`
+                      : `Это накладная от вашего магазина${verdict.counterparty ? ` покупателю «${verdict.counterparty}»` : ""} — похоже на продажу, а не товар от поставщика.`}
                   </p>
                 ) : (
                   <p>{OTHER_DOCUMENT_TEXT[verdict.reason]}</p>
@@ -1059,7 +1224,7 @@ export function OperationForm({
                       {switching
                         ? "Открываем…"
                         : verdict.suggestedKind === "purchase"
-                          ? "Записать как приход"
+                          ? "Записать как товар от поставщика"
                           : "Записать как продажу"}
                     </button>
                   )}
@@ -1095,12 +1260,15 @@ export function OperationForm({
                   {similar.map((record) => (
                     <li key={record.id}>
                       {new Date(record.occurredAt).toLocaleDateString("ru-RU", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
                         timeZone: "Asia/Bishkek",
                       })}{" "}
                       · {record.party} · {money(record.total, debtCurrency)}
                       {record.reason === "content"
                         ? " — те же позиции в накладной"
-                        : " — тот же контрагент и сумма"}
+                        : kind === "sale" ? " — тот же клиент и сумма" : " — тот же поставщик и сумма"}
                       {record.documentId && (
                         <>
                           {" · "}
@@ -1157,7 +1325,7 @@ export function OperationForm({
               placeholder="0"
             />
             <small className="muted">
-              Запишем оплату поставщику вместе с приходом — долг перед ним вырастет только на остаток.
+              Запишем оплату поставщику вместе с товаром — долг перед ним вырастет только на остаток.
             </small>
           </label>
         )}
@@ -1172,6 +1340,75 @@ export function OperationForm({
             />
             Клиент оплатил наличными
           </label>
+        )}
+        {kind === "sale" && (
+          <div className="sale-date">
+            {saleDateOpen ? (
+              <RuDateInput
+                label="Дата продажи"
+                value={saleDate || bishkekNow().slice(0, 10)}
+                onChange={(next) => {
+                  setSaleDate(next ?? "");
+                  if (localError === "date") setLocalError(null);
+                }}
+                hint={
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => {
+                      setSaleDate("");
+                      setSaleDateOpen(false);
+                    }}
+                  >
+                    Сегодня
+                  </button>
+                }
+              />
+            ) : (
+              <p>
+                Дата: <strong>сегодня</strong>{" "}
+                <button type="button" className="text-button" onClick={() => setSaleDateOpen(true)}>
+                  Другая дата
+                </button>
+              </p>
+            )}
+          </div>
+        )}
+        {kind === "payment" && (
+          <div className="method-row" role="group" aria-label="Наличные или перевод">
+            <span>{direction === "incoming" ? "Как принесли деньги?" : "Как заплатили?"}</span>
+            <span className="method-pills">
+              <button
+                type="button"
+                className={effectiveMethod === "cash" ? "active" : ""}
+                aria-pressed={effectiveMethod === "cash"}
+                onClick={() => setMethodChoice("cash")}
+              >
+                Наличные
+              </button>
+              <button
+                type="button"
+                className={effectiveMethod === "transfer" ? "active" : ""}
+                aria-pressed={effectiveMethod === "transfer"}
+                onClick={() => setMethodChoice("transfer")}
+              >
+                Перевод
+              </button>
+            </span>
+          </div>
+        )}
+        {debtAfter != null && partyBalance != null && (
+          <p className="debt-preview">
+            {kind === "payment" && direction === "outgoing" ? "Мой долг" : "Долг"}{" "}
+            {debtMoney(partyBalance.toFixed(2), debtCurrency)} →{" "}
+            {debtAfter < -0.005 ? (
+              <strong>{kind === "payment" ? `переплата ${money((-debtAfter).toFixed(2), debtCurrency)}` : debtMoney(debtAfter.toFixed(2), debtCurrency)}</strong>
+            ) : (
+              <>
+                станет <strong>{money(Math.max(debtAfter, 0).toFixed(2), debtCurrency)}</strong>
+              </>
+            )}
+          </p>
         )}
         {overLimit && (
           <p className="form-error limit-warning" role="alert">
@@ -1264,7 +1501,7 @@ export function OperationForm({
             ? "Сумма сразу добавится к долгу перед поставщиком. Фото — основание записи."
             : kind === "sale"
               ? "Сумма сразу добавится к долгу клиента. Если клиент заплатил — отметьте наличные."
-              : "Оплата сразу уменьшит долг контрагента."}
+              : direction === "incoming" ? "Оплата сразу уменьшит долг клиента." : "Оплата сразу уменьшит ваш долг поставщику."}
         </p>
       </form>
     </>

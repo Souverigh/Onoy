@@ -40,3 +40,26 @@ export function decimalLessThan(a: string, b: string) {
   };
   return integer(a) < integer(b);
 }
+
+/**
+ * Телефон для печати и экрана — с пробелами: «+996 773 033 399»,
+ * «0773 033 399». Что не похоже на кыргызский номер — как ввели.
+ */
+export function phoneText(value: string | null | undefined): string {
+  const raw = (value ?? "").trim();
+  const digits = raw.replace(/\D/g, "");
+  const group = (d: string) => `${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}`;
+  if (digits.length === 12 && digits.startsWith("996")) return `+996 ${group(digits.slice(3))}`;
+  if (digits.length === 10 && digits.startsWith("0")) return `0${group(digits.slice(1))}`;
+  if (digits.length === 9 && !raw.startsWith("+")) return `+996 ${group(digits)}`;
+  return raw;
+}
+
+/**
+ * Долг без знака «−» (задача 5): долг — сумма, переплата — «аванс 850 сом».
+ */
+export function debtMoney(value: number | string, currency: string | null = "KGS"): string {
+  const text = String(value);
+  if (Number(text) === 0) return money("0", currency);
+  return text.startsWith("-") ? `аванс ${money(text.slice(1), currency)}` : money(text, currency);
+}

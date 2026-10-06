@@ -10,6 +10,7 @@ import {
   dayBounds,
   dayClosure,
   dayHistory,
+  dayIsEmpty,
   dayNet,
   type DayMoney,
   type DaySummary,
@@ -63,7 +64,7 @@ function DayMoneyPanels({ m, cur }: { m: DayMoney; cur: string }) {
           </section>
           <section className="panel">
             <h2>Поставщики</h2>
-            <p className="muted">Приход за день: {money(m.suppliers.purchased, cur)}</p>
+            <p className="muted">Товар от поставщиков за день: {money(m.suppliers.purchased, cur)}</p>
             <p className="muted">Оплачено: {money(m.suppliers.paid, cur)}</p>
             <p className="day-number">Долг на конец дня: {money(m.suppliers.evening, cur)}</p>
           </section>
@@ -82,7 +83,73 @@ function DayMoneyPanels({ m, cur }: { m: DayMoney; cur: string }) {
   );
 }
 
-/** Расходы и «Осталось за день» — в валюте магазина. */
+const round = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Первый экран (задача 32): продал, из них в долг, получил денег (наличными и
+ * переводом), сколько наличных должно быть в кассе. Скидки и возвраты —
+ * отдельно, это не деньги.
+ */
+function DayTop({ summary }: { summary: DaySummary }) {
+  const cur = summary.currency ?? "KGS";
+  const net = dayNet(summary);
+  const transfer = net.transferIn ?? summary.collected.transfer;
+  const cashIn = net.transferIn == null ? round(summary.sold.cash + summary.collected.cash) : net.income;
+  const adjust = summary.adjustments;
+  return (
+    <section className="panel day-top" aria-label="Итог дня коротко">
+      <div className="day-line">
+        <span>Продал за день</span>
+        <strong>{money(summary.sold.total, cur)}</strong>
+      </div>
+      <div className="day-line day-line-sub">
+        <span>из них в долг</span>
+        <strong>{money(summary.sold.credit, cur)}</strong>
+      </div>
+      <div className="day-line">
+        <span>
+          Получил денег
+          <small className="muted">
+            наличными {money(cashIn, cur)} · переводом {money(transfer, cur)}
+          </small>
+        </span>
+        <strong>{money(round(cashIn + transfer), cur)}</strong>
+      </div>
+      <div className="day-line day-line-main">
+        <span>В кассе должно быть наличных</span>
+        <strong>{money(net.left, cur)}</strong>
+      </div>
+      {adjust && (adjust.discount > 0 || adjust.return > 0) && (
+        <div className="day-line day-line-sub">
+          <span>Скидки и возвраты клиентам — не деньги</span>
+          <strong>
+            {[
+              adjust.discount > 0 ? `скидки ${money(adjust.discount, cur)}` : "",
+              adjust.return > 0 ? `возвраты ${money(adjust.return, cur)}` : "",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </strong>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** «В кассе по факту» против «должно быть» — словами, без минуса. */
+function CountedLine({ summary }: { summary: DaySummary }) {
+  if (summary.counted == null) return null;
+  const cur = summary.currency ?? "KGS";
+  const diff = round(summary.counted - dayNet(summary).left);
+  return (
+    <p className="muted">
+      В кассе по факту: {money(summary.counted, cur)} ·{" "}
+      {diff === 0 ? "сходится" : diff < 0 ? `не хватает ${money(-diff, cur)}` : `лишние ${money(diff, cur)}`}
+    </p>
+  );
+}
+
+/** Расходы и касса за день — в валюте магазина. */
 function DayExpensesPanels({ summary, date }: { summary: DaySummary; date: string }) {
   const cur = summary.currency ?? "KGS";
   const net = dayNet(summary);
@@ -110,10 +177,20 @@ function DayExpensesPanels({ summary, date }: { summary: DaySummary; date: strin
       </section>
       <section className="panel">
         <h2>Осталось за день</h2>
-        <p className="muted">Пришло (наличные продажи + собрано): {money(net.income, cur)}</p>
-        <p className="muted">Оплачено поставщикам: − {money(net.paid, cur)}</p>
+        {net.transferIn == null ? (
+          <p className="muted">Пришло (наличные продажи + собрано): {money(net.income, cur)}</p>
+        ) : (
+          <p className="muted">Наличными от клиентов и продаж: {money(net.income, cur)}</p>
+        )}
+        <p className="muted">Наличными поставщикам: − {money(net.paid, cur)}</p>
         <p className="muted">Расходы: − {money(net.expenses, cur)}</p>
         <p className="day-number">{money(net.left, cur)}</p>
+        {net.transferIn != null && (net.transferIn > 0 || (net.transferOut ?? 0) > 0) && (
+          <p className="muted">
+            Переводом — не в кассе: получено {money(net.transferIn, cur)}
+            {(net.transferOut ?? 0) > 0 && <> · отправлено {money(net.transferOut ?? 0, cur)}</>}
+          </p>
+        )}
       </section>
     </div>
   );
@@ -213,6 +290,78 @@ export default async function DayClose({
           )}
         </div>
       </div>
+      {closed && (
+        <p className="notice success" role="status">
+          День закрыт. Итоги сохранены — PDF можно скачать и отправить.
+        </p>
+      )}
+      {error === "close" && (
+        <p className="form-error" role="alert">
+          Не удалось закрыть день. Обновите страницу и попробуйте снова.
+        </p>
+      )}
+      {error === "counted" && (
+        <p className="form-error" role="alert">
+          «В кассе по факту» — только число, например 12 500.
+        </p>
+      )}
+
+      <DayTop summary={summary} />
+
+      {closure ? (
+        <section className="panel day-status day-status-closed">
+          <div>
+            <strong>✓ День закрыт {time(closure.closedAt)}</strong>
+            <CountedLine summary={closure.snapshot} />
+            <p className="muted">
+              Цифры зафиксированы на момент закрытия
+              {afterCount > 0 ? `; изменения после закрытия — отдельно внизу (${afterCount}).` : "."}
+            </p>
+          </div>
+          <a className="button" href={pdfHref}>
+            Скачать PDF
+          </a>
+        </section>
+      ) : dayIsEmpty(summary) ? (
+        <section className="panel day-status">
+          <div>
+            <strong>{isToday ? "Записей пока нет" : "В этот день записей нет"}</strong>
+            <p className="muted">Закрывать нечего.</p>
+          </div>
+        </section>
+      ) : (
+        <section className="panel day-status">
+          <div>
+            <strong>{isToday ? "День идёт" : "День не закрыт"}</strong>
+            <p className="muted">
+              {isToday
+                ? "Цифры обновляются с каждой записью. Вечером пересчитайте наличные, впишите сумму и закройте день — итоги сохранятся."
+                : "Итоги посчитаны сейчас по действующим записям. Пересчитайте кассу и закройте день, чтобы сохранить их."}
+            </p>
+          </div>
+          <div className="day-status-actions">
+            <form action={closeDay} className="day-close-form">
+              <input type="hidden" name="date" value={date} />
+              <label>
+                В кассе по факту
+                <input
+                  name="counted"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder={`должно быть ${money(dayNet(summary).left, summary.currency ?? "KGS")}`}
+                />
+              </label>
+              <Submit>Закрыть день</Submit>
+            </form>
+            <a className="button" href={pdfHref}>
+              PDF на сейчас
+            </a>
+          </div>
+        </section>
+      )}
+
+      {/* Открытый сейчас день и так помечен «День не закрыт» выше. */}
+      <UnclosedDays days={unclosed.filter((day) => day !== date)} />
       <form className="day-picker" action="/day">
         <label>
           Итог за другой день
@@ -227,54 +376,6 @@ export default async function DayClose({
           </Link>
         )}
       </form>
-
-      {/* Открытый сейчас день и так помечен «День не закрыт» ниже. */}
-      <UnclosedDays days={unclosed.filter((day) => day !== date)} />
-      {closed && (
-        <p className="notice success" role="status">
-          День закрыт. Итоги сохранены — PDF можно скачать и отправить.
-        </p>
-      )}
-      {error === "close" && (
-        <p className="form-error" role="alert">
-          Не удалось закрыть день. Обновите страницу и попробуйте снова.
-        </p>
-      )}
-
-      {closure ? (
-        <section className="panel day-status day-status-closed">
-          <div>
-            <strong>✓ День закрыт {time(closure.closedAt)}</strong>
-            <p className="muted">
-              Цифры ниже зафиксированы на момент закрытия
-              {afterCount > 0 ? `; изменения после закрытия — отдельно внизу (${afterCount}).` : "."}
-            </p>
-          </div>
-          <a className="button" href={pdfHref}>
-            Скачать PDF
-          </a>
-        </section>
-      ) : (
-        <section className="panel day-status">
-          <div>
-            <strong>{isToday ? "День идёт" : "День не закрыт"}</strong>
-            <p className="muted">
-              {isToday
-                ? "Цифры обновляются с каждой записью. Вечером проверьте незакрытое, сверьте «наличными» с кассой и закройте день — итоги сохранятся."
-                : "Итоги посчитаны сейчас по действующим записям. Закройте день, чтобы сохранить их."}
-            </p>
-          </div>
-          <div className="day-status-actions">
-            <a className="button" href={pdfHref}>
-              PDF на сейчас
-            </a>
-            <form action={closeDay}>
-              <input type="hidden" name="date" value={date} />
-              <Submit>Закрыть день</Submit>
-            </form>
-          </div>
-        </section>
-      )}
 
       <DayMoneyPanels m={summary} cur={summary.currency ?? "KGS"} />
       <DayExpensesPanels summary={summary} date={date} />
@@ -364,13 +465,13 @@ export default async function DayClose({
       <section className="panel">
         <h2>По дням</h2>
         <div className="table-wrap">
-          <table className="day-history">
+          <table className="day-history card-table">
             <thead>
               <tr>
                 <th>День</th>
                 <th>Продано</th>
                 <th>Собрано</th>
-                <th>Приход</th>
+                <th>Товар от поставщика</th>
                 <th>Расходы</th>
                 <th>Закрыт</th>
               </tr>
@@ -378,7 +479,7 @@ export default async function DayClose({
             <tbody>
               {rows.map((row) => (
                 <tr key={row.date} className={row.date === date ? "day-history-current" : ""}>
-                  <td>
+                  <td className="card-title">
                     <Link href={row.date === today ? "/day" : `/day?date=${row.date}`}>
                       {row.date === today
                         ? "Сегодня"
@@ -390,11 +491,11 @@ export default async function DayClose({
                           }).format(new Date(`${row.date}T12:00:00+06:00`))}
                     </Link>
                   </td>
-                  <td>{money(row.sold, shopCurrency)}</td>
-                  <td>{money(row.collected, shopCurrency)}</td>
-                  <td>{money(row.purchased, shopCurrency)}</td>
-                  <td>{money(row.expenses, shopCurrency)}</td>
-                  <td>{snapshots.has(row.date) ? "✓" : <span className="muted">—</span>}</td>
+                  <td data-label="Продано">{money(row.sold, shopCurrency)}</td>
+                  <td data-label="Собрано">{money(row.collected, shopCurrency)}</td>
+                  <td data-label="Товар от поставщика">{money(row.purchased, shopCurrency)}</td>
+                  <td data-label="Расходы">{money(row.expenses, shopCurrency)}</td>
+                  <td data-label="Закрыт">{snapshots.has(row.date) ? "✓" : <span className="muted">—</span>}</td>
                 </tr>
               ))}
             </tbody>

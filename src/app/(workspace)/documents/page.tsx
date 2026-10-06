@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getContext } from "@/lib/context";
 import { Icon } from "@/components/icon";
 import { expenseCategoryLabel } from "@/lib/expenses";
+import { DeleteWithUndo } from "@/components/delete-with-undo";
 
 type DocRow = {
   id: string;
@@ -12,21 +13,21 @@ type DocRow = {
 };
 
 const statusLabel: Record<string, { label: string; className: string }> = {
-  uploaded: { label: "Ожидает", className: "tag" },
+  uploaded: { label: "Читаем фото", className: "tag" },
   processing: { label: "Распознаём…", className: "tag" },
-  digitized: { label: "Оцифрована", className: "tag green" },
-  review: { label: "Расхождение", className: "tag reversed-tag" },
+  digitized: { label: "Готова", className: "tag green" },
+  review: { label: "Проверьте сумму", className: "tag reversed-tag" },
   failed: { label: "Ошибка", className: "tag reversed-tag" },
 };
 
 const kindLabel: Record<string, string> = {
-  purchase: "Приход",
+  purchase: "Товар от поставщика",
   sale: "Продажа",
   payment: "Оплата",
   expense: "Расход",
 };
 const dateTime = new Intl.DateTimeFormat("ru-RU", {
-  dateStyle: "medium",
+  dateStyle: "short",
   timeStyle: "short",
   timeZone: "Asia/Bishkek",
 });
@@ -42,7 +43,35 @@ const shortDateTime = new Intl.DateTimeFormat("ru-RU", {
 
 const roleLabel = { customer: "клиент", supplier: "поставщик", expense: "расход магазина" } as const;
 
-export default async function Documents() {
+/** Статус для списка: отменённая запись и фото без записи — словами (задачи 14, 31). */
+function statusOf(doc: DocRow, links: Links) {
+  if (links.reversed.has(doc.id)) return { label: "Отменена", className: "tag" };
+  if (!links.linked.has(doc.id) && doc.status !== "processing") return { label: "Без записи", className: "tag" };
+  return statusLabel[doc.status] ?? statusLabel.uploaded;
+}
+
+/** Кнопки у фото без записи: записать по нему или удалить. */
+function OrphanActions({ doc }: { doc: DocRow }) {
+  const href =
+    doc.kind === "expense" ? "/money/expense" : `/money/new?type=${doc.kind ?? "sale"}&documentId=${doc.id}`;
+  return (
+    <span className="doc-orphan-actions">
+      <Link className="button primary" href={href}>
+        {doc.kind === "purchase"
+          ? "Записать товар"
+          : doc.kind === "payment"
+            ? "Записать оплату"
+            : doc.kind === "expense"
+              ? "Записать расход"
+              : "Записать продажу по этому фото"}
+      </Link>
+      <DeleteWithUndo what="document" id={doc.id} title="Удалить фото?" label="Удалить" hide={`doc-${doc.id}`} />
+    </span>
+  );
+}
+
+export default async function Documents({ searchParams }: { searchParams: Promise<{ deleted?: string }> }) {
+  const { deleted } = await searchParams;
   const { db, organizationId } = await getContext();
   const { data, error } = await db
     .from("documents")
@@ -53,14 +82,20 @@ export default async function Documents() {
   if (error) throw new Error("Не удалось загрузить документы");
   const documents = (data ?? []) as DocRow[];
   const ids = documents.map((d) => d.id);
-  const [parties, digitizedAt, duplicates] = await Promise.all([
+  const [links, digitizedAt, duplicates] = await Promise.all([
     partiesOf(db, organizationId, ids),
     lastRecognition(db, organizationId, ids),
     duplicateDocuments(db, organizationId, ids),
   ]);
+  const parties = links.parties;
 
   return (
     <>
+      {deleted && (
+        <p className="notice success" role="status">
+          Фото удалено.
+        </p>
+      )}
       <div className="page-heading">
         <div>
           <span className="eyebrow">ФОТО → РАСПОЗНАВАНИЕ → ПРОВЕРКА</span>
@@ -76,10 +111,11 @@ export default async function Documents() {
           {/* Телефон: компактный список — строка документа целиком нажимается. */}
           <ul className="doc-list-mobile">
             {documents.map((doc) => {
-              const status = statusLabel[doc.status] ?? statusLabel.uploaded;
+              const status = statusOf(doc, links);
               const party = parties.get(doc.id);
+              const orphan = !links.linked.has(doc.id) && doc.status !== "processing";
               return (
-                <li key={doc.id}>
+                <li key={doc.id} id={`doc-${doc.id}`}>
                   <Link href={`/documents/${doc.id}`} className="doc-list-item">
                     <span className="doc-list-main">
                       <strong>{doc.kind ? kindLabel[doc.kind] : "Документ"}</strong>
@@ -96,6 +132,7 @@ export default async function Documents() {
                     </span>
                     {duplicates.has(doc.id) && <span className="tag duplicate-tag">дубликат</span>}
                   </Link>
+                  {orphan && <OrphanActions doc={doc} />}
                 </li>
               );
             })}
@@ -108,7 +145,7 @@ export default async function Documents() {
                   <th>Кто</th>
                   <th>Статус</th>
                   <th>Загружен</th>
-                  <th>Оцифрован</th>
+                  <th>Прочитан</th>
                   <th>
                     <span className="sr-only">Открыть</span>
                   </th>
@@ -116,9 +153,10 @@ export default async function Documents() {
               </thead>
               <tbody>
                 {documents.map((doc) => {
-                  const status = statusLabel[doc.status] ?? statusLabel.uploaded;
+                  const status = statusOf(doc, links);
+                  const orphan = !links.linked.has(doc.id) && doc.status !== "processing";
                   return (
-                    <tr key={doc.id} className="row-link">
+                    <tr key={doc.id} id={`doc-${doc.id}`} className="row-link">
                       <td>{doc.kind ? kindLabel[doc.kind] : "—"}</td>
                       <td>
                         {parties.get(doc.id) ? (
@@ -135,9 +173,10 @@ export default async function Documents() {
                       <td>
                         <span className={status.className}>{status.label}</span>
                         {duplicates.has(doc.id) && <span className="tag duplicate-tag">дубликат</span>}
-                        {doc.status === "failed" && doc.error_message && (
-                          <small>{doc.error_message}</small>
+                        {doc.status === "failed" && doc.error_message && !orphan && (
+                          <small>Не получилось прочитать фото</small>
                         )}
+                        {orphan && <OrphanActions doc={doc} />}
                       </td>
                       <td>{dateTime.format(new Date(doc.created_at))}</td>
                       <td>
@@ -166,7 +205,7 @@ export default async function Documents() {
           </span>
           <h2>Документов пока нет</h2>
           <p>
-            Фото появятся здесь после первого прихода или продажи с
+            Фото появятся здесь после первой продажи или товара от поставщика с
             приложенным фото.
           </p>
         </div>
@@ -207,25 +246,39 @@ async function duplicateDocuments(db: Db, organizationId: string, documentIds: s
 }
 
 type Party = { name: string; role: "customer" | "supplier" | "expense" };
+type Links = { parties: Map<string, Party>; linked: Set<string>; reversed: Set<string> };
 
-/** Контрагент записи, к которой приложен документ, — одним запросом на таблицу. */
+/**
+ * Клиент или поставщик записи, к которой приложен документ, — одним запросом
+ * на таблицу; заодно — есть ли запись вообще и не отменена ли она.
+ */
 async function partiesOf(
   db: Awaited<ReturnType<typeof getContext>>["db"],
   organizationId: string,
   documentIds: string[],
-): Promise<Map<string, Party>> {
+): Promise<Links> {
   const result = new Map<string, Party>();
-  if (!documentIds.length) return result;
+  const linked = new Set<string>();
+  const reversed = new Set<string>();
+  if (!documentIds.length) return { parties: result, linked, reversed };
   const [purchases, sales, payments, expenses] = await Promise.all([
-    db.from("purchases").select("document_id,supplier_id").eq("organization_id", organizationId).in("document_id", documentIds),
-    db.from("sales").select("document_id,customer_id").eq("organization_id", organizationId).in("document_id", documentIds),
+    db.from("purchases").select("document_id,supplier_id,reversed_at").eq("organization_id", organizationId).in("document_id", documentIds),
+    db.from("sales").select("document_id,customer_id,reversed_at").eq("organization_id", organizationId).in("document_id", documentIds),
     db
       .from("payments")
-      .select("document_id,customer_id,supplier_id")
+      .select("document_id,customer_id,supplier_id,reversed_at")
       .eq("organization_id", organizationId)
       .in("document_id", documentIds),
-    db.from("expenses").select("document_id,category").eq("organization_id", organizationId).in("document_id", documentIds),
+    db.from("expenses").select("document_id,category,reversed_at").eq("organization_id", organizationId).in("document_id", documentIds),
   ]);
+  for (const r of [...(purchases.data ?? []), ...(sales.data ?? []), ...(payments.data ?? []), ...(expenses.data ?? [])] as {
+    document_id: string | null;
+    reversed_at: string | null;
+  }[]) {
+    if (!r.document_id) continue;
+    linked.add(r.document_id);
+    if (r.reversed_at) reversed.add(r.document_id);
+  }
   // Расход — без контрагента: показываем категорию.
   for (const r of expenses.data ?? [])
     if (r.document_id) result.set(r.document_id, { name: expenseCategoryLabel(r.category), role: "expense" });
@@ -252,5 +305,5 @@ async function partiesOf(
     const name = names.get(l.role + ":" + l.id);
     if (name) result.set(l.documentId, { name, role: l.role });
   }
-  return result;
+  return { parties: result, linked, reversed };
 }

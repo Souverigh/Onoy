@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getContext } from "@/lib/context";
 import { renderInvoicePdf } from "@/lib/pdf/invoice";
 import { money } from "@/lib/format";
-import { shopPromoUrl } from "@/lib/promo";
 import { activeShareToken, balanceNote, saleInvoiceInfo } from "@/lib/sale-invoice";
+import { saleInvoiceData } from "@/lib/sale-invoice-data";
 
 const kindLabel: Record<string, string> = {
   purchase: "Приходная накладная",
@@ -94,7 +94,20 @@ export async function GET(
   }
 
   const origin = new URL(request.url).origin;
-  const [shop, linesResult, info, token, promoUrl] = await Promise.all([
+  // Продажа — та же накладная, что на экране «Отправить клиенту».
+  if (saleId) {
+    const invoice = await saleInvoiceData(db, organizationId, saleId, origin, shopCurrency);
+    if (invoice) {
+      const pdf = await renderInvoicePdf(origin, invoice.data);
+      return new NextResponse(new Uint8Array(pdf), {
+        headers: {
+          "content-type": "application/pdf",
+          "content-disposition": `attachment; filename="nakladnaya-${id.slice(0, 8)}.pdf"; filename*=UTF-8''${encodeURIComponent(`накладная-${id.slice(0, 8)}.pdf`)}`,
+        },
+      });
+    }
+  }
+  const [shop, linesResult, info, token] = await Promise.all([
     db.from("organizations").select("name,phone").eq("id", organizationId).maybeSingle(),
     db
       .from("document_lines")
@@ -104,7 +117,6 @@ export async function GET(
       .order("n"),
     saleId ? saleInvoiceInfo(db, organizationId, saleId) : null,
     customerId ? activeShareToken(db, organizationId, customerId) : null,
-    shopPromoUrl(db, origin, organizationId),
   ]);
 
   const isSale = doc.data.kind === "sale";
@@ -112,7 +124,7 @@ export async function GET(
   const pdf = await renderInvoicePdf(origin, {
     shopName: shopParty.name,
     kindLabel: kindLabel[doc.data.kind ?? ""] ?? "Документ",
-    number: info?.number,
+    number: info?.paperNumber ?? info?.number,
     occurredAt: date,
     total,
     currency: currency ?? shopCurrency,
@@ -122,7 +134,6 @@ export async function GET(
     buyer: isSale ? { name: partyName, phone: info?.customerPhone } : shopParty,
     seller: isSale ? { name: info?.sellerName ?? shopParty.name, phone: shopParty.phone } : { name: partyName, phone: partyPhone },
     clientUrl: token ? `${origin}/c/${token}` : null,
-    promoUrl,
     lines: (linesResult.data ?? []) as {
       n: number;
       name_raw: string;
@@ -131,7 +142,6 @@ export async function GET(
       price: string;
       sum: string;
     }[],
-    digitized: doc.data.status === "digitized",
   });
 
   return new NextResponse(new Uint8Array(pdf), {

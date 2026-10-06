@@ -5,6 +5,7 @@ import { memberLabels } from "./members";
 import { isCurrency, type Currency } from "./currency";
 import { foreignParties, recordCurrency } from "./party-currency";
 import { expenseCategoryLabel, expensesByCategory } from "./expenses";
+import { cashbox, paymentMethod, type Cashbox } from "./cashbox";
 
 /** День по Бишкеку (YYYY-MM-DD): сменяется в 00:00 UTC+6. */
 export function bishkekDate(value: string | Date = new Date()) {
@@ -52,17 +53,42 @@ export type DaySummary = {
   foreign?: (DayMoney & { currency: string })[];
   /** Расходы магазина за день (в валюте магазина). В старых снимках нет — расходов не было. */
   expenses?: DayExpenses;
+  /** Наличные в кассе за день (задача 1). В старых снимках нет — считаем по-старому. */
+  cashbox?: Cashbox;
+  /** Скидки и возвраты клиентам за день — не деньги, отдельной строкой. */
+  adjustments?: { discount: number; return: number };
+  /** «В кассе по факту» при закрытии дня. */
+  counted?: number | null;
 } & DayMoney;
 export type DayExpenses = { total: number; count: number; byCategory: { category: string; amount: number }[] };
 
 /**
- * Деньги за день в валюте магазина: пришло (продажи за наличные + собрано с
- * клиентов) минус ушло (оплачено поставщикам + расходы).
+ * Наличные за день в валюте магазина: пришло наличными (продажи «сразу
+ * оплатили» + наличные от клиентов) минус наличные поставщикам (и сомы за
+ * долг в $) и расходы. Переводы — отдельно, в кассу не входят.
  */
-export function dayNet(summary: DayMoney & { expenses?: DayExpenses }) {
-  const income = round(summary.sold.cash + summary.collected.total);
+export function dayNet(summary: DayMoney & { expenses?: DayExpenses; cashbox?: Cashbox }) {
   const expenses = summary.expenses?.total ?? 0;
-  return { income, paid: summary.suppliers.paid, expenses, left: round(income - summary.suppliers.paid - expenses) };
+  const box = summary.cashbox;
+  if (box)
+    return {
+      income: box.cashIn,
+      paid: box.cashOut,
+      expenses: box.expenses,
+      left: box.left,
+      transferIn: box.transferIn,
+      transferOut: box.transferOut,
+    };
+  // Снимки до 05.10: как считали тогда.
+  const income = round(summary.sold.cash + summary.collected.total);
+  return {
+    income,
+    paid: summary.suppliers.paid,
+    expenses,
+    left: round(income - summary.suppliers.paid - expenses),
+    transferIn: null,
+    transferOut: null,
+  };
 }
 export type SellerTotal = { id: string | null; name: string; role: "owner" | "staff" | null; sold: number; collected: number; count: number };
 
@@ -70,8 +96,26 @@ const sum = <T>(rows: T[], pick: (row: T) => string | number) =>
   Math.round(rows.reduce((s, r) => s + Number(pick(r)), 0) * 100) / 100;
 const round = (n: number) => Math.round(n * 100) / 100;
 
-type SaleRow = { customer_id: string | null; total: string; paid_immediately: boolean; created_by: string | null };
-type PaymentRow = { customer_id: string | null; supplier_id: string | null; direction: string; amount: string; bank_reference: string | null; created_by: string | null };
+type SaleRow = {
+  customer_id: string | null;
+  total: string;
+  paid_immediately: boolean;
+  created_by: string | null;
+  original_amount: string | null;
+  original_currency: string | null;
+};
+type PaymentRow = {
+  customer_id: string | null;
+  supplier_id: string | null;
+  direction: string;
+  amount: string;
+  bank_reference: string | null;
+  document_id: string | null;
+  method?: string | null;
+  created_by: string | null;
+  original_amount: string | null;
+  original_currency: string | null;
+};
 type PurchaseRow = { supplier_id: string | null; total: string };
 type Movements = { receivable: number; payable: number };
 
@@ -101,8 +145,8 @@ function dayMoney(
       .sort((a, b) => b.amount - a.amount);
   const soldCredit = sum(creditSales, (s) => s.total);
   const soldCash = sum(cashSales, (s) => s.total);
-  const collectedCash = sum(incoming.filter((p) => !p.bank_reference), (p) => p.amount);
-  const collectedTransfer = sum(incoming.filter((p) => p.bank_reference), (p) => p.amount);
+  const collectedCash = sum(incoming.filter((p) => paymentMethod(p) === "cash"), (p) => p.amount);
+  const collectedTransfer = sum(incoming.filter((p) => paymentMethod(p) === "transfer"), (p) => p.amount);
   const purchased = sum(purchases, (p) => p.total);
   const paidSuppliers = sum(outgoing, (p) => p.amount);
   const receivableEvening = round(receivableNow - (later?.receivable ?? 0));
@@ -139,27 +183,18 @@ export async function computeDaySummary(
   const isToday = date === bishkekDate();
   const org = await db.from("organizations").select("currency").eq("id", organizationId).maybeSingle();
   const shopCurrency: Currency = isCurrency(org.data?.currency) ? org.data.currency : "KGS";
-  const [sales, payments, purchases, pending, later, customerBalances, supplierBalances, foreign, expenses] =
+  const [sales, payments, purchases, pending, later, customerBalances, supplierBalances, foreign, expenses, adjustments] =
     await Promise.all([
       db
         .from("sales")
-        .select("customer_id,total,paid_immediately,created_by")
+        .select("customer_id,total,paid_immediately,created_by,original_amount,original_currency")
         .eq("organization_id", organizationId)
         .eq("status", "posted")
         .is("reversed_at", null)
         .eq("is_opening", false)
         .gte("occurred_at", start)
         .lt("occurred_at", end),
-      db
-        .from("payments")
-        .select("customer_id,supplier_id,direction,amount,bank_reference,created_by")
-        .eq("organization_id", organizationId)
-        .eq("status", "confirmed")
-        .eq("kind", "payment") // скидки и возвраты — не деньги
-        .is("reversed_at", null)
-        .eq("is_opening", false)
-        .gte("occurred_at", start)
-        .lt("occurred_at", end),
+      dayPayments(db, organizationId, start, end),
       db
         .from("purchases")
         .select("supplier_id,total")
@@ -186,6 +221,17 @@ export async function computeDaySummary(
         .eq("currency", shopCurrency)
         .is("reversed_at", null)
         .range(0, 4999),
+      db
+        .from("payments")
+        .select("customer_id,kind,amount")
+        .eq("organization_id", organizationId)
+        .eq("status", "confirmed")
+        .eq("direction", "incoming")
+        .in("kind", ["discount", "return"])
+        .is("reversed_at", null)
+        .gte("occurred_at", start)
+        .lt("occurred_at", end)
+        .range(0, 4999),
     ]);
   if (sales.error || payments.error || purchases.error || customerBalances.error || supplierBalances.error)
     throw new Error("Не удалось загрузить итог дня");
@@ -195,7 +241,7 @@ export async function computeDaySummary(
   const expenseCategories = expensesByCategory(expenseRows);
 
   const saleRows = (sales.data ?? []) as SaleRow[];
-  const paymentRows = (payments.data ?? []) as PaymentRow[];
+  const paymentRows = (payments.data ?? []) as unknown as PaymentRow[];
   const purchaseRows = (purchases.data ?? []) as PurchaseRow[];
   const ids = [
     ...new Set([
@@ -258,6 +304,10 @@ export async function computeDaySummary(
     t.collected = round(t.collected + Number(p.amount));
   }
 
+  const expensesTotal = round(expenseCategories.reduce((s, c) => s + c.amount, 0));
+  const ownAdjustments = ((adjustments.data ?? []) as { customer_id: string; kind: string; amount: string }[]).filter(
+    (a) => currencyOf(a) === shopCurrency,
+  );
   return {
     version: 1,
     date,
@@ -267,12 +317,46 @@ export async function computeDaySummary(
     pendingClaims: pending.count ?? 0,
     bySeller: [...sellers.values()].sort((a, b) => b.sold - a.sold),
     expenses: {
-      total: round(expenseCategories.reduce((s, c) => s + c.amount, 0)),
+      total: expensesTotal,
       count: expenseRows.length,
       byCategory: expenseCategories,
     },
+    cashbox: cashbox({
+      shopCurrency,
+      cashSales: saleRows
+        .filter((r) => r.paid_immediately)
+        .map((r) => ({ amount: r.total, original_amount: r.original_amount, original_currency: r.original_currency, currency: currencyOf(r) })),
+      payments: paymentRows.map((p) => ({ ...p, currency: currencyOf(p) })),
+      expenses: expensesTotal,
+    }),
+    adjustments: {
+      discount: sum(ownAdjustments.filter((a) => a.kind === "discount"), (a) => a.amount),
+      return: sum(ownAdjustments.filter((a) => a.kind === "return"), (a) => a.amount),
+    },
     ...(foreignParts.length ? { foreign: foreignParts } : {}),
   };
+}
+
+/**
+ * Оплаты дня (без скидок и возвратов — это не деньги). Колонки method нет,
+ * пока не применена миграция 20261005110000, — тогда без неё.
+ */
+async function dayPayments(db: SupabaseClient, organizationId: string, start: string, end: string) {
+  const columns = "customer_id,supplier_id,direction,amount,bank_reference,document_id,created_by,original_amount,original_currency";
+  const query = (select: string) =>
+    db
+      .from("payments")
+      .select(select)
+      .eq("organization_id", organizationId)
+      .eq("status", "confirmed")
+      .eq("kind", "payment")
+      .is("reversed_at", null)
+      .eq("is_opening", false)
+      .gte("occurred_at", start)
+      .lt("occurred_at", end)
+      .range(0, 4999);
+  const withMethod = await query(`${columns},method`);
+  return withMethod.error ? query(columns) : withMethod;
 }
 
 /**
@@ -424,7 +508,7 @@ export async function afterClosing(
     })),
     ...(purchases.data ?? []).map((r) => ({
       kind: "purchase" as const,
-      label: "Приход",
+      label: "Товар от поставщика",
       party: names.get(r.supplier_id) ?? "Поставщик",
       amount: Number(r.total),
       currency: currencyOf(r.supplier_id),
@@ -564,6 +648,18 @@ export async function dayHistory(
 
 export type DayClosure = { closedAt: string; snapshot: DaySummary };
 
+/** В дне нет действующих записей — закрывать нечего. */
+export function dayIsEmpty(s: DaySummary) {
+  const blank = (m: DayMoney) =>
+    m.sold.count === 0 && m.collected.total === 0 && m.suppliers.purchased === 0 && m.suppliers.paid === 0;
+  return (
+    blank(s) &&
+    (s.expenses?.count ?? 0) === 0 &&
+    !(s.adjustments?.discount || s.adjustments?.return) &&
+    !(s.foreign ?? []).some((f) => f.sold.count || f.collected.total || f.suppliers.purchased || f.suppliers.paid)
+  );
+}
+
 export async function dayClosure(
   db: SupabaseClient,
   organizationId: string,
@@ -586,8 +682,9 @@ export async function dayClosure(
 export const UNCLOSED_LOOKBACK_DAYS = 7;
 
 /**
- * Прошлые дни (не сегодня) за последнюю неделю, в которые были записи, но
- * день не закрыт — от нового к старому. Дни без записей (выходной) не в счёт.
+ * Прошлые дни (не сегодня) за последнюю неделю, в которые были действующие
+ * записи, но день не закрыт — от нового к старому. Дни без записей (выходной)
+ * и дни, где все записи отменены, не в счёт.
  */
 export async function unclosedDays(db: SupabaseClient, organizationId: string): Promise<string[]> {
   const today = bishkekDate();
@@ -599,6 +696,7 @@ export async function unclosedDays(db: SupabaseClient, organizationId: string): 
       .select("occurred_at")
       .eq("organization_id", organizationId)
       .eq("status", table === "payments" ? "confirmed" : "posted")
+      .is("reversed_at", null)
       .eq("is_opening", false)
       .gte("occurred_at", from.toISOString())
       .lt("occurred_at", todayStart)
@@ -616,6 +714,7 @@ export async function unclosedDays(db: SupabaseClient, organizationId: string): 
       .from("expenses")
       .select("spent_on")
       .eq("organization_id", organizationId)
+      .is("reversed_at", null)
       .gte("spent_on", bishkekDate(from))
       .lt("spent_on", today)
       .range(0, 4999),

@@ -7,8 +7,8 @@ import { expenseCategoryLabel } from "@/lib/expenses";
 import { money } from "@/lib/format";
 import { documentPages, signedPhotoUrl } from "@/lib/storage";
 import { DocumentPhotos } from "@/components/document-photos";
-import { retryRecognition, confirmDocument, updateLine, saveAlias, addLine, deleteLine } from "../actions";
-import { ConfirmButton } from "@/components/confirm-button";
+import { retryRecognition, confirmDocument, updateLine, saveAlias, addLine } from "../actions";
+import { DeleteWithUndo } from "@/components/delete-with-undo";
 import { bestMatches, similarity } from "@/lib/match";
 import { ReceiveStock, type ReceiveLine } from "@/components/receive-stock";
 import { STOCK_ERROR_TEXT, normalizeUnit } from "@/lib/stock";
@@ -222,6 +222,9 @@ export default async function DocumentDetail({
       }));
   }
 
+  // Фото без записи (задачи 14, 29): ни продажи, ни товара, ни оплаты, ни расхода.
+  const orphan = !purchaseResult.data && !saleResult.data && !expenseResult.data && !paymentResult.data;
+
   // Расход: сумма в записи — третья сторона сверки с чеком.
   let expense: { id: string; amount: string; currency: string; category: string; note: string | null } | null = null;
   if (doc.kind === "expense" && expenseResult.data) {
@@ -376,8 +379,8 @@ export default async function DocumentDetail({
     verdict && !verdict.ok
       ? verdict.reason === "direction"
         ? verdict.suggestedKind === "purchase"
-          ? "По фото это накладная от поставщика вам — похоже на приход, а записано продажей."
-          : "По фото это накладная от вашего магазина покупателю — похоже на продажу, а записано приходом."
+          ? "По фото это накладная от поставщика вам — похоже на товар от поставщика, а записано продажей."
+          : "По фото это накладная от вашего магазина покупателю — похоже на продажу, а записано как товар от поставщика."
         : {
             receipt: "По фото это чек или квитанция об оплате, а не накладная.",
             statement: "По фото это выписка или акт сверки, а не накладная.",
@@ -397,7 +400,7 @@ export default async function DocumentDetail({
           <span className="eyebrow">ДОКУМЕНТ</span>
           <h1>
             {doc.kind === "purchase"
-              ? "Приход"
+              ? "Товар от поставщика"
               : doc.kind === "sale"
                 ? "Продажа"
                 : doc.kind === "expense"
@@ -425,7 +428,7 @@ export default async function DocumentDetail({
       )}
       {params2.confirmed && (
         <p className="notice success" role="status">
-          Оцифровка подтверждена.
+          Готово — накладная сверена.
         </p>
       )}
       {params2.retried && (
@@ -448,36 +451,36 @@ export default async function DocumentDetail({
         <div className="doc-status-row">
           <span
             className={
-              doc.status === "digitized"
-                ? "tag green"
-                : doc.status === "review" || doc.status === "failed"
-                  ? "tag reversed-tag"
-                  : "tag"
+              record?.reversed || orphan
+                ? "tag"
+                : doc.status === "digitized"
+                  ? "tag green"
+                  : doc.status === "review" || doc.status === "failed"
+                    ? "tag reversed-tag"
+                    : "tag"
             }
           >
-            {doc.status === "uploaded"
-              ? "Ожидает"
-              : doc.status === "processing"
-                ? "Распознаём…"
-                : doc.status === "digitized"
-                  ? "Оцифрована"
-                  : doc.status === "review"
-                    ? "Расхождение"
-                    : "Ошибка"}
+            {record?.reversed
+              ? "Отменена"
+              : orphan
+                ? "Без записи"
+                : doc.status === "uploaded"
+                  ? "Читаем фото"
+                  : doc.status === "processing"
+                    ? "Читаем фото…"
+                    : doc.status === "digitized"
+                      ? "Готова"
+                      : doc.status === "review"
+                        ? "Проверьте сумму"
+                        : "Ошибка"}
           </span>
           <span className="muted doc-status-model">
             Загружен {when(doc.created_at)}
             {extraction && (doc.status === "digitized" || doc.status === "review") && (
-              <> · {doc.status === "digitized" ? "оцифрован" : "распознан"} {when(extraction.created_at)}</>
+              <> · прочитан {when(extraction.created_at)}</>
             )}
           </span>
-          {extraction && (
-            <span className="muted doc-status-model">
-              {extraction.provider} · {extraction.model_version}
-              {extraction.latency_ms != null ? ` · ${extraction.latency_ms} мс` : ""}
-            </span>
-          )}
-          {(doc.status === "failed" || doc.status === "uploaded") && doc.kind && (
+          {(doc.status === "failed" || doc.status === "uploaded") && doc.kind && !orphan && (
             <form action={retryRecognition} className="doc-status-retry">
               <input type="hidden" name="id" value={doc.id} />
               <input type="hidden" name="kind" value={doc.kind} />
@@ -552,7 +555,9 @@ export default async function DocumentDetail({
               {record
                 ? record.reversed
                   ? "Запись отменена — долг пересчитан."
-                  : `${record.kind === "sale" ? "Продажа" : "Приход"} записана.`
+                  : record.kind === "sale"
+                    ? "Продажа записана."
+                    : "Товар от поставщика записан."
                 : payment!.reversed_at
                   ? "Оплата отменена — долг пересчитан."
                   : payment!.status === "rejected"
@@ -601,6 +606,30 @@ export default async function DocumentDetail({
             </span>
           </div>
         )}
+        {orphan && (
+          <div className="doc-orphan">
+            <p>Фото без записи — по нему ещё ничего не записали. Запишите или удалите фото.</p>
+            <div className="simple-operation-actions">
+              {doc.kind === "expense" ? (
+                <Link className="button primary" href="/money/expense">
+                  Записать расход
+                </Link>
+              ) : (
+                <Link
+                  className="button primary"
+                  href={`/money/new?type=${doc.kind ?? "sale"}&documentId=${doc.id}`}
+                >
+                  {doc.kind === "purchase"
+                    ? "Записать товар по этому фото"
+                    : doc.kind === "payment"
+                      ? "Записать оплату по этому чеку"
+                      : "Записать продажу по этому фото"}
+                </Link>
+              )}
+              <DeleteWithUndo what="document" id={doc.id} title="Удалить фото?" label="Удалить фото" afterHref="/documents?deleted=1" />
+            </div>
+          </div>
+        )}
         {doc.error_message &&
           (doc.error_message.startsWith("Не разобрали") ? (
             <p className="photo-check-mismatch">{doc.error_message}</p>
@@ -632,16 +661,16 @@ export default async function DocumentDetail({
       {counterpartyMismatch && party && recognizedCounterparty && (
         <section className="panel counterparty-mismatch">
           <p>
-            На фото написано «{recognizedCounterparty}», а выбран(а) «{party.name}». Долг это не
-            меняет — только пометка.
+            На фото написано «{recognizedCounterparty}», а выбран «{party.name}». Долг это не меняет — только
+            пометка.
           </p>
           <form action={saveAlias} className="simple-operation-actions">
             <input type="hidden" name="kind" value={party.kind} />
             <input type="hidden" name="party_id" value={party.id} />
             <input type="hidden" name="alias" value={recognizedCounterparty} />
             <input type="hidden" name="document_id" value={doc.id} />
-            <button className="button" type="submit">
-              Это точно «{party.name}», запомнить как синоним
+            <button className="button wrap-button" type="submit">
+              Да, это {party.name} — запомнить
             </button>
           </form>
         </section>
@@ -766,6 +795,7 @@ export default async function DocumentDetail({
                   return (
                     <li
                       key={line.id}
+                      id={`line-${line.id}`}
                       className={`invoice-line${lineMismatch ? " line-mismatch" : lowConfidence ? " line-doubt" : ""}`}
                     >
                       <details>
@@ -811,13 +841,15 @@ export default async function DocumentDetail({
                             Сохранить
                           </button>
                         </form>
-                        <form action={deleteLine} className="invoice-line-delete">
-                          <input type="hidden" name="line_id" value={line.id} />
-                          <input type="hidden" name="document_id" value={doc.id} />
-                          <ConfirmButton className="button danger-outline" message={`Удалить строку ${line.n} «${line.name_raw}»?`}>
-                            Удалить строку
-                          </ConfirmButton>
-                        </form>
+                        <div className="invoice-line-delete">
+                          <DeleteWithUndo
+                            what="line"
+                            id={line.id}
+                            title={`Удалить строку ${line.n} «${line.name_raw}»?`}
+                            label="Удалить строку"
+                            hide={`line-${line.id}`}
+                          />
+                        </div>
                       </details>
                     </li>
                   );
@@ -829,7 +861,7 @@ export default async function DocumentDetail({
                     <form action={confirmDocument} className="simple-operation-actions">
                       <input type="hidden" name="id" value={doc.id} />
                       <button className="button primary" type="submit">
-                        Подтвердить оцифровку
+                        Всё верно
                       </button>
                     </form>
                   )}

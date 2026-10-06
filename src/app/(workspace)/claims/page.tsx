@@ -4,7 +4,9 @@ import { CURRENCIES, CURRENCY_SIGN, formatRate, partyCurrency, type Currency } f
 import { checkReceipt, receiptAmounts, receiptDiffers } from "@/lib/claim-receipt";
 import { officialRates } from "@/lib/fx";
 import { signedPhotoUrl } from "@/lib/storage";
-import { confirmClaim, rejectClaim } from "./actions";
+import { confirmClaim, rejectClaim, undoConfirmClaim } from "./actions";
+import { UndoToast } from "@/components/undo-toast";
+import { debtMoney } from "@/lib/format";
 import Link from "next/link";
 import { Submit } from "@/components/submit";
 import { duplicateReason, firstPaymentHref } from "@/lib/duplicates";
@@ -35,7 +37,10 @@ type FirstPayment = {
   customer_id: string | null;
   supplier_id: string | null;
 };
-type Party = { id: string; name: string; currency: string | null };
+type Party = { id: string; name: string; currency: string | null; balance?: string };
+
+/** Причины отказа кнопками (задача 19). */
+const REJECT_REASONS = ["Денег не пришло", "Не та сумма", "Повтор"];
 
 // «чек в сомах, а заявка в рублях».
 const IN_CURRENCY: Record<string, string> = { KGS: "сомах", RUB: "рублях", USD: "долларах" };
@@ -49,16 +54,35 @@ const dateTime = new Intl.DateTimeFormat("ru-RU", {
 export default async function Claims({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; done?: string }>;
+  searchParams: Promise<{ error?: string; done?: string; undo?: string }>;
 }) {
   const { db, organizationId, currency: shopCurrency } = await requireOwner();
-  const { error, done } = await searchParams;
+  const { error, done, undo } = await searchParams;
   const { data, error: loadError } = await db
     .from("payments")
-    .select("id,customer_id,supplier_id,amount,claim_comment,document_id,occurred_at,bank_reference,duplicate_of,created_by,original_amount,original_currency,fx_rate")
+    .select("id,customer_id,supplier_id,amount,claim_comment,document_id,occurred_at,created_at,bank_reference,duplicate_of,created_by,original_amount,original_currency,fx_rate")
     .eq("organization_id", organizationId)
     .eq("status", "pending")
     .order("occurred_at", { ascending: false });
+  // Обработанные заявки клиентов (без автора) и дубликаты — последние 20.
+  const processedResult = await db
+    .from("payments")
+    .select("id,customer_id,supplier_id,amount,status,reject_comment,created_at,reversed_at,customers(name,currency),suppliers(name,currency)")
+    .eq("organization_id", organizationId)
+    .in("status", ["confirmed", "rejected"])
+    .or("created_by.is.null,duplicate_of.not.is.null")
+    .order("created_at", { ascending: false })
+    .limit(20);
+  const processed = (processedResult.data ?? []) as unknown as {
+    id: string;
+    amount: string;
+    status: string;
+    reject_comment: string | null;
+    created_at: string;
+    reversed_at: string | null;
+    customers: { name: string; currency: string | null } | null;
+    suppliers: { name: string; currency: string | null } | null;
+  }[];
   if (loadError) throw new Error("Не удалось загрузить заявки");
   const claims = (data ?? []) as Claim[];
   const customerIds = [...new Set(claims.map((c) => c.customer_id).filter(Boolean) as string[])];
@@ -67,10 +91,10 @@ export default async function Claims({
   const none = Promise.resolve({ data: [] as Party[] });
   const [customerLookup, supplierLookup, firstLookup, documentLookup] = await Promise.all([
     customerIds.length
-      ? db.from("customers").select("id,name,currency").eq("organization_id", organizationId).in("id", customerIds)
+      ? db.from("customer_balances").select("id,name,currency,balance").eq("organization_id", organizationId).in("id", customerIds)
       : none,
     supplierIds.length
-      ? db.from("suppliers").select("id,name,currency").eq("organization_id", organizationId).in("id", supplierIds)
+      ? db.from("supplier_balances").select("id,name,currency,balance").eq("organization_id", organizationId).in("id", supplierIds)
       : none,
     firstIds.length
       ? db
@@ -128,6 +152,14 @@ export default async function Claims({
           Заявка подтверждена, долг пересчитан.
         </p>
       )}
+      {done === "confirmed" && undo && /^[a-f0-9-]{36}$/i.test(undo) && (
+        <UndoToast text="Подтверждено" onUndo={undoConfirmClaim.bind(null, undo)} clearHref="/claims?done=confirmed" />
+      )}
+      {done === "undone" && (
+        <p className="notice success" role="status">
+          Подтверждение отменено — заявка снова ждёт.
+        </p>
+      )}
       {done === "rejected" && (
         <p className="notice success" role="status">
           Заявка отклонена.
@@ -171,6 +203,10 @@ export default async function Claims({
                   <h2>
                     {party?.name ?? (claim.customer_id ? "Клиент" : "Поставщик")}
                     {claim.supplier_id && <small className="muted"> · поставщику</small>}
+                    <small className="muted claim-time">
+                      {" "}
+                      · {dateTime.format(new Date((claim as Claim & { created_at?: string }).created_at ?? claim.occurred_at))}
+                    </small>
                   </h2>
                   <div className="claim-amount">
                     {/* Клиент перевёл в другой валюте — она главная, пересчёт в долг ниже. */}
@@ -214,13 +250,20 @@ export default async function Claims({
                         : " — совпадает"}
                   </p>
                 )}
+                {party?.balance != null && (
+                  <p className="debt-preview">
+                    Долг {debtMoney(Number(party.balance).toFixed(2), currency)} → станет{" "}
+                    <strong>{debtMoney((Number(party.balance) - Number(claim.amount)).toFixed(2), currency)}</strong>
+                  </p>
+                )}
                 {claim.claim_comment && <p className="muted claim-comment">«{claim.claim_comment}»</p>}
+                {photoUrls.has(claim.id) && (
+                  <a className="claim-receipt" href={photoUrls.get(claim.id)} target="_blank" rel="noreferrer">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={photoUrls.get(claim.id)} alt="Чек" loading="lazy" />
+                  </a>
+                )}
                 <div className="claim-links">
-                  {photoUrls.has(claim.id) && (
-                    <a href={photoUrls.get(claim.id)} target="_blank" rel="noreferrer">
-                      Фото чека
-                    </a>
-                  )}
                   {historyHref && <Link href={historyHref}>История {claim.customer_id ? "клиента" : "поставщика"}</Link>}
                 </div>
                 <div className="claim-main-actions">
@@ -281,9 +324,16 @@ export default async function Claims({
                   <summary>Отклонить</summary>
                   <form action={rejectClaim} className="claim-edit-form">
                     <input type="hidden" name="id" value={claim.id} />
-                    <input name="comment" placeholder="Почему отклоняете?" required maxLength={500} />
+                    <div className="claim-reasons">
+                      {REJECT_REASONS.map((reason) => (
+                        <button key={reason} className="button" type="submit" name="reason" value={reason}>
+                          {reason}
+                        </button>
+                      ))}
+                    </div>
+                    <input name="comment" placeholder="Или своими словами" maxLength={500} />
                     <button className="button" type="submit">
-                      Отклонить заявку
+                      Отклонить со своей причиной
                     </button>
                   </form>
                 </details>
@@ -296,6 +346,31 @@ export default async function Claims({
           <h2>Заявок нет</h2>
           <p>Здесь появятся заявки «Я оплатил» со страницы клиента и оплаты-дубликаты.</p>
         </div>
+      )}
+      {processed.length > 0 && (
+        <section className="panel claims-processed">
+          <h2>Обработанные</h2>
+          <ul className="recent-list">
+            {processed.map((p) => {
+              const who = p.customers ?? p.suppliers;
+              return (
+                <li key={p.id}>
+                  <span>
+                    <strong>
+                      {who?.name ?? "—"} ·{" "}
+                      {p.reversed_at ? "отменена" : p.status === "confirmed" ? "подтверждена" : "отклонена"}
+                    </strong>
+                    <small className="muted">
+                      {dateTime.format(new Date(p.created_at))}
+                      {p.status === "rejected" && p.reject_comment ? ` · ${p.reject_comment}` : ""}
+                    </small>
+                  </span>
+                  <strong className="nowrap">{money(p.amount, who?.currency ?? shopCurrency)}</strong>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
     </>
   );

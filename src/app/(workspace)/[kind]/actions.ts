@@ -6,6 +6,11 @@ import { isDirectory, directoryInput } from "@/lib/validation";
 import { storedPhone } from "@/lib/contacts";
 import { promisedDateInput } from "@/lib/promise";
 import { bishkekDate } from "@/lib/day-summary";
+import { phoneKey } from "@/lib/contacts";
+import { bestMatches } from "@/lib/match";
+
+/** Похожее имя — «Похоже, это Айбек» (задача 24), как в форме продажи. */
+const SAME_PERSON = 0.8;
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -29,6 +34,25 @@ export async function saveEntry(form: FormData) {
   if (id && kind !== "products") {
     const current = await db.from(kind).select("currency").eq("organization_id", organizationId).eq("id", id).maybeSingle();
     if ((current.data?.currency ?? null) === (input.currency ?? null)) delete input.currency;
+  }
+  // Дубль клиента или поставщика (задача 24): тот же телефон или похожее имя —
+  // сначала «Похоже, это Айбек. Открыть его?», создаём только после «Нет».
+  if (!id && kind !== "products" && form.get("force") !== "1") {
+    const others = await db
+      .from(kind)
+      .select("id,name,phone,aliases")
+      .eq("organization_id", organizationId)
+      .is("merged_into_id", null)
+      .range(0, 4999);
+    const list = (others.data ?? []) as { id: string; name: string; phone: string; aliases: string[] }[];
+    const key = phoneKey(String(input.phone ?? ""));
+    const twin =
+      (key ? list.find((p) => p.phone && phoneKey(p.phone) === key) : undefined) ??
+      bestMatches(String(input.name ?? ""), list, 1, SAME_PERSON)[0]?.candidate;
+    if (twin) {
+      const params = new URLSearchParams({ dup: twin.id, name: String(input.name ?? ""), phone: String(input.phone ?? "") });
+      redirect(`/${kind}/new?${params.toString()}`);
+    }
   }
   const result = id
     ? await db
@@ -54,7 +78,8 @@ export async function saveEntry(form: FormData) {
       }`,
     );
   revalidatePath("/", "layout");
-  redirect(`/${kind}/${result.data.id}?saved=1`);
+  // Новый клиент — «Клиент добавлен», правка — «Изменения сохранены» (задача 37).
+  redirect(`/${kind}/${result.data.id}?${id ? "saved=1" : "added=1"}`);
 }
 
 export async function createLink(form: FormData) {
@@ -89,7 +114,17 @@ export async function revokeLink(form: FormData) {
 export async function setPromisedDate(form: FormData) {
   const customerId = String(form.get("customer_id") ?? "");
   if (!uuidPattern.test(customerId)) redirect("/customers?error=invalid");
-  const promised = promisedDateInput(String(form.get("promised_date") ?? ""), bishkekDate());
+  const today = bishkekDate();
+  // Кнопки «Завтра» и «Через неделю» — без выбора даты в календаре.
+  const preset = String(form.get("preset") ?? "");
+  const shift = preset === "tomorrow" ? 1 : preset === "week" ? 7 : preset === "clear" ? -1 : 0;
+  const raw =
+    shift > 0
+      ? bishkekDate(new Date(new Date(`${today}T12:00:00+06:00`).getTime() + shift * 86400000))
+      : shift < 0
+        ? ""
+        : String(form.get("promised_date") ?? "");
+  const promised = promisedDateInput(raw, today);
   if (promised === undefined) redirect(`/customers/${customerId}?error=promise`);
   const { db, organizationId } = await getContext();
   const result = await db

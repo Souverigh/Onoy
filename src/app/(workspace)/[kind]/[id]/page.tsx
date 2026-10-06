@@ -5,11 +5,13 @@ import { getContext } from "@/lib/context";
 import { isDirectory } from "@/lib/validation";
 import { directoryMeta, type Entry } from "@/lib/directory";
 import { EntryForm } from "@/components/entry-form";
-import { money, originalAmountText, quantity } from "@/lib/format";
+import { debtMoney, money, originalAmountText, phoneText, quantity } from "@/lib/format";
 import { partyCurrency } from "@/lib/currency";
 import { creditLimitExceeded } from "@/lib/credit-limit";
 import { createLink, revokeLink, setPromisedDate } from "@/app/(workspace)/[kind]/actions";
+import { redoRecord } from "@/app/(workspace)/money/actions";
 import { dayMonth, promiseStatus } from "@/lib/promise";
+import { reminderMessage } from "@/lib/reminder";
 import { paymentLabel } from "@/lib/entry-labels";
 import { firstPaymentHref } from "@/lib/duplicates";
 import { checkReceipt, receiptAmounts, receiptDiffers } from "@/lib/claim-receipt";
@@ -18,6 +20,7 @@ import { CURRENCIES } from "@/lib/currency";
 import { memberLabels } from "@/lib/members";
 import { PartyManage } from "@/components/party-manage";
 import { CopyButton } from "@/components/copy-button";
+import { ConfirmButton } from "@/components/confirm-button";
 import { waPhone } from "@/lib/share";
 import { bishkekDate } from "@/lib/day-summary";
 
@@ -47,12 +50,17 @@ export default async function EntryPage({
     restored?: string;
     merged?: string;
     unmerged?: string;
+    rid?: string;
+    added?: string;
+    dup?: string;
+    name?: string;
+    phone?: string;
   }>;
 }) {
   const { kind, id } = await params;
   if (!isDirectory(kind)) notFound();
   const { db, organizationId, organizationName, isOwner, currency: shopCurrency } = await getContext();
-  const { error, saved, linked, revoked, reversed, promised, adjusted, archived, restored, merged, unmerged } =
+  const { error, saved, linked, revoked, reversed, promised, adjusted, archived, restored, merged, unmerged, rid, added, dup, name: draftName, phone: draftPhone } =
     await searchParams;
   const isParty = kind === "customers" || kind === "suppliers";
   const known = id !== "new";
@@ -280,7 +288,7 @@ export default async function EntryPage({
       ...(invoices.data ?? []).map((r) => ({
         kind: (kind === "customers" ? "sale" : "purchase") as HistoryRow["kind"],
         id: r.id,
-        label: r.is_opening ? "Долг из тетради" : kind === "customers" ? "Продажа" : "Приход",
+        label: r.is_opening ? "Долг из тетради" : kind === "customers" ? "Продажа" : "Товар от поставщика",
         amount: r.total,
         original: originalAmountText(r),
         occurred_at: r.occurred_at,
@@ -373,9 +381,17 @@ export default async function EntryPage({
       mergedInto: (into.data as { id: string; name: string } | null) ?? null,
       isOwner,
       others: (others.data ?? []) as { id: string; name: string }[],
-      recentMerges: mergeRows.map((m) => ({ id: m.id, fromName: fromNames.get(m.from_id) ?? "контрагент" })),
+      recentMerges: mergeRows.map((m) => ({ id: m.id, fromName: fromNames.get(m.from_id) ?? (kind === "customers" ? "клиент" : "поставщик") })),
     };
   }
+
+  // «Похоже, это Айбек» после «Добавить» (задача 24).
+  const twin =
+    !known && isParty && dup && /^[a-f0-9-]{36}$/i.test(dup)
+      ? ((await db.from(kind).select("id,name").eq("organization_id", organizationId).eq("id", dup).maybeSingle()).data as
+          | { id: string; name: string }
+          | null)
+      : null;
 
   const newOperationHref = (type: string) =>
     `/money/new?type=${["sale", "purchase", "payment"].includes(type) ? type : "payment"}&party=${entry?.id ?? ""}`;
@@ -385,26 +401,19 @@ export default async function EntryPage({
     entry && kind === "customers"
       ? promiseStatus(entry.promised_date, Number(entry.balance ?? 0), today)
       : ({ kind: "none" } as const);
-  const promiseLine =
-    promise.kind === "broken"
-      ? ` Вы обещали оплатить до ${dayMonth(promise.date)}.`
-      : promise.kind === "upcoming"
-        ? ` Срок оплаты — ${dayMonth(promise.date)}.`
-        : "";
   // Аудит ТЗ 15.1 п. 14: название магазина, без «долг в», страница не «оплатить», а посмотреть.
   // Минус — клиент заплатил вперёд: не «ваш долг -3 000», а аванс (как в invoiceMessage).
   const reminderBalance = Number(entry?.balance ?? 0);
   const reminderText =
     entry && kind === "customers"
-      ? `Магазин «${organizationName}»: ${
-          reminderBalance > 0
-            ? `ваш долг ${money(reminderBalance, cur)}.${promiseLine}`
-            : reminderBalance < 0
-              ? `долга нет, ваш аванс ${money(-reminderBalance, cur)}.`
-              : "долга нет."
-        }${
-          activeLink ? ` Накладные и история: ${origin}/c/${activeLink.token}` : ""
-        }`
+      ? reminderMessage({
+          shopName: organizationName,
+          balance: reminderBalance,
+          currency: cur,
+          promisedDate: entry.promised_date,
+          today,
+          link: activeLink ? `${origin}/c/${activeLink.token}` : null,
+        })
       : "";
   const waHref =
     entry?.phone && reminderText
@@ -441,7 +450,7 @@ export default async function EntryPage({
               <h1>{entry.name}</h1>
               {entry.phone ? (
                 <a className="party-hero-phone" href={`tel:${entry.phone}`}>
-                  {entry.phone}
+                  {phoneText(entry.phone)}
                 </a>
               ) : (
                 <span className="muted party-hero-phone">Телефон не указан</span>
@@ -471,14 +480,22 @@ export default async function EntryPage({
           </div>
           <div className="party-hero-actions">
             <Link className="button primary" href={newOperationHref(kind === "customers" ? "sale" : "purchase")}>
-              + {kind === "customers" ? "Продажа" : "Приход"}
+              + {kind === "customers" ? "Продажа" : "Товар от поставщика"}
             </Link>
-            <Link className="button primary" href={newOperationHref("payment")}>
-              + Оплата
+            <Link
+              className="button primary"
+              href={`${newOperationHref("payment")}&direction=${kind === "customers" ? "incoming" : "outgoing"}`}
+            >
+              {kind === "customers" ? "Клиент принёс деньги" : "Я заплатил поставщику"}
             </Link>
             {waHref && (
               <a className="button whatsapp" href={waHref} target="_blank" rel="noreferrer">
                 {reminderBalance > 0 && kind === "customers" ? "Напомнить в WhatsApp" : "WhatsApp"}
+              </a>
+            )}
+            {entry.phone && (
+              <a className="button" href={`tel:${entry.phone.replace(/[^\d+]/g, "")}`}>
+                Позвонить
               </a>
             )}
             <Link className="button" href={`/${kind}/${entry.id}/statement`}>
@@ -502,7 +519,7 @@ export default async function EntryPage({
               {entry
                 ? kind === "products"
                   ? `Остаток: ${quantity(entry.stock ?? 0)} ${entry.unit}`
-                  : `Долг / аванс: ${money(entry.balance ?? 0, cur)}`
+                  : `Долг: ${debtMoney(entry.balance ?? 0, cur)}`
                 : "Заполните основные данные."}
             </p>
           </div>
@@ -511,6 +528,11 @@ export default async function EntryPage({
       {saved && (
         <p className="notice success" role="status">
           Изменения сохранены.
+        </p>
+      )}
+      {added && (
+        <p className="notice success" role="status">
+          {kind === "customers" ? "Клиент добавлен." : kind === "suppliers" ? "Поставщик добавлен." : "Товар добавлен."}
         </p>
       )}
       {linked && (
@@ -526,9 +548,19 @@ export default async function EntryPage({
       {entry && isParty && reversed && (
         <div className="notice success" role="status">
           <p>Запись отменена. Долг пересчитан, история сохранена.</p>
-          <Link className="button" href={newOperationHref(reversed)}>
-            Записать правильно
-          </Link>
+          {rid && /^[a-f0-9-]{36}$/i.test(rid) && ["sale", "purchase", "payment"].includes(reversed) ? (
+            <form action={redoRecord}>
+              <input type="hidden" name="kind" value={reversed} />
+              <input type="hidden" name="id" value={rid} />
+              <button className="button" type="submit">
+                Записать правильно
+              </button>
+            </form>
+          ) : (
+            <Link className="button" href={newOperationHref(reversed)}>
+              Записать правильно
+            </Link>
+          )}
         </div>
       )}
       {entry && isParty && error === "reversal" && (
@@ -625,6 +657,7 @@ export default async function EntryPage({
                         <span className="party-history-what">
                           <strong>
                             {row.label}
+                            {status && " · "}
                             {status && <span className={`party-history-status ${status.className}`}>{status.text}</span>}
                           </strong>
                           <small className="muted">
@@ -725,13 +758,30 @@ export default async function EntryPage({
                 )}
                 <form action={setPromisedDate} className="promise-form">
                   <input type="hidden" name="customer_id" value={entry.id} />
-                  <label>
-                    Обещал оплатить до
-                    <input type="date" name="promised_date" min={today} defaultValue={entry.promised_date ?? ""} />
-                  </label>
-                  <button className="button" type="submit">
-                    Сохранить
-                  </button>
+                  <span>Обещал оплатить</span>
+                  <div className="promise-presets">
+                    <button className="button" type="submit" name="preset" value="tomorrow">
+                      Завтра
+                    </button>
+                    <button className="button" type="submit" name="preset" value="week">
+                      Через неделю
+                    </button>
+                    {entry.promised_date && (
+                      <button className="text-button" type="submit" name="preset" value="clear">
+                        Убрать срок
+                      </button>
+                    )}
+                  </div>
+                  <details className="promise-date" open={false}>
+                    <summary>Дата</summary>
+                    <label>
+                      Обещал оплатить до
+                      <input type="date" name="promised_date" min={today} defaultValue={entry.promised_date ?? ""} />
+                    </label>
+                    <button className="button" type="submit">
+                      Сохранить дату
+                    </button>
+                  </details>
                 </form>
                 {aging && (
                   <>
@@ -777,9 +827,15 @@ export default async function EntryPage({
                       <form action={revokeLink}>
                         <input type="hidden" name="customer_id" value={entry.id} />
                         <input type="hidden" name="link_id" value={activeLink.id} />
-                        <button className="text-button danger-text" type="submit">
+                        <ConfirmButton
+                          className="text-button danger-text"
+                          danger={false}
+                          confirmLabel="Да, отозвать"
+                          message="Отозвать ссылку?"
+                          text="Старая ссылка и QR на уже отданных накладных перестанут открываться. Клиент увидит «Ссылка больше не действует»."
+                        >
                           Отозвать
-                        </button>
+                        </ConfirmButton>
                       </form>
                     </div>
                   </>
@@ -809,7 +865,23 @@ export default async function EntryPage({
         </div>
       ) : (
         <section className="panel form-panel">
-          <EntryForm kind={kind} entry={entry} shopCurrency={shopCurrency} error={formError ? error : undefined} />
+          {twin && (
+            <div className="notice lookalike" role="alert">
+              <p>
+                Похоже, это <strong>{twin.name}</strong>. Открыть его?
+              </p>
+              <Link className="button primary" href={`/${kind}/${twin.id}`}>
+                Да, открыть {twin.name}
+              </Link>
+            </div>
+          )}
+          <EntryForm
+            kind={kind}
+            entry={entry}
+            shopCurrency={shopCurrency}
+            error={formError ? error : undefined}
+            draft={twin ? { name: draftName ?? "", phone: draftPhone ?? "" } : undefined}
+          />
         </section>
       )}
     </>

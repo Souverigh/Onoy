@@ -2,16 +2,20 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
-import { money, originalAmountText, quantity } from "@/lib/format";
+import { debtMoney, money, originalAmountText } from "@/lib/format";
 import { partyCurrency } from "@/lib/currency";
 import { invoiceMessage } from "@/lib/invoice-message";
 import { SendInvoice } from "@/components/send-invoice";
-import { RecordResult } from "@/components/record-result";
+import { UndoForm } from "@/components/undo-form";
 import { ensureShareToken, waPhone } from "@/lib/share";
 
-// Отправка клиенту накладной и ссылки на долг (ТЗ §4 Б). PDF — только когда
-// накладная сверена (документ «оцифрована»); до этого уходит текст с долгом.
-// Продажа товарами со склада (sale_items) — накладная готова сразу.
+const UNDO_MS = 2 * 60 * 1000;
+
+// После продажи (задача 8): картинка накладной, под ней первой — «Отправить
+// клиенту» (телефон — файлом через «Поделиться», компьютер — «Скачать» и
+// «Открыть WhatsApp»), ниже «Печать», «Ещё продажа», «Отменить — ошиблись».
+// Картинка — когда накладная сверена (товары со склада или фото сверено);
+// до этого клиенту уходит текст с долгом.
 export default async function SendSalePage({
   params,
   searchParams,
@@ -33,7 +37,7 @@ export default async function SendSalePage({
   const sale = saleResult.data;
   if (saleResult.error || !sale || sale.status !== "posted") notFound();
 
-  const [customerResult, docResult, shopResult, share, itemsResult] = await Promise.all([
+  const [customerResult, docResult, shopResult, share, itemsResult, linesResult] = await Promise.all([
     db
       .from("customer_balances")
       .select("id,name,phone,balance,currency")
@@ -50,36 +54,30 @@ export default async function SendSalePage({
       : Promise.resolve({ data: null }),
     db.from("organizations").select("name").eq("id", organizationId).maybeSingle(),
     ensureShareToken(db, organizationId, sale.customer_id),
-    db
-      .from("sale_items")
-      .select("id,n,name_snapshot,unit,qty,price,line_total,product_id")
-      .eq("organization_id", organizationId)
-      .eq("sale_id", sale.id)
-      .order("n"),
+    db.from("sale_items").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("sale_id", sale.id),
+    sale.document_id
+      ? db
+          .from("document_lines")
+          .select("id", { count: "exact", head: true })
+          .eq("organization_id", organizationId)
+          .eq("document_id", sale.document_id)
+      : Promise.resolve({ count: 0 }),
   ]);
-  const items = (itemsResult.data ?? []) as {
-    id: string;
-    n: number | null;
-    name_snapshot: string;
-    unit: string | null;
-    qty: string;
-    price: string;
-    line_total: string;
-    product_id: string;
-  }[];
   const customer = customerResult.data;
   if (!customer) notFound();
 
   const { token, revoked } = share;
-
   const h = await headers();
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
   const status = docResult.data?.status ?? null;
-  const hasItems = items.length > 0;
-  const checked = (hasItems || status === "digitized") && !sale.reversed_at && !sale.is_opening;
+  const hasItems = (itemsResult.count ?? 0) > 0;
+  const hasLines = hasItems || (linesResult.count ?? 0) > 0;
+  const checked = (hasItems || status === "digitized") && hasLines && !sale.reversed_at && !sale.is_opening;
   const pending = status === "uploaded" || status === "processing";
   const date = new Intl.DateTimeFormat("ru-RU", {
-    dateStyle: "medium",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
     timeZone: "Asia/Bishkek",
   }).format(new Date(sale.occurred_at));
   const balance = Number(customer.balance ?? 0);
@@ -98,145 +96,101 @@ export default async function SendSalePage({
       invoiceAttached: attached,
       debtUrl: token ? `${origin}/c/${token}` : null,
     });
-  const text = message(false);
   const back = `/customers/${customer.id}`;
-
   const debtBefore = Math.round((balance - (sale.paid_immediately ? 0 : Number(sale.total))) * 100) / 100;
+  const imageUrl = checked ? `/money/send/${sale.id}/image` : null;
+  const canUndo = sale.created_by === user.id && Date.now() - Date.parse(sale.created_at) < UNDO_MS;
+  const fileDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bishkek" }).format(new Date(sale.occurred_at));
+
   return (
     <>
-      {done && (
-        <RecordResult
-          currency={cur}
-          original={originalAmountText(sale)}
-          title={sale.paid_immediately ? "Продажа за наличные записана" : "Продажа записана"}
-          party={customer.name}
-          partyHref={back}
-          amount={String(sale.total)}
-          debtLabel="Долг клиента"
-          debtBefore={debtBefore}
-          debtAfter={balance}
-          kind="sale"
-          id={sale.id}
-          canUndo={sale.created_by === user.id && Date.now() - Date.parse(sale.created_at) < 2 * 60 * 1000}
-          reversed={Boolean(sale.reversed_at)}
-          notes={
-            <>
-              {duplicate && <p className="notice">Это фото уже приложено к другой записи — проверьте, не задвоилось ли.</p>}
-              {undo === "expired" && <p className="form-error">Прошло больше 2 минут — отменить может владелец с причиной.</p>}
-            </>
-          }
-        >
-          <Link className="button" href="/money/new?type=sale">
-            Ещё продажа
-          </Link>
-          <Link className="button" href={back}>
-            Открыть клиента
-          </Link>
-        </RecordResult>
+      {!done && (
+        <Link className="back-link" href={back}>
+          ← {customer.name}
+        </Link>
       )}
-      <Link className="back-link" href={back}>
-        ← {customer.name}
-      </Link>
-      <div className="page-heading">
-        <div>
-          <span className="eyebrow">ПРОДАЖА</span>
-          <h1>Отправить клиенту</h1>
-          <p className="muted">
-            {date} · {money(sale.total, cur)}
-            {sale.paid_immediately ? " · оплачено" : ""}
-          </p>
-        </div>
-      </div>
-
-      {hasItems && (
-        <section className="panel">
-          <h2>Накладная</h2>
-          <ol className="sale-lines sale-lines-readonly">
-            {items.map((item) => (
-              <li key={item.id} className="sale-line">
-                <div className="sale-line-head">
-                  <Link href={`/stock/${item.product_id}`}>{item.name_snapshot}</Link>
-                </div>
-                <div className="sale-line-body muted">
-                  {quantity(item.qty)} {item.unit ?? "шт"} × {money(item.price, sale.original_currency ?? cur)}
-                  <span className="sale-line-sum">{money(item.line_total, sale.original_currency ?? cur)}</span>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <p className="sale-total">
-            <span>Итого</span>
-            <strong>{money(sale.original_amount ?? sale.total, sale.original_currency ?? cur)}</strong>
-          </p>
-          {sale.original_amount != null && (
-            <p className="muted">В долг клиенту: {money(sale.total, cur)} по курсу {Number(sale.fx_rate)}.</p>
-          )}
-          {!sale.reversed_at && (
-            <a className="button" href={`/money/send/${sale.id}/pdf`}>
-              Скачать PDF
-            </a>
-          )}
-        </section>
-      )}
-      {sale.reversed_at ? (
-        <p className="form-error" role="alert">
-          Эта продажа отменена — отправлять её клиенту не нужно.
+      <section className={`panel record-result sale-done${sale.reversed_at ? " reversed" : ""}`}>
+        <p className="record-result-title">
+          {sale.reversed_at
+            ? "Продажа отменена"
+            : done
+              ? `✓ ${sale.paid_immediately ? "Продажа за наличные записана" : "Продажа записана"}`
+              : `Продажа от ${date}`}
         </p>
-      ) : (
+        <p className="record-result-main">
+          <Link href={back}>{customer.name}</Link> ·{" "}
+          <strong className="nowrap">{money(sale.total, cur)}</strong>
+          {originalAmountText(sale) && <span className="muted"> ({originalAmountText(sale)})</span>}
+        </p>
+        {done && !sale.reversed_at && (
+          <p className="muted">
+            Долг клиента: {debtMoney(debtBefore.toFixed(2), cur)} → <strong>{debtMoney(balance.toFixed(2), cur)}</strong>
+          </p>
+        )}
+        {duplicate && <p className="notice">Это фото уже приложено к другой записи — проверьте, не задвоилось ли.</p>}
+        {undo === "expired" && <p className="form-error">Прошло больше 2 минут — отменить может владелец с причиной.</p>}
+        {sale.reversed_at && <p className="form-error">Эта продажа отменена — отправлять её клиенту не нужно.</p>}
+      </section>
+
+      {!sale.reversed_at && (
         <section className="panel send-invoice-panel">
-          {hasItems ? (
-            <p className="notice success">Накладная готова — клиент получит PDF и ссылку на долг.</p>
-          ) : checked ? (
-            <p className="notice success">Накладная сверена — клиент получит PDF и ссылку на долг.</p>
+          {imageUrl ? (
+            <a className="invoice-image-link" href={`/money/send/${sale.id}/pdf?print=1`} target="_blank" rel="noreferrer">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img className="invoice-image" src={imageUrl} alt={`Накладная ${customer.name} на ${money(sale.total, cur)}`} />
+            </a>
           ) : pending ? (
-            <p className="notice">
-              Накладная распознаётся — PDF появится через несколько секунд. Можно не ждать и
-              отправить только долг.
-            </p>
+            <p className="notice">Читаем фото накладной — картинка появится через несколько секунд. Можно не ждать и отправить долг.</p>
           ) : status === "review" || status === "failed" ? (
             <p className="notice">
-              Итог накладной не сверен — PDF отправим после проверки.{" "}
+              Проверьте сумму накладной — после этого клиенту уйдёт картинка.{" "}
               {sale.document_id && (
                 <Link className="text-button" href={`/documents/${sale.document_id}`}>
-                  Проверить накладную
+                  Проверить
                 </Link>
-              )}
-              {" "}Сейчас можно отправить только долг.
+              )}{" "}
+              Сейчас можно отправить только долг.
             </p>
           ) : (
             <p className="notice">Фото накладной нет — клиент получит сумму и ссылку на долг.</p>
           )}
-          {revoked && (
-            <p className="muted">
-              Ссылка клиента отозвана — сообщение уйдёт без ссылок. Новую ссылку можно создать в{" "}
-              <Link className="text-button" href={back}>
-                карточке клиента
-              </Link>
-              .
-            </p>
-          )}
-          {!customer.phone && (
-            <p className="muted">
-              У клиента нет телефона — WhatsApp спросит, кому отправить.
-            </p>
-          )}
-          <pre className="send-invoice-preview">{text}</pre>
           <SendInvoice
             phone={waPhone(customer.phone)}
-            text={text}
+            text={message(false)}
             fileText={message(true)}
-            pdfUrl={
-              checked && hasItems
-                ? `/money/send/${sale.id}/pdf`
-                : checked && sale.document_id
-                  ? `/documents/${sale.document_id}/pdf`
-                  : null
-            }
+            imageUrl={imageUrl}
             // Латиница без пробелов: Chrome на Android отклоняет share() с
-            // «Накладная 1 окт. 2026 г..pdf» (кириллица, пробелы, «..»).
-            fileName={`nakladnaya-${new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bishkek" }).format(new Date(sale.occurred_at))}.pdf`}
+            // кириллицей, пробелами и «..» в имени файла.
+            fileName={`nakladnaya-${fileDate}.png`}
             pending={pending}
           />
+          {revoked && (
+            <p className="muted">
+              Ссылки нет ·{" "}
+              <Link className="text-button" href={back}>
+                Создать
+              </Link>
+            </p>
+          )}
+          {!customer.phone && <p className="muted">У клиента нет телефона — WhatsApp спросит, кому отправить.</p>}
+          <details className="send-invoice-text">
+            <summary>Текст сообщения</summary>
+            <pre className="send-invoice-preview">{message(Boolean(imageUrl))}</pre>
+          </details>
+          <div className="record-result-actions send-secondary">
+            {imageUrl && (
+              <a className="button" href={`/money/send/${sale.id}/pdf?print=1`} target="_blank" rel="noreferrer">
+                Печать
+              </a>
+            )}
+            <Link className="button" href="/money/new?type=sale">
+              Ещё продажа
+            </Link>
+            <Link className="button" href={back}>
+              Открыть клиента
+            </Link>
+          </div>
+          {canUndo && <UndoForm kind="sale" id={sale.id} />}
         </section>
       )}
     </>

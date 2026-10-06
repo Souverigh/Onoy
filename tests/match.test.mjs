@@ -29,3 +29,25 @@ test("bestMatches ranks by name and learned aliases, respects limit and threshol
   const noMatches = bestMatches("Зовсем неизвестное", candidates, 3, 0.9);
   assert.equal(noMatches.length, 0);
 });
+
+test("supplier name in latin letters finds the cyrillic one (Horoz → Короз электрик)", () => {
+  const suppliers = [
+    { id: "horoz", name: "Короз электрик" },
+    { id: "other", name: "Электрик сервис" },
+  ];
+  const [top] = bestMatches("Horoz Electric Asia", suppliers, 3);
+  assert.equal(top.candidate.id, "horoz");
+  assert.ok(top.score >= 0.85, `score ${top.score}`);
+});
+
+test("a shared «ака» or «эже» does not make names similar", () => {
+  const customers = [{ id: "bakyt", name: "Бакыт ака" }];
+  assert.equal(bestMatches("Канат ака", customers, 3, 0.45).length, 0);
+  assert.equal(bestMatches("Айгуль эже", [{ id: "a", name: "Нургуль эже" }], 3, 0.6).length, 0);
+  assert.equal(bestMatches("Бакыт", customers, 3)[0].candidate.id, "bakyt");
+});
+
+test("one shared first name is not enough for a sure match", () => {
+  const [top] = bestMatches("Айбек Асанов", [{ id: "1", name: "Айбек" }], 3, 0);
+  assert.ok(top.score < 0.85, `score ${top.score}`);
+});

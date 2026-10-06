@@ -8,6 +8,7 @@ import { ensureShareToken, waPhone } from "@/lib/share";
 import { paymentLabelWithSide, type PaymentKind } from "@/lib/entry-labels";
 import { RecordResult } from "@/components/record-result";
 import { firstPaymentHref } from "@/lib/duplicates";
+import { partPaymentOf } from "@/lib/part-payment";
 
 const UNDO_MS = 2 * 60 * 1000;
 
@@ -40,10 +41,11 @@ export default async function DonePage({
     if (!supplier) notFound();
     const paid = part && /^\d+(\.\d{1,2})?$/.test(part) ? Number(part) : 0;
     const after = Number(supplier.balance);
+    const partPayment = row.reversed_at ? null : await partPaymentOf(db, organizationId, row);
     return (
       <>
         <RecordResult
-          title="Приход записан"
+          title="Товар от поставщика записан"
           party={supplier.name}
           partyHref={`/suppliers/${supplier.id}`}
           amount={String(row.total)}
@@ -56,11 +58,12 @@ export default async function DonePage({
           id={row.id}
           canUndo={row.created_by === user.id && Date.now() - Date.parse(row.created_at) < UNDO_MS}
           reversed={Boolean(row.reversed_at)}
+          partPayment={partPayment ? money(partPayment.amount, partyCurrency(supplier, shopCurrency)) : null}
           notes={
             <>
               {paid > 0 && <p className="notice success">Сразу оплачено поставщику: {money(paid, partyCurrency(supplier, shopCurrency))}.</p>}
               {part === "failed" && (
-                <p className="form-error">Оплату поставщику записать не удалось — внесите её через «Оплата».</p>
+                <p className="form-error">Оплату поставщику записать не удалось — внесите её через «Я заплатил поставщику».</p>
               )}
               {duplicate && <p className="notice">Это фото уже приложено к другой записи — проверьте, не задвоилось ли.</p>}
               {undo === "expired" && <p className="form-error">Прошло больше 2 минут — отменить может владелец с причиной.</p>}
@@ -68,7 +71,7 @@ export default async function DonePage({
           }
         >
           <Link className="button primary" href="/money/new?type=purchase">
-            Ещё приход
+            Ещё товар от поставщика
           </Link>
           <Link className="button" href={`/suppliers/${supplier.id}`}>
             Открыть поставщика
@@ -184,8 +187,8 @@ export default async function DonePage({
           Отправить квитанцию клиенту
         </a>
       )}
-      <Link className={receiptHref ? "button" : "button primary"} href="/money/new?type=payment">
-        Ещё оплата
+      <Link className={receiptHref ? "button" : "button primary"} href={`/money/new?type=payment&direction=${row.direction}`}>
+        {incoming ? "Ещё оплата от клиента" : "Ещё оплата поставщику"}
       </Link>
       <Link className="button" href={partyHref}>
         Открыть {incoming ? "клиента" : "поставщика"}

@@ -24,7 +24,7 @@ type Movement = {
 };
 
 const STOCKED_TEXT: Record<string, string> = {
-  receipt: "Приход на склад записан.",
+  receipt: "Товар от поставщика записан на склад.",
   writeoff: "Списание записано.",
   count: "Остаток исправлен по пересчёту.",
 };
@@ -69,7 +69,7 @@ export default async function ProductPage({
     if (m.reason === "sale") return { text: `Продажа · ${m.sales?.customers?.name ?? "клиент"}`, href: m.sale_id ? `/money/send/${m.sale_id}` : null, reversed: Boolean(m.sales?.reversed_at) };
     if (m.reason === "purchase")
       return {
-        text: `Приход · ${m.purchases?.suppliers?.name ?? "поставщик"}`,
+        text: `Товар от поставщика · ${m.purchases?.suppliers?.name ?? "поставщик"}`,
         href: m.purchases?.document_id ? `/documents/${m.purchases.document_id}` : null,
         reversed: Boolean(m.purchases?.reversed_at),
       };
@@ -88,7 +88,7 @@ export default async function ProductPage({
           <span className="eyebrow">ТОВАР{product.sku ? ` · КОД ${product.sku}` : ""}</span>
           <h1>{product.name}</h1>
           <p className="muted">
-            {money(product.sale_price, currency)} за {product.unit}
+            {Number(product.sale_price) > 0 ? `${money(product.sale_price, currency)} за ${product.unit}` : "цена не указана"}
             {Number(product.purchase_price) > 0 && ` · закупка ${money(product.purchase_price, currency)}`}
             {product.sold_count > 0 && ` · продаж за 90 дней: ${product.sold_count}`}
           </p>
@@ -125,7 +125,7 @@ export default async function ProductPage({
         </div>
         <div className="stock-receive">
           <Link className="button primary" href="/money/new?type=purchase&mode=items">
-            + Приход товара
+            + Товар от поставщика
           </Link>
           <small className="muted">Поставщик, количество и цена закупки — долг поставщику и остаток сразу.</small>
         </div>

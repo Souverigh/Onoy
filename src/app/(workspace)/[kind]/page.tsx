@@ -4,9 +4,9 @@ import { getContext } from "@/lib/context";
 import { partyCurrency } from "@/lib/currency";
 import { isDirectory } from "@/lib/validation";
 import { directoryMeta, type Entry } from "@/lib/directory";
-import { money, quantity, decimalLessThan } from "@/lib/format";
+import { debtMoney, money, phoneText, quantity, decimalLessThan } from "@/lib/format";
 import { Icon } from "@/components/icon";
-import { OVERDUE_THRESHOLDS, overdueThreshold, promiseStatus } from "@/lib/promise";
+import { OVERDUE_THRESHOLDS, dayMonth, overdueThreshold, promiseStatus } from "@/lib/promise";
 import { bishkekDate } from "@/lib/day-summary";
 export default async function DirectoryPage({
   params,
@@ -53,11 +53,17 @@ export default async function DirectoryPage({
     if (kind !== "products") request = archived ? request.not("archived_at", "is", null) : request.is("archived_at", null);
     if (overdueIds)
       request = request.in("id", overdueIds.length ? overdueIds : ["00000000-0000-0000-0000-000000000000"]);
-    if (query)
-      request = request.ilike(
-        "name",
-        "%" + query.replace(/[\\%_]/g, "\\$&") + "%",
-      );
+    if (query) {
+      // Имя — подстрокой; телефон — по цифрам, как бы его ни записали
+      // («555 12» находит «0555 12-34-56»). Знаки фильтра PostgREST убираем.
+      const name = query.replace(/[\\%_,()"*:]/g, " ").trim();
+      const digits = query.replace(/\D/g, "");
+      const parts = [name ? `name.ilike.*${name}*` : null];
+      if (kind !== "products" && digits.length >= 3)
+        parts.push(`phone.imatch.${digits.split("").join("[^0-9]*")}`);
+      const filter = parts.filter(Boolean).join(",");
+      if (filter) request = request.or(filter);
+    }
     return request;
   };
   // Без фильтра «Просрочено» список и давность — параллельно; с фильтром
@@ -148,12 +154,12 @@ export default async function DirectoryPage({
           {overdue && <input type="hidden" name="overdue" value={overdue} />}
           {archived && <input type="hidden" name="archived" value="1" />}
           <label htmlFor="search-name" className="sr-only">
-            Поиск по названию
+            {kind === "products" ? "Поиск по названию" : "Поиск по имени или телефону"}
           </label>
           <input
             id="search-name"
             name="q"
-            placeholder="Поиск по названию…"
+            placeholder={kind === "products" ? "Поиск по названию…" : "Имя или телефон…"}
             defaultValue={query}
             maxLength={100}
           />
@@ -166,12 +172,12 @@ export default async function DirectoryPage({
         </form>
         {entries.length ? (
           <div className="table-wrap">
-            <table>
+            <table className="card-table">
               <thead>
                 <tr>
                   <th>Название</th>
                   <th>{kind === "products" ? "Цена продажи" : "Телефон"}</th>
-                  <th>{kind === "products" ? "Остаток" : "Долг / аванс"}</th>
+                  <th>{kind === "products" ? "Остаток" : "Долг"}</th>
                   <th>
                     <span className="sr-only">Действия</span>
                   </th>
@@ -180,7 +186,7 @@ export default async function DirectoryPage({
               <tbody>
                 {entries.map((item) => (
                   <tr key={item.id}>
-                    <td>
+                    <td className="card-title">
                       <Link className="entry-link" href={`/${kind}/${item.id}`}>
                         {item.name}
                       </Link>
@@ -188,16 +194,14 @@ export default async function DirectoryPage({
                       {kind === "customers" && (oldestDays.get(item.id) ?? 0) > 30 && (
                         <span className="tag reversed-tag">долг {oldestDays.get(item.id)} дн.</span>
                       )}
-                      {kind === "customers" &&
-                        promiseStatus(item.promised_date, Number(item.balance ?? 0), today).kind ===
-                          "broken" && <span className="tag reversed-tag">нарушил срок</span>}
+                      {kind === "customers" && <PromiseTag item={item} today={today} />}
                     </td>
-                    <td>
+                    <td data-label={kind === "products" ? "Цена" : "Телефон"}>
                       {kind === "products"
                         ? money(item.sale_price ?? 0)
-                        : item.phone || "Не указан"}
+                        : phoneText(item.phone) || "Не указан"}
                     </td>
-                    <td>
+                    <td data-label={kind === "products" ? "Остаток" : "Долг"} className="card-amount">
                       {kind === "products" ? (
                         <span
                           className={
@@ -212,10 +216,10 @@ export default async function DirectoryPage({
                           {quantity(item.stock ?? 0)} {item.unit}
                         </span>
                       ) : (
-                        money(item.balance ?? 0, partyCurrency(item, shopCurrency))
+                        debtMoney(item.balance ?? 0, partyCurrency(item, shopCurrency))
                       )}
                     </td>
-                    <td>
+                    <td className="card-arrow">
                       <Link
                         href={`/${kind}/${item.id}`}
                         aria-label={`Открыть ${item.name}`}
@@ -240,7 +244,7 @@ export default async function DirectoryPage({
               {overdue
                 ? `Ни у кого нет неоплаченных продаж старше ${overdue} дней.`
                 : query
-                ? "Попробуйте другое название."
+                ? kind === "products" ? "Попробуйте другое название." : "Попробуйте другое имя или часть номера."
                 : "Добавьте первую запись, чтобы подготовить магазин к работе."}
             </p>
             {!query && !overdue && !archived && (
@@ -268,4 +272,17 @@ export default async function DirectoryPage({
       </section>
     </>
   );
+}
+
+/** Обещание оплатить — в списке клиентов: «обещал сегодня», «обещал до 7 октября», «нарушил срок». */
+function PromiseTag({ item, today }: { item: Entry; today: string }) {
+  const status = promiseStatus(item.promised_date, Number(item.balance ?? 0), today);
+  if (status.kind === "broken") return <span className="tag reversed-tag">нарушил срок</span>;
+  if (status.kind === "upcoming")
+    return (
+      <span className="tag promise-tag">
+        {status.daysLeft === 0 ? "обещал сегодня" : `обещал до ${dayMonth(status.date)}`}
+      </span>
+    );
+  return null;
 }

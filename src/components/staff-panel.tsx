@@ -54,13 +54,13 @@ export function StaffPanel({
         <div>
           <h2>Сотрудники</h2>
           <p className="muted">
-            Продавец оформляет продажи, приходы и оплаты. Отмена записей, скидки, заявки, итоги и закрытие
+            Продавец оформляет продажи, товар от поставщиков и оплаты. Отмена записей, скидки, заявки, итоги и закрытие
             дня — только у владельца.
           </p>
         </div>
         {staffLimit !== undefined && (
           <span className="settings-badge" title={`Тариф «${plan === "business" ? "Бизнес" : "Базовый"}»`}>
-            {used} из {staffLimit}
+            Продавцов: {used} из {staffLimit}
           </span>
         )}
       </header>

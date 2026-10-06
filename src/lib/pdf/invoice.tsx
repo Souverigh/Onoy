@@ -2,10 +2,11 @@ import "server-only";
 import { Document, Page, Text, View, Svg, Path, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import QRCode from "qrcode";
 import { ensureFontsRegistered } from "./fonts";
-import { money, quantity } from "../format";
+import { money, phoneText, quantity } from "../format";
 
 // Вид — по образцу накладной магазина (nakladnaya_obrazec.pdf): синяя шапка
-// таблицы, итог с количеством, долг после накладной, подписи и QR на ссылку.
+// таблицы, итог с количеством, долг после накладной, подписи и один QR — на
+// страницу клиента (нет ссылки — нет QR).
 const BLUE = "#4f7cac";
 const DARK_BLUE = "#2f5b8a";
 const GRID = "#c9d6e3";
@@ -38,16 +39,29 @@ const styles = StyleSheet.create({
   signLine: { borderBottom: `0.75 solid ${BLUE}`, alignSelf: "stretch", height: 10 },
   signCaption: { fontSize: 7, color: MUTED, marginTop: 2 },
   phone: { marginTop: 6 },
-  qrRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12 },
-  qrBlock: { flexDirection: "row", alignItems: "center" },
-  qrText: { marginLeft: 14, color: MUTED, fontSize: 9, lineHeight: 1.4 },
-  footer: { position: "absolute", bottom: 10, left: 40, right: 40, fontSize: 8, color: "#9aa39a" },
+  qrRow: { flexDirection: "row", alignItems: "center", marginTop: 12 },
+  qrText: { marginLeft: 14, color: MUTED, fontSize: 9, lineHeight: 1.4, maxWidth: 220 },
+  footer: { position: "absolute", bottom: 10, left: 40, right: 40, fontSize: 7, color: "#9aa39a", textAlign: "right" },
 });
 
-/** Реклама Depter внизу накладной — если нет ссылки-счётчика магазина (src/lib/promo.ts). */
-const PROMO_URL = "https://depter.kg";
+export const FOOTER = "Накладная сделана в Depter · depter.kg";
 
-export const ITEMS_FOOTER = "Накладная оформлена в Depter по складу магазина.";
+/** «ТОВАРНАЯ НАКЛАДНАЯ № 15 от «03» октября 2026 г.» */
+export function invoiceTitle(data: InvoiceData) {
+  return `${data.kindLabel.toUpperCase()}${data.number ? ` № ${data.number}` : ""} от ${longDate(data.occurredAt)}`;
+}
+
+/** Итог: сомы — «4 150 сом», $ и ₽ — «1 025,00 $». */
+export function totalText(data: InvoiceData) {
+  return data.currency === "KGS"
+    ? money(data.total.toFixed(2), data.currency)
+    : `${amount(data.total, data.currency)} ${data.currency === "USD" ? "$" : "₽"}`;
+}
+
+/** «10», «2,35 м» — единицу пишем, если она не «шт». */
+export function qtyText(line: InvoiceLine) {
+  return `${num(line.qty)}${line.unit && line.unit !== "шт" ? ` ${line.unit}` : ""}`;
+}
 
 /** Числа строк — как пришли из базы (numeric текстом); форматирует шаблон. */
 export type InvoiceLine = { n: number; name_raw: string; qty: string; unit: string; price: string; sum: string };
@@ -56,8 +70,8 @@ export type InvoiceData = {
   shopName: string;
   /** «Товарная накладная», «Приходная накладная»… */
   kindLabel: string;
-  /** Порядковый номер накладной; нет — заголовок без номера. */
-  number?: number | null;
+  /** Номер с бумаги, иначе порядковый; нет — заголовок без номера. */
+  number?: number | string | null;
   /** Дата операции (ISO). */
   occurredAt: string;
   total: number;
@@ -70,16 +84,11 @@ export type InvoiceData = {
   buyer: InvoiceParty;
   seller: InvoiceParty;
   lines: InvoiceLine[];
-  digitized: boolean;
-  /** Ссылка клиента (накладные, долг, оплата) — печатается QR-кодом. */
+  /** Ссылка клиента (накладные, долг, оплата) — печатается QR-кодом, без текста ссылки. */
   clientUrl?: string | null;
-  /** Рекламный QR магазина (/r/<код>) — переходы видны в админке. */
-  promoUrl?: string | null;
-  /** Своя подпись внизу (накладная из приложения — не по фото). */
-  footer?: string;
 };
 
-const num = (value: string | number) => {
+export const num = (value: string | number) => {
   try {
     return quantity(value);
   } catch {
@@ -87,8 +96,17 @@ const num = (value: string | number) => {
   }
 };
 
+/** Сомы — как есть («1 550»), $ и ₽ — с двумя знаками («1 025,00»). */
+export function amount(value: string | number, currency: string) {
+  if (currency === "KGS") return num(value);
+  const n = Number(value);
+  return Number.isFinite(n)
+    ? new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
+    : String(value ?? "");
+}
+
 /** «03» октября 2026 г. — в часовом поясе магазина. */
-function longDate(iso: string) {
+export function longDate(iso: string) {
   const parts = new Intl.DateTimeFormat("ru-RU", {
     day: "2-digit",
     month: "long",
@@ -100,7 +118,7 @@ function longDate(iso: string) {
 }
 
 /** Общее количество — только когда у всех строк одна единица. */
-function totalQuantity(lines: InvoiceLine[]) {
+export function totalQuantity(lines: InvoiceLine[]) {
   if (!lines.length || new Set(lines.map((l) => l.unit || "шт")).size > 1) return "";
   const sum = lines.reduce((acc, l) => acc + Number(l.qty), 0);
   return Number.isFinite(sum) ? num(sum.toFixed(3)) : "";
@@ -133,15 +151,14 @@ function Party({ label, party }: { label: string; party: InvoiceParty }) {
       </View>
       <Text style={styles.phone}>
         <Text style={styles.label}>ТЕЛ: </Text>
-        {party.phone || "—"}
+        {phoneText(party.phone) || "—"}
       </Text>
     </View>
   );
 }
 
 function InvoiceDocument({ data }: { data: InvoiceData }) {
-  const title = `${data.kindLabel.toUpperCase()}${data.number ? ` № ${data.number}` : ""} от ${longDate(data.occurredAt)}`;
-  const showUnit = (unit: string) => (unit && unit !== "шт" ? ` ${unit}` : "");
+  const title = invoiceTitle(data);
   return (
     <Document>
       <Page size="A4" style={styles.page}>
@@ -162,12 +179,9 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
               <View style={styles.tr} key={i} wrap={false}>
                 <Text style={[styles.cell, styles.n]}>{line.n || i + 1}.</Text>
                 <Text style={[styles.cell, styles.name]}>{line.name_raw}</Text>
-                <Text style={[styles.cell, styles.qty]}>
-                  {num(line.qty)}
-                  {showUnit(line.unit)}
-                </Text>
-                <Text style={[styles.cell, styles.price]}>{num(line.price)}</Text>
-                <Text style={[styles.cell, styles.sum]}>{num(line.sum)}</Text>
+                <Text style={[styles.cell, styles.qty]}>{qtyText(line)}</Text>
+                <Text style={[styles.cell, styles.price]}>{amount(line.price, data.currency)}</Text>
+                <Text style={[styles.cell, styles.sum]}>{amount(line.sum, data.currency)}</Text>
               </View>
             ))}
           </View>
@@ -176,7 +190,7 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
         <View style={styles.totalRow} wrap={false}>
           <Text style={styles.totalLabel}>ОБЩАЯ СУММА:</Text>
           <Text style={styles.totalQty}>{totalQuantity(data.lines)}</Text>
-          <Text style={styles.totalSum}>{money(data.total.toFixed(2), data.currency)}</Text>
+          <Text style={styles.totalSum}>{totalText(data)}</Text>
         </View>
         {data.debtNote && <Text style={styles.note}>{data.debtNote}</Text>}
         {data.balanceNote && <Text style={styles.note}>{data.balanceNote}</Text>}
@@ -186,30 +200,15 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
           <Party label="ПРОДАВЕЦ" party={data.seller} />
         </View>
 
-        <View style={styles.qrRow} wrap={false}>
-          {data.clientUrl ? (
-            <View style={styles.qrBlock}>
-              <QrCode text={data.clientUrl} size={54} />
-              <Text style={styles.qrText}>
-                Накладные, долг и оплата —{"\n"}по QR-коду или ссылке: {data.clientUrl.replace(/^https?:\/\//, "")}
-              </Text>
-            </View>
-          ) : (
-            <View />
-          )}
-          <View style={styles.qrBlock}>
-            <Text style={[styles.qrText, { marginLeft: 0, marginRight: 10, textAlign: "right" }]}>
-              Накладная сделана в Depter —{"\n"}учёт долгов и склада: depter.kg
-            </Text>
-            <QrCode text={data.promoUrl ?? PROMO_URL} size={54} />
+        {data.clientUrl && (
+          <View style={styles.qrRow} wrap={false}>
+            <QrCode text={data.clientUrl} size={54} />
+            <Text style={styles.qrText}>Накладные, долг и оплата —{"\n"}по QR-коду</Text>
           </View>
-        </View>
+        )}
 
         <Text style={styles.footer} fixed>
-          {data.footer ??
-            (data.digitized
-              ? "Позиции сверены автоматическим распознаванием (ADRE)."
-              : "Итог указан продавцом вручную; позиции — по фото оригинала.")}
+          {FOOTER}
         </Text>
       </Page>
     </Document>

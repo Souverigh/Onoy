@@ -77,10 +77,29 @@ export default async function Settings({
     origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
   }
   const org = await orgRequest;
+  // Продавец, реквизиты и накладная (задача 34) — отдельным запросом: пока
+  // миграция не применена, колонок нет, а остальные настройки работают.
+  const sellerResult = await db
+    .from("organizations")
+    .select("seller_name,seller_phone,address,pay_mbank,pay_optima,pay_odengi,pay_qr_image,invoice_show_debt,invoice_show_qr")
+    .eq("id", organizationId)
+    .maybeSingle();
+  const seller = (sellerResult.error ? null : sellerResult.data) as {
+    seller_name: string;
+    seller_phone: string;
+    address: string;
+    pay_mbank: string;
+    pay_optima: string;
+    pay_odengi: string;
+    pay_qr_image: string | null;
+    invoice_show_debt: boolean;
+    invoice_show_qr: boolean;
+  } | null;
   const planName = plan === "business" ? "Бизнес" : "Базовый";
 
   const sections = [
     { id: "shop", label: "Магазин" },
+    { id: "pay", label: "Реквизиты" },
     { id: "documents", label: "Накладные" },
     ...(isOwner
       ? [
@@ -117,7 +136,11 @@ export default async function Settings({
             <p className="form-error" role="alert">
               {error === "currency_locked"
                 ? "Валюту магазина нельзя сменить: записи уже есть. Остальное не сохранено — попробуйте ещё раз без смены валюты."
-                : "Не удалось сохранить. Проверьте название, телефон и названия в накладных (до 20 строк)."}
+                : error === "qr"
+                  ? "QR не сохранён: нужна картинка (фото или скриншот) не больше 4 МБ."
+                  : error === "migration"
+                    ? "Название и телефон сохранены, а продавец и реквизиты — нет: базу ещё не обновили. Напишите Ержану."
+                    : "Не удалось сохранить. Проверьте название, телефоны и названия в накладных (до 20 строк)."}
             </p>
           )}
 
@@ -156,6 +179,62 @@ export default async function Settings({
                 Валюту можно сменить, пока нет ни одной записи. Клиенту или поставщику в другой валюте
                 задайте её в его карточке.
               </small>
+              <div className="settings-row">
+                <label>
+                  Имя продавца (для накладной)
+                  <input name="seller_name" maxLength={80} placeholder="Маликнур" defaultValue={seller?.seller_name ?? ""} />
+                </label>
+                <label>
+                  Телефон продавца (для накладной)
+                  <input
+                    name="seller_phone"
+                    type="tel"
+                    maxLength={40}
+                    placeholder="+996 773 033 399"
+                    defaultValue={seller?.seller_phone ?? ""}
+                  />
+                </label>
+              </div>
+              <label>
+                Адрес (необязательно)
+                <input name="address" maxLength={200} placeholder="Рынок «Дордой», ряд 5, контейнер 12" defaultValue={seller?.address ?? ""} />
+              </label>
+            </section>
+
+            <section className="panel settings-card" id="pay">
+              <header>
+                <h2>Реквизиты для оплаты</h2>
+                <p className="muted">Клиент видит их на своей странице в «Оплатить». Пустые не показываются.</p>
+              </header>
+              <div className="settings-row">
+                <label>
+                  MBank
+                  <input name="pay_mbank" maxLength={60} inputMode="tel" placeholder="Номер телефона или счёта" defaultValue={seller?.pay_mbank ?? ""} />
+                </label>
+                <label>
+                  Optima
+                  <input name="pay_optima" maxLength={60} inputMode="tel" placeholder="Номер телефона или карты" defaultValue={seller?.pay_optima ?? ""} />
+                </label>
+              </div>
+              <label>
+                О!Деньги
+                <input name="pay_odengi" maxLength={60} inputMode="tel" placeholder="Номер телефона" defaultValue={seller?.pay_odengi ?? ""} />
+              </label>
+              <div className="settings-qr">
+                <span>QR магазина для оплаты</span>
+                {seller?.pay_qr_image && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={seller.pay_qr_image} alt="QR для оплаты" />
+                )}
+                <input name="pay_qr" type="file" accept="image/*" />
+                {seller?.pay_qr_image && (
+                  <label className="cash-toggle">
+                    <input type="checkbox" name="pay_qr_remove" />
+                    Убрать QR
+                  </label>
+                )}
+                <small className="muted">Сфотографируйте наклейку с QR из банка или загрузите скриншот.</small>
+              </div>
             </section>
 
             <section className="panel settings-card" id="documents">
@@ -173,7 +252,7 @@ export default async function Settings({
                 />
                 <small className="muted">
                   Необязательно. По строке на вариант — как на печати, в шапке или от руки. Так приложение
-                  отличает продажу от прихода и не путает ваш магазин с клиентом.
+                  отличает продажу от товара от поставщика и не путает ваш магазин с клиентом.
                 </small>
               </label>
               <label className="setting-switch">
@@ -189,6 +268,20 @@ export default async function Settings({
                   name="block_duplicate_photos"
                   defaultChecked={org.data?.block_duplicate_photos ?? true}
                 />
+              </label>
+              <label className="setting-switch">
+                <span>
+                  <strong>«Долг после этой накладной» на накладной</strong>
+                  <small className="muted">Мелко под суммой — клиент сразу видит общий долг.</small>
+                </span>
+                <input type="checkbox" role="switch" name="invoice_show_debt" defaultChecked={seller?.invoice_show_debt ?? true} />
+              </label>
+              <label className="setting-switch">
+                <span>
+                  <strong>QR на страницу клиента на накладной</strong>
+                  <small className="muted">По нему клиент открывает свои накладные, долг и «Оплатить».</small>
+                </span>
+                <input type="checkbox" role="switch" name="invoice_show_qr" defaultChecked={seller?.invoice_show_qr ?? true} />
               </label>
             </section>
 
@@ -311,7 +404,7 @@ export default async function Settings({
             </details>
             <div className="settings-account-footer">
               <LogoutButton />
-              <small className="muted">Depter 0.3</small>
+              <small className="muted">Depter {process.env.NEXT_PUBLIC_APP_VERSION ?? ""}</small>
             </div>
           </section>
         </div>

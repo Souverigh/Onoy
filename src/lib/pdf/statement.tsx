@@ -43,7 +43,7 @@ function StatementDocument({ data }: { data: StatementPdfData }) {
           Период: {data.from} — {data.to}
         </Text>
         <View style={styles.balanceRow}>
-          <Text>Сальдо на начало периода</Text>
+          <Text>Долг на начало</Text>
           <Text>{money(data.opening.toFixed(2), data.currency)}</Text>
         </View>
         <View style={styles.table}>
@@ -55,7 +55,7 @@ function StatementDocument({ data }: { data: StatementPdfData }) {
           {data.entries.map((entry, i) => (
             <View style={styles.tr} key={i}>
               <Text style={entry.reversed ? [styles.date, styles.reversed] : styles.date}>
-                {new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium", timeZone: "Asia/Bishkek" }).format(
+                {new Intl.DateTimeFormat("ru-RU", { dateStyle: "short", timeZone: "Asia/Bishkek" }).format(
                   new Date(entry.occurred_at),
                 )}
               </Text>
@@ -70,7 +70,7 @@ function StatementDocument({ data }: { data: StatementPdfData }) {
           ))}
         </View>
         <View style={styles.balanceRow}>
-          <Text>Сальдо на конец периода</Text>
+          <Text>Долг на конец</Text>
           <Text>{money(data.closing.toFixed(2), data.currency)}</Text>
         </View>
       </Page>

@@ -58,7 +58,7 @@ export default async function Statement({
       </form>
       <section className="panel statement-panel">
         <div className="statement-row">
-          <span>Сальдо на начало периода</span>
+          <span>Долг на начало</span>
           <strong>{money(opening, currency)}</strong>
         </div>
         <div className="table-wrap">
@@ -74,7 +74,7 @@ export default async function Statement({
               {entries.map((entry, i) => (
                 <tr key={i} className={entry.reversed ? "reversed-row" : ""}>
                   <td>
-                    {new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium", timeZone: "Asia/Bishkek" }).format(
+                    {new Intl.DateTimeFormat("ru-RU", { dateStyle: "short", timeZone: "Asia/Bishkek" }).format(
                       new Date(entry.occurred_at),
                     )}
                   </td>
@@ -89,7 +89,7 @@ export default async function Statement({
           </table>
         </div>
         <div className="statement-row">
-          <span>Сальдо на конец периода</span>
+          <span>Долг на конец</span>
           <strong>{money(closing, currency)}</strong>
         </div>
       </section>

@@ -71,14 +71,14 @@ export default async function StockPage({
           <h1>
             Товары <span className="count">{total}</span>
           </h1>
-          <p className="muted">Остатки, цены и коды. Приход товаром прибавляет остаток, продажа — списывает.</p>
+          <p className="muted">Остатки, цены и коды. Товар от поставщика прибавляет остаток, продажа — списывает.</p>
         </div>
         <div className="heading-actions stock-heading-actions">
           <Link className="button" href="/stock/import">
             Из Excel
           </Link>
           <Link className="button" href="/money/new?type=purchase&mode=items">
-            + Приход товара
+            + Товар от поставщика
           </Link>
           <Link className="button primary" href="/stock/new">
             <Icon name="plus" />
@@ -128,7 +128,7 @@ export default async function StockPage({
                 </span>
                 <span className="op-list-meta muted">
                   {row.sku ? `Код ${row.sku} · ` : ""}
-                  {money(row.sale_price, currency)} за {row.unit}
+                  {Number(row.sale_price) > 0 ? `${money(row.sale_price, currency)} за ${row.unit}` : "цена не указана"}
                 </span>
                 {isLow(row) && filter !== "archive" && (
                   <span className="op-list-meta warning stock-low-tag">

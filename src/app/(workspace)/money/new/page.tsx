@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
+import { ModeTabs } from "@/components/mode-tabs";
 import { OperationForm } from "@/components/operation-form";
 import { SaleItemsForm } from "@/components/sale-items-form";
 import type { QuickProduct } from "../../stock/actions";
@@ -27,6 +29,8 @@ export default async function NewOperation({
     party?: string;
     undone?: string;
     mode?: string;
+    direction?: string;
+    redo?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -34,11 +38,18 @@ export default async function NewOperation({
     notFound();
   const kind = params.type as Operation;
   const { db, organizationId, currency: shopCurrency } = await getContext();
-  // Продажа и приход: товарами со склада или по фото накладной. Товары грузим
-  // сразу — от их наличия зависит, какой вид открыть по умолчанию.
+  // «Клиент принёс деньги» / «Я заплатил поставщику» (задача 17).
+  const fixedDirection =
+    kind === "payment" && (params.direction === "incoming" || params.direction === "outgoing")
+      ? params.direction
+      : undefined;
+  // Продажа и приход: по фото накладной (по умолчанию, задача 10) или
+  // товарами со склада; открываем вид, где продавец был в прошлый раз.
   const itemsKind = kind === "sale" || kind === "purchase";
+  const remembered = (await cookies()).get(`mode_${kind}`)?.value;
+  const wantedMode = params.mode === "items" || params.mode === "photo" ? params.mode : remembered === "items" ? "items" : "photo";
   const productsRequest =
-    itemsKind && !params.documentId && params.mode !== "photo" && (kind === "sale" || params.mode === "items")
+    itemsKind && !params.documentId && wantedMode === "items"
       ? db
           .from("product_balances")
           .select("id,name,sku,unit,sale_price,purchase_price,stock,aliases,sold_count")
@@ -50,16 +61,18 @@ export default async function NewOperation({
   const [customerResult, supplierResult, rates, productResult] = await Promise.all([
     db
       .from("customer_balances")
-      .select("id,name,balance,credit_limit,currency")
+      .select("id,name,phone,aliases,balance,credit_limit,currency")
       .eq("organization_id", organizationId)
       .is("archived_at", null)
+      .is("merged_into_id", null)
       .order("name")
-      .range(0, 999),
+      .range(0, 4999),
     db
-      .from("suppliers")
-      .select("id,name,currency")
+      .from("supplier_balances")
+      .select("id,name,phone,aliases,balance,currency")
       .eq("organization_id", organizationId)
       .is("archived_at", null)
+      .is("merged_into_id", null)
       .order("name")
       .range(0, 999),
     // Курс НБКР / ЦБ РФ — для суммы в другой валюте, чем долг (кеш на час).
@@ -67,14 +80,8 @@ export default async function NewOperation({
     productsRequest,
   ]);
   const products = (productResult.data ?? []) as QuickProduct[];
-  // Продажа по умолчанию — товарами, если склад не пуст; приход — по фото
-  // (накладная поставщика обычно бумажная); фото из другой формы — всегда фото.
-  const saleMode =
-    !itemsKind || params.documentId || params.mode === "photo"
-      ? "photo"
-      : params.mode === "items" || (kind === "sale" && products.length > 0)
-        ? "items"
-        : "photo";
+  // Фото из другой формы — всегда по фото.
+  const saleMode = !itemsKind || params.documentId ? "photo" : wantedMode;
   if (customerResult.error || supplierResult.error)
     throw new Error("Не удалось подготовить форму операции");
 
@@ -133,10 +140,14 @@ export default async function NewOperation({
         : customers.length > 0 || suppliers.length > 0;
   const title =
     kind === "purchase"
-      ? "Приход"
+      ? "Товар от поставщика"
       : kind === "sale"
         ? "Продажа"
-        : "Оплата";
+        : fixedDirection === "incoming"
+          ? "Клиент принёс деньги"
+          : fixedDirection === "outgoing"
+            ? "Я заплатил поставщику"
+            : "Оплата";
   const target =
     kind === "purchase"
       ? { href: "/suppliers/new", label: "Добавить поставщика" }
@@ -152,24 +163,16 @@ export default async function NewOperation({
         </div>
       </div>
       {itemsKind && !params.documentId && needsParty && (
-        <nav className="tabs sale-mode-tabs" aria-label={kind === "sale" ? "Как оформить продажу" : "Как оформить приход"}>
-          <Link
-            className={saleMode === "items" ? "selected" : ""}
-            href={`/money/new?type=${kind}&mode=items${initialParty ? `&party=${initialParty}` : ""}`}
-          >
-            {kind === "sale" ? "Товары со склада" : "Товары на склад"}
-          </Link>
-          <Link
-            className={saleMode === "photo" ? "selected" : ""}
-            href={`/money/new?type=${kind}&mode=photo${initialParty ? `&party=${initialParty}` : ""}`}
-          >
-            По фото накладной
-          </Link>
-        </nav>
+        <ModeTabs
+          kind={kind as "sale" | "purchase"}
+          selected={saleMode}
+          party={initialParty}
+        />
       )}
-      {params.undone && (
+      {(params.undone || params.redo) && (
         <p className="notice success" role="status">
-          Прошлая запись отменена — введите заново.
+          {params.undone ? "Прошлая запись отменена." : "Запись отменена."} Клиент, сумма и фото — как были: исправьте,
+          что нужно, и подтвердите.
         </p>
       )}
       {!needsParty ? (
@@ -177,7 +180,7 @@ export default async function NewOperation({
           <h2>Кого добавить?</h2>
           <p>
             {kind === "purchase"
-              ? "Чтобы записать приход, сначала добавьте поставщика."
+              ? "Чтобы записать товар от поставщика, сначала добавьте поставщика."
               : kind === "sale"
                 ? "Чтобы записать продажу, сначала добавьте клиента."
                 : "Сначала добавьте клиента или поставщика."}
@@ -222,6 +225,13 @@ export default async function NewOperation({
             initialParty={initialParty}
             shopCurrency={shopCurrency}
             rates={rates}
+            fixedDirection={fixedDirection}
+            initialAmount={
+              !prefill && params.amount && /^\d{1,14}(\.\d{1,2})?$/.test(params.amount)
+                ? String(Number(params.amount)).replace(".", ",")
+                : undefined
+            }
+            initialCurrency={!prefill && isCurrency(params.currency) ? params.currency : undefined}
           />
         </section>
       )}

@@ -55,7 +55,7 @@ function MoneyBlock({ m, cur, title }: { m: DayMoney; cur: string; title?: strin
           <Row label="Стало вечером" value={sum(m.receivable.evening, cur)} strong />
 
           <Text style={styles.title}>Поставщики</Text>
-          <Row label="Приход за день" value={sum(m.suppliers.purchased, cur)} />
+          <Row label="Товар от поставщиков за день" value={sum(m.suppliers.purchased, cur)} />
           <Row label="Оплачено поставщикам" value={sum(m.suppliers.paid, cur)} />
           <Row label="Долг на конец дня" value={sum(m.suppliers.evening, cur)} strong />
 
@@ -92,10 +92,23 @@ function ExpensesBlock({ s }: { s: DaySummary }) {
       ))}
 
       <Text style={styles.title}>Осталось за день</Text>
-      <Row label="Пришло (наличные продажи + собрано)" value={sum(net.income, cur)} />
-      <Row label="Оплачено поставщикам" value={`− ${sum(net.paid, cur)}`} />
+      <Row
+        label={net.transferIn == null ? "Пришло (наличные продажи + собрано)" : "Наличными от клиентов и продаж"}
+        value={sum(net.income, cur)}
+      />
+      <Row label="Наличными поставщикам" value={`− ${sum(net.paid, cur)}`} />
       <Row label="Расходы" value={`− ${sum(net.expenses, cur)}`} />
-      <Row label="Осталось" value={sum(net.left, cur)} strong />
+      <Row label="В кассе должно быть наличных" value={sum(net.left, cur)} strong />
+      {s.counted != null && <Row label="В кассе по факту" value={sum(s.counted, cur)} />}
+      {net.transferIn != null && net.transferIn > 0 && (
+        <Row label="Переводом — не в кассе" value={sum(net.transferIn, cur)} />
+      )}
+      {s.adjustments && (s.adjustments.discount > 0 || s.adjustments.return > 0) && (
+        <Row
+          label="Скидки и возвраты клиентам — не деньги"
+          value={sum(s.adjustments.discount + s.adjustments.return, cur)}
+        />
+      )}
     </>
   );
 }
