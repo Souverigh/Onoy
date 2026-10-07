@@ -12,7 +12,7 @@ import { money } from "@/lib/format";
 import { MULTI_PAGE_MAX_SIDE, shrinkImage } from "@/lib/shrink-image";
 import { DOCUMENT_ACCEPT, MAX_PAGES, MAX_UPLOAD_BYTES } from "@/lib/pages";
 import { RuDateInput } from "./ru-date-input";
-import { ContactPicker, PhoneField } from "./contact-picker";
+import { PhoneField } from "./contact-picker";
 import { InfoTip } from "./info-tip";
 import { Icon } from "./icon";
 
@@ -201,10 +201,6 @@ export function NotebookImport({
           <Icon name="plus" />
           Вписать вручную
         </button>
-        <ContactPicker
-          label="Из контактов"
-          onPick={({ name, phone }) => setRows((r) => [...r, newRow(name, phone)])}
-        />
       </div>
       {note && <p className="notice">{note}</p>}
       {warnings.length > 0 && (

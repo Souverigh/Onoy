@@ -2995,7 +2995,7 @@ tr.line-mismatch {
   min-height: 56px;
   cursor: pointer;
 }
-/* Ручной ввод — кнопки во всю ширину, одна под другой. */
+/* Ручной ввод — во всю ширину под фото. */
 .notebook-manual {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -3004,16 +3004,9 @@ tr.line-mismatch {
   /* Под «!» у фото — чтобы правый край совпал с кнопкой фото. */
   padding-right: 32px;
 }
-.notebook-manual > .button,
-.notebook-manual .contact-picker > .button {
+.notebook-manual > .button {
   width: 100%;
   min-height: 48px;
-}
-.notebook-manual .contact-picker {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
 }
 .notebook-rows {
   list-style: none;
