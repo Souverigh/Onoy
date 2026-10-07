@@ -2995,10 +2995,10 @@ tr.line-mismatch {
   min-height: 56px;
   cursor: pointer;
 }
-/* Ручной ввод — две равные кнопки под фото. */
+/* Ручной ввод — кнопки во всю ширину, одна под другой. */
 .notebook-manual {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   margin: 10px 0 0;
   /* Под «!» у фото — чтобы правый край совпал с кнопкой фото. */
