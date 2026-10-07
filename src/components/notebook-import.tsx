@@ -14,6 +14,7 @@ import { DOCUMENT_ACCEPT, MAX_PAGES, MAX_UPLOAD_BYTES } from "@/lib/pages";
 import { RuDateInput } from "./ru-date-input";
 import { ContactPicker, PhoneField } from "./contact-picker";
 import { InfoTip } from "./info-tip";
+import { Icon } from "./icon";
 
 export type ImportParty = {
   id: string;
@@ -179,6 +180,7 @@ export function NotebookImport({
       {/* Одна кнопка на фото: без capture телефон сам предложит камеру, галерею или файлы. */}
       <div className="notebook-photo">
         <label className="button primary">
+          <Icon name="camera" />
           {recognizing ? "Читаем страницы…" : "Фото страниц тетради"}
           <input
             type="file"
@@ -195,13 +197,12 @@ export function NotebookImport({
         </InfoTip>
       </div>
       <div className="notebook-manual">
-        <span className="muted">или</span>
-        <button type="button" className="text-button" onClick={() => setRows((r) => [...r, newRow()])}>
-          + вписать вручную
+        <button type="button" className="button" onClick={() => setRows((r) => [...r, newRow()])}>
+          <Icon name="plus" />
+          Вписать вручную
         </button>
         <ContactPicker
-          compact
-          label="+ из контактов"
+          label="Из контактов"
           onPick={({ name, phone }) => setRows((r) => [...r, newRow(name, phone)])}
         />
       </div>
