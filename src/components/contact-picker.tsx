@@ -10,6 +10,8 @@ type ContactsManager = {
  * Выбор контакта из телефона. Chrome на Android — системный список
  * (Contact Picker API); iPhone и компьютер его не умеют — там загрузка .vcf
  * («Поделиться контактом» → «Сохранить в Файлы»).
+ * Android не в Chrome (Samsung Internet и т.п.) списка контактов не даёт, а
+ * выбор файла там открывает «Камера / Файлы» — сначала объясняем, что делать.
  */
 export function ContactPicker({
   onPick,
@@ -26,11 +28,14 @@ export function ContactPicker({
 }) {
   const buttonClass = className ?? (compact ? "text-button" : "button");
   const [native, setNative] = useState(false);
+  const [android, setAndroid] = useState(false);
+  const [help, setHelp] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setNative("contacts" in navigator && "ContactsManager" in window);
+    setAndroid(/Android/i.test(navigator.userAgent));
   }, []);
 
   async function pickNative() {
@@ -72,7 +77,7 @@ export function ContactPicker({
             type="button"
             className={buttonClass}
             title="Контакт из телефона"
-            onClick={() => fileInput.current?.click()}
+            onClick={() => (android ? setHelp((open) => !open) : fileInput.current?.click())}
           >
             {label}
           </button>
@@ -84,6 +89,23 @@ export function ContactPicker({
             onChange={pickFile}
           />
         </>
+      )}
+      {help && (
+        <small className="contact-picker-help">
+          Этот браузер не открывает контакты телефона. Откройте depter.kg в{" "}
+          <strong>Google Chrome</strong> — там кнопка сразу покажет контакты. Или впишите имя и
+          телефон вручную.{" "}
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              setHelp(false);
+              fileInput.current?.click();
+            }}
+          >
+            У меня файл контакта (.vcf)
+          </button>
+        </small>
       )}
       {note && <small className="muted">{note}</small>}
     </span>

@@ -3474,6 +3474,11 @@ form .return-search {
   align-items: center;
   gap: 8px 12px;
 }
+.contact-picker-help {
+  flex-basis: 100%;
+  color: var(--muted);
+  line-height: 1.4;
+}
 .contact-fill {
   display: block;
   margin-bottom: 12px;
