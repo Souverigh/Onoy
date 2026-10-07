@@ -15,7 +15,7 @@ const nav: NavItem[] = [
   ["/stock", "Склад", "box"],
   ["/day", "Итог дня", "file"],
   ["/reports", "Отчёт за месяц", "chart"],
-  ["/claims", "Заявки", "check"],
+  ["/claims", "Платежи", "check"],
   ["/documents", "Документы", "camera"],
   ["/settings", "Настройки", "settings"],
 ];
@@ -34,7 +34,7 @@ const EXTRA_TITLES: [string, string][] = [
 
 /**
  * Каркас кабинета. Телефон (аудит ТЗ 15.1 п. 6): внизу Главная · Клиенты ·
- * [+ Продажа] · Заявки (бейдж — ждущие оплаты) · Ещё; «Ещё» открывает меню
+ * [+ Продажа] · Платежи (бейдж — ждущие оплаты) · Ещё; «Ещё» открывает меню
  * над панелью. «Выйти» — только в Настройках (п. 8). ПК: подписи у иконок
  * при любой ширине (п. 11).
  */
@@ -77,9 +77,9 @@ export function Shell({
       <span className="nav-badge nav-badge-muted">{reviewCount}</span>
     ) : null;
 
-  // Внизу у продавца вместо «Заявок» (они у владельца) — «Поставщики».
+  // Внизу у продавца вместо «Платежей» (заявки на оплату — у владельца) — «Поставщики».
   const bottom: NavItem[] = isOwner
-    ? [["/", "Главная", "home"], ["/customers", "Клиенты", "people"], ["/claims", "Заявки", "check"]]
+    ? [["/", "Главная", "home"], ["/customers", "Клиенты", "people"], ["/claims", "Платежи", "check"]]
     : [["/", "Главная", "home"], ["/customers", "Клиенты", "people"], ["/suppliers", "Поставщики", "truck"]];
   const more = nav.filter(allowed).filter(([href]) => !bottom.some(([b]) => b === href));
   const moreActive = more.some(([href]) => active(href));
