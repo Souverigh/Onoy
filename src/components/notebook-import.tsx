@@ -12,7 +12,7 @@ import { money } from "@/lib/format";
 import { MULTI_PAGE_MAX_SIDE, shrinkImage } from "@/lib/shrink-image";
 import { DOCUMENT_ACCEPT, MAX_PAGES, MAX_UPLOAD_BYTES } from "@/lib/pages";
 import { RuDateInput } from "./ru-date-input";
-import { ContactPicker } from "./contact-picker";
+import { ContactPicker, PhoneField } from "./contact-picker";
 
 export type ImportParty = {
   id: string;
@@ -274,14 +274,24 @@ export function NotebookImport({
                   {!row.partyId && (
                     <label>
                       Телефон
-                      <input
-                        value={row.phone}
-                        maxLength={40}
-                        inputMode="tel"
-                        placeholder="Необязательно"
-                        disabled={done}
-                        onChange={(e) => update(row.key, { phone: e.target.value })}
-                      />
+                      <PhoneField
+                        onPick={({ name, phone }) =>
+                          update(row.key, {
+                            phone: phone || row.phone,
+                            // Имя из тетради не трогаем — берём из контакта, только если пусто.
+                            ...(row.name.trim() ? {} : { name, partyId: guessParty(name) }),
+                          })
+                        }
+                      >
+                        <input
+                          value={row.phone}
+                          maxLength={40}
+                          inputMode="tel"
+                          placeholder="Необязательно"
+                          disabled={done}
+                          onChange={(e) => update(row.key, { phone: e.target.value })}
+                        />
+                      </PhoneField>
                     </label>
                   )}
                 </div>
@@ -318,19 +328,6 @@ export function NotebookImport({
                           >
                             Это другой человек
                           </button>
-                        )}
-                        {!party && (
-                          <ContactPicker
-                            compact
-                            label="Из контактов"
-                            onPick={({ name, phone }) =>
-                              update(row.key, {
-                                phone: phone || row.phone,
-                                // Имя из тетради не трогаем — берём из контакта, только если пусто.
-                                ...(row.name.trim() ? {} : { name, partyId: guessParty(name) }),
-                              })
-                            }
-                          />
                         )}
                         {matches.map((m) => (
                           <button

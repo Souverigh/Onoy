@@ -17,16 +17,20 @@ export function ContactPicker({
   onPick,
   label = "Из контактов телефона",
   compact = false,
+  icon = false,
   className,
 }: {
   onPick: (contact: PickedContact) => void;
   label?: string;
   /** Текстовая ссылка вместо кнопки (форма продажи). */
   compact?: boolean;
+  /** Иконка внутри поля «Телефон» (PhoneField) вместо кнопки с текстом. */
+  icon?: boolean;
   /** Класс кнопки вместо обычного (пункт выпадающего списка). */
   className?: string;
 }) {
-  const buttonClass = className ?? (compact ? "text-button" : "button");
+  const buttonClass = className ?? (icon ? "contact-icon-button" : compact ? "text-button" : "button");
+  const content = icon ? <ContactsIcon /> : label;
   const [native, setNative] = useState(false);
   const [android, setAndroid] = useState(false);
   const [help, setHelp] = useState(false);
@@ -68,18 +72,19 @@ export function ContactPicker({
   return (
     <span className="contact-picker">
       {native ? (
-        <button type="button" className={buttonClass} onClick={pickNative}>
-          {label}
+        <button type="button" className={buttonClass} aria-label={label} title={icon ? label : undefined} onClick={pickNative}>
+          {content}
         </button>
       ) : (
         <>
           <button
             type="button"
             className={buttonClass}
-            title="Контакт из телефона"
+            aria-label={label}
+            title={icon ? label : "Контакт из телефона"}
             onClick={() => (android ? setHelp((open) => !open) : fileInput.current?.click())}
           >
-            {label}
+            {content}
           </button>
           <input
             ref={fileInput}
@@ -108,6 +113,37 @@ export function ContactPicker({
         </small>
       )}
       {note && <small className="muted">{note}</small>}
+    </span>
+  );
+}
+
+/** Записная книжка — значок «выбрать из контактов». */
+function ContactsIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="5" y="3" width="15" height="18" rx="2" />
+      <path d="M3 8h3M3 12h3M3 16h3" />
+      <circle cx="12.5" cy="10" r="2.5" />
+      <path d="M8.5 17c.6-2 2.2-3 4-3s3.4 1 4 3" />
+    </svg>
+  );
+}
+
+/**
+ * Поле телефона со значком контактов справа: выбрали контакт — onPick
+ * (обычно заполняет телефон, а имя — если пустое). children — сам <input>.
+ */
+export function PhoneField({
+  children,
+  onPick,
+}: {
+  children: React.ReactNode;
+  onPick: (contact: PickedContact) => void;
+}) {
+  return (
+    <span className="phone-field">
+      {children}
+      <ContactPicker icon onPick={onPick} />
     </span>
   );
 }

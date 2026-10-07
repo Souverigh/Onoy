@@ -25,7 +25,6 @@ export function EntryForm({
       <input type="hidden" name="kind" value={kind} />
       {entry && <input type="hidden" name="id" value={entry.id} />}
       {draft && <input type="hidden" name="force" value="1" />}
-      {!entry && kind !== "products" && <ContactFill />}
       <label>
         Название / имя
         <input
@@ -93,12 +92,15 @@ export function EntryForm({
         <>
           <label>
             Телефон
-            <input
-              name="phone"
-              type="tel"
-              maxLength={40}
-              defaultValue={entry?.phone ?? draft?.phone ?? ""}
-            />
+            <span className="phone-field">
+              <input
+                name="phone"
+                type="tel"
+                maxLength={40}
+                defaultValue={entry?.phone ?? draft?.phone ?? ""}
+              />
+              {!entry && <ContactFill />}
+            </span>
           </label>
           <label>
             В какой валюте долг

@@ -5,6 +5,7 @@ import { customerFromContact } from "@/app/(workspace)/money/actions";
 import { bestMatches } from "@/lib/match";
 import { phoneKey } from "@/lib/contacts";
 import type { PickerParty } from "./party-picker";
+import { PhoneField } from "./contact-picker";
 
 /** Похожее имя — «Похоже, это Айбек» (задача 24). */
 const SAME_PERSON = 0.8;
@@ -106,14 +107,21 @@ export function NewCustomerInline({
           </label>
           <label>
             Телефон (необязательно)
-            <input
-              value={phone}
-              maxLength={40}
-              inputMode="tel"
-              autoComplete="off"
-              placeholder="+996 …"
-              onChange={(e) => setPhone(e.target.value)}
-            />
+            <PhoneField
+              onPick={(contact) => {
+                if (contact.phone) setPhone(contact.phone);
+                if (!name.trim() && contact.name) setName(contact.name);
+              }}
+            >
+              <input
+                value={phone}
+                maxLength={40}
+                inputMode="tel"
+                autoComplete="off"
+                placeholder="+996 …"
+                onChange={(e) => setPhone(e.target.value)}
+              />
+            </PhoneField>
           </label>
           {note && <p className="muted">{note}</p>}
           <div className="simple-operation-actions">
