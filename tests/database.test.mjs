@@ -2568,6 +2568,43 @@ test("sale date: a sale can be written for yesterday, not for the future or olde
   await db.query("select commit_sale($1,$2,'10.00',false,'eeeeeeee-1005-4000-8000-000000000003')", [orgA, customer]);
 });
 
+test("record date: purchase by amount, sale and purchase by items can be written for yesterday", async () => {
+  const k = (n) => `eeeeeeee-1006-4000-8000-0000000000${String(n).padStart(2, "0")}`;
+  await owner();
+  const customer = (await db.query("insert into customers(organization_id,name) values ($1,'Тест вчера') returning id", [orgA])).rows[0].id;
+  const supplier = (await db.query("insert into suppliers(organization_id,name) values ($1,'Поставщик вчера') returning id", [orgA])).rows[0].id;
+  await user(a);
+  const socket = (await db.query("select save_product($1,null,'Розетка вчера',null,'шт','85',null,null,null) as id", [orgA])).rows[0].id;
+  const yesterday = new Date(Date.now() - 86400000).toISOString();
+  const tomorrow = new Date(Date.now() + 86400000).toISOString();
+  const lines = JSON.stringify([{ product: socket, qty: "10", price: "85" }]);
+  const dateOf = async (table, id) => new Date((await db.query(`select occurred_at from ${table} where id=$1`, [id])).rows[0].occurred_at).toISOString();
+
+  // Товар от поставщика без накладной, вчерашним числом; повтор — та же запись.
+  const purchaseCall = "select commit_purchase(p_org=>$1,p_supplier=>$2,p_amount=>'850.00',p_idempotency_key=>$3,p_occurred_at=>$4) as id";
+  const purchase = (await db.query(purchaseCall, [orgA, supplier, k(1), yesterday])).rows[0].id;
+  assert.equal(await dateOf("purchases", purchase), yesterday);
+  assert.equal((await db.query(purchaseCall, [orgA, supplier, k(1), yesterday])).rows[0].id, purchase);
+  await assert.rejects(db.query(purchaseCall, [orgA, supplier, k(2), tomorrow]), /invalid_date/);
+
+  // «Тест вчера взял 10 розеток по 85»: продажа товарами вчерашним числом.
+  const saleCall = "select commit_sale_items(p_org=>$1,p_customer=>$2,p_lines=>$3,p_paid_immediately=>false,p_idempotency_key=>$4,p_occurred_at=>$5) as id";
+  const sale = (await db.query(saleCall, [orgA, customer, lines, k(3), yesterday])).rows[0].id;
+  assert.equal(await dateOf("sales", sale), yesterday);
+  assert.equal((await db.query("select total from sales where id=$1", [sale])).rows[0].total, "850.00");
+  await assert.rejects(db.query(saleCall, [orgA, customer, lines, k(4), tomorrow]), /invalid_date/);
+
+  const itemsCall = "select commit_purchase_items(p_org=>$1,p_supplier=>$2,p_lines=>$3,p_idempotency_key=>$4,p_occurred_at=>$5) as id";
+  const received = (await db.query(itemsCall, [orgA, supplier, lines, k(5), yesterday])).rows[0].id;
+  assert.equal(await dateOf("purchases", received), yesterday);
+  await assert.rejects(db.query(itemsCall, [orgA, supplier, lines, k(6), tomorrow]), /invalid_date/);
+
+  // Старые вызовы без даты работают как раньше.
+  await db.query("select commit_purchase($1,$2,'10.00',$3)", [orgA, supplier, k(7)]);
+  await db.query("select commit_sale_items($1,$2,$3,false,$4)", [orgA, customer, lines, k(8)]);
+  await db.query("select commit_purchase_items($1,$2,$3,$4)", [orgA, supplier, lines, k(9)]);
+});
+
 test("client page: a rejected claim shows its reason, reversed records and internal notes are hidden", async () => {
   await owner();
   await user(a);

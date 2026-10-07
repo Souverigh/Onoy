@@ -1199,6 +1199,26 @@ td small {
   padding-right: 8px;
   text-align: center;
 }
+/* «Накладной нет — записать сумму»: продажа по телефону, товар без бумаги. */
+.invoice-dropzone .no-invoice-button {
+  justify-content: center;
+  width: 100%;
+  background: transparent;
+  font-size: 15px;
+}
+.no-invoice {
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1.5px dashed #c9d2cc;
+  border-radius: 12px;
+  background: #fafbf9;
+}
+.no-invoice p {
+  margin: 0;
+}
+.no-invoice .text-button {
+  align-self: flex-start;
+}
 /* «Сколько?» и валюта одной строкой — компактный переключатель. */
 .amount-head {
   display: flex;

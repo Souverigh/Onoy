@@ -163,8 +163,10 @@ export function OperationForm({
   } | null>(null);
   // Продавец сказал «Да, верно» про клиента не с накладной (задача 38).
   const [partyConfirmed, setPartyConfirmed] = useState<string | null>(null);
-  // Дата продажи (задача 15): пусто — сегодня.
-  const [saleDate, setSaleDate] = useState("");
+  // Дата продажи или прихода (задача 15): пусто — сегодня.
+  const [recordDate, setRecordDate] = useState("");
+  // «Накладной нет — записать сумму»: продажа по телефону, товар без бумаги.
+  const [noInvoice, setNoInvoice] = useState(false);
   const allCustomers = [...customers, ...contactCustomers.filter((c) => !customers.some((x) => x.id === c.id))];
   const [checkedPhoto, setCheckedPhoto] = useState<CheckedPhoto | null>(null);
   const [checking, setChecking] = useState(false);
@@ -409,7 +411,9 @@ export function OperationForm({
           : error === "date"
             ? kind === "sale"
               ? "Проверьте дату продажи: не позже сегодняшнего дня и не раньше чем год назад."
-              : "Проверьте дату оплаты: не позже текущего момента и не раньше чем год назад."
+              : kind === "purchase"
+                ? "Проверьте дату: не позже сегодняшнего дня и не раньше чем год назад."
+                : "Проверьте дату оплаты: не позже текущего момента и не раньше чем год назад."
           : error === "invalid"
             ? `Проверьте сумму и выбранного ${partyWord}.`
             : error === "save"
@@ -860,7 +864,8 @@ export function OperationForm({
         {kind === "payment" && <input type="hidden" name="method" value={effectiveMethod} />}
         {/* Направление задано экраном — переключателя нет, а сервер ждёт поле. */}
         {kind === "payment" && fixedDirection && <input type="hidden" name="direction" value={fixedDirection} />}
-        {kind === "sale" && saleDate && <input type="hidden" name="sale_date" value={saleDate} />}
+        {kind !== "payment" && recordDate && <input type="hidden" name="record_date" value={recordDate} />}
+        {kind !== "payment" && noInvoice && !hasPhoto && <input type="hidden" name="no_invoice" value="1" />}
         <input type="hidden" name="idempotency_key" value={idempotencyKey} />
         {kind === "purchase" && partPaymentKey && (
           <input type="hidden" name="part_payment_key" value={partPaymentKey} />
@@ -893,7 +898,17 @@ export function OperationForm({
         )}
         {kind === "sale" && partySection}
         {!prefill && receiptDocumentId && <input type="hidden" name="document_id" value={receiptDocumentId} />}
-        {kind !== "payment" && (
+        {kind !== "payment" && noInvoice && !hasPhoto && (
+          <div className="photo-field no-invoice">
+            <p className="muted">
+              Без накладной — запишем только сумму. В истории будет пометка «без накладной».
+            </p>
+            <button type="button" className="text-button" onClick={() => setNoInvoice(false)}>
+              Приложить фото накладной
+            </button>
+          </div>
+        )}
+        {kind !== "payment" && !(noInvoice && !hasPhoto) && (
           <div className="photo-field invoice-dropzone">
             <span className="invoice-dropzone-title">
               Фото накладной
@@ -984,6 +999,19 @@ export function OperationForm({
                   />
                 </label>
               </div>
+            )}
+            {!hasPhoto && (
+              <button
+                type="button"
+                className="button no-invoice-button"
+                onClick={() => {
+                  setNoInvoice(true);
+                  setCheckNote(null);
+                  if (localError === "photo") setLocalError(null);
+                }}
+              >
+                Накладной нет — записать сумму
+              </button>
             )}
             <input
               ref={pagesInput}
@@ -1389,11 +1417,11 @@ export function OperationForm({
             Клиент оплатил наличными
           </label>
         )}
-        {kind === "sale" && (
+        {kind !== "payment" && (
           <DatePicker
-            value={saleDate}
+            value={recordDate}
             onChange={(next) => {
-              setSaleDate(next);
+              setRecordDate(next);
               if (localError === "date") setLocalError(null);
             }}
           />
@@ -1510,12 +1538,15 @@ export function OperationForm({
           </p>
         )}
         <div className="simple-operation-actions">
-          <Submit pending={saving} disabled={checking || checkingReceipt || switching || (kind !== "payment" && !hasPhoto)}>
+          <Submit
+            pending={saving}
+            disabled={checking || checkingReceipt || switching || (kind !== "payment" && !hasPhoto && !noInvoice)}
+          >
             {checking
               ? "Проверяем фото…"
               : checkingReceipt
                 ? "Читаем чек…"
-              : kind !== "payment" && !hasPhoto
+              : kind !== "payment" && !hasPhoto && !noInvoice
                 ? "Приложите фото накладной"
                 : confirmLabel}
           </Submit>

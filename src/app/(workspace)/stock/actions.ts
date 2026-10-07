@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { getContext } from "@/lib/context";
 import { isProductUnit, stockNumber, type ProductUnit } from "@/lib/stock";
 import { rateInput } from "@/lib/currency";
+import { bishkekDate } from "@/lib/day-summary";
+import { recordDateTime } from "@/lib/record-date";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -24,8 +26,10 @@ function failureCode(message: string | undefined): string {
     "invalid_supplier",
     "invalid_currency",
     "idempotency_conflict",
+    "invalid_date",
   ])
-    if (text.includes(code)) return code === "idempotency_conflict" ? "retry" : code === "invalid_supplier" ? "party" : code;
+    if (text.includes(code))
+      return code === "idempotency_conflict" ? "retry" : code === "invalid_supplier" ? "party" : code === "invalid_date" ? "date" : code;
   if (text.includes("shop_blocked")) return "blocked";
   return "save";
 }
@@ -242,6 +246,9 @@ export async function commitSaleItems(previous: SaleItemsState, form: FormData):
     const rawRate = text(form, "fx_rate");
     const rate = rawRate ? rateInput(rawRate) : null;
     if (rawRate && !rate) return { error: "rate", attempt };
+    // Продажа за другой день («забыл записать вчера»).
+    const occurredAt = recordDateTime(text(form, "record_date"), bishkekDate());
+    if (occurredAt === "invalid") return { error: "date", attempt };
     const { db, organizationId } = await getContext();
     const result = await db.rpc("commit_sale_items", {
       p_org: organizationId,
@@ -250,6 +257,7 @@ export async function commitSaleItems(previous: SaleItemsState, form: FormData):
       p_paid_immediately: form.get("paid_immediately") === "true",
       p_idempotency_key: key,
       p_fx_rate: rate,
+      ...(occurredAt ? { p_occurred_at: occurredAt } : {}),
     });
     if (result.error || !result.data) {
       console.error("commitSaleItems: RPC failed", { message: result.error?.message, lines: clean.length });
@@ -333,6 +341,8 @@ export async function commitPurchaseItems(previous: SaleItemsState, form: FormDa
     const rawRate = text(form, "fx_rate");
     const rate = rawRate ? rateInput(rawRate) : null;
     if (rawRate && !rate) return { error: "rate", attempt };
+    const occurredAt = recordDateTime(text(form, "record_date"), bishkekDate());
+    if (occurredAt === "invalid") return { error: "date", attempt };
     const { db, organizationId } = await getContext();
     const result = await db.rpc("commit_purchase_items", {
       p_org: organizationId,
@@ -340,6 +350,7 @@ export async function commitPurchaseItems(previous: SaleItemsState, form: FormDa
       p_lines: clean,
       p_idempotency_key: key,
       p_fx_rate: rate,
+      ...(occurredAt ? { p_occurred_at: occurredAt } : {}),
     });
     if (result.error || !result.data) {
       console.error("commitPurchaseItems: RPC failed", { message: result.error?.message, lines: clean.length });

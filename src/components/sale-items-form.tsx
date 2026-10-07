@@ -14,6 +14,7 @@ import { Submit } from "./submit";
 import { ContactPicker } from "./contact-picker";
 import { PartyPicker } from "./party-picker";
 import { NewCustomerInline } from "./new-customer-inline";
+import { DatePicker } from "./date-picker";
 import { money, quantity } from "@/lib/format";
 import { searchProducts } from "@/lib/match";
 import { PRODUCT_UNITS, STOCK_ERROR_TEXT, stockNumber } from "@/lib/stock";
@@ -50,6 +51,7 @@ const ERROR_TEXT: Record<string, string> = {
   cost: "Укажите цену закупки у каждого товара.",
   rate: "Укажите курс — число больше нуля.",
   too_many: "В одной накладной — не больше 200 строк.",
+  date: "Проверьте дату: не позже сегодняшнего дня и не раньше чем год назад.",
 };
 const NETWORK_TEXT = {
   sale: "Нет связи с сервером — продажа не сохранена. Проверьте интернет и нажмите ещё раз: вторая запись не появится.",
@@ -91,6 +93,8 @@ export function SaleItemsForm({
   const [query, setQuery] = useState("");
   const [flash, setFlash] = useState<number | null>(null);
   const [paidNow, setPaidNow] = useState(false);
+  // Дата записи: пусто — сегодня; «забыл записать вчера» — другой день.
+  const [recordDate, setRecordDate] = useState("");
   const [rateValue, setRateValue] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   // Новый товар прямо отсюда, если поиск ничего не нашёл.
@@ -232,6 +236,7 @@ export function SaleItemsForm({
   return (
     <form onSubmit={submit} className="simple-operation-form sale-items-form">
       <input type="hidden" name="idempotency_key" value={idempotencyKey} />
+      {recordDate && <input type="hidden" name="record_date" value={recordDate} />}
       <PartyPicker
         label={purchase ? "Поставщик" : "Клиент"}
         name={purchase ? "supplier_id" : "customer_id"}
@@ -514,6 +519,13 @@ export function SaleItemsForm({
         Клиент оплатил наличными
       </label>
       )}
+      <DatePicker
+        value={recordDate}
+        onChange={(next) => {
+          setRecordDate(next);
+          if (localError === "date") setLocalError(null);
+        }}
+      />
       {overLimit && (
         <p className="form-error limit-warning" role="alert">
           Долг станет {money(overLimit.debtAfter, debtCurrency)} — больше лимита {money(overLimit.limit, debtCurrency)}. Продать

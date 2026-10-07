@@ -687,6 +687,10 @@ export default async function EntryPage({
                         ) : (
                           <div className="party-history-head">{head}</div>
                         )}
+                        {/* Ни фото, ни товаров — записали одну сумму («Накладной нет»). */}
+                        {row.kind !== "payment" && !row.opening && !row.documentId && !row.items && (
+                          <p className="party-history-note muted">без накладной</p>
+                        )}
                         {row.items && (
                           <p className="party-history-note muted">
                             {row.items.names.join(", ")}

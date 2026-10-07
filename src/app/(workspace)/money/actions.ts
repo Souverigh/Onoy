@@ -24,6 +24,7 @@ import { checkDocument, ownNameMatcher, type DocumentVerdict } from "@/lib/adre/
 import { bestMatches, similarity } from "@/lib/match";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { bishkekDateTime, receiptDateTime } from "@/lib/receipt-date";
+import { recordDateTime } from "@/lib/record-date";
 import { isAdjustmentKind } from "@/lib/entry-labels";
 import { normalizePhone, phoneKey } from "@/lib/contacts";
 import { isCurrency, rateInput, type Currency } from "@/lib/currency";
@@ -113,7 +114,15 @@ async function commitOperationOrRedirect(
   const fxRate = originalCurrency ? rateInput(String(form.get("fx_rate") ?? "")) : null;
   if (originalCurrency && !fxRate) return { error: "rate" };
   const hasExistingDocument = uuidPattern.test(existingDocumentId);
-  if (operation !== "payment" && !photo && !hasExistingDocument) return { error: "photo" };
+  // «Накладной нет — записать сумму» (продажа по телефону, товар без бумаги).
+  const noInvoice = form.get("no_invoice") === "1";
+  if (operation !== "payment" && !photo && !hasExistingDocument && !noInvoice) return { error: "photo" };
+  // Продажа или приход за другой день; sale_date — от формы до этой версии.
+  if (operation !== "payment") {
+    const recordDate = recordDateTime(String(form.get("record_date") ?? form.get("sale_date") ?? ""), bishkekDate());
+    if (recordDate === "invalid") return { error: "date" };
+    occurredAt = recordDate;
+  }
   // Чек оплаты — всегда одно фото; накладная — до MAX_PAGES страниц.
   if (photos.length > (operation === "payment" ? 1 : MAX_PAGES)) return { error: "photo_upload" };
   try {
@@ -139,12 +148,6 @@ async function commitOperationOrRedirect(
       amount = decimalInput(field(form, "total"), 2);
       paidImmediately = form.get("paid_immediately") === "true";
       if (!uuidPattern.test(party)) throw new Error("invalid_input");
-      // Продажа за другой день (задача 15): середина того дня по Бишкеку.
-      const rawDate = String(form.get("sale_date") ?? "").trim();
-      if (rawDate && rawDate !== bishkekDate()) {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate) || rawDate > bishkekDate()) return { error: "date" };
-        occurredAt = new Date(`${rawDate}T12:00:00+06:00`).toISOString();
-      }
     } else {
       direction = field(form, "direction");
       party = field(form, "party_id");
@@ -210,6 +213,7 @@ async function commitOperationOrRedirect(
           ...original,
           p_idempotency_key: idempotencyKey,
           p_document: documentId,
+          ...(occurredAt ? { p_occurred_at: occurredAt } : {}),
         })
       : operation === "sale"
         ? await db.rpc("commit_sale", {
@@ -304,6 +308,8 @@ async function commitOperationOrRedirect(
       p_bank_reference: null,
       p_idempotency_key: partPaymentKey,
       p_method: "cash",
+      // Приход задним числом — оплата в тот же день.
+      ...(occurredAt ? { p_occurred_at: occurredAt } : {}),
     });
     if (payment.error) {
       console.error("commitOperation: part payment failed", { message: payment.error.message });
