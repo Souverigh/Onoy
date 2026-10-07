@@ -3004,6 +3004,15 @@ tr.line-mismatch {
   /* Под «!» у фото — чтобы правый край совпал с кнопкой фото. */
   padding-right: 32px;
 }
+/* Сообщения после кнопок (распознали, проверьте) - с отступом сверху. */
+.notebook-import .notice,
+.notebook-import .photo-check-mismatch {
+  margin: 16px 0 0;
+}
+.notebook-import .photo-check-mismatch ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
 .notebook-manual > .button {
   width: 100%;
   min-height: 48px;
