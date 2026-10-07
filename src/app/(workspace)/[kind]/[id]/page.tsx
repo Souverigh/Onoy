@@ -18,6 +18,7 @@ import { checkReceipt, receiptAmounts, receiptDiffers } from "@/lib/claim-receip
 import { officialRates } from "@/lib/fx";
 import { CURRENCIES } from "@/lib/currency";
 import { memberLabels } from "@/lib/members";
+import { notebookPhotoUrls } from "@/lib/storage";
 import { PartyManage } from "@/components/party-manage";
 import { CopyButton } from "@/components/copy-button";
 import { ConfirmButton } from "@/components/confirm-button";
@@ -217,6 +218,8 @@ export default async function EntryPage({
     reversedBy: string | null;
     /** Товары продажи со склада (sale_items) — первые названия и сколько всего. */
     items?: { names: string[]; count: number } | null;
+    /** Фото страниц тетради, с которых перенесли долг (ссылки на час). */
+    notebookPhotos?: string[];
   };
   let history: HistoryRow[] = [];
   if (entry && invoicesRequest && paysRequest) {
@@ -225,8 +228,10 @@ export default async function EntryPage({
     // Заявки на проверке: сумма с чека против суммы заявки — видно и продавцу.
     const pendingPays = (pays.data ?? []).filter((p) => p.status === "pending" && p.document_id);
     const invoiceIds = (invoices.data ?? []).filter((r) => !r.document_id).map((r) => r.id);
-    // Первые записи дубликатов, чеки заявок и товары продаж/приходов — вместе, вторым кругом.
-    const [firsts, receipts, saleItems] = await Promise.all([
+    const openingIds = (rows: { id: string; is_opening: boolean | null }[] | null) =>
+      (rows ?? []).filter((r) => r.is_opening).map((r) => r.id);
+    // Первые записи дубликатов, чеки заявок, товары продаж/приходов и фото тетради — вместе, вторым кругом.
+    const [firsts, receipts, saleItems, invoicePhotos, payPhotos] = await Promise.all([
       firstIds.length
         ? start(
             db
@@ -252,6 +257,8 @@ export default async function EntryPage({
             })),
           )
         : skip([] as { owner: string; name: string }[]),
+      notebookPhotoUrls(db, organizationId, kind === "customers" ? "sales" : "purchases", openingIds(invoices.data)),
+      notebookPhotoUrls(db, organizationId, "payments", openingIds(pays.data)),
     ]);
     const itemsBySale = new Map<string, { names: string[]; count: number }>();
     for (const item of saleItems) {
@@ -300,6 +307,7 @@ export default async function EntryPage({
         createdBy: r.created_by,
         reversedBy: r.reversed_by,
         items: itemsBySale.get(r.id) ?? null,
+        notebookPhotos: invoicePhotos.get(r.id),
       })),
       ...(pays.data ?? []).map((p) => ({
         kind: "payment" as const,
@@ -324,6 +332,7 @@ export default async function EntryPage({
         opening: Boolean(p.is_opening),
         createdBy: p.created_by,
         reversedBy: p.reversed_by,
+        notebookPhotos: payPhotos.get(p.id),
       })),
     ]
       .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime())
@@ -640,6 +649,7 @@ export default async function EntryPage({
                           ? { href: `/documents/${row.documentId}`, label: row.kind === "payment" ? "Фото чека" : "Фото накладной" }
                           : null;
                     const extraPhoto = row.kind === "sale" && !row.opening && row.documentId && !row.items;
+                    const notebookPhotos = row.notebookPhotos ?? [];
                     const author = showAuthors ? who(row.createdBy) : null;
                     const reverser = showAuthors && row.reversed ? who(row.reversedBy) : null;
                     const status = row.reversed
@@ -709,7 +719,7 @@ export default async function EntryPage({
                             {row.reversalComment ? ` · причина: ${row.reversalComment}` : ""}
                           </p>
                         )}
-                        {(open || extraPhoto || (!row.reversed && row.duplicate && row.pending && row.firstHref) || isOwner) && (
+                        {(open || extraPhoto || notebookPhotos.length > 0 || (!row.reversed && row.duplicate && row.pending && row.firstHref) || isOwner) && (
                           <div className="party-history-actions">
                             {open && (
                               <Link className="party-history-chip primary" href={open.href}>
@@ -721,6 +731,11 @@ export default async function EntryPage({
                                 Фото
                               </Link>
                             )}
+                            {notebookPhotos.map((url, i) => (
+                              <a key={url} className="party-history-chip primary" href={url} target="_blank" rel="noopener noreferrer">
+                                {notebookPhotos.length > 1 ? `Фото тетради ${i + 1}` : "Фото тетради"}
+                              </a>
+                            ))}
                             {!row.reversed && row.duplicate && row.pending && row.firstHref && (
                               <Link className="party-history-chip duplicate-link" href={row.firstHref}>
                                 Первая запись →

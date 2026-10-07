@@ -89,6 +89,68 @@ export async function uploadOperationPhotos(
   return data as string;
 }
 
+/**
+ * Страницы тетради при переносе долгов — фото остаётся в истории у записей
+ * «Долг из тетради» (sales/purchases/payments.notebook_photos). Не documents:
+ * одна страница — много клиентов. Не получилось — пустой список, перенос
+ * от этого не ломается.
+ */
+export async function uploadNotebookPhotos(
+  db: SupabaseClient,
+  organizationId: string,
+  files: File[],
+): Promise<string[]> {
+  try {
+    return await Promise.all(
+      files.map(async (file) => {
+        const path = `${organizationId}/notebook/${randomUUID()}.${extensionOf(file)}`;
+        const upload = await db.storage
+          .from("receipts")
+          .upload(path, Buffer.from(await file.arrayBuffer()), { contentType: documentMimeType(file) });
+        if (upload.error) throw upload.error;
+        return path;
+      }),
+    );
+  } catch (error) {
+    console.error("uploadNotebookPhotos: storage upload failed", error);
+    return [];
+  }
+}
+
+/**
+ * Ссылки на фото тетради у записей «Долг из тетради»: id записи → ссылки на
+ * час. Колонки может ещё не быть (миграция не применена) — тогда пусто.
+ */
+export async function notebookPhotoUrls(
+  db: SupabaseClient,
+  organizationId: string,
+  table: "sales" | "purchases" | "payments",
+  ids: string[],
+): Promise<Map<string, string[]>> {
+  const result = new Map<string, string[]>();
+  if (!ids.length) return result;
+  const { data, error } = await db
+    .from(table)
+    .select("id,notebook_photos")
+    .eq("organization_id", organizationId)
+    .in("id", ids)
+    .not("notebook_photos", "is", null);
+  if (error || !data?.length) return result;
+  const rows = data as { id: string; notebook_photos: string[] }[];
+  const paths = [...new Set(rows.flatMap((row) => row.notebook_photos))];
+  const signed = await db.storage.from("receipts").createSignedUrls(paths, 3600);
+  if (signed.error) {
+    console.error("notebookPhotoUrls: signing failed", signed.error);
+    return result;
+  }
+  const urls = new Map(signed.data.map((item) => [item.path, item.signedUrl]));
+  for (const row of rows) {
+    const list = row.notebook_photos.map((path) => urls.get(path)).filter((url): url is string => Boolean(url));
+    if (list.length) result.set(row.id, list);
+  }
+  return result;
+}
+
 export type DocumentPage = { storage_path: string; mime_type: string };
 
 /** Все страницы документа по порядку: первая — из documents, остальные — из document_pages. */

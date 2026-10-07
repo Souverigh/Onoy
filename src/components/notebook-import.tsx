@@ -32,6 +32,8 @@ type Row = {
   /** "" — новый клиент или поставщик с этим именем. */
   partyId: string;
   doubt: boolean;
+  /** Фото страниц, с которых распознана строка; уйдут в историю с долгом. */
+  photos: string[];
   result?: OpeningResult;
 };
 
@@ -78,8 +80,8 @@ export function NotebookImport({
     return best ? best.candidate.id : "";
   }
 
-  function newRow(name = "", phone = "", amount = "", doubt = false, date = ""): Row {
-    return { key: crypto.randomUUID(), name, phone, amount, date, partyId: name ? guessParty(name) : "", doubt };
+  function newRow(name = "", phone = "", amount = "", doubt = false, date = "", photos: string[] = []): Row {
+    return { key: crypto.randomUUID(), name, phone, amount, date, partyId: name ? guessParty(name) : "", doubt, photos };
   }
 
   function update(key: string, patch: Partial<Row>) {
@@ -117,7 +119,7 @@ export function NotebookImport({
       setRows((current) => [
         ...current.filter((row) => row.name || row.amount),
         ...res.rows.map((r) =>
-          newRow(r.name, r.phone, String(r.amount), r.confidence < 0.8, r.date),
+          newRow(r.name, r.phone, String(r.amount), r.confidence < 0.8, r.date, res.photos),
         ),
       ]);
     } catch (err) {
@@ -150,6 +152,7 @@ export function NotebookImport({
           phone: row.phone.trim(),
           amount: row.amount,
           date: row.date,
+          photos: row.photos,
         })),
       );
       const byKey = new Map(results.map((r) => [r.key, r]));
@@ -298,6 +301,7 @@ export function NotebookImport({
                             : "Впишите имя"}
                         {amount !== null && amount < 0 && " · аванс"}
                         {row.doubt && " · плохо читается, проверьте"}
+                        {row.photos.length > 0 && " · фото тетради сохранится в истории"}
                       </span>
                       {party?.transferred && (
                         <span className="form-error">Долг уже перенесён — строку пропустим.</span>

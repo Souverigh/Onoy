@@ -5,16 +5,23 @@ import { getContext } from "@/lib/context";
 import { decimalInput } from "@/lib/validation";
 import { recognizeNotebook } from "@/lib/adre/recognize";
 import { MAX_PAGES, documentMimeType, isAcceptedDocument } from "@/lib/pages";
+import { uploadNotebookPhotos } from "@/lib/storage";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type NotebookRowDraft = { name: string; phone: string; date: string; amount: number; confidence: number };
 
-/** Фото страниц тетради → список «имя — сумма» для проверки продавцом. Ничего не записывает. */
+/**
+ * Фото страниц тетради → список «имя — сумма» для проверки продавцом. Долгов
+ * не записывает; сами фото кладёт в хранилище, чтобы при сохранении строки
+ * приложить их к записи (photos — пути, пустой список — не загрузились).
+ */
 export async function recognizeNotebookPhotos(
   form: FormData,
-): Promise<{ ok: true; rows: NotebookRowDraft[]; warnings: string[] } | { ok: false; error: string }> {
+): Promise<
+  { ok: true; rows: NotebookRowDraft[]; warnings: string[]; photos: string[] } | { ok: false; error: string }
+> {
   const photos = form
     .getAll("photo")
     .filter((file): file is File => file instanceof File && file.size > 0);
@@ -23,7 +30,7 @@ export async function recognizeNotebookPhotos(
   if (photos.some((file) => !isAcceptedDocument(file)))
     return { ok: false, error: "recognition_failed" };
   if (!process.env.GEMINI_API_KEY) return { ok: false, error: "no_provider" };
-  await getContext(); // только участник магазина
+  const { db, organizationId } = await getContext(); // только участник магазина
   try {
     const pages = await Promise.all(
       photos.map(async (photo) => ({
@@ -31,8 +38,11 @@ export async function recognizeNotebookPhotos(
         mimeType: documentMimeType(photo),
       })),
     );
-    const result = await recognizeNotebook(pages);
-    return { ok: true, ...result };
+    const [result, photoPaths] = await Promise.all([
+      recognizeNotebook(pages),
+      uploadNotebookPhotos(db, organizationId, photos),
+    ]);
+    return { ok: true, ...result, photos: photoPaths };
   } catch (error) {
     console.error("recognizeNotebookPhotos: recognition failed", error);
     return { ok: false, error: "recognition_failed" };
@@ -47,6 +57,8 @@ export type OpeningInput = {
   amount: string;
   /** Дата долга из тетради, "ГГГГ-ММ-ДД"; пусто — сегодня. */
   date?: string;
+  /** Фото страниц тетради из recognizeNotebookPhotos. */
+  photos?: string[];
 };
 export type OpeningResult = { key: string; ok: boolean; partyId?: string; error?: string };
 
@@ -82,6 +94,9 @@ export async function importOpenings(
       continue;
     }
     const partyId = row.partyId && uuidPattern.test(row.partyId) ? row.partyId : null;
+    const photos = Array.isArray(row.photos)
+      ? row.photos.filter((path) => typeof path === "string" && path.startsWith(`${organizationId}/notebook/`)).slice(0, MAX_PAGES)
+      : [];
     const { data, error } = await db.rpc("import_opening_balance", {
       p_org: organizationId,
       p_kind: kind === "customers" ? "customer" : "supplier",
@@ -91,6 +106,7 @@ export async function importOpenings(
       p_amount: amount,
       p_idempotency_key: row.key,
       ...(row.date && /^\d{4}-\d{2}-\d{2}$/.test(row.date) ? { p_occurred_on: row.date } : {}),
+      ...(photos.length ? { p_photos: photos } : {}),
     });
     if (error || !data) {
       const message = error?.message ?? "";

@@ -2672,6 +2672,37 @@ test("notebook import with the debt date: aging counts from the written date", a
   await owner();
 });
 
+test("notebook import keeps the notebook page photo, only this shop's files", async () => {
+  await owner();
+  await user(a);
+  const photo = `${orgA}/notebook/0d0d0d0d-0000-4000-8000-000000000001.jpg`;
+  const party = (
+    await db.query(
+      "select import_opening_balance($1,'customer',null,'Фото ака','','700.00','abababab-1006-4000-8000-000000000001',null,$2) as id",
+      [orgA, [photo]],
+    )
+  ).rows[0].id;
+  const sale = (await db.query("select notebook_photos from sales where customer_id=$1 and is_opening", [party])).rows[0];
+  assert.deepEqual(sale.notebook_photos, [photo]);
+  for (const bad of [`${orgB}/notebook/0d0d0d0d-0000-4000-8000-000000000002.jpg`, `${orgA}/sale/x.jpg`, `${orgA}/notebook/../x.jpg`])
+    await assert.rejects(
+      db.query(
+        "select import_opening_balance($1,'customer',null,'Чужое фото','','10.00','abababab-1006-4000-8000-000000000002',null,$2)",
+        [orgA, [bad]],
+      ),
+      /invalid_opening/,
+    );
+  // Без фото — как раньше.
+  const plain = (
+    await db.query(
+      "select import_opening_balance($1,'customer',null,'Без фото','','10.00','abababab-1006-4000-8000-000000000003') as id",
+      [orgA],
+    )
+  ).rows[0].id;
+  assert.equal((await db.query("select notebook_photos from sales where customer_id=$1", [plain])).rows[0].notebook_photos, null);
+  await owner();
+});
+
 test("delete a photo without a record: only an unused document, only in its own shop", async () => {
   await owner();
   const doc = async (key) =>
