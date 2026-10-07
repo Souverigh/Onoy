@@ -12,6 +12,7 @@ import { money } from "@/lib/format";
 import { MULTI_PAGE_MAX_SIDE, shrinkImage } from "@/lib/shrink-image";
 import { DOCUMENT_ACCEPT, MAX_PAGES, MAX_UPLOAD_BYTES } from "@/lib/pages";
 import { RuDateInput } from "./ru-date-input";
+import { ContactPicker } from "./contact-picker";
 
 export type ImportParty = {
   id: string;
@@ -197,6 +198,10 @@ export function NotebookImport({
         <button type="button" className="button" onClick={() => setRows((r) => [...r, newRow()])}>
           + Добавить строку вручную
         </button>
+        <ContactPicker
+          label="+ Из контактов телефона"
+          onPick={({ name, phone }) => setRows((r) => [...r, newRow(name, phone)])}
+        />
       </div>
       <p className="operation-hint">
         Сумма — сколько {kind === "customers" ? "клиент должен вам" : "вы должны поставщику"} на
@@ -309,6 +314,19 @@ export function NotebookImport({
                           >
                             Это другой человек
                           </button>
+                        )}
+                        {!party && (
+                          <ContactPicker
+                            compact
+                            label="Из контактов"
+                            onPick={({ name, phone }) =>
+                              update(row.key, {
+                                phone: phone || row.phone,
+                                // Имя из тетради не трогаем — берём из контакта, только если пусто.
+                                ...(row.name.trim() ? {} : { name, partyId: guessParty(name) }),
+                              })
+                            }
+                          />
                         )}
                         {matches.map((m) => (
                           <button
