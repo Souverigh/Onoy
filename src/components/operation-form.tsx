@@ -1392,7 +1392,7 @@ export function OperationForm({
         )}
         {kind === "purchase" && (
           <label>
-            <span className="label-with-tip">
+            <span className="label-with-tip label-with-tip-inline">
               Сразу оплатили поставщику, {CURRENCY_SIGN[debtCurrency]} (необязательно)
               <InfoTip>Запишем оплату поставщику вместе с товаром — долг перед ним вырастет только на остаток.</InfoTip>
             </span>
