@@ -67,7 +67,7 @@ async function loadStatement(token: string) {
 function entryLabel(entry: Entry) {
   if (entry.opening) return entry.kind === "sale" ? "Долг из тетради" : "Аванс из тетради";
   if (entry.kind === "sale") return "Покупка";
-  if (entry.status === "pending") return "Заявка «Я оплатил» — ждёт подтверждения";
+  if (entry.status === "pending") return "Оплата — ждёт подтверждения магазина";
   if (entry.status === "rejected")
     return `Заявка отклонена${entry.reject_comment ? `: ${entry.reject_comment}` : ""}`;
   return paymentLabel(entry.payment_kind);
@@ -152,84 +152,11 @@ export default async function ClientPage({
           обновится после этого.
         </p>
       )}
-      {submitError && (
-        <p className="form-error" role="alert">
-          {submitError === "photo"
-            ? "Не удалось загрузить фото. Попробуйте без фото или другим файлом."
-            : submitError === "amount"
-              ? "Введите сумму или приложите чек — тогда сумму прочитаем с него."
-              : submitError === "unread"
-                ? "Не смогли прочитать сумму на чеке — введите её вручную."
-                : submitError === "rate"
-                  ? "Курс сейчас недоступен — укажите сумму в валюте долга или попробуйте позже."
-                  : "Проверьте сумму и попробуйте снова."}
-        </p>
-      )}
-
-      {balance > 0 && (accounts.length > 0 || pay?.qr_image) && (
-        <section className="panel client-pay">
-          <h2>Оплатить</h2>
-          {accounts.length > 0 && (
-            <ul className="client-accounts">
-              {accounts.map((a) => (
-                <li key={a.label}>
-                  <span>
-                    <small className="muted">{a.label}</small>
-                    <strong>{a.value!.replace(/\D/g, "").length >= 9 ? phoneText(a.value) : a.value}</strong>
-                  </span>
-                  <CopyButton text={a.value!.replace(/\s/g, "")} />
-                </li>
-              ))}
-            </ul>
-          )}
-          {pay?.qr_image && (
-            <figure className="client-qr">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={pay.qr_image} alt={`QR для оплаты магазину ${statement.shop_name}`} />
-              <figcaption className="muted">Отсканируйте в приложении банка</figcaption>
-            </figure>
-          )}
-          <p className="muted">После оплаты нажмите «Я оплатил» ниже — магазин подтвердит.</p>
-        </section>
-      )}
-
-      <section className="panel client-claim-panel">
-        <h2>Я оплатил</h2>
-        <form action={submitClaim} className="simple-operation-form">
-          <input type="hidden" name="token" value={token} />
-          <fieldset className="amount-currency claim-currency">
-            <legend>В какой валюте перевели?</legend>
-            {claimCurrencies.map((c) => (
-              <label key={c} className="party-suggestion">
-                <input type="radio" name="currency" value={c} defaultChecked={c === debtCurrency} />
-                {CURRENCY_SIGN[c]}
-              </label>
-            ))}
-          </fieldset>
-          <label className="amount-field">
-            Сколько перевели?
-            <input name="amount" inputMode="decimal" pattern="[0-9 ]+([.,][0-9]{1,2})?" placeholder="0" />
-            <small className="muted">
-              Можно не вводить, если приложите чек, — сумму и валюту прочитаем с него. Оплата сохранится в той
-              валюте, в которой вы перевели; ваш долг — в {CURRENCY_SIGN[debtCurrency]}, в него она зачтётся по
-              курсу Нацбанка.
-            </small>
-          </label>
-          <label>
-            Комментарий (необязательно)
-            <input name="comment" maxLength={500} placeholder="Например: перевёл на карту" />
-          </label>
-          <ClaimPhotoField />
-          <button className="button primary" type="submit">
-            Отправить
-          </button>
-        </form>
-      </section>
 
       <section className="panel">
         <h2>История</h2>
         {statement.entries.length ? (
-          <ul className="client-history">
+          <ul className="client-history client-history-scroll">
             {statement.entries.map((entry) => {
               const original = entry.kind === "payment" ? statement.originals?.[entry.id] : undefined;
               const showImage = Boolean(entry.invoice && !entry.opening && imagesLeft-- > 0);
@@ -271,6 +198,77 @@ export default async function ClientPage({
         ) : (
           <p className="muted">Операций пока нет.</p>
         )}
+      </section>
+
+      <section className="panel client-claim-panel" id="pay">
+        <h2>Оплатить</h2>
+        {balance > 0 && (accounts.length > 0 || pay?.qr_image) && (
+          <div className="client-pay">
+            {accounts.length > 0 && (
+              <ul className="client-accounts">
+                {accounts.map((a) => (
+                  <li key={a.label}>
+                    <span>
+                      <small className="muted">{a.label}</small>
+                      <strong>{a.value!.replace(/\D/g, "").length >= 9 ? phoneText(a.value) : a.value}</strong>
+                    </span>
+                    <CopyButton text={a.value!.replace(/\s/g, "")} />
+                  </li>
+                ))}
+              </ul>
+            )}
+            {pay?.qr_image && (
+              <figure className="client-qr">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={pay.qr_image} alt={`QR для оплаты магазину ${statement.shop_name}`} />
+                <figcaption className="muted">Отсканируйте в приложении банка</figcaption>
+              </figure>
+            )}
+            <p className="muted">После оплаты укажите сумму или приложите чек и нажмите «Отправить» — магазин подтвердит.</p>
+          </div>
+        )}
+        {submitError && (
+          <p className="form-error" role="alert">
+            {submitError === "photo"
+              ? "Не удалось загрузить фото. Попробуйте без фото или другим файлом."
+              : submitError === "amount"
+                ? "Введите сумму или приложите чек — тогда сумму прочитаем с него."
+                : submitError === "unread"
+                  ? "Не смогли прочитать сумму на чеке — введите её вручную."
+                  : submitError === "rate"
+                    ? "Курс сейчас недоступен — укажите сумму в валюте долга или попробуйте позже."
+                    : "Проверьте сумму и попробуйте снова."}
+          </p>
+        )}
+        <form action={submitClaim} className="simple-operation-form">
+          <input type="hidden" name="token" value={token} />
+          <fieldset className="amount-currency claim-currency">
+            <legend>В какой валюте перевели?</legend>
+            {claimCurrencies.map((c) => (
+              <label key={c} className="party-suggestion">
+                <input type="radio" name="currency" value={c} defaultChecked={c === debtCurrency} />
+                {CURRENCY_SIGN[c]}
+              </label>
+            ))}
+          </fieldset>
+          <label className="amount-field">
+            Сколько перевели?
+            <input name="amount" inputMode="decimal" pattern="[0-9 ]+([.,][0-9]{1,2})?" placeholder="0" />
+            <small className="muted">
+              Можно не вводить, если приложите чек, — сумму и валюту прочитаем с него. Оплата сохранится в той
+              валюте, в которой вы перевели; ваш долг — в {CURRENCY_SIGN[debtCurrency]}, в него она зачтётся по
+              курсу Нацбанка.
+            </small>
+          </label>
+          <label>
+            Комментарий (необязательно)
+            <input name="comment" maxLength={500} placeholder="Например: перевёл на карту" />
+          </label>
+          <ClaimPhotoField />
+          <button className="button primary" type="submit">
+            Отправить
+          </button>
+        </form>
       </section>
       <footer className="client-footer">
         <a href="https://depter.kg" className="text-button">

@@ -21,10 +21,10 @@ export async function submitClaim(form: FormData) {
     try {
       amount = decimalInput(rawAmount, 2);
     } catch {
-      redirect(`/c/${token}?error=invalid`);
+      redirect(`/c/${token}?error=invalid#pay`);
     }
   } else if (!hasPhoto) {
-    redirect(`/c/${token}?error=amount`);
+    redirect(`/c/${token}?error=amount#pay`);
   }
   const comment = String(form.get("comment") ?? "").trim().slice(0, 2000);
   const anon = createAnonClient();
@@ -37,7 +37,7 @@ export async function submitClaim(form: FormData) {
     try {
       documentId = await uploadClaimPhoto(anon, token, photo);
     } catch {
-      redirect(`/c/${token}?error=photo`);
+      redirect(`/c/${token}?error=photo#pay`);
     }
     buffer = Buffer.from(await photo.arrayBuffer());
     mimeType = documentMimeType(photo);
@@ -49,7 +49,7 @@ export async function submitClaim(form: FormData) {
   if (!amount && buffer) {
     receipt = await recognizeClaimReceipt(buffer, mimeType);
     const read = Number(receipt?.result.amount);
-    if (!(read > 0) || read >= 1e14) redirect(`/c/${token}?error=unread`);
+    if (!(read > 0) || read >= 1e14) redirect(`/c/${token}?error=unread#pay`);
     amount = read.toFixed(2);
     if (isCurrency(receipt!.result.currency)) currency = receipt!.result.currency;
   }
@@ -63,7 +63,7 @@ export async function submitClaim(form: FormData) {
     if (isCurrency(debtCurrency) && currency !== debtCurrency) {
       const [strong, weak] = ratePair(currency, debtCurrency);
       const quote = (await officialRates([currency, debtCurrency]))[`${strong}/${weak}`];
-      if (!quote) redirect(`/c/${token}?error=rate`);
+      if (!quote) redirect(`/c/${token}?error=rate#pay`);
       original = { p_original_amount: amount!, p_original_currency: currency, p_fx_rate: String(quote.rate) };
     }
   }
@@ -75,7 +75,7 @@ export async function submitClaim(form: FormData) {
     p_receipt_document: documentId,
     ...(original ?? {}),
   });
-  if (result.error) redirect(`/c/${token}?error=invalid`);
+  if (result.error) redirect(`/c/${token}?error=invalid#pay`);
   // Номер перевода с квитанции — после ответа клиенту: если он уже есть в
   // оплате магазина, заявка помечается «Дубликат» (видят продавец и владелец).
   const paymentId = typeof result.data === "string" ? result.data : null;
