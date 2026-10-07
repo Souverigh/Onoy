@@ -13,6 +13,7 @@ import { MULTI_PAGE_MAX_SIDE, shrinkImage } from "@/lib/shrink-image";
 import { DOCUMENT_ACCEPT, MAX_PAGES, MAX_UPLOAD_BYTES } from "@/lib/pages";
 import { RuDateInput } from "./ru-date-input";
 import { ContactPicker, PhoneField } from "./contact-picker";
+import { InfoTip } from "./info-tip";
 
 export type ImportParty = {
   id: string;
@@ -175,20 +176,10 @@ export function NotebookImport({
 
   return (
     <section className="panel notebook-import">
-      <div className="notebook-actions">
+      {/* Одна кнопка на фото: без capture телефон сам предложит камеру, галерею или файлы. */}
+      <div className="notebook-photo">
         <label className="button primary">
-          {recognizing ? "Читаем страницы…" : "Сфотографировать страницы тетради"}
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="sr-only"
-            disabled={recognizing}
-            onChange={recognize}
-          />
-        </label>
-        <label className="button">
-          Выбрать фото или PDF
+          {recognizing ? "Читаем страницы…" : "Фото страниц тетради"}
           <input
             type="file"
             accept={DOCUMENT_ACCEPT}
@@ -198,19 +189,22 @@ export function NotebookImport({
             onChange={recognize}
           />
         </label>
-        <button type="button" className="button" onClick={() => setRows((r) => [...r, newRow()])}>
-          + Добавить строку вручную
+        <InfoTip>
+          Снимите страницы камерой или выберите готовые фото или PDF. До {MAX_PAGES} страниц за
+          раз; можно частями.
+        </InfoTip>
+      </div>
+      <div className="notebook-manual">
+        <span className="muted">или</span>
+        <button type="button" className="text-button" onClick={() => setRows((r) => [...r, newRow()])}>
+          + вписать вручную
         </button>
         <ContactPicker
-          label="+ Из контактов телефона"
+          compact
+          label="+ из контактов"
           onPick={({ name, phone }) => setRows((r) => [...r, newRow(name, phone)])}
         />
       </div>
-      <p className="operation-hint">
-        Сумма — сколько {kind === "customers" ? "клиент должен вам" : "вы должны поставщику"} на
-        сегодня. Со знаком минус — аванс. До {MAX_PAGES} страниц за раз; можно фотографировать
-        частями.
-      </p>
       {note && <p className="notice">{note}</p>}
       {warnings.length > 0 && (
         <div className="photo-check-mismatch">
@@ -254,7 +248,13 @@ export function NotebookImport({
                     />
                   </label>
                   <label>
-                    Сумма долга
+                    <span className="label-with-tip">
+                      Сумма долга
+                      <InfoTip>
+                        Сколько {kind === "customers" ? "клиент должен вам" : "вы должны поставщику"} на сегодня.
+                        Со знаком минус — аванс.
+                      </InfoTip>
+                    </span>
                     <input
                       value={row.amount}
                       inputMode="decimal"
@@ -268,7 +268,7 @@ export function NotebookImport({
                       label="Дата долга"
                       value={row.date}
                       onChange={(next) => update(row.key, { date: next ?? "" })}
-                      hint={<small className="muted">{row.date ? "Давность — с этой даты" : "Нет даты — с сегодня"}</small>}
+                      tip="Давность долга считается с этой даты. Нет даты в тетради — оставьте пустым, считаем с сегодня."
                     />
                   )}
                   {!row.partyId && (

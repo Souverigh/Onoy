@@ -97,7 +97,7 @@ export default async function DirectoryPage({
             <InfoTip>{meta.description}</InfoTip>
           </h1>
         </div>
-        <div className="heading-actions">
+        <div className="heading-actions directory-heading-actions">
           {kind !== "products" && (
             <Link className="button" href={`/import?kind=${kind}`}>
               Из тетради
@@ -276,6 +276,18 @@ export default async function DirectoryPage({
           </div>
         </div>
       </section>
+      {/* На телефоне кнопки — внизу, над нижней панелью: под большим пальцем и не теснят заголовок. */}
+      <div className="directory-bottom-actions">
+        {kind !== "products" && (
+          <Link className="button" href={`/import?kind=${kind}`}>
+            Из тетради
+          </Link>
+        )}
+        <Link className="button primary" href={`/${kind}/new`}>
+          <Icon name="plus" />
+          {meta.single}
+        </Link>
+      </div>
     </>
   );
 }

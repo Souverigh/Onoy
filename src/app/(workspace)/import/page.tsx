@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getContext } from "@/lib/context";
 import { NotebookImport, type ImportParty } from "@/components/notebook-import";
+import { InfoTip } from "@/components/info-tip";
 
 export default async function ImportPage({
   searchParams,
@@ -58,19 +59,21 @@ export default async function ImportPage({
       <div className="page-heading">
         <div>
           <span className="eyebrow">ПОДКЛЮЧЕНИЕ МАГАЗИНА</span>
-          <h1>Перенос тетради</h1>
-          <p className="muted">
-            Текущие долги из бумажной тетради — один раз, при подключении. Сфотографируйте
-            страницы или впишите вручную, проверьте список и сохраните.
-          </p>
+          <h1 className="label-with-tip">
+            Перенос тетради
+            <InfoTip>
+              Текущие долги из бумажной тетради — один раз, при подключении. Сфотографируйте
+              страницы или впишите вручную, проверьте список и сохраните.
+            </InfoTip>
+          </h1>
         </div>
       </div>
       <div className="tabs">
         <Link className={kind === "customers" ? "selected" : ""} href="/import?kind=customers">
-          Клиенты мне должны
+          Мне должны
         </Link>
         <Link className={kind === "suppliers" ? "selected" : ""} href="/import?kind=suppliers">
-          Я должен поставщикам
+          Я должен
         </Link>
       </div>
       <NotebookImport key={kind} kind={kind} parties={list} />

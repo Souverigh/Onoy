@@ -2981,14 +2981,26 @@ tr.line-mismatch {
 }
 
 /* Перенос тетради */
-.notebook-actions {
+.notebook-photo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.notebook-photo label.button {
+  cursor: pointer;
+}
+/* Ручной ввод — вторым планом, ссылками под кнопкой фото. */
+.notebook-manual {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 12px;
+  align-items: center;
+  gap: 4px 14px;
+  margin: 12px 0;
 }
-.notebook-actions label.button {
-  cursor: pointer;
+@media (max-width: 560px) {
+  .notebook-photo label.button {
+    flex: 1;
+  }
 }
 .notebook-rows {
   list-style: none;
@@ -3008,10 +3020,11 @@ tr.line-mismatch {
 }
 .notebook-row-fields {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
+  grid-template-columns: 2fr 1fr 1fr 1.5fr;
   gap: 10px;
 }
-.notebook-row-fields label {
+.notebook-row-fields label,
+.notebook-row-fields .ru-date-field {
   display: flex;
   flex-direction: column;
   color: #536457;
@@ -3020,8 +3033,15 @@ tr.line-mismatch {
   gap: 4px;
 }
 .notebook-row-fields input {
-  min-height: 42px;
+  min-height: 44px;
   padding: 8px 10px;
+}
+/* Подписи всех полей строки — одной высоты, поля — на одной линии. */
+.notebook-row-fields .label-with-tip {
+  min-height: 20px;
+}
+.notebook-row-fields .contact-icon-button {
+  height: 100%;
 }
 .notebook-row-meta {
   display: flex;
@@ -3055,7 +3075,8 @@ tr.line-mismatch {
   .notebook-row-fields {
     grid-template-columns: 1fr 1fr;
   }
-  .notebook-row-fields label:first-child {
+  .notebook-row-fields label:first-child,
+  .notebook-row-fields label:has(.phone-field) {
     grid-column: 1 / -1;
   }
   .notebook-save {
@@ -5267,18 +5288,22 @@ tr.row-link:has(a[data-pending]) {
 .form-grid > * {
   min-width: 0;
 }
-/* «Склад» на телефоне: «Из Excel» и «+ Товар» — внизу, над нижней панелью. */
-.stock-bottom-actions {
+/* «Склад» на телефоне: «Из Excel» и «+ Товар» — внизу, над нижней панелью.
+   Так же «Клиенты» и «Поставщики»: «Из тетради» и «+ Добавить». */
+.stock-bottom-actions,
+.directory-bottom-actions {
   display: none;
 }
 @media (max-width: 560px) {
   .form-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-  .stock-heading-actions {
+  .stock-heading-actions,
+  .directory-heading-actions {
     display: none;
   }
-  .stock-bottom-actions {
+  .stock-bottom-actions,
+  .directory-bottom-actions {
     position: fixed;
     left: 0;
     right: 0;
@@ -5292,7 +5317,10 @@ tr.row-link:has(a[data-pending]) {
     border-top: 1px solid var(--line);
   }
   /* Последний товар списка не прячется под кнопками. */
-  .content:has(.stock-bottom-actions) {
+  .directory-bottom-actions > :only-child {
+    grid-column: 1 / -1;
+  }
+  .content:has(.stock-bottom-actions, .directory-bottom-actions) {
     padding-bottom: calc(var(--bottom-nav) + 24px + 70px);
   }
 }

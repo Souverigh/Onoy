@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { isoDate, isoTime, maskDate, maskTime, ruDate } from "@/lib/ru-date";
+import { InfoTip } from "./info-tip";
 
 export { bishkekNow } from "@/lib/ru-date";
 
@@ -19,12 +20,15 @@ export function RuDateInput({
   onChange,
   withTime = false,
   hint,
+  tip,
 }: {
   label: string;
   value: string;
   onChange: (value: string | null) => void;
   withTime?: boolean;
   hint?: React.ReactNode;
+  /** Пояснение под значком «!» рядом с подписью — вместо строки под полем. */
+  tip?: React.ReactNode;
 }) {
   const [dateText, setDateText] = useState(ruDate(value));
   const [timeText, setTimeText] = useState(value.slice(11, 16));
@@ -42,7 +46,14 @@ export function RuDateInput({
 
   return (
     <div className="ru-date-field">
-      <span>{label}</span>
+      {tip ? (
+        <span className="label-with-tip">
+          {label}
+          <InfoTip>{tip}</InfoTip>
+        </span>
+      ) : (
+        <span>{label}</span>
+      )}
       <div className="ru-date-inputs">
         <input
           inputMode="numeric"
