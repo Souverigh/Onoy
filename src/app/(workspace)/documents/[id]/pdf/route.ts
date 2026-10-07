@@ -29,7 +29,7 @@ export async function GET(
   if (doc.error || !doc.data)
     return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  let partyName = "—";
+  let partyName = "-";
   let partyPhone = "";
   let saleId: string | null = null;
   let customerId: string | null = null;

@@ -102,8 +102,8 @@ export async function recentRecords(db: SupabaseClient, organizationId: string, 
           r.status === "pending"
             ? r.duplicate_of
               ? r.created_by
-                ? "Оплата — дубликат, на проверке"
-                : "Заявка «Я оплатил» — дубликат"
+                ? "Оплата - дубликат, на проверке"
+                : "Заявка «Я оплатил» - дубликат"
               : "Заявка «Я оплатил»"
             : paymentLabelWithSide(r.kind as PaymentKind, r.direction as "incoming" | "outgoing", r.is_opening),
         party: (partyId && names.get(partyId)) || "",

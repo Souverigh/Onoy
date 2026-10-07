@@ -38,7 +38,7 @@ export function LeaveGuard({ active, title = "Фото не сохранено. 
     <ConfirmDialog
       open={target !== null}
       title={title}
-      text={text ?? "Запись не сделана — фото и сумма пропадут."}
+      text={text ?? "Запись не сделана - фото и сумма пропадут."}
       danger
       confirmLabel="Да, уйти"
       cancelLabel="Нет, остаться"

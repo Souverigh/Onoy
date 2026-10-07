@@ -19,12 +19,12 @@ import { RuDateInput } from "@/components/ru-date-input";
 const ERRORS: Record<string, string> = {
   amount: "Введите сумму больше нуля.",
   note: "Для «Прочее» напишите, на что потратили.",
-  date: "Дата — не в будущем и не раньше чем год назад.",
+  date: "Дата - не в будущем и не раньше чем год назад.",
   photo_upload: "Не удалось загрузить фото. Попробуйте ещё раз или запишите без фото.",
   photo_used: "Это фото уже приложено к другой записи. Выберите другое фото.",
-  blocked: "Магазин в режиме «только просмотр» — новые записи недоступны.",
+  blocked: "Магазин в режиме «только просмотр» - новые записи недоступны.",
   retry: "Этот расход уже отправлялся. Проверьте список расходов.",
-  network: "Нет связи с сервером. Нажмите «Записать» ещё раз — второй расход не появится.",
+  network: "Нет связи с сервером. Нажмите «Записать» ещё раз - второй расход не появится.",
   invalid: "Проверьте сумму и категорию.",
   save: "Не удалось сохранить. Попробуйте ещё раз.",
 };
@@ -109,7 +109,7 @@ export function ExpenseForm({
       setDateValue(day);
     }
     if (isExpenseCategory(r.category)) setCategory((prev) => prev || r.category);
-    const text = [r.description, r.vendor].filter(Boolean).join(" — ").slice(0, 500);
+    const text = [r.description, r.vendor].filter(Boolean).join(" - ").slice(0, 500);
     if (text) setNote((prev) => (prev.trim() ? prev : text));
   }
 
@@ -245,7 +245,7 @@ export function ExpenseForm({
           </div>
         )}
         {pages.length === 0 && (
-          <small className="muted">Сфотографируйте чек — сумму, дату и категорию заполним сами.</small>
+          <small className="muted">Сфотографируйте чек - сумму, дату и категорию заполним сами.</small>
         )}
         {checking && <p className="muted">Читаем чек…</p>}
         {!checking && recognized && (
@@ -256,10 +256,10 @@ export function ExpenseForm({
           </p>
         )}
         {!checking && check?.ok && check.result.document_class === "not_document" && (
-          <p className="notice">На фото не видно чека — заполните поля вручную.</p>
+          <p className="notice">На фото не видно чека - заполните поля вручную.</p>
         )}
         {!checking && check && !check.ok && check.error === "recognition_failed" && (
-          <p className="notice">Чек прочитать не удалось — заполните поля вручную, фото сохранится.</p>
+          <p className="notice">Чек прочитать не удалось - заполните поля вручную, фото сохранится.</p>
         )}
         {!checking && check && !check.ok && check.error === "photo_used" && (
           <p className="form-error">{ERRORS.photo_used}</p>
@@ -268,11 +268,11 @@ export function ExpenseForm({
           <p className="form-error">{ERRORS.photo_upload}</p>
         )}
         {check?.duplicate && (
-          <p className="notice">Это фото уже приложено к другой записи — проверьте, не задвоилось ли.</p>
+          <p className="notice">Это фото уже приложено к другой записи - проверьте, не задвоилось ли.</p>
         )}
         {recognized && recognized.currency && recognized.currency !== currency && paperAmount !== null && (
           <p className="notice">
-            Чек в {CURRENCY_SIGN[recognized.currency]} — введите сумму в {CURRENCY_SIGN[currency as Currency] ?? currency}.
+            Чек в {CURRENCY_SIGN[recognized.currency]} - введите сумму в {CURRENCY_SIGN[currency as Currency] ?? currency}.
           </p>
         )}
       </div>

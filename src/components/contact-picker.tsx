@@ -66,7 +66,7 @@ export function ContactPicker({
     const [contact, ...rest] = parseVcards(await file.text());
     if (!contact) return setNote("В файле нет контакта с именем и телефоном.");
     onPick(contact);
-    if (rest.length) setNote(`В файле ${rest.length + 1} контактов — взяли первый: ${contact.name}.`);
+    if (rest.length) setNote(`В файле ${rest.length + 1} контактов - взяли первый: ${contact.name}.`);
   }
 
   return (
@@ -98,7 +98,7 @@ export function ContactPicker({
       {help && (
         <small className="contact-picker-help">
           Этот браузер не открывает контакты телефона. Откройте depter.kg в{" "}
-          <strong>Google Chrome</strong> — там кнопка сразу покажет контакты. Или впишите имя и
+          <strong>Google Chrome</strong> - там кнопка сразу покажет контакты. Или впишите имя и
           телефон вручную.{" "}
           <button
             type="button"

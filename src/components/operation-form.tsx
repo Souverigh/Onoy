@@ -83,14 +83,14 @@ const SAME_PARTY = 0.6;
 const OTHER_DOCUMENT_TEXT: Record<Exclude<DocumentVerdict & { ok: false }, { reason: "direction" }>["reason"], string> = {
   receipt: "Похоже, это чек или квитанция об оплате, а не накладная.",
   statement:
-    "Похоже, это выписка или акт сверки поставщика, а не накладная. Записывать его как товар от поставщика не нужно — импорт сверки появится позже.",
-  price_list: "Похоже, это прайс-лист, а не накладная — долг по нему не записывают.",
+    "Похоже, это выписка или акт сверки поставщика, а не накладная. Записывать его как товар от поставщика не нужно - импорт сверки появится позже.",
+  price_list: "Похоже, это прайс-лист, а не накладная - долг по нему не записывают.",
   notebook: "Похоже, это страница тетради долгов, а не накладная.",
   not_document: "На фото не видно документа. Сфотографируйте накладную целиком.",
 };
 
 const PHOTO_USED_TEXT =
-  "Это фото уже приложено к другой записи. Проверьте историю — возможно, запись уже есть. Разрешить повторное использование фото можно в настройках.";
+  "Это фото уже приложено к другой записи. Проверьте историю - возможно, запись уже есть. Разрешить повторное использование фото можно в настройках.";
 
 export function OperationForm({
   kind,
@@ -359,8 +359,8 @@ export function OperationForm({
   const overpayment =
     kind === "payment" && partyBalance != null && over > 0.005
       ? partyBalance > 0
-        ? `Долг ${money(partyBalance, debtCurrency)}, вносите ${quantity(debtAmount.toFixed(2))} — переплата ${money(over, debtCurrency)}. Записать?`
-        : `Долга нет${partyBalance < 0 ? ` (уже аванс ${money(-partyBalance, debtCurrency)})` : ""}, вносите ${quantity(debtAmount.toFixed(2))} — переплата ${money(over, debtCurrency)}. Записать?`
+        ? `Долг ${money(partyBalance, debtCurrency)}, вносите ${quantity(debtAmount.toFixed(2))} - переплата ${money(over, debtCurrency)}. Записать?`
+        : `Долга нет${partyBalance < 0 ? ` (уже аванс ${money(-partyBalance, debtCurrency)})` : ""}, вносите ${quantity(debtAmount.toFixed(2))} - переплата ${money(over, debtCurrency)}. Записать?`
       : null;
   // Долг до → после записи (задача 18): «Долг 4 150 → станет 2 650».
   const debtAfter =
@@ -385,23 +385,23 @@ export function OperationForm({
     kind === "purchase" || (kind === "payment" && direction === "outgoing") ? "поставщика" : "клиента";
   const describeError = (error: string | undefined | null) =>
     error === "retry"
-      ? "Эта запись уже сохранена — возможно, при прошлой попытке. Проверьте историю."
+      ? "Эта запись уже сохранена - возможно, при прошлой попытке. Проверьте историю."
       : error === "amount"
         ? "Введите сумму больше нуля."
         : error === "rate"
-          ? "Укажите курс — число больше нуля."
+          ? "Укажите курс - число больше нуля."
           : error === "currency"
             ? "Проверьте валюту и курс."
         : error === "party"
           ? `Выберите ${partyWord} из списка.`
           : error === "blocked"
-            ? "Магазин в режиме «только просмотр» — новые записи не сохраняются. Продлите оплату."
+            ? "Магазин в режиме «только просмотр» - новые записи не сохраняются. Продлите оплату."
             : error === "network"
-              ? "Нет связи с сервером — запись не сохранена. Проверьте интернет и нажмите ещё раз: вторая запись не появится."
+              ? "Нет связи с сервером - запись не сохранена. Проверьте интернет и нажмите ещё раз: вторая запись не появится."
       : error === "duplicate"
-        ? "Оплата с таким номером перевода уже записана — этот чек уже учтён. Проверьте историю клиента или поставщика."
+        ? "Оплата с таким номером перевода уже записана - этот чек уже учтён. Проверьте историю клиента или поставщика."
         : error === "photo"
-          ? "Приложите фото накладной — без него запись не сохранится."
+          ? "Приложите фото накладной - без него запись не сохранится."
           : error === "photo_used"
             ? PHOTO_USED_TEXT
             : error === "photo_upload"
@@ -439,7 +439,7 @@ export function OperationForm({
       <small className="muted">
         {quote
           ? `${quote.source} на ${quote.date}: ${formatRate(quote.rate)}. Можно поправить.`
-          : "Официальный курс сейчас недоступен — введите курс."}
+          : "Официальный курс сейчас недоступен - введите курс."}
       </small>
     </label>
   );
@@ -585,7 +585,7 @@ export function OperationForm({
     setPages(next);
     void checkPages(next);
     if (pages.length + picked.length > MAX_PAGES)
-      setCheckNote(`Не больше ${MAX_PAGES} страниц в одной накладной — лишние не добавлены.`);
+      setCheckNote(`Не больше ${MAX_PAGES} страниц в одной накладной - лишние не добавлены.`);
   }
 
   function removePage(index: number) {
@@ -639,7 +639,7 @@ export function OperationForm({
         verdict: null,
         suggestions: [],
       });
-      setCheckNote("Не удалось быстро сверить сумму — сверим после сохранения.");
+      setCheckNote("Не удалось быстро сверить сумму - сверим после сохранения.");
     }
   }
 
@@ -716,7 +716,7 @@ export function OperationForm({
     } catch (err) {
       console.error("recognizeInvoicePhoto failed", err);
       if (request === photoRequest.current)
-        setCheckNote("Не удалось быстро сверить сумму — сверим после сохранения.");
+        setCheckNote("Не удалось быстро сверить сумму - сверим после сохранения.");
     } finally {
       if (request === photoRequest.current) setChecking(false);
     }
@@ -782,7 +782,7 @@ export function OperationForm({
           if ("error" in found) {
             setContactNote(
               found.error === "name"
-                ? "У контакта нет имени — добавьте клиента вручную."
+                ? "У контакта нет имени - добавьте клиента вручную."
                 : "Не удалось добавить клиента. Попробуйте ещё раз.",
             );
             return;
@@ -901,7 +901,7 @@ export function OperationForm({
         {kind !== "payment" && noInvoice && !hasPhoto && (
           <div className="photo-field no-invoice">
             <p className="muted">
-              Без накладной — запишем только сумму. В истории будет пометка «без накладной».
+              Без накладной - запишем только сумму. В истории будет пометка «без накладной».
             </p>
             <button type="button" className="text-button" onClick={() => setNoInvoice(false)}>
               Приложить фото накладной
@@ -915,8 +915,8 @@ export function OperationForm({
               {pages.length > 0 && <span className="muted"> · страниц: {pages.length}</span>}
               {pages.length === 0 && !useExisting && (
                 <InfoTip>
-                  {kind === "sale" ? "Клиента" : "Поставщика"} и сумму подставим с фото. Несколько листов — по
-                  порядку, PDF — целиком.
+                  {kind === "sale" ? "Клиента" : "Поставщика"} и сумму подставим с фото. Несколько листов - по
+                  порядку, PDF - целиком.
                 </InfoTip>
               )}
             </span>
@@ -1010,7 +1010,7 @@ export function OperationForm({
                   if (localError === "photo") setLocalError(null);
                 }}
               >
-                Накладной нет — записать сумму
+                Накладной нет - записать сумму
               </button>
             )}
             <input
@@ -1044,13 +1044,13 @@ export function OperationForm({
                     : receiptCheck?.ok
                       ? receiptCheck.amount
                         ? `С чека: ${money(receiptCheck.amount, receiptCheck.currency ?? docCurrency)}. Проверьте поля ниже.`
-                        : "Сумму на чеке не нашли — введите вручную."
+                        : "Сумму на чеке не нашли - введите вручную."
                       : receiptCheck?.error === "photo_used"
                         ? PHOTO_USED_TEXT
                         : receiptCheck?.error === "upload_failed"
-                          ? "Чек не загрузился — отправим вместе с оплатой."
+                          ? "Чек не загрузился - отправим вместе с оплатой."
                           : receiptCheck
-                            ? "Чек прочитать не удалось — заполните поля вручную, чек сохранится."
+                            ? "Чек прочитать не удалось - заполните поля вручную, чек сохранится."
                             : null}
                 </span>
                 <button
@@ -1131,7 +1131,7 @@ export function OperationForm({
             <span className="muted">
               На накладной: «{invoiceName}»
               {suggestions.length === 0 &&
-                (kind === "sale" ? " — такого клиента нет в списке." : " — такого поставщика нет в списке.")}
+                (kind === "sale" ? " - такого клиента нет в списке." : " - такого поставщика нет в списке.")}
               {suggestions.length > 0 && " · похоже, это:"}
             </span>
             <div className="party-suggestions-list">
@@ -1182,9 +1182,9 @@ export function OperationForm({
             Сколько?
             <InfoTip>
               {kind === "purchase"
-                ? "Сумма сразу добавится к долгу перед поставщиком. Фото — основание записи."
+                ? "Сумма сразу добавится к долгу перед поставщиком. Фото - основание записи."
                 : kind === "sale"
-                  ? "Сумма сразу добавится к долгу клиента. Если клиент заплатил — отметьте наличные."
+                  ? "Сумма сразу добавится к долгу клиента. Если клиент заплатил - отметьте наличные."
                   : direction === "incoming"
                     ? "Оплата сразу уменьшит долг клиента."
                     : "Оплата сразу уменьшит ваш долг поставщику."}
@@ -1244,8 +1244,8 @@ export function OperationForm({
           <div className="photo-check-mismatch document-kind-warning" role="status">
             <p>
               Похоже, накладная в валюте {CURRENCY_SIGN[currencyHint]}
-              {recognized?.currency_evidence === "symbol" ? " — так написано на документе." : " — судя по ценам."} Суммы
-              на бумаге — в {CURRENCY_SIGN[currencyHint]}.
+              {recognized?.currency_evidence === "symbol" ? " - так написано на документе." : " - судя по ценам."} Суммы
+              на бумаге - в {CURRENCY_SIGN[currencyHint]}.
             </p>
             <div className="simple-operation-actions">
               <button
@@ -1280,8 +1280,8 @@ export function OperationForm({
                 {verdict.reason === "direction" ? (
                   <p>
                     {verdict.suggestedKind === "purchase"
-                      ? `Это накладная от поставщика${verdict.counterparty ? ` «${verdict.counterparty}»` : ""} вам — похоже на товар от поставщика, а не продажу.`
-                      : `Это накладная от вашего магазина${verdict.counterparty ? ` покупателю «${verdict.counterparty}»` : ""} — похоже на продажу, а не товар от поставщика.`}
+                      ? `Это накладная от поставщика${verdict.counterparty ? ` «${verdict.counterparty}»` : ""} вам - похоже на товар от поставщика, а не продажу.`
+                      : `Это накладная от вашего магазина${verdict.counterparty ? ` покупателю «${verdict.counterparty}»` : ""} - похоже на продажу, а не товар от поставщика.`}
                   </p>
                 ) : (
                   <p>{OTHER_DOCUMENT_TEXT[verdict.reason]}</p>
@@ -1320,12 +1320,12 @@ export function OperationForm({
                     </Link>
                   )}
                 </div>
-                <small className="muted">Если это всё-таки накладная — просто подтвердите запись ниже.</small>
+                <small className="muted">Если это всё-таки накладная - просто подтвердите запись ниже.</small>
               </div>
             )}
             {checkedPhoto?.verdict?.fragment && (
               <p className="photo-check-mismatch" role="status">
-                Похоже, на фото только часть накладной — добавьте остальные страницы, иначе сумма
+                Похоже, на фото только часть накладной - добавьте остальные страницы, иначе сумма
                 будет неполной.
               </p>
             )}
@@ -1343,8 +1343,8 @@ export function OperationForm({
                       })}{" "}
                       · {record.party} · {money(record.total, debtCurrency)}
                       {record.reason === "content"
-                        ? " — те же позиции в накладной"
-                        : kind === "sale" ? " — тот же клиент и сумма" : " — тот же поставщик и сумма"}
+                        ? " - те же позиции в накладной"
+                        : kind === "sale" ? " - тот же клиент и сумма" : " - тот же поставщик и сумма"}
                       {record.documentId && (
                         <>
                           {" · "}
@@ -1356,18 +1356,18 @@ export function OperationForm({
                     </li>
                   ))}
                 </ul>
-                Если это новая запись — просто подтвердите.
+                Если это новая запись - просто подтвердите.
               </div>
             )}
             {checkedPhoto?.duplicate && (
               <div className="duplicate-warning" role="alert">
                 <strong>Дубликат</strong>
-                <p>Это фото уже приложено к другой записи — сохранится как дубликат. Проверьте, не задвоилось ли.</p>
+                <p>Это фото уже приложено к другой записи - сохранится как дубликат. Проверьте, не задвоилось ли.</p>
               </div>
             )}
             {checkedPhoto?.result && noPrices && (
               <p className="photo-check-mismatch" role="status">
-                Цен в накладной не нашли — введите сумму вручную.
+                Цен в накладной не нашли - введите сумму вручную.
                 {paperTotal != null && <> Итог накладной: {money(paperTotal, docCurrency)}.</>}
               </p>
             )}
@@ -1379,7 +1379,7 @@ export function OperationForm({
               <p className="photo-check-mismatch">
                 Сумма строк: {money(checkedPhoto.result.total_computed, docCurrency)}
                 {paperTotal != null && <> · итог накладной: {money(paperTotal, docCurrency)}</>}
-                {checkMismatch && " — отличается от введённой суммы"}
+                {checkMismatch && " - отличается от введённой суммы"}
               </p>
             )}
             {paperMismatch && (
@@ -1394,7 +1394,7 @@ export function OperationForm({
           <label>
             <span className="label-with-tip label-with-tip-inline">
               Сразу оплатили поставщику, {CURRENCY_SIGN[debtCurrency]} (необязательно)
-              <InfoTip>Запишем оплату поставщику вместе с товаром — долг перед ним вырастет только на остаток.</InfoTip>
+              <InfoTip>Запишем оплату поставщику вместе с товаром - долг перед ним вырастет только на остаток.</InfoTip>
             </span>
             <input
               name="paid_now"
@@ -1465,8 +1465,8 @@ export function OperationForm({
         {overLimit && (
           <p className="form-error limit-warning" role="alert">
             {overLimit.alreadyOver && !amountFromInput(amountValue)
-              ? `Долг клиента уже ${money(overLimit.debtAfter, debtCurrency)} — больше лимита ${money(overLimit.limit, debtCurrency)}.`
-              : `Долг станет ${money(overLimit.debtAfter, debtCurrency)} — больше лимита ${money(overLimit.limit, debtCurrency)}.`}{" "}
+              ? `Долг клиента уже ${money(overLimit.debtAfter, debtCurrency)} - больше лимита ${money(overLimit.limit, debtCurrency)}.`
+              : `Долг станет ${money(overLimit.debtAfter, debtCurrency)} - больше лимита ${money(overLimit.limit, debtCurrency)}.`}{" "}
             Продать можно, но проверьте, стоит ли давать в долг.
           </p>
         )}
@@ -1482,7 +1482,7 @@ export function OperationForm({
                   timeZone: "Asia/Bishkek",
                 }).format(new Date(referenceDuplicate.occurredAt))}
                 {referenceDuplicate.party ? ` · ${referenceDuplicate.party}` : ""} ·{" "}
-                {money(referenceDuplicate.amount, referenceDuplicate.currency)}. Если записать — оплата уйдёт владельцу
+                {money(referenceDuplicate.amount, referenceDuplicate.currency)}. Если записать - оплата уйдёт владельцу
                 на проверку, долг не изменится.
                 {referenceDuplicate.href && (
                   <>
@@ -1494,7 +1494,7 @@ export function OperationForm({
                 )}
               </p>
             )}
-            {receiptCheck?.duplicate && <p>Этот чек уже приложен к другой записи — проверьте, не задвоилось ли.</p>}
+            {receiptCheck?.duplicate && <p>Этот чек уже приложен к другой записи - проверьте, не задвоилось ли.</p>}
           </div>
         )}
         {kind === "payment" && (
@@ -1530,7 +1530,7 @@ export function OperationForm({
           </details>
         )}
         {prefill && (
-          <p className="muted">Фото квитанции уже приложено — распознаём в фоне.</p>
+          <p className="muted">Фото квитанции уже приложено - распознаём в фоне.</p>
         )}
         {submitErrorText && !saving && (
           <p className="form-error" role="alert" ref={commitError}>

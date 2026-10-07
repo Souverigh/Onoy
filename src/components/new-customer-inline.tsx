@@ -70,7 +70,7 @@ export function NewCustomerInline({
       onCreated({ id: found.id, name: found.name, phone, balance: found.balance });
     } catch (err) {
       console.error("customerFromContact failed", err);
-      setNote("Нет связи с сервером — клиент не добавлен. Попробуйте ещё раз.");
+      setNote("Нет связи с сервером - клиент не добавлен. Попробуйте ещё раз.");
     } finally {
       setSaving(false);
     }

@@ -151,7 +151,7 @@ function Party({ label, party }: { label: string; party: InvoiceParty }) {
       </View>
       <Text style={styles.phone}>
         <Text style={styles.label}>ТЕЛ: </Text>
-        {phoneText(party.phone) || "—"}
+        {phoneText(party.phone) || "-"}
       </Text>
     </View>
   );
@@ -203,7 +203,7 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
         {data.clientUrl && (
           <View style={styles.qrRow} wrap={false}>
             <QrCode text={data.clientUrl} size={54} />
-            <Text style={styles.qrText}>Накладные, долг и оплата —{"\n"}по QR-коду</Text>
+            <Text style={styles.qrText}>Накладные, долг и оплата -{"\n"}по QR-коду</Text>
           </View>
         )}
 

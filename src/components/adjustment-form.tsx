@@ -140,7 +140,7 @@ export function AdjustmentForm({
         }
         if (debt != null && value - debt > 0.005) {
           e.preventDefault();
-          if (debt <= 0) setError(`Долга нет — ${word.toLowerCase()} записать нельзя: скидкой не делается аванс.`);
+          if (debt <= 0) setError(`Долга нет - ${word.toLowerCase()} записать нельзя: скидкой не делается аванс.`);
           else setAsk({ debt });
           return;
         }
@@ -205,7 +205,7 @@ export function AdjustmentForm({
             <span className="label-with-tip">
               Что вернул?
               <InfoTip>
-                Только товары, которые клиент брал за последние 90 дней, — по цене, по которой он купил. Сумма и
+                Только товары, которые клиент брал за последние 90 дней, - по цене, по которой он купил. Сумма и
                 комментарий посчитаются сами, товар со склада вернётся в остаток.
               </InfoTip>
             </span>
@@ -226,7 +226,7 @@ export function AdjustmentForm({
           {bought === null ? (
             <p className="muted">Ищем, что брал клиент…</p>
           ) : bought.length === 0 ? (
-            <p className="muted">За 90 дней покупок с товарами нет — введите сумму вручную.</p>
+            <p className="muted">За 90 дней покупок с товарами нет - введите сумму вручную.</p>
           ) : (
             found.length > 0 && (
               <ul className="return-found">
@@ -306,7 +306,7 @@ export function AdjustmentForm({
           {usingItems ? "Итого возврат" : "Сколько?"}
           <InfoTip>
             В валюте долга.
-            {debt != null && <> Долг сейчас: {money(debt.toFixed(2), currency)} — больше записать нельзя.</>}
+            {debt != null && <> Долг сейчас: {money(debt.toFixed(2), currency)} - больше записать нельзя.</>}
           </InfoTip>
         </span>
         <input
@@ -348,7 +348,7 @@ export function AdjustmentForm({
       <ConfirmDialog
         open={ask !== null}
         title={`${word} больше долга (${money((ask?.debt ?? 0).toFixed(2), currency)}). Записать ${money((ask?.debt ?? 0).toFixed(2), currency).replace(/\s\S+$/, "")}?`}
-        text="Скидкой или возвратом нельзя сделать аванс — запишем ровно на долг."
+        text="Скидкой или возвратом нельзя сделать аванс - запишем ровно на долг."
         confirmLabel="Да, записать"
         cancelLabel="Нет, исправить"
         onCancel={() => setAsk(null)}

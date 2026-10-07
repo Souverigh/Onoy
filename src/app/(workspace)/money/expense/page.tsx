@@ -28,7 +28,7 @@ export default async function ExpensePage({ searchParams }: { searchParams: Prom
       </div>
       {undone && (
         <p className="notice success" role="status">
-          Прошлый расход отменён — введите заново.
+          Прошлый расход отменён - введите заново.
         </p>
       )}
       <section className="panel form-panel">

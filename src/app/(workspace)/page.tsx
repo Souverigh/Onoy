@@ -17,7 +17,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
   const passwordNotice =
     password === "changed" ? (
       <p className="notice success" role="status">
-        Пароль изменён. Вход на других устройствах закрыт — там нужно войти с новым паролем.
+        Пароль изменён. Вход на других устройствах закрыт - там нужно войти с новым паролем.
       </p>
     ) : null;
   const review = db

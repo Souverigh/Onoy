@@ -56,7 +56,7 @@ export default async function AdminShops({
           <h1>Магазины</h1>
           <p className="muted">
             Всего {shops.length} · активных на этой неделе (≥ {ACTIVE_PER_WEEK} записей): {active}. Клиенты и
-            долги магазинов здесь не видны — только счётчики.
+            долги магазинов здесь не видны - только счётчики.
           </p>
         </div>
       </div>
@@ -97,7 +97,7 @@ export default async function AdminShops({
                 </div>
                 <div>
                   <dt>Последняя активность</dt>
-                  <dd>{s.last_activity ? date(s.last_activity) : "—"}</dd>
+                  <dd>{s.last_activity ? date(s.last_activity) : "-"}</dd>
                 </div>
                 <div>
                   <dt>Участников (продавцов)</dt>
@@ -114,7 +114,7 @@ export default async function AdminShops({
                   <dd>
                     {clicks
                       ? `${clicks.get(s.id)?.clicks_7d ?? 0} / ${clicks.get(s.id)?.clicks_30d ?? 0} / ${clicks.get(s.id)?.clicks_total ?? 0}`
-                      : "—"}
+                      : "-"}
                   </dd>
                 </div>
                 <div>

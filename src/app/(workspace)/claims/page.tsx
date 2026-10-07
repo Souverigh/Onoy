@@ -157,7 +157,7 @@ export default async function Claims({
       )}
       {done === "undone" && (
         <p className="notice success" role="status">
-          Подтверждение отменено — заявка снова ждёт.
+          Подтверждение отменено - заявка снова ждёт.
         </p>
       )}
       {done === "rejected" && (
@@ -244,10 +244,10 @@ export default async function Claims({
                     {money(check.receipt.amount, check.receipt.currency)}
                     {check.inDebt != null && check.receipt.currency !== currency && <> ≈ {money(check.inDebt, currency)}</>}
                     {check.diff == null
-                      ? ` — чек в ${IN_CURRENCY[check.receipt.currency]}, курс недоступен`
+                      ? ` - чек в ${IN_CURRENCY[check.receipt.currency]}, курс недоступен`
                       : differs
-                        ? ` — ${check.diff > 0 ? "больше" : "меньше"} на ${money(Math.abs(check.diff), currency)}`
-                        : " — совпадает"}
+                        ? ` - ${check.diff > 0 ? "больше" : "меньше"} на ${money(Math.abs(check.diff), currency)}`
+                        : " - совпадает"}
                   </p>
                 )}
                 {party?.balance != null && (
@@ -357,7 +357,7 @@ export default async function Claims({
                 <li key={p.id}>
                   <span>
                     <strong>
-                      {who?.name ?? "—"} ·{" "}
+                      {who?.name ?? "-"} ·{" "}
                       {p.reversed_at ? "отменена" : p.status === "confirmed" ? "подтверждена" : "отклонена"}
                     </strong>
                     <small className="muted">

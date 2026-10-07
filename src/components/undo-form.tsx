@@ -36,7 +36,7 @@ export function UndoForm({
         className="button danger-outline"
         onClick={partPayment ? () => setAsking(true) : undefined}
       >
-        Отменить — ошиблись
+        Отменить - ошиблись
       </button>
       <small className="muted">Можно в течение 2 минут, без причины. Форма откроется снова с тем же фото и суммой.</small>
       {partPayment && (

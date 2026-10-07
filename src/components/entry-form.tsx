@@ -105,7 +105,7 @@ export function EntryForm({
           <label>
             В какой валюте долг
             <select name="currency" defaultValue={entry?.currency ?? ""}>
-              <option value="">Как у магазина — {CURRENCY_NAME[shopCurrency]}</option>
+              <option value="">Как у магазина - {CURRENCY_NAME[shopCurrency]}</option>
               {CURRENCIES.filter((c) => c !== shopCurrency).map((c) => (
                 <option key={c} value={c}>
                   {CURRENCY_NAME[c]} ({CURRENCY_SIGN[c]})
@@ -114,7 +114,7 @@ export function EntryForm({
             </select>
             <small className="muted">
               {kind === "suppliers"
-                ? "Если поставщик считает в долларах (как Хороз) — выберите доллар: долг будет в долларах, оплаты в сомах пересчитаются по курсу."
+                ? "Если поставщик считает в долларах (как Хороз) - выберите доллар: долг будет в долларах, оплаты в сомах пересчитаются по курсу."
                 : "Долг клиента ведётся в этой валюте; записи в другой валюте пересчитываются по курсу."}{" "}
               Сменить можно, пока нет записей.
             </small>
@@ -129,7 +129,7 @@ export function EntryForm({
                 defaultValue={entry?.credit_limit ?? ""}
               />
               <small className="muted">
-                Если долг после продажи станет больше — форма продажи предупредит.
+                Если долг после продажи станет больше - форма продажи предупредит.
               </small>
             </label>
           )}
@@ -151,12 +151,12 @@ export function EntryForm({
             : error === "currency_locked"
               ? "Валюту нельзя сменить: у него уже есть записи в прежней валюте."
             : error === "invalid"
-              ? "Проверьте заполнение полей. Суммы — неотрицательные числа, до 2 знаков после запятой."
+              ? "Проверьте заполнение полей. Суммы - неотрицательные числа, до 2 знаков после запятой."
               : "Не удалось сохранить запись. Повторите попытку."}
         </p>
       )}
       <div className="actions">
-        <Submit>{entry ? "Сохранить изменения" : draft ? "Нет, это новый — добавить" : "Добавить"}</Submit>
+        <Submit>{entry ? "Сохранить изменения" : draft ? "Нет, это новый - добавить" : "Добавить"}</Submit>
         <Link className="button" href={`/${kind}`}>
           Назад к списку
         </Link>

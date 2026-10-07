@@ -67,7 +67,7 @@ async function loadStatement(token: string) {
 function entryLabel(entry: Entry) {
   if (entry.opening) return entry.kind === "sale" ? "Долг из тетради" : "Аванс из тетради";
   if (entry.kind === "sale") return "Покупка";
-  if (entry.status === "pending") return "Оплата — ждёт подтверждения магазина";
+  if (entry.status === "pending") return "Оплата - ждёт подтверждения магазина";
   if (entry.status === "rejected")
     return `Заявка отклонена${entry.reject_comment ? `: ${entry.reject_comment}` : ""}`;
   return paymentLabel(entry.payment_kind);
@@ -97,11 +97,11 @@ export default async function ClientPage({
         </header>
         <section className="panel client-revoked">
           <h1>Ссылка больше не действует</h1>
-          <p>Напишите магазину — пришлют новую.</p>
+          <p>Напишите магазину - пришлют новую.</p>
           {shop.shop_phone && (
             <a
               className="button primary whatsapp"
-              href={waLink(shop.shop_phone, "Здравствуйте! Ссылка на мои накладные и долг больше не открывается — пришлите, пожалуйста, новую.")}
+              href={waLink(shop.shop_phone, "Здравствуйте! Ссылка на мои накладные и долг больше не открывается - пришлите, пожалуйста, новую.")}
             >
               Написать в WhatsApp
             </a>
@@ -143,12 +143,12 @@ export default async function ClientPage({
         <p className="client-balance-number">{money(Math.max(balance, 0), cur)}</p>
         {balance < 0 && <p className="muted">У вас аванс: {money(-balance, cur)}</p>}
         {balance > 0 && statement.promised_date && (
-          <p className="muted">Срок оплаты — до {dayMonth(statement.promised_date)}</p>
+          <p className="muted">Срок оплаты - до {dayMonth(statement.promised_date)}</p>
         )}
       </section>
       {claimed && (
         <p className="notice success" role="status">
-          Заявка отправлена.{fromReceipt ? " Сумму прочитали с чека." : ""} Магазин подтвердит оплату — долг
+          Заявка отправлена.{fromReceipt ? " Сумму прочитали с чека." : ""} Магазин подтвердит оплату - долг
           обновится после этого.
         </p>
       )}
@@ -224,7 +224,7 @@ export default async function ClientPage({
                 <figcaption className="muted">Отсканируйте в приложении банка</figcaption>
               </figure>
             )}
-            <p className="muted">После оплаты укажите сумму или приложите чек и нажмите «Отправить» — магазин подтвердит.</p>
+            <p className="muted">После оплаты укажите сумму или приложите чек и нажмите «Отправить» - магазин подтвердит.</p>
           </div>
         )}
         {submitError && (
@@ -232,11 +232,11 @@ export default async function ClientPage({
             {submitError === "photo"
               ? "Не удалось загрузить фото. Попробуйте без фото или другим файлом."
               : submitError === "amount"
-                ? "Введите сумму или приложите чек — тогда сумму прочитаем с него."
+                ? "Введите сумму или приложите чек - тогда сумму прочитаем с него."
                 : submitError === "unread"
-                  ? "Не смогли прочитать сумму на чеке — введите её вручную."
+                  ? "Не смогли прочитать сумму на чеке - введите её вручную."
                   : submitError === "rate"
-                    ? "Курс сейчас недоступен — укажите сумму в валюте долга или попробуйте позже."
+                    ? "Курс сейчас недоступен - укажите сумму в валюте долга или попробуйте позже."
                     : "Проверьте сумму и попробуйте снова."}
           </p>
         )}
@@ -255,8 +255,8 @@ export default async function ClientPage({
             Сколько перевели?
             <input name="amount" inputMode="decimal" pattern="[0-9 ]+([.,][0-9]{1,2})?" placeholder="0" />
             <small className="muted">
-              Можно не вводить, если приложите чек, — сумму и валюту прочитаем с него. Оплата сохранится в той
-              валюте, в которой вы перевели; ваш долг — в {CURRENCY_SIGN[debtCurrency]}, в него она зачтётся по
+              Можно не вводить, если приложите чек, - сумму и валюту прочитаем с него. Оплата сохранится в той
+              валюте, в которой вы перевели; ваш долг - в {CURRENCY_SIGN[debtCurrency]}, в него она зачтётся по
               курсу Нацбанка.
             </small>
           </label>

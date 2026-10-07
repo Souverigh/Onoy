@@ -65,8 +65,8 @@ export function ProductForm({ product, currency }: { product?: ProductEntry; cur
         )}
         <label>
           Код товара
-          <input name="sku" maxLength={80} autoComplete="off" defaultValue={product?.sku ?? ""} placeholder="Пусто — номер присвоим сами" />
-          <small className="muted">Артикул, штрихкод или свой номер — по нему тоже ищется.</small>
+          <input name="sku" maxLength={80} autoComplete="off" defaultValue={product?.sku ?? ""} placeholder="Пусто - номер присвоим сами" />
+          <small className="muted">Артикул, штрихкод или свой номер - по нему тоже ищется.</small>
         </label>
       </div>
       <details className="more-fields" open={Boolean(product && (Number(product.purchase_price) || Number(product.min_stock) || product.aliases.length))}>
@@ -88,7 +88,7 @@ export function ProductForm({ product, currency }: { product?: ProductEntry; cur
             <label>
               Минимальный остаток
               <input name="min_stock" inputMode="decimal" autoComplete="off" defaultValue={field(product?.min_stock)} placeholder="0" />
-              <small className="muted">Меньше — товар попадёт в «Мало на складе».</small>
+              <small className="muted">Меньше - товар попадёт в «Мало на складе».</small>
             </label>
           </div>
           <label>
@@ -97,7 +97,7 @@ export function ProductForm({ product, currency }: { product?: ProductEntry; cur
               name="aliases"
               rows={2}
               defaultValue={product?.aliases.join(", ") ?? ""}
-              placeholder="Как товар пишут в накладных поставщика или называют покупатели — через запятую"
+              placeholder="Как товар пишут в накладных поставщика или называют покупатели - через запятую"
             />
           </label>
         </div>

@@ -101,11 +101,11 @@ function ExpensesBlock({ s }: { s: DaySummary }) {
       <Row label="В кассе должно быть наличных" value={sum(net.left, cur)} strong />
       {s.counted != null && <Row label="В кассе по факту" value={sum(s.counted, cur)} />}
       {net.transferIn != null && net.transferIn > 0 && (
-        <Row label="Переводом — не в кассе" value={sum(net.transferIn, cur)} />
+        <Row label="Переводом - не в кассе" value={sum(net.transferIn, cur)} />
       )}
       {s.adjustments && (s.adjustments.discount > 0 || s.adjustments.return > 0) && (
         <Row
-          label="Скидки и возвраты клиентам — не деньги"
+          label="Скидки и возвраты клиентам - не деньги"
           value={sum(s.adjustments.discount + s.adjustments.return, cur)}
         />
       )}
@@ -122,7 +122,7 @@ function DayDocument({ data }: { data: DayPdfData }) {
       <Page size="A4" style={styles.page}>
         <Text style={styles.shopName}>{data.shopName}</Text>
         <Text style={styles.muted}>
-          Итог дня — {data.dateLabel}
+          Итог дня - {data.dateLabel}
           {data.closedAt ? ` · день закрыт в ${time(data.closedAt)}` : " · день не закрыт, цифры на сейчас"}
         </Text>
 
@@ -133,7 +133,7 @@ function DayDocument({ data }: { data: DayPdfData }) {
             key={part.currency}
             m={part}
             cur={part.currency}
-            title={`В валюте ${SIGN[part.currency] ?? part.currency} — отдельно от основных цифр`}
+            title={`В валюте ${SIGN[part.currency] ?? part.currency} - отдельно от основных цифр`}
           />
         ))}
         {data.after && (data.after.added.length > 0 || data.after.reversed.length > 0) && (

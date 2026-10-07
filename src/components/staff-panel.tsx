@@ -5,9 +5,9 @@ export type Member = { user_id: string; role: string; display_name: string | nul
 export type Invite = { id: string; token: string; display_name: string; expires_at: string };
 
 const statusText: Record<string, string> = {
-  invited: "Приглашение создано — отправьте ссылку продавцу.",
+  invited: "Приглашение создано - отправьте ссылку продавцу.",
   revoked: "Приглашение отменено.",
-  removed: "Сотрудник удалён — больше не войдёт в магазин.",
+  removed: "Сотрудник удалён - больше не войдёт в магазин.",
   renamed: "Имя сохранено.",
   name: "Введите имя (до 80 символов).",
   limit: "Лимит тарифа исчерпан: продавцы вместе с неиспользованными приглашениями.",
@@ -55,7 +55,7 @@ export function StaffPanel({
           <h2>Сотрудники</h2>
           <p className="muted">
             Продавец оформляет продажи, товар от поставщиков и оплаты. Отмена записей, скидки, заявки, итоги и закрытие
-            дня — только у владельца.
+            дня - только у владельца.
           </p>
         </div>
         {staffLimit !== undefined && (
@@ -162,8 +162,8 @@ export function StaffPanel({
       ) : (
         <p className="notice">
           {plan === "basic" && businessStaffLimit !== undefined && businessStaffLimit > staffLimit!
-            ? `На тарифе «Базовый» — до ${staffLimit} продавцов. На «Бизнес» — до ${businessStaffLimit}: напишите в Depter, чтобы подключить. `
-            : `На вашем тарифе — до ${staffLimit} продавцов. `}
+            ? `На тарифе «Базовый» - до ${staffLimit} продавцов. На «Бизнес» - до ${businessStaffLimit}: напишите в Depter, чтобы подключить. `
+            : `На вашем тарифе - до ${staffLimit} продавцов. `}
           Освободить место: удалите продавца или отмените приглашение.
         </p>
       )}

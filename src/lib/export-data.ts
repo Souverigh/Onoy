@@ -91,7 +91,7 @@ export async function exportSheets(
       columns: [
         { header: "Имя", width: 30 },
         { header: "Телефон", width: 18 },
-        { header: "Долг (минус — аванс)", width: 22, kind: "money" },
+        { header: "Долг (минус - аванс)", width: 22, kind: "money" },
         { header: "Валюта", width: 10 },
         { header: "Лимит долга", width: 18, kind: "money" },
         { header: "Обещал оплатить до", width: 20, kind: "date" },
@@ -109,7 +109,7 @@ export async function exportSheets(
       columns: [
         { header: "Название", width: 30 },
         { header: "Телефон", width: 18 },
-        { header: "Мы должны (минус — аванс)", width: 26, kind: "money" },
+        { header: "Мы должны (минус - аванс)", width: 26, kind: "money" },
         { header: "Валюта", width: 10 },
         { header: "Заметка", width: 40 },
         { header: "Добавлен", width: 18, kind: "date" },

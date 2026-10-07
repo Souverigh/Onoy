@@ -40,7 +40,7 @@ export default async function AdminCodes({
       <div className="page-heading">
         <div>
           <h1>Коды доступа</h1>
-          <p className="muted">Один код — один новый магазин. Продавцам код не нужен: их приглашает владелец.</p>
+          <p className="muted">Один код - один новый магазин. Продавцам код не нужен: их приглашает владелец.</p>
         </div>
       </div>
       {newCode && (

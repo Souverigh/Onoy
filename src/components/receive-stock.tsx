@@ -131,7 +131,7 @@ export function ReceiveStock({
       </div>
       {newCount > 0 && (
         <p className="operation-hint">
-          Новых товаров: {newCount} — появятся в «Складе» с ценой закупки из накладной.
+          Новых товаров: {newCount} - появятся в «Складе» с ценой закупки из накладной.
         </p>
       )}
     </form>

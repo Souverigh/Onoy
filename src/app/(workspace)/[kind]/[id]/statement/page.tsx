@@ -30,10 +30,10 @@ export default async function Statement({
         <div>
           <span className="eyebrow">АКТ СВЕРКИ</span>
           <h1>
-            {shopName} — {partyName}
+            {shopName} - {partyName}
           </h1>
           <p className="muted">
-            Период: {from} — {to}
+            Период: {from} - {to}
           </p>
         </div>
         <div className="simple-operation-actions no-print">

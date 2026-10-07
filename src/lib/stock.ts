@@ -142,12 +142,12 @@ export function importRows(table: string[][], header: number, columns: ColumnMap
       const raw = cell(row, field);
       if (!raw) return null;
       const value = stockNumber(raw, scale);
-      if (value === null) warnings.push(`${IMPORT_FIELD_LABEL[field]}: «${raw}» — не число`);
+      if (value === null) warnings.push(`${IMPORT_FIELD_LABEL[field]}: «${raw}» - не число`);
       return value;
     };
     const rawUnit = cell(row, "unit");
     const unit = rawUnit ? normalizeUnit(rawUnit) : null;
-    if (rawUnit && !unit) warnings.push(`Единица «${rawUnit}» — не знаем, будет «шт»`);
+    if (rawUnit && !unit) warnings.push(`Единица «${rawUnit}» - не знаем, будет «шт»`);
     rows.push({
       line: r + 1,
       name,
@@ -164,17 +164,17 @@ export function importRows(table: string[][], header: number, columns: ColumnMap
 
 /** Тексты ошибок склада по коду из адреса или ответа действия. */
 export const STOCK_ERROR_TEXT: Record<string, string> = {
-  name_taken: "Товар с таким названием уже есть — откройте его или назовите иначе.",
+  name_taken: "Товар с таким названием уже есть - откройте его или назовите иначе.",
   sku_taken: "Этот код уже у другого товара.",
   invalid_unit: "Выберите единицу из списка.",
-  invalid_price: "Цена — число не меньше нуля, до 2 знаков после запятой.",
-  invalid_qty: "Количество — число не меньше нуля, до 3 знаков после запятой.",
+  invalid_price: "Цена - число не меньше нуля, до 2 знаков после запятой.",
+  invalid_qty: "Количество - число не меньше нуля, до 3 знаков после запятой.",
   invalid_name: "Введите название (до 160 символов).",
-  invalid_sku: "Код — до 80 символов.",
+  invalid_sku: "Код - до 80 символов.",
   note_required: "Напишите, почему списываете (брак, бой, недостача…).",
   already_stocked: "Эта накладная уже принята на склад.",
-  blocked: "Магазин в режиме «только просмотр» — изменения не сохраняются. Продлите оплату.",
-  retry: "Эта запись уже сохранена — возможно, при прошлой попытке. Проверьте историю.",
+  blocked: "Магазин в режиме «только просмотр» - изменения не сохраняются. Продлите оплату.",
+  retry: "Эта запись уже сохранена - возможно, при прошлой попытке. Проверьте историю.",
   invalid: "Проверьте данные и попробуйте снова.",
   empty: "Отметьте хотя бы одну строку.",
   save: "Не удалось сохранить. Проверьте данные и попробуйте снова.",

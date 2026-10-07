@@ -52,7 +52,7 @@ export function StockImport() {
       console.error("readTable failed", error);
       setReadError(
         /\.xls$/i.test(file.name)
-          ? "Старый формат .xls не читаем — в Excel: «Файл → Сохранить как → Книга Excel (.xlsx)»."
+          ? "Старый формат .xls не читаем - в Excel: «Файл → Сохранить как → Книга Excel (.xlsx)»."
           : "Не удалось прочитать файл. Нужен .xlsx или .csv.",
       );
     }
@@ -91,7 +91,7 @@ export function StockImport() {
     return (
       <div className="stock-import-result">
         <p className="notice success" role="status">
-          Готово: новых товаров — {result.created}, обновлено — {result.updated}.
+          Готово: новых товаров - {result.created}, обновлено - {result.updated}.
         </p>
         {result.errors.length > 0 && (
           <div className="photo-check-mismatch" role="status">
@@ -99,7 +99,7 @@ export function StockImport() {
             <ul>
               {result.errors.slice(0, 20).map((e) => (
                 <li key={e.row}>
-                  Строка {rows[e.row - 1]?.line ?? e.row} «{rows[e.row - 1]?.name}» —{" "}
+                  Строка {rows[e.row - 1]?.line ?? e.row} «{rows[e.row - 1]?.name}» -{" "}
                   {STOCK_ERROR_TEXT[e.error] ?? "проверьте значения"}
                 </li>
               ))}
@@ -121,7 +121,7 @@ export function StockImport() {
   return (
     <div className="stock-import">
       <label className="button page-add">
-        {fileName ? `Файл: ${fileName} — выбрать другой` : "Выбрать файл Excel или CSV"}
+        {fileName ? `Файл: ${fileName} - выбрать другой` : "Выбрать файл Excel или CSV"}
         <input
           type="file"
           accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
@@ -143,8 +143,8 @@ export function StockImport() {
           <h2>Какая колонка что значит</h2>
           <p className="muted">
             {header >= 0
-              ? `Нашли шапку в строке ${header + 1}. Проверьте колонки — если что-то не так, выберите вручную.`
-              : "Шапку не нашли — выберите колонки вручную."}
+              ? `Нашли шапку в строке ${header + 1}. Проверьте колонки - если что-то не так, выберите вручную.`
+              : "Шапку не нашли - выберите колонки вручную."}
           </p>
           <div className="form-grid stock-import-columns">
             {FIELDS.map((field) => (
@@ -163,7 +163,7 @@ export function StockImport() {
                     });
                   }}
                 >
-                  {field !== "name" && <option value="">— нет —</option>}
+                  {field !== "name" && <option value="">- нет -</option>}
                   {Array.from({ length: width }, (_, c) => (
                     <option key={c} value={c}>
                       {letter(c)}
@@ -188,11 +188,11 @@ export function StockImport() {
 
           <h2>
             Товаров в файле: {rows.length}
-            {rows.length > MAX_ROWS && <span className="muted"> — загрузим первые {MAX_ROWS}</span>}
+            {rows.length > MAX_ROWS && <span className="muted"> - загрузим первые {MAX_ROWS}</span>}
           </h2>
           {warned.length > 0 && (
             <p className="photo-check-mismatch" role="status">
-              В {warned.length} строках есть непонятные значения — они загрузятся без них (подробности в таблице).
+              В {warned.length} строках есть непонятные значения - они загрузятся без них (подробности в таблице).
             </p>
           )}
           {rows.length > 0 ? (
@@ -211,7 +211,7 @@ export function StockImport() {
                     <tr key={r.line} className={r.warnings.length ? "warning" : ""}>
                       <td>{r.line}</td>
                       {FIELDS.filter((f) => columns[f] !== undefined).map((f) => (
-                        <td key={f}>{f === "unit" ? (r.unit ?? "шт") : (r[f] ?? "—")}</td>
+                        <td key={f}>{f === "unit" ? (r.unit ?? "шт") : (r[f] ?? "-")}</td>
                       ))}
                     </tr>
                   ))}
@@ -229,7 +229,7 @@ export function StockImport() {
               {rows.length > 30 && <p className="muted">Показаны первые 30 строк.</p>}
             </div>
           ) : (
-            <p className="muted">В колонке «Название» пусто — выберите другую колонку.</p>
+            <p className="muted">В колонке «Название» пусто - выберите другую колонку.</p>
           )}
           {warned.length > 0 && (
             <ul className="stock-import-warnings muted">
@@ -243,7 +243,7 @@ export function StockImport() {
           {result && "error" in result && (
             <p className="form-error" role="alert">
               {result.error === "network"
-                ? "Нет связи с сервером — попробуйте ещё раз: повторная загрузка ничего не задвоит."
+                ? "Нет связи с сервером - попробуйте ещё раз: повторная загрузка ничего не задвоит."
                 : (STOCK_ERROR_TEXT[result.error] ?? STOCK_ERROR_TEXT.save)}
             </p>
           )}
@@ -253,7 +253,7 @@ export function StockImport() {
             </button>
           </div>
           <p className="operation-hint">
-            Товар с тем же кодом или названием обновится (цена, единица), остаток станет как в файле. Новые — добавятся.
+            Товар с тем же кодом или названием обновится (цена, единица), остаток станет как в файле. Новые - добавятся.
             Повторная загрузка того же файла ничего не задвоит.
           </p>
         </>

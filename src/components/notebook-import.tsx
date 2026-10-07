@@ -40,8 +40,8 @@ type Row = {
 };
 
 const ERRORS: Record<string, string> = {
-  exists: "Долг этого клиента уже перенесён. Чтобы исправить — отмените прежний в его карточке.",
-  amount: "Проверьте сумму: число, минус — аванс.",
+  exists: "Долг этого клиента уже перенесён. Чтобы исправить - отмените прежний в его карточке.",
+  amount: "Проверьте сумму: число, минус - аванс.",
   invalid: "Обновите страницу и попробуйте снова.",
   save: "Не удалось сохранить. Попробуйте ещё раз.",
 };
@@ -102,7 +102,7 @@ export function NotebookImport({
         files.map((file) => shrinkImage(file, files.length > 1 ? MULTI_PAGE_MAX_SIDE : undefined)),
       );
       if (shrunk.reduce((size, file) => size + file.size, 0) > MAX_UPLOAD_BYTES) {
-        setNote("Файлы слишком большие (больше 4 МБ вместе) — выберите меньше страниц за раз.");
+        setNote("Файлы слишком большие (больше 4 МБ вместе) - выберите меньше страниц за раз.");
         return;
       }
       const fd = new FormData();
@@ -111,12 +111,12 @@ export function NotebookImport({
       if (!res.ok) {
         setNote(
           res.error === "no_provider"
-            ? "Распознавание сейчас недоступно — впишите строки вручную."
+            ? "Распознавание сейчас недоступно - впишите строки вручную."
             : "Не удалось прочитать страницы. Попробуйте фото получше или впишите вручную.",
         );
         return;
       }
-      if (!res.rows.length) setNote("На фото не нашлось строк «имя — сумма».");
+      if (!res.rows.length) setNote("На фото не нашлось строк «имя - сумма».");
       setWarnings(res.warnings);
       setRows((current) => [
         ...current.filter((row) => row.name || row.amount),
@@ -164,12 +164,12 @@ export function NotebookImport({
       const failed = results.filter((r) => !r.ok).length;
       setNote(
         failed
-          ? `Сохранено: ${results.length - failed}. Не сохранено: ${failed} — см. строки ниже.`
+          ? `Сохранено: ${results.length - failed}. Не сохранено: ${failed} - см. строки ниже.`
           : `Сохранено: ${results.length}. Долги уже в балансе.`,
       );
     } catch (err) {
       console.error("importOpenings failed", err);
-      setNote("Не удалось сохранить. Проверьте интернет и попробуйте ещё раз — повтор ничего не задвоит.");
+      setNote("Не удалось сохранить. Проверьте интернет и попробуйте ещё раз - повтор ничего не задвоит.");
     } finally {
       setSaving(false);
     }
@@ -249,7 +249,7 @@ export function NotebookImport({
                       Сумма долга
                       <InfoTip>
                         Сколько {kind === "customers" ? "клиент должен вам" : "вы должны поставщику"} на сегодня.
-                        Со знаком минус — аванс.
+                        Со знаком минус - аванс.
                       </InfoTip>
                     </span>
                     <input
@@ -265,7 +265,7 @@ export function NotebookImport({
                       label="Дата долга"
                       value={row.date}
                       onChange={(next) => update(row.key, { date: next ?? "" })}
-                      tip="Давность долга считается с этой даты. Нет даты в тетради — оставьте пустым, считаем с сегодня."
+                      tip="Давность долга считается с этой даты. Нет даты в тетради - оставьте пустым, считаем с сегодня."
                     />
                   )}
                   {!row.partyId && (
@@ -311,7 +311,7 @@ export function NotebookImport({
                         {row.photos.length > 0 && " · фото тетради сохранится в истории"}
                       </span>
                       {party?.transferred && (
-                        <span className="form-error">Долг уже перенесён — строку пропустим.</span>
+                        <span className="form-error">Долг уже перенесён - строку пропустим.</span>
                       )}
                       {row.result && !row.result.ok && (
                         <span className="form-error">{ERRORS[row.result.error ?? "save"]}</span>

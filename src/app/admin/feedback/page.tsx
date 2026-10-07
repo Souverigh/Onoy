@@ -21,7 +21,7 @@ export default async function AdminFeedback() {
       <div className="page-heading">
         <div>
           <h1>Заявки</h1>
-          <p className="muted">Сообщения со страницы входа — от новых магазинов. Последние 300.</p>
+          <p className="muted">Сообщения со страницы входа - от новых магазинов. Последние 300.</p>
         </div>
       </div>
       {error ? (

@@ -19,7 +19,7 @@ export function reminderMessage(input: {
     promise.kind === "broken"
       ? ` Вы обещали оплатить до ${dayMonth(promise.date)}.`
       : promise.kind === "upcoming"
-        ? ` Срок оплаты — ${dayMonth(promise.date)}.`
+        ? ` Срок оплаты - ${dayMonth(promise.date)}.`
         : "";
   const debt =
     input.balance > 0

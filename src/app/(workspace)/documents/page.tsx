@@ -101,7 +101,7 @@ export default async function Documents({ searchParams }: { searchParams: Promis
           <span className="eyebrow">ФОТО → РАСПОЗНАВАНИЕ → ПРОВЕРКА</span>
           <h1>Документы</h1>
           <p className="muted">
-            Накладные и чеки, приложенные к операциям и расходам. Долг они не меняют — это
+            Накладные и чеки, приложенные к операциям и расходам. Долг они не меняют - это
             уже случилось при подтверждении операции.
           </p>
         </div>
@@ -157,7 +157,7 @@ export default async function Documents({ searchParams }: { searchParams: Promis
                   const orphan = !links.linked.has(doc.id) && doc.status !== "processing";
                   return (
                     <tr key={doc.id} id={`doc-${doc.id}`} className="row-link">
-                      <td>{doc.kind ? kindLabel[doc.kind] : "—"}</td>
+                      <td>{doc.kind ? kindLabel[doc.kind] : "-"}</td>
                       <td>
                         {parties.get(doc.id) ? (
                           <span className="doc-party">
@@ -167,7 +167,7 @@ export default async function Documents({ searchParams }: { searchParams: Promis
                             </small>
                           </span>
                         ) : (
-                          <span className="muted">—</span>
+                          <span className="muted">-</span>
                         )}
                       </td>
                       <td>
@@ -183,7 +183,7 @@ export default async function Documents({ searchParams }: { searchParams: Promis
                         {(doc.status === "digitized" || doc.status === "review") && digitizedAt.get(doc.id) ? (
                           dateTime.format(new Date(digitizedAt.get(doc.id)!))
                         ) : (
-                          <span className="muted">—</span>
+                          <span className="muted">-</span>
                         )}
                       </td>
                       <td>

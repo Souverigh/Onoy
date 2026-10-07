@@ -94,7 +94,7 @@ export default async function ReverseOperation({
           {party} · {money(String(data[meta.amountField]), partyCur ?? shopCurrency)}
         </p>
         <p className="operation-hint">
-          Запись не удаляется — она останется в истории с пометкой «отменена»,
+          Запись не удаляется - она останется в истории с пометкой «отменена»,
           долг пересчитается сразу.
         </p>
         <form action={reverseOperation} className="simple-operation-form">
@@ -126,7 +126,7 @@ export default async function ReverseOperation({
           {partPayment && (
             <label className="cash-toggle">
               <input type="checkbox" name="with_payment" value="1" defaultChecked />
-              Отменить и оплату {money(partPayment.amount, partyCur ?? shopCurrency)} — её внесли вместе с этим товаром
+              Отменить и оплату {money(partPayment.amount, partyCur ?? shopCurrency)} - её внесли вместе с этим товаром
             </label>
           )}
           <div className="simple-operation-actions">

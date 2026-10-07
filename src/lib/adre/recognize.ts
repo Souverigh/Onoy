@@ -9,6 +9,7 @@ import { TOLERANCE, reconcileInvoice } from "./reconcile";
 import { recognizeInvoicePages } from "./pipeline";
 import { expenseMatches, normalizeExpenseResult } from "./expense";
 import { notebookDate } from "../notebook-date";
+import { plainWarnings } from "../plain-warnings";
 import { bishkekDate } from "../day-summary";
 
 // v2 — тип документа, продавец и покупатель, фрагмент (classify.ts). Кеш v1
@@ -214,7 +215,7 @@ export async function recognizeNotebook(pages: PhotoPage[]) {
         confidence: Number(row.confidence) || 0,
       }))
       .filter((row) => row.name && Number.isFinite(row.amount) && row.amount !== 0),
-    warnings: (result.warnings ?? []).map(String),
+    warnings: plainWarnings(result.warnings ?? []),
   };
 }
 

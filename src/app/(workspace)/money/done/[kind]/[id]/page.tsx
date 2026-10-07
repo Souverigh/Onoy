@@ -63,10 +63,10 @@ export default async function DonePage({
             <>
               {paid > 0 && <p className="notice success">Сразу оплачено поставщику: {money(paid, partyCurrency(supplier, shopCurrency))}.</p>}
               {part === "failed" && (
-                <p className="form-error">Оплату поставщику записать не удалось — внесите её через «Я заплатил поставщику».</p>
+                <p className="form-error">Оплату поставщику записать не удалось - внесите её через «Я заплатил поставщику».</p>
               )}
-              {duplicate && <p className="notice">Это фото уже приложено к другой записи — проверьте, не задвоилось ли.</p>}
-              {undo === "expired" && <p className="form-error">Прошло больше 2 минут — отменить может владелец с причиной.</p>}
+              {duplicate && <p className="notice">Это фото уже приложено к другой записи - проверьте, не задвоилось ли.</p>}
+              {undo === "expired" && <p className="form-error">Прошло больше 2 минут - отменить может владелец с причиной.</p>}
             </>
           }
         >
@@ -139,8 +139,8 @@ export default async function DonePage({
       original={originalAmountText(row)}
       title={
         onReview
-          ? "Оплата записана как дубликат — на проверке"
-          : `${paymentLabelWithSide(row.kind as PaymentKind, row.direction as "incoming" | "outgoing")} — записано`
+          ? "Оплата записана как дубликат - на проверке"
+          : `${paymentLabelWithSide(row.kind as PaymentKind, row.direction as "incoming" | "outgoing")} - записано`
       }
       party={party.name}
       partyHref={partyHref}
@@ -166,7 +166,7 @@ export default async function DonePage({
                   }).format(new Date(firstPayment.occurred_at))} на ${money(firstPayment.amount, cur)}`
                 : ""}
               . Долг не
-              изменился — владелец подтвердит или отклонит эту оплату в «Заявках».
+              изменился - владелец подтвердит или отклонит эту оплату в «Заявках».
               {firstPayment && firstPaymentHref(firstPayment) && (
                 <>
                   {" "}
@@ -177,8 +177,8 @@ export default async function DonePage({
               )}
             </p>
           )}
-          {duplicate && <p className="notice">Это фото уже приложено к другой записи — проверьте, не задвоилось ли.</p>}
-          {undo === "expired" && <p className="form-error">Прошло больше 2 минут — отменить может владелец с причиной.</p>}
+          {duplicate && <p className="notice">Это фото уже приложено к другой записи - проверьте, не задвоилось ли.</p>}
+          {undo === "expired" && <p className="form-error">Прошло больше 2 минут - отменить может владелец с причиной.</p>}
         </>
       }
     >

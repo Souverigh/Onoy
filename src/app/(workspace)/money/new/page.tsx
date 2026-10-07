@@ -171,7 +171,7 @@ export default async function NewOperation({
       )}
       {(params.undone || params.redo) && (
         <p className="notice success" role="status">
-          {params.undone ? "Прошлая запись отменена." : "Запись отменена."} Клиент, сумма и фото — как были: исправьте,
+          {params.undone ? "Прошлая запись отменена." : "Запись отменена."} Клиент, сумма и фото - как были: исправьте,
           что нужно, и подтвердите.
         </p>
       )}

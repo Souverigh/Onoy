@@ -285,10 +285,10 @@ export default async function EntryPage({
         text:
           `По чеку: ${money(r.amount, r.currency)}${approx}` +
           (check.diff == null
-            ? " — другая валюта, проверьте сумму"
+            ? " - другая валюта, проверьте сумму"
             : !differs
-              ? " — совпадает"
-              : ` — на ${money(Math.abs(check.diff), cur)} ${check.diff > 0 ? "больше" : "меньше"}, чем в заявке`),
+              ? " - совпадает"
+              : ` - на ${money(Math.abs(check.diff), cur)} ${check.diff > 0 ? "больше" : "меньше"}, чем в заявке`),
       });
     }
     history = [
@@ -477,12 +477,12 @@ export default async function EntryPage({
               )}
               {promise.kind === "broken" ? (
                 <small className="party-hero-late">
-                  обещал до {dayMonth(promise.date)} — просрочено {promise.daysLate} дн.
+                  обещал до {dayMonth(promise.date)} - просрочено {promise.daysLate} дн.
                 </small>
               ) : promise.kind === "upcoming" ? (
                 <small>
                   обещал до {dayMonth(promise.date)}
-                  {promise.daysLeft === 0 ? " — сегодня" : ` — через ${promise.daysLeft} дн.`}
+                  {promise.daysLeft === 0 ? " - сегодня" : ` - через ${promise.daysLeft} дн.`}
                 </small>
               ) : null}
             </div>
@@ -546,7 +546,7 @@ export default async function EntryPage({
       )}
       {linked && (
         <p className="notice success" role="status">
-          Ссылка для клиента готова — можно отправить в WhatsApp.
+          Ссылка для клиента готова - можно отправить в WhatsApp.
         </p>
       )}
       {revoked && (
@@ -584,13 +584,13 @@ export default async function EntryPage({
             : restored
               ? "Возвращён из архива."
               : merged
-                ? "Объединено: записи и ссылка перенесены сюда, второе имя стало синонимом. Отменить можно в течение суток — ниже, в «Управлении»."
+                ? "Объединено: записи и ссылка перенесены сюда, второе имя стало синонимом. Отменить можно в течение суток - ниже, в «Управлении»."
                 : "Объединение отменено."}
         </p>
       )}
       {entry?.archived_at && !entry.merged_into_id && (
         <p className="notice" role="status">
-          В архиве — не показывается в списках и формах.
+          В архиве - не показывается в списках и формах.
         </p>
       )}
       {error && ["has_records", "party", "merge", "merge_opening", "merge_expired", "merge_currency"].includes(error) && (
@@ -598,7 +598,7 @@ export default async function EntryPage({
           {error === "has_records"
             ? "Удалить нельзя: есть записи. Можно убрать в архив."
             : error === "merge_opening"
-              ? "У обоих есть перенос из тетради — сначала отмените один из них, потом объединяйте."
+              ? "У обоих есть перенос из тетради - сначала отмените один из них, потом объединяйте."
               : error === "merge_currency"
                 ? "Объединить нельзя: у них разная валюта долга."
               : error === "merge_expired"
@@ -608,7 +608,7 @@ export default async function EntryPage({
       )}
       {adjusted && (
         <p className="notice success" role="status">
-          {adjusted === "return" ? "Возврат товара записан" : "Скидка записана"} — долг уменьшен.
+          {adjusted === "return" ? "Возврат товара записан" : "Скидка записана"} - долг уменьшен.
         </p>
       )}
       {promised && (
@@ -772,7 +772,7 @@ export default async function EntryPage({
                 <h2>Срок оплаты</h2>
                 {promise.kind === "broken" && (
                   <p className="form-error">
-                    Обещал оплатить до {dayMonth(promise.date)} — прошло {promise.daysLate} дн.
+                    Обещал оплатить до {dayMonth(promise.date)} - прошло {promise.daysLate} дн.
                   </p>
                 )}
                 <form action={setPromisedDate} className="promise-form">

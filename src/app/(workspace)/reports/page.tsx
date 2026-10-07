@@ -39,8 +39,8 @@ function Delta({ current, previous, bad }: { current: number; previous: number; 
 
 /** Прошлый период — для текста в «!». */
 function previousText(current: number, previous: number, against: Against, cur: string) {
-  if (previous === 0) return current > 0 ? `${against.during} — ${money(0, cur)}.` : `${against.during} — нет данных.`;
-  return `${against.during} за те же дни — ${money(previous, cur)}.`;
+  if (previous === 0) return current > 0 ? `${against.during} - ${money(0, cur)}.` : `${against.during} - нет данных.`;
+  return `${against.during} за те же дни - ${money(previous, cur)}.`;
 }
 
 export default async function Reports({
@@ -78,7 +78,7 @@ export default async function Reports({
         <h1 className="label-with-tip">
           {kind === "week" ? "Отчёт за неделю" : "Отчёт за месяц"}
           <InfoTip>
-            Сколько продали, собрали и потратили за {kind === "week" ? "неделю" : "месяц"}. Проценты — сравнение с теми
+            Сколько продали, собрали и потратили за {kind === "week" ? "неделю" : "месяц"}. Проценты - сравнение с теми
             же днями {kind === "week" ? "прошлой недели" : "прошлого месяца"}.
           </InfoTip>
         </h1>
@@ -123,7 +123,7 @@ export default async function Reports({
           <span className="label-with-tip">
             Продано
             <InfoTip>
-              Продаж: {current.salesCount}. В долг — {money(current.soldCredit, cur)}, сразу наличными —{" "}
+              Продаж: {current.salesCount}. В долг - {money(current.soldCredit, cur)}, сразу наличными -{" "}
               {money(current.soldCash, cur)}. {previousText(current.sold, previous.sold, against, cur)}
             </InfoTip>
           </span>
@@ -136,7 +136,7 @@ export default async function Reports({
           <span className="label-with-tip">
             Собрано
             <InfoTip>
-              Оплаты долгов от клиентов — без продаж за наличные.{" "}
+              Оплаты долгов от клиентов - без продаж за наличные.{" "}
               {previousText(current.collected, previous.collected, against, cur)}
             </InfoTip>
           </span>

@@ -42,20 +42,20 @@ export default async function Layout({
       )}
       {sub.kind === "expired" && (
         <p className="form-error shop-blocked" role="alert">
-          Подписка закончилась {date(sub.paidUntil)}, льготная неделя прошла — только просмотр. Данные
+          Подписка закончилась {date(sub.paidUntil)}, льготная неделя прошла - только просмотр. Данные
           сохранены, страница клиентов работает. Оплатите подписку, чтобы снова вносить записи.
         </p>
       )}
       {ctx.isOwner && sub.kind === "grace" && (
         <p className="notice claims-notice shop-blocked" role="status">
-          Подписка закончилась {date(sub.paidUntil)}. Льготный период до {date(sub.graceUntil)} — потом только
+          Подписка закончилась {date(sub.paidUntil)}. Льготный период до {date(sub.graceUntil)} - потом только
           просмотр.
         </p>
       )}
       {ctx.isOwner && sub.kind === "ending" && (
         <p className="notice shop-blocked" role="status">
           Подписка оплачена до {date(sub.paidUntil)}
-          {sub.daysLeft === 0 ? " — сегодня последний день" : ` — осталось ${sub.daysLeft} дн.`}.
+          {sub.daysLeft === 0 ? " - сегодня последний день" : ` - осталось ${sub.daysLeft} дн.`}.
         </p>
       )}
       {children}

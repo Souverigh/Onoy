@@ -87,7 +87,7 @@ export function DeleteWithUndo({
     } catch {
       setPending(false);
       setHidden(false);
-      setError("Нет связи — не удалено. Попробуйте ещё раз.");
+      setError("Нет связи - не удалено. Попробуйте ещё раз.");
     }
   }
 

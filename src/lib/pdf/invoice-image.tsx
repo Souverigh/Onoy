@@ -56,7 +56,7 @@ function Party({ label, party }: { label: string; party: InvoiceParty }) {
       </div>
       <div style={{ display: "flex", fontSize: 18, marginTop: 10 }}>
         <span style={{ fontWeight: 700, marginRight: 6 }}>ТЕЛ:</span>
-        <span>{phoneText(party.phone) || "—"}</span>
+        <span>{phoneText(party.phone) || "-"}</span>
       </div>
     </div>
   );
@@ -152,7 +152,7 @@ export async function renderInvoiceImage(origin: string, data: InvoiceData): Pro
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={qr} width={104} height={104} alt="" />
             <div style={{ display: "flex", flexDirection: "column", marginLeft: 18, color: MUTED, fontSize: 17 }}>
-              <span>Накладные, долг и оплата —</span>
+              <span>Накладные, долг и оплата -</span>
               <span>по QR-коду</span>
             </div>
           </div>

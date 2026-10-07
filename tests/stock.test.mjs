@@ -51,7 +51,7 @@ test("detectColumns + importRows: header found below a title, purchase price not
     sale_price: "85.5", purchase_price: "60", stock: "100", warnings: [],
   });
   assert.deepEqual([rows[1].unit, rows[1].sale_price, rows[1].stock, rows[1].sku], ["мешок", "1200", null, null]);
-  assert.deepEqual(rows[2].warnings, ["Единица «ящик» — не знаем, будет «шт»", "Цена продажи: «abc» — не число"]);
+  assert.deepEqual(rows[2].warnings, ["Единица «ящик» - не знаем, будет «шт»", "Цена продажи: «abc» - не число"]);
   assert.equal(detectColumns([["1", "2"], ["3", "4"]]), null);
 });
 

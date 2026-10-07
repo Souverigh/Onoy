@@ -46,16 +46,16 @@ const asInput = (value: string) => String(Number(value)).replace(".", ",");
 
 const ERROR_TEXT: Record<string, string> = {
   lines: "Добавьте хотя бы один товар.",
-  qty: "Проверьте количество — число больше нуля.",
-  price: "Проверьте цены — число не меньше нуля.",
+  qty: "Проверьте количество - число больше нуля.",
+  price: "Проверьте цены - число не меньше нуля.",
   cost: "Укажите цену закупки у каждого товара.",
-  rate: "Укажите курс — число больше нуля.",
-  too_many: "В одной накладной — не больше 200 строк.",
+  rate: "Укажите курс - число больше нуля.",
+  too_many: "В одной накладной - не больше 200 строк.",
   date: "Проверьте дату: не позже сегодняшнего дня и не раньше чем год назад.",
 };
 const NETWORK_TEXT = {
-  sale: "Нет связи с сервером — продажа не сохранена. Проверьте интернет и нажмите ещё раз: вторая запись не появится.",
-  purchase: "Нет связи с сервером — приход не сохранён. Проверьте интернет и нажмите ещё раз: вторая запись не появится.",
+  sale: "Нет связи с сервером - продажа не сохранена. Проверьте интернет и нажмите ещё раз: вторая запись не появится.",
+  purchase: "Нет связи с сервером - приход не сохранён. Проверьте интернет и нажмите ещё раз: вторая запись не появится.",
 };
 
 /**
@@ -270,7 +270,7 @@ export function SaleItemsForm({
                       const found = await customerFromContact(name, phone);
                       if ("error" in found) {
                         setContactNote(
-                          found.error === "name" ? "У контакта нет имени — добавьте клиента вручную." : "Не удалось добавить клиента. Попробуйте ещё раз.",
+                          found.error === "name" ? "У контакта нет имени - добавьте клиента вручную." : "Не удалось добавить клиента. Попробуйте ещё раз.",
                         );
                         return;
                       }
@@ -361,7 +361,7 @@ export function SaleItemsForm({
           </ul>
         )}
         {products.length === 0 && !trimmed && (
-          <small className="muted">На складе пока нет товаров — начните вводить название, добавим новый.</small>
+          <small className="muted">На складе пока нет товаров - начните вводить название, добавим новый.</small>
         )}
         {creating && (
           <div className="product-create">
@@ -462,12 +462,12 @@ export function SaleItemsForm({
                 </div>
                 {short && (
                   <small className="warning">
-                    На складе {quantity(line.product.stock)} {line.product.unit} — продать можно, остаток уйдёт в минус.
+                    На складе {quantity(line.product.stock)} {line.product.unit} - продать можно, остаток уйдёт в минус.
                   </small>
                 )}
                 {line.price && Number(priceOf(line.product)) > 0 && stockNumber(line.price, 2) !== null && Number(stockNumber(line.price, 2)) !== Number(priceOf(line.product)) && (
                   <small className="muted">
-                    {purchase ? "Прошлая закупка" : "Цена на складе"} — {money(priceOf(line.product), shopCurrency)}.
+                    {purchase ? "Прошлая закупка" : "Цена на складе"} - {money(priceOf(line.product), shopCurrency)}.
                   </small>
                 )}
                 {purchase && !line.price && <small className="muted">Укажите цену закупки за {line.product.unit}.</small>}
@@ -497,7 +497,7 @@ export function SaleItemsForm({
             />
             <small className="muted">
               {purchase ? "Долг поставщику" : "Долг клиента"} ведётся в {CURRENCY_SIGN[debtCurrency]}.{" "}
-              {quote ? `${quote.source} на ${quote.date}: ${formatRate(quote.rate)}. Можно поправить.` : "Официальный курс сейчас недоступен — введите курс."}
+              {quote ? `${quote.source} на ${quote.date}: ${formatRate(quote.rate)}. Можно поправить.` : "Официальный курс сейчас недоступен - введите курс."}
             </small>
           </label>
           {debt > 0 && (
@@ -528,7 +528,7 @@ export function SaleItemsForm({
       />
       {overLimit && (
         <p className="form-error limit-warning" role="alert">
-          Долг станет {money(overLimit.debtAfter, debtCurrency)} — больше лимита {money(overLimit.limit, debtCurrency)}. Продать
+          Долг станет {money(overLimit.debtAfter, debtCurrency)} - больше лимита {money(overLimit.limit, debtCurrency)}. Продать
           можно, но проверьте, стоит ли давать в долг.
         </p>
       )}

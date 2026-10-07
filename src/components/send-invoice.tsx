@@ -110,9 +110,9 @@ export function SendInvoice({ phone, text, fileText, imageUrl, fileName, pending
     return (
       <div className="send-invoice">
         <button className="button primary send-main" type="button" onClick={shareFile} disabled={state === "loading"}>
-          {state === "loading" ? "Готовим накладную…" : state === "retry" ? "Накладная готова — отправить" : "Отправить клиенту"}
+          {state === "loading" ? "Готовим накладную…" : state === "retry" ? "Накладная готова - отправить" : "Отправить клиенту"}
         </button>
-        {state === "sent" && <p className="muted">Отправлено? Если WhatsApp не открылся — нажмите ещё раз.</p>}
+        {state === "sent" && <p className="muted">Отправлено? Если WhatsApp не открылся - нажмите ещё раз.</p>}
         {state === "error" && (
           <p className="form-error" role="alert">
             Не удалось приложить файл.{" "}
@@ -136,7 +136,7 @@ export function SendInvoice({ phone, text, fileText, imageUrl, fileName, pending
         </a>
       </div>
       <small className="muted">
-        В WhatsApp перетащите скачанный файл в чат с клиентом — текст со ссылкой уже будет вписан.
+        В WhatsApp перетащите скачанный файл в чат с клиентом - текст со ссылкой уже будет вписан.
       </small>
     </div>
   );

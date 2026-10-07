@@ -81,8 +81,8 @@ function SupplierTip({ m, cur }: { m: DayMoney; cur: string }) {
   return (
     <>
       Сколько вы должны поставщикам: утром {money(m.suppliers.morning, cur)}, вечером{" "}
-      {money(m.suppliers.evening, cur)}. За день товар от поставщиков — {money(m.suppliers.purchased, cur)},
-      оплачено — {money(m.suppliers.paid, cur)}.
+      {money(m.suppliers.evening, cur)}. За день товар от поставщиков - {money(m.suppliers.purchased, cur)},
+      оплачено - {money(m.suppliers.paid, cur)}.
     </>
   );
 }
@@ -141,7 +141,7 @@ function CashCard({
         </div>
         {net.transferIn != null && (net.transferIn > 0 || (net.transferOut ?? 0) > 0) && (
           <div className="day-line day-line-sub">
-            <span>Переводом — не в кассе</span>
+            <span>Переводом - не в кассе</span>
             <strong>
               получено {money(net.transferIn, cur)}
               {(net.transferOut ?? 0) > 0 && <> · отправлено {money(net.transferOut ?? 0, cur)}</>}
@@ -156,7 +156,7 @@ function CashCard({
             <strong>✓ День закрыт {closedTime}</strong>
             <InfoTip>
               Цифры зафиксированы на момент закрытия
-              {afterCount > 0 ? `; изменения после закрытия — отдельно внизу (${afterCount}).` : "."}
+              {afterCount > 0 ? `; изменения после закрытия - отдельно внизу (${afterCount}).` : "."}
             </InfoTip>
           </span>
           {summary.counted != null && diff != null && (
@@ -171,7 +171,7 @@ function CashCard({
         </div>
       ) : dayIsEmpty(summary) ? (
         <p className="muted day-cash-status">
-          {isToday ? "Записей пока нет — закрывать нечего." : "В этот день записей нет."}
+          {isToday ? "Записей пока нет - закрывать нечего." : "В этот день записей нет."}
         </p>
       ) : (
         <form action={closeDay} className="day-close-form">
@@ -181,7 +181,7 @@ function CashCard({
               В кассе по факту
               <InfoTip>
                 {isToday
-                  ? "Цифры обновляются с каждой записью. Вечером пересчитайте наличные, впишите сумму и закройте день — итоги сохранятся."
+                  ? "Цифры обновляются с каждой записью. Вечером пересчитайте наличные, впишите сумму и закройте день - итоги сохранятся."
                   : "Итоги посчитаны сейчас по действующим записям. Пересчитайте кассу и закройте день, чтобы сохранить их."}
               </InfoTip>
             </span>
@@ -210,7 +210,7 @@ function DayTiles({ summary, date }: { summary: DaySummary; date: string }) {
         <span className="label-with-tip">
           Продал
           <InfoTip>
-            Накладных за день: {summary.sold.count}. Из суммы — в долг {money(summary.sold.credit, cur)}, сразу
+            Накладных за день: {summary.sold.count}. Из суммы - в долг {money(summary.sold.credit, cur)}, сразу
             наличными {money(summary.sold.cash, cur)}.
           </InfoTip>
         </span>
@@ -220,7 +220,7 @@ function DayTiles({ summary, date }: { summary: DaySummary; date: string }) {
       <section className="panel day-tile">
         <span className="label-with-tip">
           Получил
-          <InfoTip>Деньги за день: наличные продажи и оплаты долгов от клиентов — наличными и переводом.</InfoTip>
+          <InfoTip>Деньги за день: наличные продажи и оплаты долгов от клиентов - наличными и переводом.</InfoTip>
         </span>
         <strong>{money(round(cashIn + transfer), cur)}</strong>
         <small className="muted">
@@ -232,7 +232,7 @@ function DayTiles({ summary, date }: { summary: DaySummary; date: string }) {
           Расходы
           <InfoTip>
             {expenses && expenses.byCategory.length > 0
-              ? `${expenses.byCategory.map((c) => `${expenseCategoryLabel(c.category)} — ${money(c.amount, cur)}`).join("; ")}.`
+              ? `${expenses.byCategory.map((c) => `${expenseCategoryLabel(c.category)} - ${money(c.amount, cur)}`).join("; ")}.`
               : "Расходов за день не было."}
           </InfoTip>
         </span>
@@ -271,7 +271,7 @@ function DebtLines({ summary }: { summary: DaySummary }) {
         <div className="day-line">
           <span className="label-with-tip">
             Скидки и возвраты
-            <InfoTip>Скидки и возвраты клиентам уменьшают долг, но это не деньги — в кассу не входят.</InfoTip>
+            <InfoTip>Скидки и возвраты клиентам уменьшают долг, но это не деньги - в кассу не входят.</InfoTip>
           </span>
           <strong>
             {[
@@ -427,7 +427,7 @@ export default async function DayClose({
       <p className="muted day-date">{dateLabel}</p>
       {closed && (
         <p className="notice success" role="status">
-          День закрыт. Итоги сохранены — PDF можно скачать и отправить.
+          День закрыт. Итоги сохранены - PDF можно скачать и отправить.
         </p>
       )}
       {error === "close" && (
@@ -437,7 +437,7 @@ export default async function DayClose({
       )}
       {error === "counted" && (
         <p className="form-error" role="alert">
-          «В кассе по факту» — только число, например 12 500.
+          «В кассе по факту» - только число, например 12 500.
         </p>
       )}
 
@@ -513,7 +513,7 @@ export default async function DayClose({
           <h2 className="label-with-tip">
             После закрытия
             <InfoTip>
-              Эти записи за {dayShort} внесены или отменены после закрытия — в сохранённые итоги выше они не
+              Эти записи за {dayShort} внесены или отменены после закрытия - в сохранённые итоги выше они не
               вошли.
             </InfoTip>
           </h2>
@@ -575,7 +575,7 @@ export default async function DayClose({
                   <td data-label="Собрано">{money(row.collected, shopCurrency)}</td>
                   <td data-label="Товар от поставщика">{money(row.purchased, shopCurrency)}</td>
                   <td data-label="Расходы">{money(row.expenses, shopCurrency)}</td>
-                  <td data-label="Закрыт">{snapshots.has(row.date) ? "✓" : <span className="muted">—</span>}</td>
+                  <td data-label="Закрыт">{snapshots.has(row.date) ? "✓" : <span className="muted">-</span>}</td>
                 </tr>
               ))}
             </tbody>

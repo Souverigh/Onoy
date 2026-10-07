@@ -379,8 +379,8 @@ export default async function DocumentDetail({
     verdict && !verdict.ok
       ? verdict.reason === "direction"
         ? verdict.suggestedKind === "purchase"
-          ? "По фото это накладная от поставщика вам — похоже на товар от поставщика, а записано продажей."
-          : "По фото это накладная от вашего магазина покупателю — похоже на продажу, а записано как товар от поставщика."
+          ? "По фото это накладная от поставщика вам - похоже на товар от поставщика, а записано продажей."
+          : "По фото это накладная от вашего магазина покупателю - похоже на продажу, а записано как товар от поставщика."
         : {
             receipt: "По фото это чек или квитанция об оплате, а не накладная.",
             statement: "По фото это выписка или акт сверки, а не накладная.",
@@ -428,17 +428,17 @@ export default async function DocumentDetail({
       )}
       {params2.confirmed && (
         <p className="notice success" role="status">
-          Готово — накладная сверена.
+          Готово - накладная сверена.
         </p>
       )}
       {params2.retried && (
         <p className="notice success" role="status">
-          Запустили распознавание заново — обновите страницу через несколько секунд.
+          Запустили распознавание заново - обновите страницу через несколько секунд.
         </p>
       )}
       {params2.aliasSaved && (
         <p className="notice success" role="status">
-          Синоним сохранён — в следующий раз это имя узнается сразу.
+          Синоним сохранён - в следующий раз это имя узнается сразу.
         </p>
       )}
       {params2.error && (
@@ -508,7 +508,7 @@ export default async function DocumentDetail({
                   {firstPayment
                     ? ` от ${when(firstPayment.occurred_at)} на ${money(firstPayment.amount, paymentCurrency)} (${statusOf(firstPayment)})`
                     : ""}
-                  {firstDigitizedAt ? `; её чек оцифрован ${when(firstDigitizedAt)}` : ""}. Эта запись —{" "}
+                  {firstDigitizedAt ? `; её чек оцифрован ${when(firstDigitizedAt)}` : ""}. Эта запись -{" "}
                   {statusOf(payment)}, внесена {when(payment.created_at)}.
                 </p>
                 {firstPayment && firstPaymentHref(firstPayment) && (
@@ -554,16 +554,16 @@ export default async function DocumentDetail({
             <span className="doc-record-status">
               {record
                 ? record.reversed
-                  ? "Запись отменена — долг пересчитан."
+                  ? "Запись отменена - долг пересчитан."
                   : record.kind === "sale"
                     ? "Продажа записана."
                     : "Товар от поставщика записан."
                 : payment!.reversed_at
-                  ? "Оплата отменена — долг пересчитан."
+                  ? "Оплата отменена - долг пересчитан."
                   : payment!.status === "rejected"
-                    ? `Заявка отклонена${payment!.reject_comment ? `: «${payment!.reject_comment}»` : ""}. Долг не менялся — отменять нечего.`
+                    ? `Заявка отклонена${payment!.reject_comment ? `: «${payment!.reject_comment}»` : ""}. Долг не менялся - отменять нечего.`
                     : payment!.status === "pending"
-                      ? "Оплата ждёт проверки владельца — долг ещё не изменился."
+                      ? "Оплата ждёт проверки владельца - долг ещё не изменился."
                       : "Оплата записана."}
             </span>
             <span className="doc-record-actions">
@@ -608,7 +608,7 @@ export default async function DocumentDetail({
         )}
         {orphan && (
           <div className="doc-orphan">
-            <p>Фото без записи — по нему ещё ничего не записали. Запишите или удалите фото.</p>
+            <p>Фото без записи - по нему ещё ничего не записали. Запишите или удалите фото.</p>
             <div className="simple-operation-actions">
               {doc.kind === "expense" ? (
                 <Link className="button primary" href="/money/expense">
@@ -648,12 +648,12 @@ export default async function DocumentDetail({
           ))}
         {verdictText && (
           <p className="photo-check-mismatch">
-            {verdictText} Если запись ошибочная — отмените её и запишите правильно.
+            {verdictText} Если запись ошибочная - отмените её и запишите правильно.
           </p>
         )}
         {verdict?.fragment && (
           <p className="photo-check-mismatch">
-            Похоже, на фото только часть накладной — сумма по строкам может быть неполной.
+            Похоже, на фото только часть накладной - сумма по строкам может быть неполной.
           </p>
         )}
       </section>
@@ -661,7 +661,7 @@ export default async function DocumentDetail({
       {counterpartyMismatch && party && recognizedCounterparty && (
         <section className="panel counterparty-mismatch">
           <p>
-            На фото написано «{recognizedCounterparty}», а выбран «{party.name}». Долг это не меняет — только
+            На фото написано «{recognizedCounterparty}», а выбран «{party.name}». Долг это не меняет - только
             пометка.
           </p>
           <form action={saveAlias} className="simple-operation-actions">
@@ -670,7 +670,7 @@ export default async function DocumentDetail({
             <input type="hidden" name="alias" value={recognizedCounterparty} />
             <input type="hidden" name="document_id" value={doc.id} />
             <button className="button wrap-button" type="submit">
-              Да, это {party.name} — запомнить
+              Да, это {party.name} - запомнить
             </button>
           </form>
         </section>
@@ -701,15 +701,15 @@ export default async function DocumentDetail({
               <>
                 <dl className="details">
                   <dt>Кому заплатили</dt>
-                  <dd>{expenseFields.vendor ?? "—"}</dd>
+                  <dd>{expenseFields.vendor ?? "-"}</dd>
                   <dt>Дата</dt>
-                  <dd>{expenseFields.datetime ?? "—"}</dd>
+                  <dd>{expenseFields.datetime ?? "-"}</dd>
                   <dt>Сумма на чеке</dt>
-                  <dd>{expenseFields.amount > 0 ? money(expenseFields.amount, expenseFields.currency ?? docCurrency) : "—"}</dd>
+                  <dd>{expenseFields.amount > 0 ? money(expenseFields.amount, expenseFields.currency ?? docCurrency) : "-"}</dd>
                   <dt>В записи</dt>
-                  <dd>{expense ? money(expense.amount, expense.currency) : "—"}</dd>
+                  <dd>{expense ? money(expense.amount, expense.currency) : "-"}</dd>
                   <dt>За что</dt>
-                  <dd>{expenseFields.description ?? "—"}</dd>
+                  <dd>{expenseFields.description ?? "-"}</dd>
                   <dt>Категория по чеку</dt>
                   <dd>
                     {expenseCategoryLabel(expenseFields.category)}
@@ -724,7 +724,7 @@ export default async function DocumentDetail({
                       {expenseFields.document_class === "not_document"
                         ? "На фото не видно чека."
                         : "Сумма на чеке не совпадает с записью или чек плохо читается. Сверьте с фото."}{" "}
-                      Если запись ошибочная — отмените расход и запишите правильно.
+                      Если запись ошибочная - отмените расход и запишите правильно.
                     </p>
                     <form action={confirmDocument} className="simple-operation-actions">
                       <input type="hidden" name="id" value={doc.id} />
@@ -747,17 +747,17 @@ export default async function DocumentDetail({
             {receiptFields ? (
               <dl className="details">
                 <dt>Банк</dt>
-                <dd>{receiptFields.bank ?? "—"}</dd>
+                <dd>{receiptFields.bank ?? "-"}</dd>
                 <dt>Номер операции</dt>
-                <dd>{receiptFields.operation_id ?? "—"}</dd>
+                <dd>{receiptFields.operation_id ?? "-"}</dd>
                 <dt>Дата и время</dt>
-                <dd>{receiptFields.datetime ?? "—"}</dd>
+                <dd>{receiptFields.datetime ?? "-"}</dd>
                 <dt>Сумма</dt>
-                <dd>{receiptFields.amount != null ? money(receiptFields.amount) : "—"}</dd>
+                <dd>{receiptFields.amount != null ? money(receiptFields.amount) : "-"}</dd>
                 <dt>Отправитель</dt>
-                <dd>{receiptFields.sender_name ?? "—"}</dd>
+                <dd>{receiptFields.sender_name ?? "-"}</dd>
                 <dt>Получатель</dt>
-                <dd>{receiptFields.receiver_name ?? "—"}</dd>
+                <dd>{receiptFields.receiver_name ?? "-"}</dd>
               </dl>
             ) : (
               <p className="muted">Данные появятся после распознавания.</p>
@@ -780,7 +780,7 @@ export default async function DocumentDetail({
               </div>
               {paperMismatch && (
                 <p className="photo-check-mismatch">
-                  «Итого» на бумаге не равно сумме строк — возможно, строка не распозналась или в
+                  «Итого» на бумаге не равно сумме строк - возможно, строка не распозналась или в
                   накладной ошибка в сложении. Сверьте строки с фото.
                 </p>
               )}
@@ -869,7 +869,7 @@ export default async function DocumentDetail({
               ) : (
                 <p className="muted">
                   {doc.status === "failed" || doc.status === "review"
-                    ? "Позиций нет — введите их вручную ниже."
+                    ? "Позиций нет - введите их вручную ниже."
                     : "Позиции появятся после распознавания."}
                 </p>
               )}
@@ -890,7 +890,7 @@ export default async function DocumentDetail({
                     <input name="unit" defaultValue="шт" />
                   </label>
                   <label>
-                    Цена (скидка — с минусом)
+                    Цена (скидка - с минусом)
                     <input name="price" required inputMode="decimal" />
                   </label>
                   <button className="button primary" type="submit">
@@ -928,8 +928,8 @@ export default async function DocumentDetail({
           </div>
           <p className="muted">
             {doc.status === "review"
-              ? "Подтвердите строки выше — товар придёт на склад сам. Или примите сейчас, выбрав товар для каждой строки:"
-              : "Остатки вырастут на количество из накладной. Сначала проверьте строки выше — после приёма их не пересчитать."}
+              ? "Подтвердите строки выше - товар придёт на склад сам. Или примите сейчас, выбрав товар для каждой строки:"
+              : "Остатки вырастут на количество из накладной. Сначала проверьте строки выше - после приёма их не пересчитать."}
           </p>
           <ReceiveStock purchaseId={purchaseRow!.id} documentId={doc.id} lines={receiveLines} currency={docCurrency} />
         </section>

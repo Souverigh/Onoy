@@ -251,13 +251,13 @@ export default async function Money({
       )}
       {params.created === "purchase" && params.part && /^\d+(\.\d{1,2})?$/.test(params.part) && (
         <p className="notice success" role="status">
-          Оплата поставщику {money(params.part)} записана — долг вырос только на остаток.
+          Оплата поставщику {money(params.part)} записана - долг вырос только на остаток.
         </p>
       )}
       {successText && params.duplicate === "1" && (
         <p className="notice" role="status">
           Внимание: это фото накладной уже приложено к другой записи. Если запись
-          задвоилась — отмените лишнюю.
+          задвоилась - отмените лишнюю.
         </p>
       )}
       {params.error === "invalid" && (

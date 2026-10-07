@@ -88,7 +88,7 @@ export async function saleInvoiceData(
       debtNote:
         sale.original_amount != null ? `В долг: ${money(sale.total, debtCurrency)} по курсу ${Number(sale.fx_rate)}.` : null,
       balanceNote: info.showDebt ? balanceNote(info.debtAfter, debtCurrency) : null,
-      buyer: { name: sale.customers?.name ?? "—", phone: info.customerPhone },
+      buyer: { name: sale.customers?.name ?? "-", phone: info.customerPhone },
       seller: {
         name: info.shopSellerName ?? info.sellerName ?? shopName,
         phone: info.shopSellerPhone ?? shop.data?.phone,

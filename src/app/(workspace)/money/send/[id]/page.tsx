@@ -127,9 +127,9 @@ export default async function SendSalePage({
             Долг клиента: {debtMoney(debtBefore.toFixed(2), cur)} → <strong>{debtMoney(balance.toFixed(2), cur)}</strong>
           </p>
         )}
-        {duplicate && <p className="notice">Это фото уже приложено к другой записи — проверьте, не задвоилось ли.</p>}
-        {undo === "expired" && <p className="form-error">Прошло больше 2 минут — отменить может владелец с причиной.</p>}
-        {sale.reversed_at && <p className="form-error">Эта продажа отменена — отправлять её клиенту не нужно.</p>}
+        {duplicate && <p className="notice">Это фото уже приложено к другой записи - проверьте, не задвоилось ли.</p>}
+        {undo === "expired" && <p className="form-error">Прошло больше 2 минут - отменить может владелец с причиной.</p>}
+        {sale.reversed_at && <p className="form-error">Эта продажа отменена - отправлять её клиенту не нужно.</p>}
       </section>
 
       {!sale.reversed_at && (
@@ -140,10 +140,10 @@ export default async function SendSalePage({
               <img className="invoice-image" src={imageUrl} alt={`Накладная ${customer.name} на ${money(sale.total, cur)}`} />
             </a>
           ) : pending ? (
-            <p className="notice">Читаем фото накладной — картинка появится через несколько секунд. Можно не ждать и отправить долг.</p>
+            <p className="notice">Читаем фото накладной - картинка появится через несколько секунд. Можно не ждать и отправить долг.</p>
           ) : status === "review" || status === "failed" ? (
             <p className="notice">
-              Проверьте сумму накладной — после этого клиенту уйдёт картинка.{" "}
+              Проверьте сумму накладной - после этого клиенту уйдёт картинка.{" "}
               {sale.document_id && (
                 <Link className="text-button" href={`/documents/${sale.document_id}`}>
                   Проверить
@@ -152,7 +152,7 @@ export default async function SendSalePage({
               Сейчас можно отправить только долг.
             </p>
           ) : (
-            <p className="notice">Фото накладной нет — клиент получит сумму и ссылку на долг.</p>
+            <p className="notice">Фото накладной нет - клиент получит сумму и ссылку на долг.</p>
           )}
           <SendInvoice
             phone={waPhone(customer.phone)}
@@ -172,7 +172,7 @@ export default async function SendSalePage({
               </Link>
             </p>
           )}
-          {!customer.phone && <p className="muted">У клиента нет телефона — WhatsApp спросит, кому отправить.</p>}
+          {!customer.phone && <p className="muted">У клиента нет телефона - WhatsApp спросит, кому отправить.</p>}
           <details className="send-invoice-text">
             <summary>Текст сообщения</summary>
             <pre className="send-invoice-preview">{message(Boolean(imageUrl))}</pre>

@@ -55,7 +55,7 @@ export default async function ExpenseDetails({
       {reversed && <p className="notice success">Расход отменён.</p>}
       {error === "reversal" && <p className="form-error">Не удалось отменить расход. Обновите страницу и попробуйте снова.</p>}
       {error === "comment" && <p className="form-error">Напишите, почему отменяете.</p>}
-      {undo === "expired" && <p className="form-error">Прошло больше 2 минут — отменить может владелец с причиной.</p>}
+      {undo === "expired" && <p className="form-error">Прошло больше 2 минут - отменить может владелец с причиной.</p>}
       <section className={`panel record-result${isReversed ? " reversed" : ""}`}>
         <p className="record-result-title">
           {isReversed ? "Расход отменён" : done ? "✓ Расход записан" : "Расход"}
@@ -84,7 +84,7 @@ export default async function ExpenseDetails({
             <input type="hidden" name="kind" value="expense" />
             <input type="hidden" name="id" value={row.id} />
             <button type="submit" className="button danger-outline">
-              Отменить — ошиблись
+              Отменить - ошиблись
             </button>
             <small className="muted">Можно в течение 2 минут, без причины.</small>
           </form>

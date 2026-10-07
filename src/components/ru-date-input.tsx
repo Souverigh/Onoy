@@ -84,7 +84,7 @@ export function RuDateInput({
           />
         )}
       </div>
-      {invalid ? <small className="form-error-inline">Такой даты нет — проверьте число и месяц.</small> : hint}
+      {invalid ? <small className="form-error-inline">Такой даты нет - проверьте число и месяц.</small> : hint}
     </div>
   );
 }

@@ -17,10 +17,10 @@ export default async function Forgot({ searchParams }: { searchParams: Promise<{
         <div className="auth-card">
           <span className="eyebrow">ВОССТАНОВЛЕНИЕ ДОСТУПА</span>
           <h2>Забыли пароль?</h2>
-          <p className="muted">Введите email — пришлём ссылку, по которой можно задать новый пароль.</p>
+          <p className="muted">Введите email - пришлём ссылку, по которой можно задать новый пароль.</p>
           {sent ? (
             <p className="notice success" role="status">
-              Если такой email есть в Depter, письмо уже отправлено. Откройте его и нажмите на ссылку — она
+              Если такой email есть в Depter, письмо уже отправлено. Откройте его и нажмите на ссылку - она
               действует 1 час. Письма нет? Проверьте «Спам».
             </p>
           ) : (

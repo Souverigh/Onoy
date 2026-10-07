@@ -141,7 +141,7 @@ export default async function ProductPage({
       </div>
       {product.archived_at && (
         <p className="notice" role="status">
-          Товар в архиве — в продаже его не видно.
+          Товар в архиве - в продаже его не видно.
         </p>
       )}
       {(saved || restored) && (
@@ -172,7 +172,7 @@ export default async function ProductPage({
           <Link className="button primary" href="/money/new?type=purchase&mode=items">
             + Товар от поставщика
           </Link>
-          <small className="muted">Поставщик, количество и цена закупки — долг поставщику и остаток сразу.</small>
+          <small className="muted">Поставщик, количество и цена закупки - долг поставщику и остаток сразу.</small>
         </div>
         <form action={adjustStock} className="stock-adjust">
           <input type="hidden" name="id" value={product.id} />
@@ -185,7 +185,7 @@ export default async function ProductPage({
             </label>
             <label>
               <input type="radio" name="mode" value="count" defaultChecked={mode === "count"} />
-              Пересчитал — на самом деле
+              Пересчитал - на самом деле
             </label>
           </fieldset>
           <div className="form-grid">
@@ -195,7 +195,7 @@ export default async function ProductPage({
             </label>
             <label>
               Комментарий
-              <input name="note" maxLength={200} autoComplete="off" placeholder="Для списания — обязательно" />
+              <input name="note" maxLength={200} autoComplete="off" placeholder="Для списания - обязательно" />
             </label>
           </div>
           <div className="simple-operation-actions">
@@ -231,7 +231,7 @@ export default async function ProductPage({
                     {m.unit_cost != null && Number(m.unit_cost) > 0
                       ? ` · по ${money(m.unit_cost, (m.cost_currency as Parameters<typeof money>[1]) ?? currency)}`
                       : ""}
-                    {l.reversed ? " · отменена — в остатке не считается" : ""}
+                    {l.reversed ? " · отменена - в остатке не считается" : ""}
                     {m.note && !["Пересчёт", "Импорт", "Начальный остаток"].includes(m.note) && m.reason !== "opening" ? ` · ${m.note}` : ""}
                   </span>
                 </li>

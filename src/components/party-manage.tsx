@@ -52,7 +52,7 @@ export function PartyManage({
       </summary>
       {mergedInto && (
         <p className="notice">
-          Объединён с <Link href={`/${kind}/${mergedInto.id}`}>{mergedInto.name}</Link> — все записи там.
+          Объединён с <Link href={`/${kind}/${mergedInto.id}`}>{mergedInto.name}</Link> - все записи там.
         </p>
       )}
       {recentMerges.map((m) => (
@@ -75,7 +75,7 @@ export function PartyManage({
         <div className="party-manage-row">
           <span className="label-with-tip">
             Удалить
-            <InfoTip>Записей нет — можно удалить насовсем.</InfoTip>
+            <InfoTip>Записей нет - можно удалить насовсем.</InfoTip>
           </span>
           <DeleteWithUndo what={kind} id={id} title={`Удалить ${who} «${name}»?`} afterHref={`/${kind}?deleted=1`} />
         </div>
@@ -90,7 +90,7 @@ export function PartyManage({
             <InfoTip>
               {archived
                 ? "В архиве: нет в списках и формах, история и ссылка сохранены."
-                : "Есть записи — удалить нельзя, можно убрать в архив: история и ссылка сохранятся."}
+                : "Есть записи - удалить нельзя, можно убрать в архив: история и ссылка сохранятся."}
             </InfoTip>
           </span>
           {archived ? (

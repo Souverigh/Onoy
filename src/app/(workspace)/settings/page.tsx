@@ -11,17 +11,17 @@ import { EXPORT_TABLES } from "@/lib/export-data";
 const ACCOUNT_TEXT: Record<string, string> = {
   password_changed: "Пароль изменён. На других устройствах нужно войти заново.",
   email_sent: "Письмо со ссылкой отправлено на новый адрес.",
-  email_half: "Одна ссылка подтверждена. Откройте письмо и на второй почте — тогда email сменится.",
-  email_changed: "Email изменён — теперь входите с новым адресом.",
+  email_half: "Одна ссылка подтверждена. Откройте письмо и на второй почте - тогда email сменится.",
+  email_changed: "Email изменён - теперь входите с новым адресом.",
   current: "Текущий пароль не подошёл.",
-  short: "Новый пароль — не короче 6 символов.",
+  short: "Новый пароль - не короче 6 символов.",
   mismatch: "Новые пароли не совпадают.",
   same: "Новый пароль совпадает со старым.",
-  weak: "Слишком простой пароль — добавьте цифры или буквы.",
+  weak: "Слишком простой пароль - добавьте цифры или буквы.",
   email_invalid: "Проверьте новый email.",
   email_same: "Это ваш текущий email.",
   email_taken: "Этот email уже занят другим аккаунтом.",
-  email_current: "Пароль не подошёл — email не изменён.",
+  email_current: "Пароль не подошёл - email не изменён.",
   rate: "Слишком много попыток. Подождите несколько минут и повторите.",
   link: "Ссылка из письма устарела или уже открыта. Попробуйте ещё раз.",
   failed: "Не получилось. Обновите страницу и попробуйте снова.",
@@ -135,11 +135,11 @@ export default async function Settings({
           {error && (
             <p className="form-error" role="alert">
               {error === "currency_locked"
-                ? "Валюту магазина нельзя сменить: записи уже есть. Остальное не сохранено — попробуйте ещё раз без смены валюты."
+                ? "Валюту магазина нельзя сменить: записи уже есть. Остальное не сохранено - попробуйте ещё раз без смены валюты."
                 : error === "qr"
                   ? "QR не сохранён: нужна картинка (фото или скриншот) не больше 4 МБ."
                   : error === "migration"
-                    ? "Название и телефон сохранены, а продавец и реквизиты — нет: базу ещё не обновили. Напишите Ержану."
+                    ? "Название и телефон сохранены, а продавец и реквизиты - нет: базу ещё не обновили. Напишите Ержану."
                     : "Не удалось сохранить. Проверьте название, телефоны и названия в накладных (до 20 строк)."}
             </p>
           )}
@@ -251,7 +251,7 @@ export default async function Settings({
                   defaultValue={((org.data?.document_names as string[] | null) ?? []).join("\n")}
                 />
                 <small className="muted">
-                  Необязательно. По строке на вариант — как на печати, в шапке или от руки. Так приложение
+                  Необязательно. По строке на вариант - как на печати, в шапке или от руки. Так приложение
                   отличает продажу от товара от поставщика и не путает ваш магазин с клиентом.
                 </small>
               </label>
@@ -259,7 +259,7 @@ export default async function Settings({
                 <span>
                   <strong>Не принимать одно фото дважды</strong>
                   <small className="muted">
-                    Если выключить — запись с уже использованным фото сохранится, но с предупреждением.
+                    Если выключить - запись с уже использованным фото сохранится, но с предупреждением.
                   </small>
                 </span>
                 <input
@@ -272,7 +272,7 @@ export default async function Settings({
               <label className="setting-switch">
                 <span>
                   <strong>«Долг после этой накладной» на накладной</strong>
-                  <small className="muted">Мелко под суммой — клиент сразу видит общий долг.</small>
+                  <small className="muted">Мелко под суммой - клиент сразу видит общий долг.</small>
                 </span>
                 <input type="checkbox" role="switch" name="invoice_show_debt" defaultChecked={seller?.invoice_show_debt ?? true} />
               </label>
@@ -309,7 +309,7 @@ export default async function Settings({
               <header>
                 <h2>Выгрузка в Excel</h2>
                 <p className="muted">
-                  Все записи магазина, включая отменённые (с пометкой). Даты — по Бишкеку, суммы — числами.
+                  Все записи магазина, включая отменённые (с пометкой). Даты - по Бишкеку, суммы - числами.
                 </p>
               </header>
               <a className="button primary settings-export-all" href="/export">
@@ -336,7 +336,7 @@ export default async function Settings({
                 role={ACCOUNT_OK.has(account) ? "status" : "alert"}
               >
                 {account === "email_sent" && to
-                  ? `Письмо со ссылкой отправлено на ${to}. Откройте его — после подтверждения входите с новым email. До этого — со старым.`
+                  ? `Письмо со ссылкой отправлено на ${to}. Откройте его - после подтверждения входите с новым email. До этого - со старым.`
                   : ACCOUNT_TEXT[account]}
               </p>
             )}
@@ -385,7 +385,7 @@ export default async function Settings({
               <summary>
                 <span>
                   <strong>Сменить email</strong>
-                  <small className="muted">Придёт письмо со ссылкой на новый адрес — email сменится после неё.</small>
+                  <small className="muted">Придёт письмо со ссылкой на новый адрес - email сменится после неё.</small>
                 </span>
               </summary>
               <form action={changeEmail} className="settings-account-form">

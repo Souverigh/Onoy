@@ -71,7 +71,7 @@ export default async function StockPage({
           <h1>
             Товары <span className="count">{total}</span>
           </h1>
-          <p className="muted">Остатки, цены и коды. Товар от поставщика прибавляет остаток, продажа — списывает.</p>
+          <p className="muted">Остатки, цены и коды. Товар от поставщика прибавляет остаток, продажа - списывает.</p>
         </div>
         <div className="heading-actions stock-heading-actions">
           <Link className="button" href="/stock/import">
@@ -88,7 +88,7 @@ export default async function StockPage({
       </div>
       {archived_one && (
         <p className="notice success" role="status">
-          Товар убран в архив — в продаже его больше не видно. Вернуть можно из «Архива».
+          Товар убран в архив - в продаже его больше не видно. Вернуть можно из «Архива».
         </p>
       )}
       <nav className="overdue-filter" aria-label="Фильтр">
@@ -159,7 +159,7 @@ export default async function StockPage({
                   ? "Нет товаров с остатком ниже минимума."
                   : filter === "archive"
                     ? "Сюда попадают товары, которые больше не продаёте."
-                    : "Добавьте товары по одному или загрузите прайс из Excel — потом продажу можно оформлять накладной прямо в приложении."}
+                    : "Добавьте товары по одному или загрузите прайс из Excel - потом продажу можно оформлять накладной прямо в приложении."}
             </p>
             {!query && filter === "all" && (
               <div className="simple-operation-actions">

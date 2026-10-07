@@ -38,9 +38,9 @@ function StatementDocument({ data }: { data: StatementPdfData }) {
     <Document>
       <Page size="A4" style={styles.page}>
         <Text style={styles.shopName}>{data.shopName}</Text>
-        <Text style={styles.muted}>Акт сверки — {data.partyName}</Text>
+        <Text style={styles.muted}>Акт сверки - {data.partyName}</Text>
         <Text style={styles.title}>
-          Период: {data.from} — {data.to}
+          Период: {data.from} - {data.to}
         </Text>
         <View style={styles.balanceRow}>
           <Text>Долг на начало</Text>

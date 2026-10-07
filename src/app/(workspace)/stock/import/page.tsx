@@ -12,7 +12,7 @@ export default function StockImportPage() {
           <span className="eyebrow">СКЛАД</span>
           <h1>Товары из Excel</h1>
           <p className="muted">
-            Прайс или выгрузка из 1С: название, код, единица, цена, остаток — колонки найдём сами.{" "}
+            Прайс или выгрузка из 1С: название, код, единица, цена, остаток - колонки найдём сами.{" "}
             <a className="text-button" href="/stock/import/template">
               Скачать шаблон
             </a>
