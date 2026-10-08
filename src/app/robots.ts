@@ -10,7 +10,7 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: "*",
-      allow: ["/$", "/login$", "/opengraph-image", "/icon", "/apple-icon", "/manifest.webmanifest"],
+      allow: ["/$", "/login$", "/opengraph-image", "/icon", "/icons/", "/apple-icon", "/manifest.webmanifest"],
       disallow: "/",
     },
     sitemap: `${SITE_URL}/sitemap.xml`,

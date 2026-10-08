@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { LogoutButton } from "@/components/logout-button";
+import { InstallApp } from "@/components/install-app";
 import { getContext } from "@/lib/context";
 import { StaffPanel, type Invite, type Member } from "@/components/staff-panel";
 import { Submit } from "@/components/submit";
@@ -325,6 +326,8 @@ export default async function Settings({
               </div>
             </section>
           )}
+
+          <InstallApp variant="card" />
 
           <section className="panel settings-card" id="account">
             <header>

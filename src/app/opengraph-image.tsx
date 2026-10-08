@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
+import { logoDataUrl } from "@/lib/brand-icon";
 
 // Превью ссылки на depter.kg в WhatsApp, Telegram и соцсетях. Собирается при сборке.
 export const alt = "Depter - учёт долгов магазина онлайн";
@@ -28,22 +29,8 @@ export default async function OpengraphImage() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
-          <div
-            style={{
-              width: 88,
-              height: 88,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: "50%",
-              background: "#dcf2a5",
-              color: "#245d4c",
-              fontSize: 60,
-              fontWeight: 700,
-            }}
-          >
-            D
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logoDataUrl("rounded", true)} width={88} height={88} alt="" />
           <span style={{ fontSize: 56, fontWeight: 700 }}>Depter</span>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>

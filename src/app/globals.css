@@ -81,6 +81,13 @@ small {
   letter-spacing: -2px;
   line-height: 1;
 }
+/* Логотип перед словом Depter — на тёмной витрине светлый (public/logo-inverted.svg). */
+.brand-logo {
+  width: 1em;
+  height: 1em;
+  margin-right: 0.22em;
+  vertical-align: -0.14em;
+}
 .brand span {
   display: block;
   font-size: 10px;
@@ -2624,8 +2631,8 @@ tr.line-mismatch {
 .client-promo summary::-webkit-details-marker {
   display: none;
 }
-.client-promo[open] summary {
-  font-size: 0;
+.client-promo[open] summary svg {
+  display: none;
 }
 .client-promo[open] summary::after {
   content: "×";
@@ -6610,4 +6617,61 @@ tr.row-link:has(a[data-pending]) {
 }
 .claims-processed {
   margin-top: 18px;
+}
+
+/* Установка приложения на телефон (src/components/install-app.tsx). */
+.install-app {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.install-app-icon {
+  border-radius: 6px;
+}
+.install-app-ios {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #edf4e9;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.install-banner {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: white;
+}
+.install-banner-icon {
+  border-radius: 10px;
+}
+.install-banner-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.install-banner-text .muted {
+  font-size: 14px;
+}
+.install-banner-text .install-app-ios {
+  margin-top: 8px;
+}
+.install-banner-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+@media (min-width: 720px) {
+  .install-banner {
+    grid-template-columns: auto 1fr auto;
+  }
+  .install-banner-actions {
+    grid-column: auto;
+  }
 }

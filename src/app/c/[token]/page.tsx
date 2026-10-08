@@ -9,6 +9,7 @@ import { submitClaim } from "./actions";
 import { ClaimPhotoField } from "@/components/claim-photo-field";
 import { CopyButton } from "@/components/copy-button";
 import { ContactLinks } from "@/components/contact-links";
+import { LogoMark } from "@/components/logo-mark";
 import { normalizePhone } from "@/lib/contacts";
 
 // Страница клиента — не для поиска (задача 46).
@@ -273,7 +274,9 @@ export default async function ClientPage({
       </section>
       {/* Кружок справа внизу: без JS, раскрывается через <details>. */}
       <details className="client-promo">
-        <summary aria-label="Depter: удобный счёт для ваших клиентов">D</summary>
+        <summary aria-label="Depter: удобный счёт для ваших клиентов">
+          <LogoMark size={26} />
+        </summary>
         <div className="client-promo-card">
           <p>Хотите такой же удобный и понятный счёт для своих клиентов? Напишите нам - поможем.</p>
           <ContactLinks />

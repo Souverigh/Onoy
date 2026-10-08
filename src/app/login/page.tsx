@@ -6,6 +6,7 @@ import { Submit } from "@/components/submit";
 import { cookies } from "next/headers";
 import { EXPIRED_COOKIE, INACTIVITY_LIMIT_MS } from "@/lib/session-timeout";
 import { ContactLinks } from "@/components/contact-links";
+import { InstallApp } from "@/components/install-app";
 import { sendFeedback } from "./actions";
 import { DEPTER_PHONE } from "@/components/contact-links";
 import { OPEN_GRAPH_BASE, SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL } from "@/lib/site";
@@ -83,6 +84,8 @@ export default async function Login({
       />
       <section className="auth-intro">
         <a className="brand" href="/">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-inverted.svg" alt="" className="brand-logo" />
           Depter<span>учёт долгов без лишнего</span>
         </a>
         <div>
@@ -160,6 +163,7 @@ export default async function Login({
                 Новый магазин? <a href="/signup">Зарегистрироваться</a> - понадобится код доступа от Depter.
                 Продавцы входят по ссылке-приглашению от владельца.
               </small>
+              <InstallApp variant="button" />
             </>
           )}
         </div>

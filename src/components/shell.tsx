@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Icon, type IconName } from "./icon";
+import { InstallApp } from "./install-app";
 
 type NavItem = [string, string, IconName];
 
@@ -173,7 +174,11 @@ export function Shell({
           </>
         )}
         {preview && <div className="preview-banner">Предпросмотр интерфейса · данные не подключены</div>}
-        <main className="content">{children}</main>
+        <main className="content">
+          {/* Предложение поставить значок на телефон — только на главной, можно скрыть. */}
+          {!preview && path === "/" && <InstallApp variant="banner" />}
+          {children}
+        </main>
       </div>
     </div>
   );
