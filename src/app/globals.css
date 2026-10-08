@@ -4387,6 +4387,9 @@ form .party-merge-field {
   margin-bottom: 8px;
 }
 .claim-currency .party-suggestion {
+  /* Держит скрытую радиокнопку внутри себя — иначе она шириной со страницу
+     торчит вправо, и на телефоне вся страница становится шире экрана. */
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
