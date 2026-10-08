@@ -8,6 +8,7 @@ import { CURRENCIES, CURRENCY_SIGN, isCurrency, type Currency } from "@/lib/curr
 import { submitClaim } from "./actions";
 import { ClaimPhotoField } from "@/components/claim-photo-field";
 import { CopyButton } from "@/components/copy-button";
+import { ContactLinks } from "@/components/contact-links";
 import { normalizePhone } from "@/lib/contacts";
 
 // Страница клиента — не для поиска (задача 46).
@@ -270,6 +271,14 @@ export default async function ClientPage({
           </button>
         </form>
       </section>
+      {/* Кружок справа внизу: без JS, раскрывается через <details>. */}
+      <details className="client-promo">
+        <summary aria-label="Depter: удобный счёт для ваших клиентов">D</summary>
+        <div className="client-promo-card">
+          <p>Хотите такой же удобный и понятный счёт для своих клиентов? Напишите нам - поможем.</p>
+          <ContactLinks />
+        </div>
+      </details>
       <footer className="client-footer">
         <a href="https://depter.kg" className="text-button">
           Сделано в Depter
