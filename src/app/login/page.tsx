@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { login } from "../auth/actions";
 import { configured } from "@/lib/supabase/server";
@@ -6,6 +7,53 @@ import { cookies } from "next/headers";
 import { EXPIRED_COOKIE, INACTIVITY_LIMIT_MS } from "@/lib/session-timeout";
 import { ContactLinks } from "@/components/contact-links";
 import { sendFeedback } from "./actions";
+import { DEPTER_PHONE } from "@/components/contact-links";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL } from "@/lib/site";
+
+// Витрина — единственная страница для поисковиков (src/app/robots.ts).
+export const metadata: Metadata = {
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  keywords: [
+    "учёт долгов",
+    "тетрадь долгов",
+    "долги клиентов",
+    "долговая тетрадь онлайн",
+    "учёт долгов магазина",
+    "накладные",
+    "расчёты с поставщиками",
+    "Кыргызстан",
+    "Бишкек",
+  ],
+  alternates: { canonical: "/login" },
+  robots: { index: true, follow: true },
+  openGraph: { title: SITE_TITLE, description: SITE_DESCRIPTION, url: "/login" },
+};
+
+const phoneDigits = DEPTER_PHONE.replace(/\D/g, "");
+// Структурированные данные: поисковик понимает, что это за сервис и как связаться.
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      name: SITE_NAME,
+      url: SITE_URL,
+      logo: `${SITE_URL}/icon`,
+      telephone: `+${phoneDigits}`,
+      sameAs: [`https://t.me/+${phoneDigits}`, `https://wa.me/${phoneDigits}`],
+    },
+    {
+      "@type": "SoftwareApplication",
+      name: SITE_NAME,
+      url: `${SITE_URL}/login`,
+      description: SITE_DESCRIPTION,
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      inLanguage: "ru",
+    },
+  ],
+};
 
 // Сюда же ведёт QR с накладных (/r/<код>): новому магазину объясняем, что такое
 // Depter, но вход всегда на виду — справа на компьютере, сразу под заголовком на телефоне.
@@ -29,6 +77,10 @@ export default async function Login({
   const limitHours = INACTIVITY_LIMIT_MS / 3_600_000;
   return (
     <main className="auth landing">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <section className="auth-intro">
         <a className="brand" href="/">
           Depter<span>учёт долгов без лишнего</span>
