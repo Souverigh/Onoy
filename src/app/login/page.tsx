@@ -8,7 +8,7 @@ import { EXPIRED_COOKIE, INACTIVITY_LIMIT_MS } from "@/lib/session-timeout";
 import { ContactLinks } from "@/components/contact-links";
 import { sendFeedback } from "./actions";
 import { DEPTER_PHONE } from "@/components/contact-links";
-import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL } from "@/lib/site";
+import { OPEN_GRAPH_BASE, SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL } from "@/lib/site";
 
 // Витрина — единственная страница для поисковиков (src/app/robots.ts).
 export const metadata: Metadata = {
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: "/login" },
   robots: { index: true, follow: true },
-  openGraph: { title: SITE_TITLE, description: SITE_DESCRIPTION, url: "/login" },
+  openGraph: { ...OPEN_GRAPH_BASE, title: SITE_TITLE, description: SITE_DESCRIPTION, url: "/login" },
 };
 
 const phoneDigits = DEPTER_PHONE.replace(/\D/g, "");

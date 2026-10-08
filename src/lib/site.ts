@@ -6,3 +6,14 @@ export const SITE_TITLE = "Depter - учёт долгов магазина он�
 export const SITE_DESCRIPTION =
   "Электронная тетрадь долгов для магазина: долги клиентов и поставщиков, накладные в WhatsApp, " +
   "перенос старой тетради по фото, склад и отчёты. Работает в браузере на телефоне и компьютере.";
+
+/**
+ * Общие поля превью. openGraph страницы заменяет родительский целиком, а не
+ * дополняет, — поэтому страница со своим openGraph разворачивает их у себя.
+ */
+export const OPEN_GRAPH_BASE = {
+  type: "website" as const,
+  siteName: SITE_NAME,
+  locale: "ru_RU",
+  images: { url: "/opengraph-image", width: 1200, height: 630, alt: SITE_TITLE },
+};
