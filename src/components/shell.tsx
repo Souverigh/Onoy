@@ -35,8 +35,8 @@ const EXTRA_TITLES: [string, string][] = [
 
 /**
  * Каркас кабинета. Телефон (аудит ТЗ 15.1 п. 6): внизу Главная · Клиенты ·
- * [+ Продажа] · Платежи (бейдж — ждущие оплаты) · Ещё; «Ещё» открывает меню
- * над панелью. «Выйти» — только в Настройках (п. 8). ПК: подписи у иконок
+ * [+ Продажа] · Итог дня · Ещё; «Ещё» открывает меню над панелью (там же
+ * Платежи — их бейдж выносится на «Ещё»). «Выйти» — только в Настройках (п. 8). ПК: подписи у иконок
  * при любой ширине (п. 11).
  */
 export function Shell({
@@ -78,9 +78,9 @@ export function Shell({
       <span className="nav-badge nav-badge-muted">{reviewCount}</span>
     ) : null;
 
-  // Внизу у продавца вместо «Платежей» (заявки на оплату — у владельца) — «Поставщики».
+  // Внизу у продавца вместо «Итога дня» (итоги — у владельца) — «Поставщики».
   const bottom: NavItem[] = isOwner
-    ? [["/", "Главная", "home"], ["/customers", "Клиенты", "people"], ["/claims", "Платежи", "check"]]
+    ? [["/", "Главная", "home"], ["/customers", "Клиенты", "people"], ["/day", "Итог дня", "file"]]
     : [["/", "Главная", "home"], ["/customers", "Клиенты", "people"], ["/suppliers", "Поставщики", "truck"]];
   const more = nav.filter(allowed).filter(([href]) => !bottom.some(([b]) => b === href));
   const moreActive = more.some(([href]) => active(href));
@@ -138,7 +138,13 @@ export function Shell({
           >
             <Icon name={menuOpen ? "close" : "menu"} />
             <span>Ещё</span>
-            {!menuOpen && reviewCount > 0 && <span className="nav-badge nav-badge-muted">{reviewCount}</span>}
+            {/* «Платежи» теперь в меню — их бейдж главнее накладных. */}
+            {!menuOpen &&
+              (isOwner && claimsCount > 0 ? (
+                <span className="nav-badge">{claimsCount}</span>
+              ) : reviewCount > 0 ? (
+                <span className="nav-badge nav-badge-muted">{reviewCount}</span>
+              ) : null)}
           </button>
         </nav>
         <div className="sidebar-bottom">
