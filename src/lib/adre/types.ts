@@ -53,6 +53,8 @@ export type InvoiceResult = {
   /** Откуда валюта: знак на документе, масштаб цен или ничего (тогда сом). До v3 нет. */
   currency_evidence?: "symbol" | "price_scale" | "none";
   warnings: string[];
+  /** Продавец исправил строки в форме до записи — это уже не чистый ответ модели. */
+  seller_edited?: boolean;
 };
 
 export type ReceiptResult = {

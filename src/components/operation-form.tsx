@@ -20,7 +20,7 @@ import {
   type SimilarRecord,
 } from "@/app/(workspace)/money/actions";
 import type { DocumentVerdict } from "@/lib/adre/classify";
-import type { InvoiceResult } from "@/lib/adre/types";
+import type { InvoiceLine, InvoiceResult } from "@/lib/adre/types";
 import { Submit } from "./submit";
 import { RuDateInput, bishkekNow } from "./ru-date-input";
 import { DatePicker } from "./date-picker";
@@ -30,6 +30,7 @@ import { ContactPicker } from "./contact-picker";
 import { PartyPicker, type PickerParty } from "./party-picker";
 import { NewCustomerInline } from "./new-customer-inline";
 import { ConfirmDialog } from "./confirm-dialog";
+import { RecognizedLines, lineWord, linesTotal } from "./recognized-lines";
 import { LeaveGuard } from "./leave-guard";
 import { debtMoney, money, quantity } from "@/lib/format";
 import { bestMatches } from "@/lib/match";
@@ -88,16 +89,6 @@ const OTHER_DOCUMENT_TEXT: Record<Exclude<DocumentVerdict & { ok: false }, { rea
   notebook: "Похоже, это страница тетради долгов, а не накладная.",
   not_document: "На фото не видно документа. Сфотографируйте накладную целиком.",
 };
-
-/** «1 строка», «3 строки», «5 строк». */
-function lineWord(n: number): string {
-  const tens = n % 100;
-  const ones = n % 10;
-  if (tens >= 11 && tens <= 14) return "строк";
-  if (ones === 1) return "строка";
-  if (ones >= 2 && ones <= 4) return "строки";
-  return "строк";
-}
 
 const PHOTO_USED_TEXT =
   "Это фото уже приложено к другой записи. Проверьте историю - возможно, запись уже есть. Разрешить повторное использование фото можно в настройках.";
@@ -791,6 +782,16 @@ export function OperationForm({
   // Приход и продажа: в чужой валюте под суммой — сколько уйдёт в долг.
   const amountNote =
     foreign && debtAmount > 0 ? `В долг: ${money(debtAmount, debtCurrency)} по курсу ${formatRate(rate ?? 0)}` : null;
+
+  // Продавец исправил строки накладной: итог строк пересчитываем, а сумму в
+  // поле меняем, только если там стоял прежний итог строк (подставлен с фото).
+  function editLines(lines: InvoiceLine[]) {
+    const current = checkedPhoto?.result;
+    if (!checkedPhoto || !current) return;
+    const total = linesTotal(lines);
+    setCheckedPhoto({ ...checkedPhoto, result: { ...current, lines, total_computed: total, seller_edited: true } });
+    if (amountFromInput(amountValue) === current.total_computed) setAmountValue(String(total));
+  }
 
   function takeSuggestion(value: number, key: "lines" | "paper") {
     setAmountValue(String(value));
@@ -1582,41 +1583,12 @@ export function OperationForm({
                 }}
               />
               {checkedPhoto?.result && checkedPhoto.result.lines.length > 0 && (
-                <details className="recognized-lines">
-                  <summary>
-                    Что прочитали в накладной · {checkedPhoto.result.lines.length}{" "}
-                    {lineWord(checkedPhoto.result.lines.length)}
-                  </summary>
-                  {(checkedPhoto.result.number || checkedPhoto.result.date || checkedPhoto.result.seller?.name_raw) && (
-                    <p className="muted">
-                      {[
-                        checkedPhoto.result.number ? `№ ${checkedPhoto.result.number}` : null,
-                        checkedPhoto.result.date ? `от ${checkedPhoto.result.date}` : null,
-                        checkedPhoto.result.seller?.name_raw ? `продавец: ${checkedPhoto.result.seller.name_raw}` : null,
-                        checkedPhoto.result.buyer?.name_raw ? `покупатель: ${checkedPhoto.result.buyer.name_raw}` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                  )}
-                  <ol>
-                    {checkedPhoto.result.lines.map((line) => (
-                      <li key={line.n} className={line.confidence < 0.8 ? "line-doubt" : undefined}>
-                        <span className="recognized-line-name">{line.name_raw}</span>
-                        <span className="recognized-line-calc">
-                          {quantity(line.qty)} {line.unit} × {money(line.price, suggestionCurrency)}
-                          {line.confidence < 0.8 && " · плохо читается"}
-                        </span>
-                        <span className="recognized-line-sum">{money(line.sum, suggestionCurrency)}</span>
-                      </li>
-                    ))}
-                  </ol>
-                  <p className="muted">
-                    Сумма строк: {money(checkedPhoto.result.total_computed, suggestionCurrency)}
-                    {paperTotal != null && <> · итог накладной: {money(paperTotal, suggestionCurrency)}</>}
-                    . Ошибку в строке можно исправить в документе после записи.
-                  </p>
-                </details>
+                <RecognizedLines
+                  result={checkedPhoto.result}
+                  currency={suggestionCurrency}
+                  paperTotal={paperTotal}
+                  onChange={editLines}
+                />
               )}
             </div>
           </details>
