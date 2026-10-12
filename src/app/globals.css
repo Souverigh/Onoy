@@ -6172,6 +6172,22 @@ tr.row-link:has(a[data-pending]) {
   font-size: 13px;
   white-space: nowrap;
 }
+/* Узкий экран: длинное имя («horozasia.com office@…») переносится, а телефон
+   с долгом уходит строкой ниже — без горизонтальной прокрутки списка. */
+.party-picker-list button > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 560px) {
+  .party-picker-list button:has(> small) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .party-picker-list button > small {
+    white-space: normal;
+  }
+}
 .party-picker-empty {
   padding: 10px;
 }

@@ -87,7 +87,8 @@ export function SaleItemsForm({
   const [contactNote, setContactNote] = useState<string | null>(null);
   const allCustomers = [...customers, ...contactCustomers.filter((c) => !customers.some((x) => x.id === c.id))];
   const [party, setParty] = useState(initialParty ?? "");
-  const [newCustomer, setNewCustomer] = useState(false);
+  // «+ Новый клиент» / «+ Новый поставщик» открыт: имя — что набрали в поиске.
+  const [newCustomer, setNewCustomer] = useState<string | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const lineKey = useRef(0);
   const [query, setQuery] = useState("");
@@ -244,23 +245,34 @@ export function SaleItemsForm({
         value={party}
         onChange={(id) => {
           setParty(id);
-          if (id) setNewCustomer(false);
+          if (id) setNewCustomer(null);
         }}
         shopCurrency={shopCurrency}
         actions={
           purchase
-            ? undefined
-            : (close) => (
+            ? (close, typed) => (
+                <button
+                  type="button"
+                  className="party-picker-action"
+                  onClick={() => {
+                    close();
+                    setNewCustomer(typed);
+                  }}
+                >
+                  + Новый поставщик{typed ? ` «${typed}»` : ""}
+                </button>
+              )
+            : (close, typed) => (
                 <>
                   <button
                     type="button"
                     className="party-picker-action"
                     onClick={() => {
                       close();
-                      setNewCustomer(true);
+                      setNewCustomer(typed);
                     }}
                   >
-                    + Новый клиент
+                    + Новый клиент{typed ? ` «${typed}»` : ""}
                   </button>
                   <ContactPicker
                     className="party-picker-action"
@@ -278,7 +290,7 @@ export function SaleItemsForm({
                         list.some((c) => c.id === found.id) ? list : [...list, { id: found.id, name: found.name, balance: found.balance }],
                       );
                       setParty(found.id);
-                      setNewCustomer(false);
+                      setNewCustomer(null);
                       setContactNote(found.created ? `Добавили нового клиента: ${found.name}.` : `Уже есть в списке: ${found.name}.`);
                     }}
                   />
@@ -286,23 +298,26 @@ export function SaleItemsForm({
               )
         }
       />
-      {!purchase && newCustomer && (
+      {newCustomer != null && (
         <NewCustomerInline
+          key={newCustomer}
+          who={purchase ? "supplier" : "customer"}
           customers={allCustomers}
-          onClose={() => setNewCustomer(false)}
+          initialName={newCustomer}
+          onClose={() => setNewCustomer(null)}
           onPickExisting={(id) => {
             setParty(id);
-            setNewCustomer(false);
+            setNewCustomer(null);
           }}
           onCreated={(created) => {
             setContactCustomers((list) => [...list, created]);
             setParty(created.id);
-            setNewCustomer(false);
-            setContactNote(`Добавили нового клиента: ${created.name}.`);
+            setNewCustomer(null);
+            setContactNote(`Добавили ${purchase ? "нового поставщика" : "нового клиента"}: ${created.name}.`);
           }}
         />
       )}
-      {!purchase && contactNote && <small className="muted contact-note">{contactNote}</small>}
+      {contactNote && <small className="muted contact-note">{contactNote}</small>}
 
       <div className="product-picker">
         <label htmlFor="product-search" className="product-picker-title">
