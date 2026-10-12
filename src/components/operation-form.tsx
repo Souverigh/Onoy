@@ -820,6 +820,10 @@ export function OperationForm({
       <ContactPicker
         className="party-picker-action"
         label="+ Клиент из контактов"
+        iosFallback={() => {
+          close();
+          setNewCustomer({ name: query, phone: "" });
+        }}
         onPick={async ({ name, phone }) => {
           setContactNote("Ищем клиента…");
           const found = await customerFromContact(name, phone);

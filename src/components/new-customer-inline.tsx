@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { customerFromContact, supplierFromContact } from "@/app/(workspace)/money/actions";
 import { bestMatches } from "@/lib/match";
 import { phoneKey } from "@/lib/contacts";
 import type { PickerParty } from "./party-picker";
-import { PhoneField } from "./contact-picker";
+import { IosAutofillHint, PhoneField, isIos } from "./contact-picker";
 
 /** Похожее имя — «Похоже, это Айбек» (задача 24). */
 const SAME_PERSON = 0.8;
@@ -41,6 +41,8 @@ export function NewCustomerInline({
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [lookalike, setLookalike] = useState<PickerParty | null>(null);
+  const [ios, setIos] = useState(false);
+  useEffect(() => setIos(isIos()), []);
   const word = who === "supplier" ? "поставщика" : "клиента";
   const create_ = who === "supplier" ? supplierFromContact : customerFromContact;
 
@@ -109,7 +111,7 @@ export function NewCustomerInline({
         <>
           <label>
             {who === "supplier" ? "Название поставщика" : "Имя клиента"}
-            <input value={name} maxLength={160} autoComplete="off" onChange={(e) => setName(e.target.value)} />
+            <input value={name} maxLength={160} autoComplete="name" onChange={(e) => setName(e.target.value)} />
           </label>
           <label>
             Телефон (необязательно)
@@ -122,13 +124,18 @@ export function NewCustomerInline({
               <input
                 value={phone}
                 maxLength={40}
-                inputMode="tel"
-                autoComplete="off"
+                type="tel"
+                autoComplete="tel"
                 placeholder="+996 …"
                 onChange={(e) => setPhone(e.target.value)}
               />
             </PhoneField>
           </label>
+          {ios && (
+            <small className="muted">
+              <IosAutofillHint />
+            </small>
+          )}
           {note && <p className="muted">{note}</p>}
           <div className="simple-operation-actions">
             <button type="button" className="button primary" disabled={saving} onClick={() => void create(false)}>

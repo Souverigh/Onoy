@@ -31,6 +31,8 @@ export function EntryForm({
           name="name"
           required
           maxLength={160}
+          // Клиент/поставщик: Safari на iPhone предложит «Автозаполнение контакта».
+          autoComplete={kind === "products" ? "off" : "name"}
           defaultValue={entry?.name ?? draft?.name}
           placeholder={
             kind === "products" ? "Например, Horoz LED 12W" : "Например, Асан"
@@ -96,6 +98,7 @@ export function EntryForm({
               <input
                 name="phone"
                 type="tel"
+                autoComplete="tel"
                 maxLength={40}
                 defaultValue={entry?.phone ?? draft?.phone ?? ""}
               />
