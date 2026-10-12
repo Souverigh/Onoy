@@ -89,6 +89,16 @@ const OTHER_DOCUMENT_TEXT: Record<Exclude<DocumentVerdict & { ok: false }, { rea
   not_document: "На фото не видно документа. Сфотографируйте накладную целиком.",
 };
 
+/** «1 строка», «3 строки», «5 строк». */
+function lineWord(n: number): string {
+  const tens = n % 100;
+  const ones = n % 10;
+  if (tens >= 11 && tens <= 14) return "строк";
+  if (ones === 1) return "строка";
+  if (ones >= 2 && ones <= 4) return "строки";
+  return "строк";
+}
+
 const PHOTO_USED_TEXT =
   "Это фото уже приложено к другой записи. Проверьте историю - возможно, запись уже есть. Разрешить повторное использование фото можно в настройках.";
 
@@ -147,10 +157,14 @@ export function OperationForm({
   // Курс, введённый продавцом; пусто — официальный (НБКР / ЦБ РФ).
   const [rateValue, setRateValue] = useState("");
   const [paidNow, setPaidNow] = useState(false);
+  // «Сразу оплатили поставщику» — в «Подробностях»; заполнено — видно в заголовке.
+  const [paidNowValue, setPaidNowValue] = useState("");
   // Клиенты, добавленные из контактов или «+ Новый клиент» прямо в форме (без перезагрузки).
   const [contactCustomers, setContactCustomers] = useState<Customer[]>([]);
   const [contactNote, setContactNote] = useState<string | null>(null);
-  // «+ Новый клиент» открыт: имя и телефон — с накладной или пустые.
+  // Поставщики, добавленные в форме прихода («+ Новый поставщик», с накладной).
+  const [addedSuppliers, setAddedSuppliers] = useState<Party[]>([]);
+  // «+ Новый клиент» / «+ Новый поставщик» открыт: имя и телефон — с накладной или пустые.
   const [newCustomer, setNewCustomer] = useState<{ name: string; phone: string } | null>(null);
   // Наличные или перевод (задача 18): выбор продавца; без выбора — по чеку.
   const [methodChoice, setMethodChoice] = useState<"cash" | "transfer" | null>(null);
@@ -168,6 +182,7 @@ export function OperationForm({
   // «Накладной нет — записать сумму»: продажа по телефону, товар без бумаги.
   const [noInvoice, setNoInvoice] = useState(false);
   const allCustomers = [...customers, ...contactCustomers.filter((c) => !customers.some((x) => x.id === c.id))];
+  const allSuppliers = [...suppliers, ...addedSuppliers.filter((c) => !suppliers.some((x) => x.id === c.id))];
   const [checkedPhoto, setCheckedPhoto] = useState<CheckedPhoto | null>(null);
   const [checking, setChecking] = useState(false);
   // Чек оплаты: выбран → сразу загружаем и распознаём (без перезагрузки).
@@ -251,7 +266,7 @@ export function OperationForm({
   }, [commit.attempt, commit.error]);
   const parties =
     kind === "purchase"
-      ? suppliers
+      ? allSuppliers
       : kind === "sale"
         ? allCustomers
         : direction === "incoming"
@@ -377,7 +392,9 @@ export function OperationForm({
         ...serverSuggestions,
         ...bestMatches(
           invoiceName,
-          contactCustomers.filter((c) => !serverSuggestions.some((s) => s.id === c.id)),
+          (kind === "purchase" ? addedSuppliers : contactCustomers).filter(
+            (c) => !serverSuggestions.some((s) => s.id === c.id),
+          ),
         ).map((m) => ({ id: m.candidate.id, name: m.candidate.name, score: m.score })),
       ].sort((a, b) => b.score - a.score)
     : serverSuggestions;
@@ -463,9 +480,25 @@ export function OperationForm({
   ]
     .filter(Boolean)
     .join(" · ");
+  // Приход и продажа: курс, «Сразу оплатили», дата и строки с накладной —
+  // тоже в свёрнутых «Подробностях», чтобы на виду были фото, кто и сколько.
+  const recognizedCount = checkedPhoto?.result?.lines.length ?? 0;
+  const recordSummary = [
+    foreign && rate ? `курс ${formatRate(rate)}` : null,
+    kind === "purchase" && amountFromInput(paidNowValue)
+      ? `сразу оплатили ${money(amountFromInput(paidNowValue), debtCurrency)}`
+      : null,
+    recordDate ? ruDate(recordDate) : "сегодня",
+    recognizedCount ? `${recognizedCount} ${lineWord(recognizedCount)} с накладной` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const [moreOpen, setMoreOpen] = useState(false);
-  const moreNeeded =
-    localError === "rate" || localError === "date" || (foreign && !quote && !rateValue);
+  // Ошибка сервера про поле из «Подробностей» — тоже раскрываем.
+  const moreError = [localError, commit.error].some(
+    (e) => e === "rate" || e === "date" || e === "currency" || e === "part",
+  );
+  const moreNeeded = moreError || (foreign && !quote && !rateValue);
   useEffect(() => {
     if (moreNeeded) setMoreOpen(true);
   }, [moreNeeded]);
@@ -748,6 +781,16 @@ export function OperationForm({
         ]
       : [];
   const suggestionCurrency = suggestedCurrency ?? docCurrency;
+  // Сумма сошлась с накладной — поле суммы подсвечено зелёным, без текста.
+  const amountMatches =
+    Boolean(checkedPhoto?.result) &&
+    !noPrices &&
+    enteredAmount > 0 &&
+    !checkMismatch &&
+    !paperMismatch;
+  // Приход и продажа: в чужой валюте под суммой — сколько уйдёт в долг.
+  const amountNote =
+    foreign && debtAmount > 0 ? `В долг: ${money(debtAmount, debtCurrency)} по курсу ${formatRate(rate ?? 0)}` : null;
 
   function takeSuggestion(value: number, key: "lines" | "paper") {
     setAmountValue(String(value));
@@ -761,17 +804,17 @@ export function OperationForm({
   }
 
   // Продажа: клиент — первым полем; в списке сверху «+ Новый клиент» и «Из контактов».
-  const saleActions = (close: () => void) => (
+  const saleActions = (close: () => void, query: string) => (
     <>
       <button
         type="button"
         className="party-picker-action"
         onClick={() => {
           close();
-          setNewCustomer({ name: "", phone: "" });
+          setNewCustomer({ name: query, phone: "" });
         }}
       >
-        + Новый клиент
+        + Новый клиент{query ? ` «${query}»` : ""}
       </button>
       <ContactPicker
         className="party-picker-action"
@@ -799,6 +842,19 @@ export function OperationForm({
       />
     </>
   );
+  // Приход: поставщика нет в списке — добавить прямо здесь, фото и сумма не теряются.
+  const purchaseActions = (close: () => void, query: string) => (
+    <button
+      type="button"
+      className="party-picker-action"
+      onClick={() => {
+        close();
+        setNewCustomer({ name: query, phone: "" });
+      }}
+    >
+      + Новый поставщик{query ? ` «${query}»` : ""}
+    </button>
+  );
   const partySection = (
     <>
       <PartyPicker
@@ -820,8 +876,28 @@ export function OperationForm({
           if (id) setNewCustomer(null);
         }}
         shopCurrency={shopCurrency}
-        actions={kind === "sale" ? saleActions : undefined}
+        actions={kind === "sale" ? saleActions : kind === "purchase" ? purchaseActions : undefined}
       />
+      {kind === "purchase" && newCustomer && (
+        <NewCustomerInline
+          key={`${newCustomer.name}|${newCustomer.phone}`}
+          who="supplier"
+          customers={allSuppliers}
+          initialName={newCustomer.name}
+          initialPhone={newCustomer.phone}
+          onClose={() => setNewCustomer(null)}
+          onPickExisting={(id) => {
+            setSelectedParty(id);
+            setNewCustomer(null);
+          }}
+          onCreated={(created) => {
+            setAddedSuppliers((list) => [...list, created]);
+            setSelectedParty(created.id);
+            setNewCustomer(null);
+            setContactNote(`Добавили нового поставщика: ${created.name}.`);
+          }}
+        />
+      )}
       {kind === "sale" && newCustomer && (
         <NewCustomerInline
           key={`${newCustomer.name}|${newCustomer.phone}`}
@@ -841,7 +917,9 @@ export function OperationForm({
           }}
         />
       )}
-      {kind === "sale" && contactNote && <small className="muted contact-note">{contactNote}</small>}
+      {(kind === "sale" || kind === "purchase") && contactNote && (
+        <small className="muted contact-note">{contactNote}</small>
+      )}
     </>
   );
 
@@ -1145,14 +1223,18 @@ export function OperationForm({
                   {s.name}
                 </button>
               ))}
-              {kind === "sale" && !(suggestions[0]?.score >= SURE_MATCH) && !newCustomer && (
+              {(kind === "sale" || kind === "purchase") &&
+                !(suggestions[0]?.score >= SURE_MATCH) &&
+                !newCustomer && (
                 <button
                   type="button"
                   className="party-suggestion party-suggestion-new"
                   onClick={() =>
                     setNewCustomer({
                       name: invoiceName,
-                      phone: checkedPhoto?.result?.buyer?.phone ?? "",
+                      phone:
+                        (kind === "purchase" ? checkedPhoto?.result?.seller?.phone : checkedPhoto?.result?.buyer?.phone) ??
+                        "",
                     })
                   }
                 >
@@ -1207,7 +1289,10 @@ export function OperationForm({
             ))}
           </span>
         </div>
-        <label className="amount-field">
+        <label
+          className={`amount-field${kind !== "payment" && amountMatches ? " amount-matches" : ""}`}
+          title={kind !== "payment" && amountMatches ? "Совпадает с накладной" : undefined}
+        >
           <input
             name={kind === "payment" ? "amount" : "total"}
             inputMode="decimal"
@@ -1264,13 +1349,8 @@ export function OperationForm({
             </div>
           </div>
         )}
-        {foreign && kind !== "payment" && (
-          <div className="fx-field">
-            {rateField}
-            {debtChangeLine}
-          </div>
-        )}
         {foreign && kind === "payment" && debtChangeLine}
+        {kind !== "payment" && amountNote && <p className="amount-note">{amountNote}</p>}
         {(kind === "purchase" || kind === "sale") && (
           <div className="photo-check">
             {checking && <p className="muted">Проверяем фото…</p>}
@@ -1371,10 +1451,6 @@ export function OperationForm({
                 {paperTotal != null && <> Итог накладной: {money(paperTotal, docCurrency)}.</>}
               </p>
             )}
-            {/* Сумма не введена — числа уже на кнопках «Взять», плашка не нужна. */}
-            {checkedPhoto?.result && !noPrices && enteredAmount > 0 && !checkMismatch && !paperMismatch && (
-              <p className="photo-check-ok">✓ Совпадает с накладной</p>
-            )}
             {checkedPhoto?.result && !noPrices && enteredAmount > 0 && (checkMismatch || paperMismatch) && (
               <p className="photo-check-mismatch">
                 Сумма строк: {money(checkedPhoto.result.total_computed, docCurrency)}
@@ -1390,21 +1466,6 @@ export function OperationForm({
             )}
           </div>
         )}
-        {kind === "purchase" && (
-          <label>
-            <span className="label-with-tip label-with-tip-inline">
-              Сразу оплатили поставщику, {CURRENCY_SIGN[debtCurrency]} (необязательно)
-              <InfoTip>Запишем оплату поставщику вместе с товаром - долг перед ним вырастет только на остаток.</InfoTip>
-            </span>
-            <input
-              name="paid_now"
-              inputMode="decimal"
-              autoComplete="off"
-              pattern="[0-9 ]+([.,][0-9]{1,2})?"
-              placeholder="0"
-            />
-          </label>
-        )}
         {kind === "sale" && (
           <label className="cash-toggle">
             <input
@@ -1416,15 +1477,6 @@ export function OperationForm({
             />
             Клиент оплатил наличными
           </label>
-        )}
-        {kind !== "payment" && (
-          <DatePicker
-            value={recordDate}
-            onChange={(next) => {
-              setRecordDate(next);
-              if (localError === "date") setLocalError(null);
-            }}
-          />
         )}
         {kind === "payment" && (
           <div className="method-row" role="group" aria-label="Наличные или перевод">
@@ -1496,6 +1548,78 @@ export function OperationForm({
             )}
             {receiptCheck?.duplicate && <p>Этот чек уже приложен к другой записи - проверьте, не задвоилось ли.</p>}
           </div>
+        )}
+        {kind !== "payment" && (
+          <details className="more-fields" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
+            <summary>
+              <span className="more-fields-title">Подробности</span>
+              {!moreOpen && recordSummary && <span className="more-fields-values">{recordSummary}</span>}
+            </summary>
+            <div className="more-fields-body">
+              {foreign && rateField}
+              {kind === "purchase" && (
+                <label>
+                  <span className="label-with-tip label-with-tip-inline">
+                    Сразу оплатили поставщику, {CURRENCY_SIGN[debtCurrency]} (необязательно)
+                    <InfoTip>Запишем оплату поставщику вместе с товаром - долг перед ним вырастет только на остаток.</InfoTip>
+                  </span>
+                  <input
+                    name="paid_now"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    pattern="[0-9 ]+([.,][0-9]{1,2})?"
+                    placeholder="0"
+                    value={paidNowValue}
+                    onChange={(e) => setPaidNowValue(e.target.value)}
+                  />
+                </label>
+              )}
+              <DatePicker
+                value={recordDate}
+                onChange={(next) => {
+                  setRecordDate(next);
+                  if (localError === "date") setLocalError(null);
+                }}
+              />
+              {checkedPhoto?.result && checkedPhoto.result.lines.length > 0 && (
+                <details className="recognized-lines">
+                  <summary>
+                    Что прочитали в накладной · {checkedPhoto.result.lines.length}{" "}
+                    {lineWord(checkedPhoto.result.lines.length)}
+                  </summary>
+                  {(checkedPhoto.result.number || checkedPhoto.result.date || checkedPhoto.result.seller?.name_raw) && (
+                    <p className="muted">
+                      {[
+                        checkedPhoto.result.number ? `№ ${checkedPhoto.result.number}` : null,
+                        checkedPhoto.result.date ? `от ${checkedPhoto.result.date}` : null,
+                        checkedPhoto.result.seller?.name_raw ? `продавец: ${checkedPhoto.result.seller.name_raw}` : null,
+                        checkedPhoto.result.buyer?.name_raw ? `покупатель: ${checkedPhoto.result.buyer.name_raw}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  )}
+                  <ol>
+                    {checkedPhoto.result.lines.map((line) => (
+                      <li key={line.n} className={line.confidence < 0.8 ? "line-doubt" : undefined}>
+                        <span className="recognized-line-name">{line.name_raw}</span>
+                        <span className="recognized-line-calc">
+                          {quantity(line.qty)} {line.unit} × {money(line.price, suggestionCurrency)}
+                          {line.confidence < 0.8 && " · плохо читается"}
+                        </span>
+                        <span className="recognized-line-sum">{money(line.sum, suggestionCurrency)}</span>
+                      </li>
+                    ))}
+                  </ol>
+                  <p className="muted">
+                    Сумма строк: {money(checkedPhoto.result.total_computed, suggestionCurrency)}
+                    {paperTotal != null && <> · итог накладной: {money(paperTotal, suggestionCurrency)}</>}
+                    . Ошибку в строке можно исправить в документе после записи.
+                  </p>
+                </details>
+              )}
+            </div>
+          </details>
         )}
         {kind === "payment" && (
           <details className="more-fields" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>

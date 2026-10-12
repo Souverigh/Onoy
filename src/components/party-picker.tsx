@@ -41,9 +41,9 @@ export function PartyPicker({
   footer?: React.ReactNode;
   /**
    * Первые пункты выпадающего списка, выделены: «+ Новый клиент»,
-   * «Из контактов». `close` — закрыть список.
+   * «Из контактов». `close` — закрыть список, `query` — что уже набрано.
    */
-  actions?: (close: () => void) => React.ReactNode;
+  actions?: (close: () => void, query: string) => React.ReactNode;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -125,7 +125,7 @@ export function PartyPicker({
         />
         {open && (
           <ul className="party-picker-list dropdown" id={listId} role="listbox">
-            {actions && <li className="party-picker-actions">{actions(() => setOpen(false))}</li>}
+            {actions && <li className="party-picker-actions">{actions(() => setOpen(false), query.trim())}</li>}
             {found.map((p) => (
               <li key={p.id} role="option" aria-selected={false}>
                 <button type="button" onClick={() => onChange(p.id)}>

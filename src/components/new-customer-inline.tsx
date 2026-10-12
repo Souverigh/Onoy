@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { customerFromContact } from "@/app/(workspace)/money/actions";
+import { customerFromContact, supplierFromContact } from "@/app/(workspace)/money/actions";
 import { bestMatches } from "@/lib/match";
 import { phoneKey } from "@/lib/contacts";
 import type { PickerParty } from "./party-picker";
@@ -16,8 +16,10 @@ type Created = { id: string; name: string; phone: string; balance: string };
  * Новый покупатель прямо в форме продажи (задача 11): фото и сумма не
  * теряются. Имя и телефон с накладной можно передать сразу. Тот же телефон
  * или похожее имя — сначала «Похоже, это Айбек. Выбрать его?» (задача 24).
+ * `who="supplier"` — то же для поставщика в форме прихода.
  */
 export function NewCustomerInline({
+  who = "customer",
   customers,
   initialName = "",
   initialPhone = "",
@@ -25,6 +27,8 @@ export function NewCustomerInline({
   onPickExisting,
   onClose,
 }: {
+  who?: "customer" | "supplier";
+  /** Уже есть в списке — для «Похоже, это …». */
   customers: PickerParty[];
   initialName?: string;
   initialPhone?: string;
@@ -37,11 +41,13 @@ export function NewCustomerInline({
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [lookalike, setLookalike] = useState<PickerParty | null>(null);
+  const word = who === "supplier" ? "поставщика" : "клиента";
+  const create_ = who === "supplier" ? supplierFromContact : customerFromContact;
 
   async function create(force: boolean) {
     const cleanName = name.replace(/\s+/g, " ").trim();
     if (!cleanName) {
-      setNote("Впишите имя клиента.");
+      setNote(`Впишите имя ${word}.`);
       return;
     }
     if (!force) {
@@ -57,27 +63,27 @@ export function NewCustomerInline({
     setSaving(true);
     setNote(null);
     try {
-      const found = await customerFromContact(cleanName, phone);
+      const found = await create_(cleanName, phone);
       if ("error" in found) {
-        setNote("Не удалось добавить клиента. Попробуйте ещё раз.");
+        setNote(`Не удалось добавить ${word}. Попробуйте ещё раз.`);
         return;
       }
       if (!found.created) {
-        setNote(`Клиент с этим телефоном уже есть: ${found.name}. Выбрали его.`);
+        setNote(`${who === "supplier" ? "Поставщик" : "Клиент"} с этим телефоном уже есть: ${found.name}. Выбрали его.`);
         onPickExisting(found.id);
         return;
       }
       onCreated({ id: found.id, name: found.name, phone, balance: found.balance });
     } catch (err) {
-      console.error("customerFromContact failed", err);
-      setNote("Нет связи с сервером - клиент не добавлен. Попробуйте ещё раз.");
+      console.error("partyFromContact failed", err);
+      setNote(`Нет связи с сервером - ${who === "supplier" ? "поставщик" : "клиент"} не добавлен. Попробуйте ещё раз.`);
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="new-customer-inline" role="group" aria-label="Новый клиент">
+    <div className="new-customer-inline" role="group" aria-label={who === "supplier" ? "Новый поставщик" : "Новый клиент"}>
       {lookalike ? (
         <div className="lookalike">
           <p>
@@ -95,14 +101,14 @@ export function NewCustomerInline({
                 void create(true);
               }}
             >
-              Нет, это новый клиент
+              Нет, это новый {who === "supplier" ? "поставщик" : "клиент"}
             </button>
           </div>
         </div>
       ) : (
         <>
           <label>
-            Имя клиента
+            {who === "supplier" ? "Название поставщика" : "Имя клиента"}
             <input value={name} maxLength={160} autoComplete="off" onChange={(e) => setName(e.target.value)} />
           </label>
           <label>
@@ -126,7 +132,7 @@ export function NewCustomerInline({
           {note && <p className="muted">{note}</p>}
           <div className="simple-operation-actions">
             <button type="button" className="button primary" disabled={saving} onClick={() => void create(false)}>
-              {saving ? "Добавляем…" : "Добавить клиента"}
+              {saving ? "Добавляем…" : `Добавить ${word}`}
             </button>
             <button type="button" className="text-button" onClick={onClose}>
               Отмена

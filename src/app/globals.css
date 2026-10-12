@@ -1468,6 +1468,70 @@ div.photo-field {
   background: #fff8e8;
   color: #a4762f;
 }
+/* Сумма сошлась с накладной — зелёная рамка и фон вместо надписи. */
+.simple-operation-form .amount-field.amount-matches input {
+  border-color: var(--green);
+  background: #edf4e9;
+  color: #315b3a;
+}
+/* Под суммой в чужой валюте: «В долг: … по курсу …». */
+.amount-note {
+  margin: -4px 0 0;
+  text-align: center;
+  color: #315b3a;
+  font-size: 14px;
+}
+/* Что распознали с фото накладной — до записи, чтобы проверить строки. */
+.recognized-lines {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  font-size: 14px;
+}
+.recognized-lines summary {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.recognized-lines > p {
+  margin: 0;
+  padding: 0 14px 10px;
+  font-size: 13px;
+}
+.recognized-lines ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.recognized-lines li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.recognized-lines li.line-doubt {
+  background: #fff8e8;
+}
+.recognized-line-name {
+  overflow-wrap: anywhere;
+}
+.recognized-line-calc {
+  grid-column: 1;
+  color: var(--muted);
+  font-size: 13px;
+}
+.recognized-line-sum {
+  grid-column: 2;
+  grid-row: 1;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.recognized-lines ol + p {
+  padding-top: 10px;
+}
 /* Не тот документ: текст, кнопка нужного сценария, пояснение. */
 .document-kind-warning {
   display: grid;

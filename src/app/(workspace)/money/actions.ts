@@ -974,6 +974,25 @@ export async function customerFromContact(
   rawName: string,
   rawPhone: string,
 ): Promise<{ id: string; name: string; balance: string; created: boolean } | { error: string }> {
+  return partyFromContact("customers", rawName, rawPhone);
+}
+
+/**
+ * Новый поставщик прямо в форме прихода — например, с накладной, которого
+ * ещё нет в списке. Тот же номер уже есть — возвращаем его.
+ */
+export async function supplierFromContact(
+  rawName: string,
+  rawPhone: string,
+): Promise<{ id: string; name: string; balance: string; created: boolean } | { error: string }> {
+  return partyFromContact("suppliers", rawName, rawPhone);
+}
+
+async function partyFromContact(
+  table: "customers" | "suppliers",
+  rawName: string,
+  rawPhone: string,
+): Promise<{ id: string; name: string; balance: string; created: boolean } | { error: string }> {
   const name = String(rawName ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
   const phone = normalizePhone(String(rawPhone ?? "")).slice(0, 40);
   const key = phoneKey(phone);
@@ -981,7 +1000,7 @@ export async function customerFromContact(
   const { db, organizationId } = await getContext();
   if (key) {
     const existing = await db
-      .from("customer_balances")
+      .from(table === "customers" ? "customer_balances" : "supplier_balances")
       .select("id,name,phone,balance")
       .eq("organization_id", organizationId)
       .neq("phone", "")
@@ -992,12 +1011,12 @@ export async function customerFromContact(
   }
   if (!name) return { error: "name" };
   const inserted = await db
-    .from("customers")
+    .from(table)
     .insert({ organization_id: organizationId, name, phone })
     .select("id,name")
     .single();
   if (inserted.error || !inserted.data) return { error: "save" };
-  revalidatePath("/customers");
+  revalidatePath(`/${table}`);
   return { id: inserted.data.id, name: inserted.data.name, balance: "0.00", created: true };
 }
 
