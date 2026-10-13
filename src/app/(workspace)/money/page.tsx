@@ -5,6 +5,7 @@ import { getContext } from "@/lib/context";
 import { firstPaymentHref } from "@/lib/duplicates";
 import { debtMoney, money } from "@/lib/format";
 import { memberLabels } from "@/lib/members";
+import { NavSelect, NavSelects } from "@/components/nav-select";
 
 type PartyBalance = { id: string; name: string; balance: string; currency: string | null };
 /** Контрагент, встроенный в запись (PostgREST по составному FK). */
@@ -240,6 +241,13 @@ export default async function Money({
           ? "Продажа"
           : paymentLabelWithSide(activity.paymentKind, activity.direction ?? "incoming");
   const recentActivities = activities.slice(0, by ? 30 : 15);
+  const recordsHref = (author: string | null, date: boolean) => {
+    const q = new URLSearchParams();
+    if (author) q.set("by", author);
+    if (date) q.set("order", "date");
+    const text = q.toString();
+    return `/money${text ? `?${text}` : ""}`;
+  };
   // Фильтр «Кто внёс» — когда в магазине больше одного участника.
   const people = isOwner && members.size > 1 ? [...members.entries()] : [];
   const successText =
@@ -400,27 +408,25 @@ export default async function Money({
       <section className="panel operation-history">
         <div className="section-title">
           <h2>Последние операции</h2>
-          <nav className="pill-switch" aria-label="Сортировка">
-            <Link className={byDate ? "" : "selected"} href={`/money${by ? `?by=${by}` : ""}`}>
-              Недавно внесённые
-            </Link>
-            <Link className={byDate ? "selected" : ""} href={`/money?order=date${by ? `&by=${by}` : ""}`}>
-              По дате операции
-            </Link>
-          </nav>
         </div>
-        {people.length > 0 && (
-          <nav className="pill-switch author-filter" aria-label="Кто внёс">
-            <Link className={by ? "" : "selected"} href={byDate ? "/money?order=date" : "/money"}>
-              Все
-            </Link>
-            {people.map(([id, m]) => (
-              <Link key={id} className={by === id ? "selected" : ""} href={`/money?by=${id}${byDate ? "&order=date" : ""}`}>
-                {id === user.id ? "Я" : m.name}
-              </Link>
-            ))}
-          </nav>
-        )}
+        <NavSelects>
+          {people.length > 0 && (
+            <NavSelect
+              label="Кто внёс"
+              options={[
+                { label: "Все", href: recordsHref(null, byDate), selected: !by },
+                ...people.map(([id, m]) => ({ label: id === user.id ? "Я" : m.name, href: recordsHref(id, byDate), selected: by === id })),
+              ]}
+            />
+          )}
+          <NavSelect
+            label="Сначала"
+            options={[
+              { label: "Недавно внесённые", href: recordsHref(by, false), selected: !byDate },
+              { label: "По дате операции", href: recordsHref(by, true), selected: byDate },
+            ]}
+          />
+        </NavSelects>
         {activities.length ? (
           <>
           {/* Телефон: список вместо широкой таблицы — всё видно без прокрутки вбок. */}

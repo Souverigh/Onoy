@@ -6814,3 +6814,36 @@ tr.row-link:has(a[data-pending]) {
     grid-column: auto;
   }
 }
+
+/* Фильтр и сортировка списков — выпадающими списками в одну строку (NavSelect). */
+.nav-selects {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  margin-bottom: 14px;
+}
+.nav-select {
+  display: flex;
+  flex: 1 1 160px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  max-width: 260px;
+}
+.nav-select-label {
+  color: var(--muted);
+  font-size: 13px;
+}
+.nav-select select {
+  width: 100%;
+}
+.nav-selects .info-tip,
+.nav-selects > .label-with-tip {
+  align-self: center;
+}
+@media (max-width: 640px) {
+  .nav-select {
+    max-width: none;
+  }
+}

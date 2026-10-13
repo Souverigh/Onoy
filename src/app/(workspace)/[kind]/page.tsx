@@ -7,6 +7,7 @@ import { directoryMeta, type Entry } from "@/lib/directory";
 import { debtMoney, money, phoneText, quantity, decimalLessThan } from "@/lib/format";
 import { InfoTip } from "@/components/info-tip";
 import { Icon } from "@/components/icon";
+import { NavSelect, NavSelects } from "@/components/nav-select";
 import { OVERDUE_THRESHOLDS, dayMonth, overdueThreshold, promiseStatus } from "@/lib/promise";
 import { bishkekDate } from "@/lib/day-summary";
 export default async function DirectoryPage({
@@ -100,6 +101,17 @@ export default async function DirectoryPage({
     const text = params.toString();
     return `/${kind}${text ? `?${text}` : ""}`;
   };
+  // Адрес варианта «Показать» / «Сначала»: поиск сохраняем, страницу — с первой.
+  const viewHref = (v: { overdue?: number; archived?: boolean; sort?: SortKey }) => {
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (v.overdue) params.set("overdue", String(v.overdue));
+    if (v.archived) params.set("archived", "1");
+    const nextSort = v.sort ?? sort;
+    if (nextSort !== "recent") params.set("sort", nextSort);
+    const text = params.toString();
+    return `/${kind}${text ? `?${text}` : ""}`;
+  };
   return (
     <>
       <div className="page-heading">
@@ -142,31 +154,6 @@ export default async function DirectoryPage({
           Удалено.
         </p>
       )}
-      {kind !== "products" && (
-        <nav className="overdue-filter" aria-label="Фильтр">
-          <Link className={overdue || archived ? "" : "selected"} href={`/${kind}`}>
-            Все
-          </Link>
-          {kind === "customers" && OVERDUE_THRESHOLDS.map((days) => (
-            <Link
-              key={days}
-              className={overdue === days ? "selected" : ""}
-              href={`/customers?overdue=${days}`}
-            >
-              Просрочено {days}+ дн.
-            </Link>
-          ))}
-          <Link className={archived ? "selected" : ""} href={`/${kind}?archived=1`}>
-            Архив
-          </Link>
-          <InfoTip>
-            {kind === "customers"
-              ? "«Просрочено» - клиенты, чей самый старый неоплаченный долг старше стольких дней. "
-              : ""}
-            «Архив» - скрытые {kind === "customers" ? "клиенты" : "поставщики"}: их нет в списках и при выборе в формах.
-          </InfoTip>
-        </nav>
-      )}
       <section className="panel">
         <form className="search" action={`/${kind}`}>
           {overdue && <input type="hidden" name="overdue" value={overdue} />}
@@ -190,22 +177,37 @@ export default async function DirectoryPage({
           )}
         </form>
         {kind !== "products" && (
-          <nav className="pill-switch list-sort" aria-label="Сортировка">
-            <span className="muted">Сначала:</span>
-            {SORTS.map(([key, label]) => {
-              const params = new URLSearchParams();
-              if (query) params.set("q", query);
-              if (overdue) params.set("overdue", String(overdue));
-              if (archived) params.set("archived", "1");
-              if (key !== "recent") params.set("sort", key);
-              const text = params.toString();
-              return (
-                <Link key={key} className={sort === key ? "selected" : ""} href={`/${kind}${text ? `?${text}` : ""}`}>
-                  {label}
-                </Link>
-              );
-            })}
-          </nav>
+          <NavSelects>
+            <NavSelect
+              label="Показать"
+              options={[
+                { label: kind === "customers" ? "Все клиенты" : "Все поставщики", href: viewHref({}), selected: !overdue && !archived },
+                ...(kind === "customers"
+                  ? OVERDUE_THRESHOLDS.map((days) => ({
+                      label: `Просрочено ${days}+ дн.`,
+                      href: viewHref({ overdue: days }),
+                      selected: overdue === days,
+                    }))
+                  : []),
+                { label: "Архив", href: viewHref({ archived: true }), selected: archived },
+              ]}
+            />
+            <NavSelect
+              label="Сначала"
+              options={SORTS.map(([key, label]) => ({
+                label,
+                href: viewHref({ overdue: overdue ?? undefined, archived, sort: key }),
+                selected: sort === key,
+              }))}
+            />
+            <InfoTip>
+              {kind === "customers"
+                ? "«Просрочено» - клиенты, чей самый старый неоплаченный долг старше стольких дней. "
+                : ""}
+              «Архив» - скрытые {kind === "customers" ? "клиенты" : "поставщики"}: их нет в списках и при выборе в формах.
+              «Недавние» - сверху те, у кого последней была продажа, оплата или правка карточки.
+            </InfoTip>
+          </NavSelects>
         )}
         {entries.length ? (
           <div className="table-wrap">
