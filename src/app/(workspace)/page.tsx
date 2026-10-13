@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { getContext } from "@/lib/context";
 import { Dashboard, type Reminder, type Summary } from "@/components/dashboard";
 import { bishkekDate, dayHistory } from "@/lib/day-summary";
+import { sellerDetail } from "@/lib/seller-sales";
 import { recentRecords } from "@/lib/recent";
 import { dayMonth } from "@/lib/promise";
 import { reminderMessage } from "@/lib/reminder";
@@ -11,7 +12,7 @@ import { waPhone } from "@/lib/share";
 const REMIND_LIMIT = 6;
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ error?: string; password?: string }> }) {
-  const { db, organizationId, organizationName, isOwner, currency: shopCurrency } = await getContext();
+  const { db, organizationId, organizationName, isOwner, user, currency: shopCurrency } = await getContext();
   const { error, password } = await searchParams;
   // После «Забыли пароль?» → новый пароль (src/app/auth/actions.ts, updatePassword).
   const passwordNotice =
@@ -27,7 +28,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
     .in("status", ["review", "failed"]);
   // Продавцу итоги магазина не показываем (ТЗ) — и не считаем.
   if (!isOwner) {
-    const [recent, reviewResult] = await Promise.all([recentRecords(db, organizationId), review]);
+    const today = bishkekDate();
+    const [recent, reviewResult, mine] = await Promise.all([
+      recentRecords(db, organizationId),
+      review,
+      // Свои продажи за месяц — без итогов магазина.
+      sellerDetail(db, organizationId, user.id, `${today.slice(0, 7)}-01`, today, shopCurrency).catch(() => null),
+    ]);
+    const todayRow = mine?.days.find((d) => d.date === today);
     return (
       <>
         {passwordNotice}
@@ -37,6 +45,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
           ownerOnlyNotice={error === "owner"}
           recent={recent}
           reviewCount={reviewResult.count ?? 0}
+          mySales={
+            mine
+              ? { today: todayRow?.sold ?? 0, todayCount: todayRow?.count ?? 0, month: mine.sold, currency: shopCurrency }
+              : undefined
+          }
         />
       </>
     );

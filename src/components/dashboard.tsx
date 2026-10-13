@@ -49,6 +49,7 @@ export function Dashboard({
   pendingClaims = 0,
   reviewCount = 0,
   recent = [],
+  mySales,
 }: {
   summary: Summary | null;
   preview?: boolean;
@@ -66,6 +67,8 @@ export function Dashboard({
   /** Накладные с расхождением или ошибкой распознавания — «незавершённые». */
   reviewCount?: number;
   recent?: RecentRecord[];
+  /** Продавец: его продажи за сегодня и за месяц — ссылка на «Мои продажи». */
+  mySales?: { today: number; todayCount: number; month: number; currency: string };
 }) {
   const href = (url: string) => (preview ? "/preview" : url);
   const time = (iso: string) =>
@@ -171,6 +174,18 @@ export function Dashboard({
             <small className="muted">
               продано {money(today.sold, today.currency)} · собрано {money(today.collected, today.currency)}
               {today.expenses > 0 && <> · расходы {money(today.expenses, today.currency)}</>}
+            </small>
+          </span>
+          <span aria-hidden="true">→</span>
+        </Link>
+      )}
+      {staff && mySales && (
+        <Link className="dashboard-day" href={href("/sellers")}>
+          <span>
+            <strong>Мои продажи</strong>
+            <small className="muted">
+              сегодня {money(mySales.today, mySales.currency)} ({mySales.todayCount}) · за месяц{" "}
+              {money(mySales.month, mySales.currency)}
             </small>
           </span>
           <span aria-hidden="true">→</span>
