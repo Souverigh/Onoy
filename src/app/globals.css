@@ -6818,29 +6818,42 @@ tr.row-link:has(a[data-pending]) {
 /* Фильтр и сортировка списков — выпадающими списками в одну строку (NavSelect). */
 .nav-selects {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 8px 12px;
+  gap: 12px;
   margin-bottom: 14px;
 }
 .nav-select {
   display: flex;
-  flex: 1 1 160px;
+  flex: 1 1 0;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
   max-width: 260px;
 }
 .nav-select-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
   color: var(--muted);
   font-size: 13px;
 }
-.nav-select select {
-  width: 100%;
+.nav-select-label label {
+  color: inherit;
 }
-.nav-selects .info-tip,
-.nav-selects > .label-with-tip {
-  align-self: center;
+/* Своя стрелка вместо системной — одинаково в Safari, Chrome и Android. */
+.nav-select select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 36px 10px 14px;
+  border-radius: 10px;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  background: white
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23536457' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5'/%3E%3C/svg%3E")
+    no-repeat right 14px center;
 }
 @media (max-width: 640px) {
   .nav-select {

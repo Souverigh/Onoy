@@ -180,6 +180,15 @@ export default async function DirectoryPage({
           <NavSelects>
             <NavSelect
               label="Показать"
+              tip={
+                <InfoTip>
+                  {kind === "customers"
+                    ? "«Просрочено» - клиенты, чей самый старый неоплаченный долг старше стольких дней. "
+                    : ""}
+                  «Архив» - скрытые {kind === "customers" ? "клиенты" : "поставщики"}: их нет в списках и при выборе в формах.
+                  «Недавние» - сверху те, у кого последней была продажа, оплата или правка карточки.
+                </InfoTip>
+              }
               options={[
                 { label: kind === "customers" ? "Все клиенты" : "Все поставщики", href: viewHref({}), selected: !overdue && !archived },
                 ...(kind === "customers"
@@ -200,13 +209,6 @@ export default async function DirectoryPage({
                 selected: sort === key,
               }))}
             />
-            <InfoTip>
-              {kind === "customers"
-                ? "«Просрочено» - клиенты, чей самый старый неоплаченный долг старше стольких дней. "
-                : ""}
-              «Архив» - скрытые {kind === "customers" ? "клиенты" : "поставщики"}: их нет в списках и при выборе в формах.
-              «Недавние» - сверху те, у кого последней была продажа, оплата или правка карточки.
-            </InfoTip>
           </NavSelects>
         )}
         {entries.length ? (
