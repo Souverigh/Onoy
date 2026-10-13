@@ -40,4 +40,6 @@ export type Entry = {
   archived_at?: string | null;
   merged_into_id?: string | null;
   aliases?: string[];
+  /** customer_list / supplier_list: последняя запись или правка карточки. */
+  last_activity_at?: string | null;
 };

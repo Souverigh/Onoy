@@ -14,12 +14,14 @@ export default async function DirectoryPage({
   searchParams,
 }: {
   params: Promise<{ kind: string }>;
-  searchParams: Promise<{ q?: string; page?: string; overdue?: string; archived?: string; deleted?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; overdue?: string; archived?: string; deleted?: string; sort?: string }>;
 }) {
   const { kind } = await params;
   if (!isDirectory(kind)) notFound();
   const meta = directoryMeta[kind];
-  const { q = "", page = "1", overdue: rawOverdue, archived: rawArchived, deleted } = await searchParams;
+  const { q = "", page = "1", overdue: rawOverdue, archived: rawArchived, deleted, sort: rawSort } = await searchParams;
+  // Клиенты и поставщики: по умолчанию «недавние» — последние изменения сверху.
+  const sort: SortKey = kind === "products" ? "name" : SORTS.some(([key]) => key === rawSort) ? (rawSort as SortKey) : "recent";
   // Архив (ТЗ §15.2): по умолчанию скрыт, отдельный фильтр «Архив».
   const archived = kind !== "products" && rawArchived === "1";
   // «Просрочено 30 / 60 / 90» — клиенты, у которых неоплачен долг старше N дней.
@@ -43,14 +45,18 @@ export default async function DirectoryPage({
             return (late.data ?? []) as { customer_id: string; oldest_days: number }[];
           })
       : Promise.resolve([]);
-  const listRequest = (overdueIds: string[] | null) => {
+  const listRequest = (overdueIds: string[] | null, plain = false) => {
+    // customer_list / supplier_list — с долгом числом и временем последнего
+    // изменения (миграция 20261013100000); без неё — прежний список по имени.
+    const sorted = kind !== "products" && !plain;
     let request = db
-      .from(meta.view)
+      .from(sorted ? (kind === "customers" ? "customer_list" : "supplier_list") : meta.view)
       .select("*", { count: "exact" })
-      .eq("organization_id", organizationId)
-      .order("name")
-      .order("id")
-      .range((current - 1) * 25, current * 25 - 1);
+      .eq("organization_id", organizationId);
+    if (sorted && sort === "recent") request = request.order("last_activity_at", { ascending: false, nullsFirst: false });
+    else if (sorted && sort === "debt") request = request.order("balance_value", { ascending: false });
+    else if (sorted && sort === "new") request = request.order("created_at", { ascending: false });
+    request = request.order("name").order("id").range((current - 1) * 25, current * 25 - 1);
     if (kind !== "products") request = archived ? request.not("archived_at", "is", null) : request.is("archived_at", null);
     if (overdueIds)
       request = request.in("id", overdueIds.length ? overdueIds : ["00000000-0000-0000-0000-000000000000"]);
@@ -69,12 +75,17 @@ export default async function DirectoryPage({
   };
   // Без фильтра «Просрочено» список и давность — параллельно; с фильтром
   // список ждёт id просроченных.
+  // Список с сортировкой; представления ещё нет — прежний, по имени.
+  const loadList = async (overdueIds: string[] | null) => {
+    const result = await listRequest(overdueIds);
+    return result.error && kind !== "products" ? listRequest(overdueIds, true) : result;
+  };
   const [late, { data, error, count }] = overdue
     ? await lateRequest.then(async (rows) => [
         rows,
-        await listRequest(rows.filter((row) => row.oldest_days > overdue).map((row) => row.customer_id)),
+        await loadList(rows.filter((row) => row.oldest_days > overdue).map((row) => row.customer_id)),
       ] as const)
-    : await Promise.all([lateRequest, listRequest(null)]);
+    : await Promise.all([lateRequest, loadList(null)]);
   if (error) throw new Error("Не удалось загрузить справочник");
   const entries = (data ?? []) as Entry[];
   const oldestDays = new Map(late.map((row) => [row.customer_id, row.oldest_days]));
@@ -84,6 +95,7 @@ export default async function DirectoryPage({
     if (query) params.set("q", query);
     if (overdue) params.set("overdue", String(overdue));
     if (archived) params.set("archived", "1");
+    if (sort !== "recent" && kind !== "products") params.set("sort", sort);
     for (const [key, value] of Object.entries(extra)) params.set(key, String(value));
     const text = params.toString();
     return `/${kind}${text ? `?${text}` : ""}`;
@@ -159,6 +171,7 @@ export default async function DirectoryPage({
         <form className="search" action={`/${kind}`}>
           {overdue && <input type="hidden" name="overdue" value={overdue} />}
           {archived && <input type="hidden" name="archived" value="1" />}
+          {sort !== "recent" && kind !== "products" && <input type="hidden" name="sort" value={sort} />}
           <label htmlFor="search-name" className="sr-only">
             {kind === "products" ? "Поиск по названию" : "Поиск по имени или телефону"}
           </label>
@@ -176,6 +189,24 @@ export default async function DirectoryPage({
             </Link>
           )}
         </form>
+        {kind !== "products" && (
+          <nav className="pill-switch list-sort" aria-label="Сортировка">
+            <span className="muted">Сначала:</span>
+            {SORTS.map(([key, label]) => {
+              const params = new URLSearchParams();
+              if (query) params.set("q", query);
+              if (overdue) params.set("overdue", String(overdue));
+              if (archived) params.set("archived", "1");
+              if (key !== "recent") params.set("sort", key);
+              const text = params.toString();
+              return (
+                <Link key={key} className={sort === key ? "selected" : ""} href={`/${kind}${text ? `?${text}` : ""}`}>
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
         {entries.length ? (
           <div className="table-wrap">
             <table className="card-table">
@@ -201,6 +232,9 @@ export default async function DirectoryPage({
                         <span className="tag reversed-tag">долг {oldestDays.get(item.id)} дн.</span>
                       )}
                       {kind === "customers" && <PromiseTag item={item} today={today} />}
+                      {kind !== "products" && sort === "recent" && item.last_activity_at && (
+                        <small className="muted">изменён {changedText(item.last_activity_at, today)}</small>
+                      )}
                     </td>
                     <td data-label={kind === "products" ? "Цена" : "Телефон"}>
                       {kind === "products"
@@ -290,6 +324,26 @@ export default async function DirectoryPage({
       </div>
     </>
   );
+}
+
+type SortKey = "recent" | "debt" | "name" | "new";
+/** Сортировка клиентов и поставщиков. */
+const SORTS: [SortKey, string][] = [
+  ["recent", "Недавние"],
+  ["debt", "Больший долг"],
+  ["name", "А-Я"],
+  ["new", "Новые"],
+];
+
+/** «сегодня, 14:05», «вчера», «7 окт.» — когда клиент или поставщик последний раз менялся. */
+function changedText(value: string, today: string) {
+  const date = bishkekDate(value);
+  if (date === today)
+    return `сегодня, ${new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", hour: "2-digit", minute: "2-digit" }).format(new Date(value))}`;
+  const yesterday = new Date(`${today}T12:00:00+06:00`);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  if (date === bishkekDate(yesterday)) return "вчера";
+  return new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", day: "numeric", month: "short", ...(date.slice(0, 4) === today.slice(0, 4) ? {} : { year: "numeric" }) }).format(new Date(value));
 }
 
 /** Обещание оплатить — в списке клиентов: «обещал сегодня», «обещал до 7 октября», «нарушил срок». */

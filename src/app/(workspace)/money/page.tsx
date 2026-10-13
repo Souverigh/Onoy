@@ -4,6 +4,7 @@ import { paymentLabelWithSide, type PaymentKind } from "@/lib/entry-labels";
 import { getContext } from "@/lib/context";
 import { firstPaymentHref } from "@/lib/duplicates";
 import { debtMoney, money } from "@/lib/format";
+import { memberLabels } from "@/lib/members";
 
 type PartyBalance = { id: string; name: string; balance: string; currency: string | null };
 /** Контрагент, встроенный в запись (PostgREST по составному FK). */
@@ -15,11 +16,15 @@ type Activity = {
   amount: string;
   currency: string;
   occurred_at: string;
+  /** Когда запись внесли — для сортировки «Недавно внесённые». */
+  created_at: string;
   direction?: "incoming" | "outgoing";
   paymentKind?: PaymentKind;
   reversed: boolean;
   opening?: boolean;
   reversalComment?: string;
+  /** Кто внёс запись (имя сотрудника); старые записи и чужие для продавца — нет. */
+  author?: string;
   /** Куда ведёт строка: документ с фото, иначе карточка контрагента. */
   href: string;
 };
@@ -43,9 +48,19 @@ const shortDateTime = (value: string) =>
 export default async function Money({
   searchParams,
 }: {
-  searchParams: Promise<{ created?: string; error?: string; duplicate?: string; sale?: string; part?: string }>;
+  searchParams: Promise<{ created?: string; error?: string; duplicate?: string; sale?: string; part?: string; by?: string; order?: string }>;
 }) {
-  const { db, organizationId, isOwner, currency: shopCurrency } = await getContext();
+  const { db, organizationId, isOwner, user, currency: shopCurrency } = await getContext();
+  const params = await searchParams;
+  // Владелец: «Кто внёс» — все записи или одного участника магазина.
+  const by = isOwner && params.by && /^[0-9a-f-]{36}$/i.test(params.by) ? params.by : null;
+  const limit = by ? 30 : 8;
+  const author = by ? { created_by: by } : {};
+  // «Недавно внесённые» (по умолчанию): запись задним числом — всё равно сверху.
+  // «По дате операции» — по дате, на которую запись сделана.
+  const byDate = params.order === "date";
+  const orderColumn = byDate ? "occurred_at" : "created_at";
+  const membersRequest = memberLabels(db, organizationId);
   const [customerResult, supplierResult, purchaseResult, saleResult, paymentResult, claimsResult] =
     await Promise.all([
       // Архивные и объединённые — не здесь (задача 25).
@@ -67,25 +82,28 @@ export default async function Money({
         .limit(8),
       db
         .from("purchases")
-        .select("id,supplier_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id,suppliers(name,currency)")
+        .select("id,supplier_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id,created_by,created_at,suppliers(name,currency)")
         .eq("organization_id", organizationId)
         .eq("status", "posted")
-        .order("occurred_at", { ascending: false })
-        .limit(8),
+        .match(author)
+        .order(orderColumn, { ascending: false })
+        .limit(limit),
       db
         .from("sales")
-        .select("id,customer_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id,customers(name,currency)")
+        .select("id,customer_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id,created_by,created_at,customers(name,currency)")
         .eq("organization_id", organizationId)
         .eq("status", "posted")
-        .order("occurred_at", { ascending: false })
-        .limit(8),
+        .match(author)
+        .order(orderColumn, { ascending: false })
+        .limit(limit),
       db
         .from("payments")
-        .select("id,customer_id,supplier_id,direction,amount,occurred_at,reversed_at,reversal_comment,is_opening,kind,document_id,customers(name,currency),suppliers(name,currency)")
+        .select("id,customer_id,supplier_id,direction,amount,occurred_at,reversed_at,reversal_comment,is_opening,kind,document_id,created_by,created_at,customers(name,currency),suppliers(name,currency)")
         .eq("organization_id", organizationId)
         .eq("status", "confirmed")
-        .order("occurred_at", { ascending: false })
-        .limit(8),
+        .match(author)
+        .order(orderColumn, { ascending: false })
+        .limit(limit),
       db
         .from("payments")
         .select("id", { count: "exact", head: true })
@@ -101,6 +119,7 @@ export default async function Money({
   )
     throw new Error("Не удалось загрузить деньги и историю операций");
 
+  const members = await membersRequest;
   const customers = (customerResult.data ?? []) as PartyBalance[];
   const suppliers = (supplierResult.data ?? []) as PartyBalance[];
   const pendingClaims = claimsResult.count ?? 0;
@@ -113,6 +132,8 @@ export default async function Money({
     is_opening?: boolean;
     reversal_comment: string | null;
     document_id: string | null;
+    created_by: string | null;
+    created_at: string;
     suppliers: PartyName;
   }[];
   const sales = (saleResult.data ?? []) as unknown as {
@@ -124,6 +145,8 @@ export default async function Money({
     is_opening?: boolean;
     reversal_comment: string | null;
     document_id: string | null;
+    created_by: string | null;
+    created_at: string;
     customers: PartyName;
   }[];
   const payments = (paymentResult.data ?? []) as unknown as {
@@ -138,11 +161,14 @@ export default async function Money({
     reversal_comment: string | null;
     kind: PaymentKind;
     document_id: string | null;
+    created_by: string | null;
+    created_at: string;
     customers: PartyName;
     suppliers: PartyName;
   }[];
   // Имя и валюта долга контрагента пришли вместе с записью — без второго запроса.
   const currencyOf = (party: PartyName) => party?.currency ?? shopCurrency;
+  const authorOf = (id: string | null) => (id ? members.get(id)?.name : undefined);
   const activities: Activity[] = [
     ...purchases.map((row) => ({
       id: row.id,
@@ -151,9 +177,11 @@ export default async function Money({
       amount: row.total,
       currency: currencyOf(row.suppliers),
       occurred_at: row.occurred_at,
+      created_at: row.created_at,
       reversed: Boolean(row.reversed_at),
       reversalComment: row.reversal_comment ?? undefined,
       opening: Boolean(row.is_opening),
+      author: authorOf(row.created_by),
       href: row.document_id ? `/documents/${row.document_id}` : `/suppliers/${row.supplier_id}`,
     })),
     ...sales.map((row) => ({
@@ -163,9 +191,11 @@ export default async function Money({
       amount: row.total,
       currency: currencyOf(row.customers),
       occurred_at: row.occurred_at,
+      created_at: row.created_at,
       reversed: Boolean(row.reversed_at),
       reversalComment: row.reversal_comment ?? undefined,
       opening: Boolean(row.is_opening),
+      author: authorOf(row.created_by),
       // Продажа товарами со склада (без фото) — её накладная на экране отправки.
       href: row.document_id
         ? `/documents/${row.document_id}`
@@ -183,11 +213,13 @@ export default async function Money({
       amount: row.amount,
       currency: currencyOf(row.customers ?? row.suppliers),
       occurred_at: row.occurred_at,
+      created_at: row.created_at,
       direction: row.direction,
       paymentKind: row.kind,
       reversed: Boolean(row.reversed_at),
       reversalComment: row.reversal_comment ?? undefined,
       opening: Boolean(row.is_opening),
+      author: authorOf(row.created_by),
       // Без чека — строка оплаты в истории контрагента (якорь pay-<id>).
       href:
         firstPaymentHref(row) ??
@@ -195,7 +227,7 @@ export default async function Money({
     })),
   ].sort(
     (a, b) =>
-      new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime(),
+      new Date(byDate ? b.occurred_at : b.created_at).getTime() - new Date(byDate ? a.occurred_at : a.created_at).getTime(),
   );
   const activityLabel = (activity: Activity) =>
     activity.opening
@@ -207,8 +239,9 @@ export default async function Money({
         : activity.kind === "sale"
           ? "Продажа"
           : paymentLabelWithSide(activity.paymentKind, activity.direction ?? "incoming");
-  const recentActivities = activities.slice(0, 15);
-  const params = await searchParams;
+  const recentActivities = activities.slice(0, by ? 30 : 15);
+  // Фильтр «Кто внёс» — когда в магазине больше одного участника.
+  const people = isOwner && members.size > 1 ? [...members.entries()] : [];
   const successText =
     params.created === "purchase"
       ? "Товар от поставщика записан. Долг перед поставщиком обновлён."
@@ -367,8 +400,27 @@ export default async function Money({
       <section className="panel operation-history">
         <div className="section-title">
           <h2>Последние операции</h2>
-          <span className="tag">Недавние</span>
+          <nav className="pill-switch" aria-label="Сортировка">
+            <Link className={byDate ? "" : "selected"} href={`/money${by ? `?by=${by}` : ""}`}>
+              Недавно внесённые
+            </Link>
+            <Link className={byDate ? "selected" : ""} href={`/money?order=date${by ? `&by=${by}` : ""}`}>
+              По дате операции
+            </Link>
+          </nav>
         </div>
+        {people.length > 0 && (
+          <nav className="pill-switch author-filter" aria-label="Кто внёс">
+            <Link className={by ? "" : "selected"} href={byDate ? "/money?order=date" : "/money"}>
+              Все
+            </Link>
+            {people.map(([id, m]) => (
+              <Link key={id} className={by === id ? "selected" : ""} href={`/money?by=${id}${byDate ? "&order=date" : ""}`}>
+                {id === user.id ? "Я" : m.name}
+              </Link>
+            ))}
+          </nav>
+        )}
         {activities.length ? (
           <>
           {/* Телефон: список вместо широкой таблицы — всё видно без прокрутки вбок. */}
@@ -386,6 +438,7 @@ export default async function Money({
                 <strong className="op-list-amount">{money(activity.amount, activity.currency)}</strong>
                 <span className="op-list-meta muted">
                   {shortDateTime(activity.occurred_at)}
+                  {activity.author && ` · ${activity.author}`}
                   {activity.reversed && <span className="tag reversed-tag">отменена</span>}
                 </span>
                 {!activity.reversed && isOwner && (
@@ -410,6 +463,7 @@ export default async function Money({
                   <th>Клиент или поставщик</th>
                   <th>Сумма</th>
                   <th>Дата</th>
+                  <th>Кто внёс</th>
                   <th>
                     <span className="sr-only">Действия</span>
                   </th>
@@ -432,6 +486,7 @@ export default async function Money({
                     <td>{activity.party}</td>
                     <td>{money(activity.amount, activity.currency)}</td>
                     <td>{dateTime(activity.occurred_at)}</td>
+                    <td className="muted">{activity.author ?? "-"}</td>
                     <td>
                       {activity.reversed ? (
                         <span className="muted" title={activity.reversalComment}>
