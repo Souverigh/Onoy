@@ -53,12 +53,10 @@ export default async function Settings({
     .maybeSingle()
     .then((result) => result);
   if (isOwner) {
-    const [m, i, l] = await Promise.all([
-      db
-        .from("organization_members")
-        .select("user_id,role,display_name,email")
-        .eq("organization_id", organizationId)
-        .order("created_at"),
+    const members_ = (columns: string) =>
+      db.from("organization_members").select(columns).eq("organization_id", organizationId).order("created_at");
+    const [m0, i, l] = await Promise.all([
+      members_("user_id,role,display_name,email,invoice_phone"),
       db
         .from("organization_invites")
         .select("id,token,display_name,expires_at")
@@ -69,7 +67,9 @@ export default async function Settings({
         .order("created_at", { ascending: false }),
       db.from("plan_limits").select("plan,max_staff"),
     ]);
-    members = (m.data ?? []) as Member[];
+    // Миграция с телефоном сотрудника ещё не применена — список без телефона.
+    const m = m0.error ? await members_("user_id,role,display_name,email") : m0;
+    members = (m.data ?? []) as unknown as Member[];
     invites = (i.data ?? []) as Invite[];
     staffLimits = Object.fromEntries(
       ((l.data ?? []) as { plan: string; max_staff: number }[]).map((row) => [row.plan, row.max_staff]),

@@ -1,14 +1,14 @@
 import { Submit } from "./submit";
 import { createInvite, removeMember, renameMember, revokeInvite } from "@/app/(workspace)/settings/actions";
 
-export type Member = { user_id: string; role: string; display_name: string | null; email: string | null };
+export type Member = { user_id: string; role: string; display_name: string | null; email: string | null; invoice_phone?: string };
 export type Invite = { id: string; token: string; display_name: string; expires_at: string };
 
 const statusText: Record<string, string> = {
   invited: "Приглашение создано - отправьте ссылку продавцу.",
   revoked: "Приглашение отменено.",
   removed: "Сотрудник удалён - больше не войдёт в магазин.",
-  renamed: "Имя сохранено.",
+  renamed: "Сохранено.",
   name: "Введите имя (до 80 символов).",
   limit: "Лимит тарифа исчерпан: продавцы вместе с неиспользованными приглашениями.",
   plan: "Сотрудники доступны на тарифе «Бизнес». Напишите в Depter, чтобы подключить.",
@@ -93,8 +93,19 @@ export function StaffPanel({
                     defaultValue={m.display_name ?? ""}
                     placeholder={m.role === "owner" ? "Владелец" : "Имя"}
                     maxLength={80}
-                    aria-label="Имя в журнале"
+                    aria-label="Имя в журнале и накладной"
                   />
+                  {m.role === "staff" && (
+                    <input
+                      name="phone"
+                      type="tel"
+                      defaultValue={m.invoice_phone ?? ""}
+                      placeholder="Телефон для накладной"
+                      maxLength={40}
+                      autoComplete="off"
+                      aria-label="Телефон для накладной"
+                    />
+                  )}
                   <button className="button" type="submit">
                     Сохранить
                   </button>

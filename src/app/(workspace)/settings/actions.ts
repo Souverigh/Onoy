@@ -142,6 +142,12 @@ export async function renameMember(form: FormData) {
   const { db, organizationId } = await requireOwner();
   const result = await db.rpc("rename_member", { p_org: organizationId, p_user: userId, p_name: name });
   if (result.error) redirect("/settings?staff=error#staff");
+  // Телефон для накладной — только у продавцов (у владельца он в Настройках → Магазин).
+  if (form.has("phone")) {
+    const phone = storedPhone(String(form.get("phone") ?? "").replace(/\s+/g, " ").trim().slice(0, 40));
+    const saved = await db.rpc("set_member_phone", { p_org: organizationId, p_user: userId, p_phone: phone });
+    if (saved.error) redirect("/settings?staff=error#staff");
+  }
   revalidatePath("/", "layout");
   redirect("/settings?staff=renamed#staff");
 }

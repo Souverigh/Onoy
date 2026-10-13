@@ -4028,6 +4028,7 @@ form .return-search {
 .staff-rename {
   display: flex;
   flex: 1;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   min-width: 240px;

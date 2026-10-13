@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { InvoiceData, InvoiceLine } from "./pdf/invoice";
 import { money } from "./format";
 import { partyCurrency, type Currency } from "./currency";
-import { activeShareToken, balanceNote, invoiceSellerName, saleInvoiceInfo } from "./sale-invoice";
+import { activeShareToken, balanceNote, invoiceSellerName, invoiceSellerPhone, saleInvoiceInfo } from "./sale-invoice";
 
 /**
  * Накладная продажи для PDF и картинки (задачи 7, 8): строки — товары со
@@ -91,7 +91,7 @@ export async function saleInvoiceData(
       buyer: { name: sale.customers?.name ?? "-", phone: info.customerPhone },
       seller: {
         name: invoiceSellerName(info, shopName),
-        phone: info.shopSellerPhone ?? shop.data?.phone,
+        phone: invoiceSellerPhone(info, shop.data?.phone),
       },
       lines,
       clientUrl: info.showQr && token ? `${origin}/c/${token}` : null,

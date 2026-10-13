@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getContext } from "@/lib/context";
 import { renderInvoicePdf } from "@/lib/pdf/invoice";
 import { money } from "@/lib/format";
-import { activeShareToken, balanceNote, invoiceSellerName, saleInvoiceInfo } from "@/lib/sale-invoice";
+import { activeShareToken, balanceNote, invoiceSellerName, invoiceSellerPhone, saleInvoiceInfo } from "@/lib/sale-invoice";
 import { saleInvoiceData } from "@/lib/sale-invoice-data";
 
 const kindLabel: Record<string, string> = {
@@ -132,7 +132,7 @@ export async function GET(
     balanceNote: info ? balanceNote(info.debtAfter, debtCurrency ?? shopCurrency) : null,
     // Продажа: покупатель — клиент; приход: покупатель — магазин.
     buyer: isSale ? { name: partyName, phone: info?.customerPhone } : shopParty,
-    seller: isSale ? { name: info ? invoiceSellerName(info, shopParty.name) : shopParty.name, phone: shopParty.phone } : { name: partyName, phone: partyPhone },
+    seller: isSale ? { name: info ? invoiceSellerName(info, shopParty.name) : shopParty.name, phone: info ? invoiceSellerPhone(info, shopParty.phone) : shopParty.phone } : { name: partyName, phone: partyPhone },
     clientUrl: token ? `${origin}/c/${token}` : null,
     lines: (linesResult.data ?? []) as {
       n: number;

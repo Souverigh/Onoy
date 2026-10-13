@@ -11,6 +11,8 @@ export type SaleInvoiceInfo = {
   sellerName: string | null;
   /** Продажу оформил сотрудник — его имя; у продаж владельца null. */
   staffSellerName: string | null;
+  /** Телефон сотрудника для накладной («Сотрудники → Изменить»); пусто — null. */
+  staffSellerPhone: string | null;
   /** Из Настроек → Магазин (задача 34); пусто — имя продавца из сотрудников и телефон магазина. */
   shopSellerName: string | null;
   shopSellerPhone: string | null;
@@ -29,6 +31,7 @@ export function parseSaleInvoiceInfo(raw: unknown): SaleInvoiceInfo {
     customerPhone: typeof data.customer_phone === "string" ? data.customer_phone : "",
     sellerName: typeof data.seller_name === "string" ? data.seller_name : null,
     staffSellerName: typeof data.staff_seller_name === "string" && data.staff_seller_name ? data.staff_seller_name : null,
+    staffSellerPhone: typeof data.staff_seller_phone === "string" && data.staff_seller_phone ? data.staff_seller_phone : null,
     shopSellerName: typeof data.shop_seller_name === "string" && data.shop_seller_name ? data.shop_seller_name : null,
     shopSellerPhone: typeof data.shop_seller_phone === "string" && data.shop_seller_phone ? data.shop_seller_phone : null,
     showDebt: data.show_debt !== false,
@@ -39,6 +42,11 @@ export function parseSaleInvoiceInfo(raw: unknown): SaleInvoiceInfo {
 /** «Продавец» на накладной: сотрудник, оформивший продажу; иначе из Настроек → Магазин; иначе владелец. */
 export function invoiceSellerName(info: SaleInvoiceInfo, fallback: string) {
   return info.staffSellerName ?? info.shopSellerName ?? info.sellerName ?? fallback;
+}
+
+/** Телефон продавца: у сотрудника свой, если задан; иначе из Настроек → Магазин; иначе телефон магазина. */
+export function invoiceSellerPhone(info: SaleInvoiceInfo, fallback: string | null | undefined) {
+  return info.staffSellerPhone ?? info.shopSellerPhone ?? fallback;
 }
 
 export async function saleInvoiceInfo(db: SupabaseClient, organizationId: string, saleId: string) {
