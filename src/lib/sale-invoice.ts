@@ -9,6 +9,8 @@ export type SaleInvoiceInfo = {
   debtAfter: string | null;
   customerPhone: string;
   sellerName: string | null;
+  /** Продажу оформил сотрудник — его имя; у продаж владельца null. */
+  staffSellerName: string | null;
   /** Из Настроек → Магазин (задача 34); пусто — имя продавца из сотрудников и телефон магазина. */
   shopSellerName: string | null;
   shopSellerPhone: string | null;
@@ -26,11 +28,17 @@ export function parseSaleInvoiceInfo(raw: unknown): SaleInvoiceInfo {
     debtAfter: typeof data.debt_after === "string" ? data.debt_after : null,
     customerPhone: typeof data.customer_phone === "string" ? data.customer_phone : "",
     sellerName: typeof data.seller_name === "string" ? data.seller_name : null,
+    staffSellerName: typeof data.staff_seller_name === "string" && data.staff_seller_name ? data.staff_seller_name : null,
     shopSellerName: typeof data.shop_seller_name === "string" && data.shop_seller_name ? data.shop_seller_name : null,
     shopSellerPhone: typeof data.shop_seller_phone === "string" && data.shop_seller_phone ? data.shop_seller_phone : null,
     showDebt: data.show_debt !== false,
     showQr: data.show_qr !== false,
   };
+}
+
+/** «Продавец» на накладной: сотрудник, оформивший продажу; иначе из Настроек → Магазин; иначе владелец. */
+export function invoiceSellerName(info: SaleInvoiceInfo, fallback: string) {
+  return info.staffSellerName ?? info.shopSellerName ?? info.sellerName ?? fallback;
 }
 
 export async function saleInvoiceInfo(db: SupabaseClient, organizationId: string, saleId: string) {

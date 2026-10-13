@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { InvoiceData, InvoiceLine } from "./pdf/invoice";
-import { balanceNote, parseSaleInvoiceInfo } from "./sale-invoice";
+import { balanceNote, invoiceSellerName, parseSaleInvoiceInfo } from "./sale-invoice";
 
 type Invoice = {
   shop_name: string;
@@ -40,7 +40,7 @@ export async function tokenInvoiceData(
     balanceNote: info.showDebt ? balanceNote(info.debtAfter, debtCurrency) : null,
     buyer: { name: invoice.customer_name, phone: info.customerPhone },
     seller: {
-      name: info.shopSellerName ?? info.sellerName ?? invoice.shop_name ?? "",
+      name: invoiceSellerName(info, invoice.shop_name ?? ""),
       phone: info.shopSellerPhone ?? invoice.shop_phone,
     },
     lines: invoice.lines,
