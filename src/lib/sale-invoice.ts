@@ -9,9 +9,9 @@ export type SaleInvoiceInfo = {
   debtAfter: string | null;
   customerPhone: string;
   sellerName: string | null;
-  /** Продажу оформил сотрудник — его имя; у продаж владельца null. */
+  /** Продажу оформил сотрудник — его имя из его Настроек; не задал или продажа владельца — null. */
   staffSellerName: string | null;
-  /** Телефон сотрудника для накладной («Сотрудники → Изменить»); пусто — null. */
+  /** Телефон сотрудника для накладной (его Настройки или «Сотрудники → Изменить»); пусто — null. */
   staffSellerPhone: string | null;
   /** Из Настроек → Магазин (задача 34); пусто — имя продавца из сотрудников и телефон магазина. */
   shopSellerName: string | null;

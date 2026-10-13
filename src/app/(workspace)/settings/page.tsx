@@ -96,6 +96,16 @@ export default async function Settings({
     invoice_show_debt: boolean;
     invoice_show_qr: boolean;
   } | null;
+  // Продавец: своё имя и телефон для накладной (пусто — из настроек магазина).
+  const ownInvoice = isOwner
+    ? null
+    : await db
+        .from("organization_members")
+        .select("invoice_name,invoice_phone")
+        .eq("organization_id", organizationId)
+        .eq("user_id", user.id)
+        .maybeSingle()
+        .then((r) => (r.error ? null : (r.data as { invoice_name: string; invoice_phone: string } | null)));
   const planName = plan === "business" ? "Бизнес" : "Базовый";
 
   const sections = [
@@ -182,20 +192,31 @@ export default async function Settings({
               </small>
               <div className="settings-row">
                 <label>
-                  Имя продавца (для накладной)
-                  <input name="seller_name" maxLength={80} placeholder="Маликнур" defaultValue={seller?.seller_name ?? ""} />
+                  {isOwner ? "Имя продавца (для накладной)" : "Ваше имя (для накладной)"}
+                  <input
+                    name="seller_name"
+                    maxLength={80}
+                    placeholder={isOwner ? "Маликнур" : seller?.seller_name || "Маликнур"}
+                    defaultValue={isOwner ? (seller?.seller_name ?? "") : (ownInvoice?.invoice_name ?? "")}
+                  />
                 </label>
                 <label>
-                  Телефон продавца (для накладной)
+                  {isOwner ? "Телефон продавца (для накладной)" : "Ваш телефон (для накладной)"}
                   <input
                     name="seller_phone"
                     type="tel"
                     maxLength={40}
-                    placeholder="+996 773 033 399"
-                    defaultValue={seller?.seller_phone ?? ""}
+                    placeholder={isOwner ? "+996 773 033 399" : seller?.seller_phone || "+996 773 033 399"}
+                    defaultValue={isOwner ? (seller?.seller_phone ?? "") : (ownInvoice?.invoice_phone ?? "")}
                   />
                 </label>
               </div>
+              {!isOwner && (
+                <small className="muted settings-hint">
+                  Так вы будете подписаны в накладных своих продаж. Пусто - подставим имя и телефон из настроек
+                  магазина.
+                </small>
+              )}
               <label>
                 Адрес (необязательно)
                 <input name="address" maxLength={200} placeholder="Рынок «Дордой», ряд 5, контейнер 12" defaultValue={seller?.address ?? ""} />

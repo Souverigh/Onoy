@@ -66,7 +66,20 @@ export async function updateShop(form: FormData) {
     documentNames.some((n) => n.length > 120)
   )
     redirect("/settings?error=invalid");
-  const { db, organizationId, currency: currentCurrency } = await getContext();
+  const { db, organizationId, currency: currentCurrency, isOwner } = await getContext();
+  // Продавец: имя и телефон для накладной — свои, в его строке сотрудника, а
+  // не общие для магазина (те задаёт владелец).
+  let ownFailed = false;
+  if (!isOwner && sellerFields) {
+    const own = await db.rpc("set_my_invoice_details", {
+      p_org: organizationId,
+      p_name: details.seller_name,
+      p_phone: details.seller_phone,
+    });
+    delete details.seller_name;
+    delete details.seller_phone;
+    ownFailed = Boolean(own.error);
+  }
   const base = {
     name,
     phone,
@@ -90,7 +103,8 @@ export async function updateShop(form: FormData) {
   if (result.error)
     redirect(`/settings?error=${result.error.message.includes("currency_locked") ? "currency_locked" : "save"}`);
   revalidatePath("/", "layout");
-  redirect("/settings?saved=1");
+  // Своё имя для накладной не сохранилось — миграция ещё не применена.
+  redirect(ownFailed ? "/settings?error=migration" : "/settings?saved=1");
 }
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
