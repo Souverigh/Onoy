@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { getContext } from "@/lib/context";
 import { Dashboard, type Reminder, type Summary } from "@/components/dashboard";
 import { bishkekDate, dayHistory } from "@/lib/day-summary";
-import { sellerDetail } from "@/lib/seller-sales";
+import { sellerCustomerDebts, sellerDetail } from "@/lib/seller-sales";
 import { recentRecords } from "@/lib/recent";
 import { dayMonth } from "@/lib/promise";
 import { reminderMessage } from "@/lib/reminder";
@@ -29,13 +29,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
   // Продавцу итоги магазина не показываем (ТЗ) — и не считаем.
   if (!isOwner) {
     const today = bishkekDate();
-    const [recent, reviewResult, mine] = await Promise.all([
+    const [recent, reviewResult, mine, owed] = await Promise.all([
       recentRecords(db, organizationId),
       review,
-      // Свои продажи за месяц — без итогов магазина.
-      sellerDetail(db, organizationId, user.id, `${today.slice(0, 7)}-01`, today, shopCurrency).catch(() => null),
+      // Свои продажи за сегодня и долг своих клиентов — без итогов магазина.
+      sellerDetail(db, organizationId, user.id, today, today, shopCurrency).catch(() => null),
+      sellerCustomerDebts(db, organizationId, user.id, shopCurrency).catch(() => null),
     ]);
-    const todayRow = mine?.days.find((d) => d.date === today);
     return (
       <>
         {passwordNotice}
@@ -47,7 +47,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
           reviewCount={reviewResult.count ?? 0}
           mySales={
             mine
-              ? { today: todayRow?.sold ?? 0, todayCount: todayRow?.count ?? 0, month: mine.sold, currency: shopCurrency }
+              ? { date: today, today: mine.sold, todayCount: mine.count, owed: owed?.total ?? 0, currency: shopCurrency }
               : undefined
           }
         />

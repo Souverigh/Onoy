@@ -4,7 +4,7 @@ import { money } from "@/lib/format";
 import { bishkekDate } from "@/lib/day-summary";
 import { change, period, type PeriodKind } from "@/lib/periods";
 import { periodReport } from "@/lib/period-report";
-import { sellersOverview } from "@/lib/seller-sales";
+import { sellersDebtTotals, sellersOverview } from "@/lib/seller-sales";
 import { DayColumns } from "@/components/day-columns";
 import { InfoTip } from "@/components/info-tip";
 import { CURRENCY_SIGN } from "@/lib/currency";
@@ -55,9 +55,10 @@ export default async function Reports({
   const today = bishkekDate();
   const p = period(kind, today, offset);
   const { db, organizationId, currency: shopCurrency } = await requireOwner();
-  const [report, sellers] = await Promise.all([
+  const [report, sellers, owed] = await Promise.all([
     periodReport(db, organizationId, p),
     sellersOverview(db, organizationId, p.start, p.through, shopCurrency),
+    sellersDebtTotals(db, organizationId, shopCurrency).catch(() => new Map<string, number>()),
   ]);
 
   const title =
@@ -263,6 +264,7 @@ export default async function Reports({
                   <th>Клиентов</th>
                   <th>Продано</th>
                   <th>Собрано</th>
+                  <th>Должны клиенты</th>
                 </tr>
               </thead>
               <tbody>
@@ -281,6 +283,7 @@ export default async function Reports({
                     <td>{s.customers}</td>
                     <td>{money(s.sold, cur)}</td>
                     <td>{money(s.collected, cur)}</td>
+                    <td>{s.id ? <Link href={`/sellers?id=${s.id}#debts`}>{money(owed.get(s.id) ?? 0, cur)}</Link> : "-"}</td>
                   </tr>
                 ))}
               </tbody>

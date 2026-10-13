@@ -232,3 +232,97 @@ export async function sellerDetail(
     })),
   };
 }
+
+export type SellerDebts = {
+  /** Сколько сейчас должны клиенты продавца — в валюте магазина. */
+  total: number;
+  /** Клиенты продавца с долгом (в т. ч. в другой валюте), больший долг сверху. */
+  customers: { id: string; name: string; balance: number; currency: Currency }[];
+  /** Долги в другой валюте — суммы по валютам. */
+  foreign: { currency: Currency; total: number }[];
+};
+
+/**
+ * Долг клиентов продавца: клиенты, которым он хоть раз оформил продажу, и
+ * их текущий долг магазину целиком (оплата не привязана к продаже).
+ */
+export async function sellerCustomerDebts(
+  db: SupabaseClient,
+  organizationId: string,
+  sellerId: string,
+  shopCurrency: Currency,
+): Promise<SellerDebts> {
+  const sold = await db
+    .from("sales")
+    .select("customer_id")
+    .eq("organization_id", organizationId)
+    .eq("created_by", sellerId)
+    .eq("status", "posted")
+    .is("reversed_at", null)
+    .range(0, 9999);
+  if (sold.error) throw new Error("Не удалось загрузить клиентов продавца");
+  const ids = [...new Set((sold.data ?? []).map((s) => s.customer_id as string | null).filter((id): id is string => Boolean(id)))];
+  const rows: { id: string; name: string; balance: string; currency: string | null; archived_at: string | null; merged_into_id: string | null }[] = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const part = await db
+      .from("customer_balances")
+      .select("id,name,balance,currency,archived_at,merged_into_id")
+      .eq("organization_id", organizationId)
+      .in("id", ids.slice(i, i + 200));
+    if (part.error) throw new Error("Не удалось загрузить долги клиентов");
+    rows.push(...((part.data ?? []) as typeof rows));
+  }
+  const customers = rows
+    .filter((c) => !c.archived_at && !c.merged_into_id && Number(c.balance) > 0)
+    .map((c) => ({ id: c.id, name: c.name, balance: Number(c.balance), currency: (c.currency ?? shopCurrency) as Currency }))
+    .sort((a, b) => b.balance - a.balance);
+  const other = new Map<Currency, number>();
+  let total = 0;
+  for (const c of customers) {
+    if (c.currency === shopCurrency) total = round(total + c.balance);
+    else other.set(c.currency, round((other.get(c.currency) ?? 0) + c.balance));
+  }
+  return { total, customers, foreign: [...other.entries()].map(([currency, t]) => ({ currency, total: t })) };
+}
+
+/**
+ * Владелец: сколько сейчас должны клиенты каждого продавца (в валюте
+ * магазина) — id продавца → сумма. Клиент, которому продавали двое, входит
+ * в сумму обоих.
+ */
+export async function sellersDebtTotals(
+  db: SupabaseClient,
+  organizationId: string,
+  shopCurrency: Currency,
+): Promise<Map<string, number>> {
+  const [sold, balances] = await Promise.all([
+    db
+      .from("sales")
+      .select("customer_id,created_by")
+      .eq("organization_id", organizationId)
+      .eq("status", "posted")
+      .is("reversed_at", null)
+      .not("created_by", "is", null)
+      .range(0, 49999),
+    db
+      .from("customer_balances")
+      .select("id,balance,currency,archived_at,merged_into_id")
+      .eq("organization_id", organizationId)
+      .gt("balance", 0)
+      .range(0, 9999),
+  ]);
+  if (sold.error || balances.error) throw new Error("Не удалось загрузить долги клиентов");
+  const owed = new Map<string, number>();
+  for (const c of (balances.data ?? []) as { id: string; balance: string; currency: string | null; archived_at: string | null; merged_into_id: string | null }[])
+    if (!c.archived_at && !c.merged_into_id && (c.currency ?? shopCurrency) === shopCurrency) owed.set(c.id, Number(c.balance));
+  const pairs = new Set<string>();
+  const totals = new Map<string, number>();
+  for (const s of (sold.data ?? []) as { customer_id: string | null; created_by: string }[]) {
+    if (!s.customer_id || !owed.has(s.customer_id)) continue;
+    const key = `${s.created_by}:${s.customer_id}`;
+    if (pairs.has(key)) continue;
+    pairs.add(key);
+    totals.set(s.created_by, round((totals.get(s.created_by) ?? 0) + owed.get(s.customer_id)!));
+  }
+  return totals;
+}

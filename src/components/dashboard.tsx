@@ -67,8 +67,8 @@ export function Dashboard({
   /** Накладные с расхождением или ошибкой распознавания — «незавершённые». */
   reviewCount?: number;
   recent?: RecentRecord[];
-  /** Продавец: его продажи за сегодня и за месяц — ссылка на «Мои продажи». */
-  mySales?: { today: number; todayCount: number; month: number; currency: string };
+  /** Продавец: его продажи за сегодня и сколько должны его клиенты. */
+  mySales?: { date: string; today: number; todayCount: number; owed: number; currency: string };
 }) {
   const href = (url: string) => (preview ? "/preview" : url);
   const time = (iso: string) =>
@@ -100,6 +100,23 @@ export function Dashboard({
               <small key={d.currency} className="debt-extra">{extraDebt(d.payable, d.currency)}</small>
             ))}
             <small>Поставщикам →</small>
+          </Link>
+        </section>
+      )}
+      {/* Продавец: свои продажи — первым, как карточки долгов у владельца. */}
+      {staff && mySales && (
+        <section className="debt-cards" aria-label="Мои продажи">
+          <Link className="debt-card" href={href(`/sellers?date=${mySales.date}`)}>
+            <span>Мои продажи сегодня</span>
+            <strong>{money(mySales.today, mySales.currency)}</strong>
+            <small>
+              {mySales.todayCount} {plural(mySales.todayCount, "продажа", "продажи", "продаж")} →
+            </small>
+          </Link>
+          <Link className="debt-card" href={href("/sellers#debts")}>
+            <span>Мне должны</span>
+            <strong>{debtMoney(mySales.owed, mySales.currency)}</strong>
+            <small>Мои клиенты →</small>
           </Link>
         </section>
       )}
@@ -174,18 +191,6 @@ export function Dashboard({
             <small className="muted">
               продано {money(today.sold, today.currency)} · собрано {money(today.collected, today.currency)}
               {today.expenses > 0 && <> · расходы {money(today.expenses, today.currency)}</>}
-            </small>
-          </span>
-          <span aria-hidden="true">→</span>
-        </Link>
-      )}
-      {staff && mySales && (
-        <Link className="dashboard-day" href={href("/sellers")}>
-          <span>
-            <strong>Мои продажи</strong>
-            <small className="muted">
-              сегодня {money(mySales.today, mySales.currency)} ({mySales.todayCount}) · за месяц{" "}
-              {money(mySales.month, mySales.currency)}
             </small>
           </span>
           <span aria-hidden="true">→</span>

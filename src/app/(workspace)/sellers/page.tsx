@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { getContext } from "@/lib/context";
-import { money } from "@/lib/format";
+import { debtMoney, money } from "@/lib/format";
 import { bishkekDate } from "@/lib/day-summary";
 import { period } from "@/lib/periods";
 import { memberLabels } from "@/lib/members";
-import { sellerDetail, sellersOverview } from "@/lib/seller-sales";
+import { sellerCustomerDebts, sellerDetail, sellersDebtTotals, sellersOverview } from "@/lib/seller-sales";
 import { InfoTip } from "@/components/info-tip";
 
 const fmt = (date: string, options: Intl.DateTimeFormatOptions) =>
@@ -75,7 +75,10 @@ export default async function Sellers({
   );
 
   if (!sellerId) {
-    const rows = await sellersOverview(db, organizationId, start, end, cur);
+    const [rows, owed] = await Promise.all([
+      sellersOverview(db, organizationId, start, end, cur),
+      sellersDebtTotals(db, organizationId, cur),
+    ]);
     return (
       <>
         <div className="page-heading day-heading">
@@ -96,6 +99,12 @@ export default async function Sellers({
                   <th>Клиентов</th>
                   <th>Продано</th>
                   <th>Собрано</th>
+                  <th>
+                    <span className="label-with-tip">
+                      Должны клиенты
+                      <InfoTip>Долг на сейчас клиентов, которым продавец хоть раз продавал. Нажмите на имя - по каждому клиенту.</InfoTip>
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -109,6 +118,9 @@ export default async function Sellers({
                     <td>{r.customers}</td>
                     <td>{money(r.sold, cur)}</td>
                     <td>{money(r.collected, cur)}</td>
+                    <td>
+                      {r.id ? <Link href={`${query({ id: r.id, offset, date: day })}#debts`}>{debtMoney(owed.get(r.id) ?? 0, cur)}</Link> : "-"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -119,9 +131,10 @@ export default async function Sellers({
     );
   }
 
-  const [detail, members] = await Promise.all([
+  const [detail, members, debts] = await Promise.all([
     sellerDetail(db, organizationId, sellerId, start, end, cur),
     memberLabels(db, organizationId),
+    sellerCustomerDebts(db, organizationId, sellerId, cur),
   ]);
   const name = isOwner ? (members.get(sellerId)?.name ?? "Продавец") : "Мои продажи";
 
@@ -256,6 +269,45 @@ export default async function Sellers({
           </details>
         </>
       )}
+
+      <section className="panel" id="debts">
+        <h2 className="label-with-tip">
+          {isOwner ? "Должны клиенты продавца" : "Мне должны"}: {debtMoney(debts.total, cur)}
+          <InfoTip>
+            Клиенты, которым {isOwner ? "продавец" : "вы"} хоть раз оформляли продажу, и их долг магазину на сейчас - не
+            за выбранный период.
+          </InfoTip>
+        </h2>
+        {debts.foreign.map((f) => (
+          <p key={f.currency} className="muted">
+            И в другой валюте: {debtMoney(f.total, f.currency)}
+          </p>
+        ))}
+        {debts.customers.length ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Клиент</th>
+                  <th>Долг</th>
+                </tr>
+              </thead>
+              <tbody>
+                {debts.customers.map((c) => (
+                  <tr key={c.id}>
+                    <td>
+                      <Link href={`/customers/${c.id}`}>{c.name}</Link>
+                    </td>
+                    <td>{debtMoney(c.balance, c.currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="muted">Никто не должен.</p>
+        )}
+      </section>
     </>
   );
 }
