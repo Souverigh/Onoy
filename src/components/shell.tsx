@@ -8,7 +8,7 @@ import { InstallApp } from "./install-app";
 type NavItem = [string, string, IconName];
 
 // Склад — с 30.09.2026 (товары, остатки, продажа товарами); на телефоне — в «Ещё».
-const nav: NavItem[] = [
+const allNav: NavItem[] = [
   ["/", "Главная", "home"],
   ["/customers", "Клиенты", "people"],
   ["/suppliers", "Поставщики", "truck"],
@@ -16,6 +16,7 @@ const nav: NavItem[] = [
   ["/stock", "Склад", "box"],
   ["/day", "Итог дня", "file"],
   ["/reports", "Отчёт за месяц", "chart"],
+  ["/sellers", "Продажи продавцов", "chart"],
   ["/claims", "Платежи", "check"],
   ["/documents", "Документы", "camera"],
   ["/settings", "Настройки", "settings"],
@@ -67,6 +68,10 @@ export function Shell({
     return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
+  // Продавец видит в «Продажах продавцов» только свои продажи.
+  const nav = isOwner
+    ? allNav
+    : allNav.map(([href, label, icon]): NavItem => [href, href === "/sellers" ? "Мои продажи" : label, icon]);
   const allowed = ([href]: NavItem) => isOwner || !OWNER_ONLY.has(href);
   const link = (href: string) => (preview ? "/preview" : href);
   const active = (href: string) =>

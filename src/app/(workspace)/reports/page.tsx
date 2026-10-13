@@ -4,6 +4,7 @@ import { money } from "@/lib/format";
 import { bishkekDate } from "@/lib/day-summary";
 import { change, period, type PeriodKind } from "@/lib/periods";
 import { periodReport } from "@/lib/period-report";
+import { sellersOverview } from "@/lib/seller-sales";
 import { DayColumns } from "@/components/day-columns";
 import { InfoTip } from "@/components/info-tip";
 import { CURRENCY_SIGN } from "@/lib/currency";
@@ -53,8 +54,11 @@ export default async function Reports({
   const offset = Math.min(0, Math.max(-120, parseInt(params.offset ?? "0") || 0));
   const today = bishkekDate();
   const p = period(kind, today, offset);
-  const { db, organizationId } = await requireOwner();
-  const report = await periodReport(db, organizationId, p);
+  const { db, organizationId, currency: shopCurrency } = await requireOwner();
+  const [report, sellers] = await Promise.all([
+    periodReport(db, organizationId, p),
+    sellersOverview(db, organizationId, p.start, p.through, shopCurrency),
+  ]);
 
   const title =
     kind === "month"
@@ -242,6 +246,48 @@ export default async function Reports({
           <p className="muted">Никто не должен.</p>
         )}
       </section>
+
+      {/* По продавцам — когда в магазине работают сотрудники. */}
+      {sellers.some((s) => s.role === "staff") && (
+        <section className="panel">
+          <h2 className="label-with-tip">
+            По продавцам
+            <InfoTip>Нажмите на имя - продажи продавца по дням и по клиентам.</InfoTip>
+          </h2>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Кто</th>
+                  <th>Продаж</th>
+                  <th>Клиентов</th>
+                  <th>Продано</th>
+                  <th>Собрано</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sellers.map((s) => (
+                  <tr key={s.id ?? "none"}>
+                    <td>
+                      {s.id && kind === "month" ? (
+                        <Link href={`/sellers?id=${s.id}${offset ? `&offset=${offset}` : ""}`}>{s.name}</Link>
+                      ) : s.id ? (
+                        <Link href={`/sellers?id=${s.id}`}>{s.name}</Link>
+                      ) : (
+                        s.name
+                      )}
+                    </td>
+                    <td>{s.count}</td>
+                    <td>{s.customers}</td>
+                    <td>{money(s.sold, cur)}</td>
+                    <td>{money(s.collected, cur)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <details className="panel day-fold report-table">
         <summary>Таблица по дням</summary>

@@ -496,7 +496,7 @@ export default async function DayClose({
               <tbody>
                 {summary.bySeller.map((s) => (
                   <tr key={s.id ?? "none"}>
-                    <td>{s.name}</td>
+                    <td>{s.id ? <Link href={`/sellers?id=${s.id}&date=${date}`}>{s.name}</Link> : s.name}</td>
                     <td>{s.count}</td>
                     <td>{money(s.sold, summary.currency ?? "KGS")}</td>
                     <td>{money(s.collected, summary.currency ?? "KGS")}</td>
