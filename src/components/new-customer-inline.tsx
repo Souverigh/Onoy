@@ -6,7 +6,7 @@ import { bestMatches } from "@/lib/match";
 import { phoneKey } from "@/lib/contacts";
 import type { PickerParty } from "./party-picker";
 import { IosAutofillHint, PhoneField, isIos } from "./contact-picker";
-import { CURRENCIES, CURRENCY_SIGN, type Currency } from "@/lib/currency";
+import { CURRENCIES, CURRENCY_SIGN, partyCurrency, type Currency } from "@/lib/currency";
 
 /** «Долг будет в долларах». */
 const IN_CURRENCY: Record<Currency, string> = { KGS: "сомах", USD: "долларах", RUB: "рублях" };
@@ -56,11 +56,18 @@ export function NewCustomerInline({
   const [ios, setIos] = useState(false);
   useEffect(() => setIos(isIos()), []);
   const word = who === "supplier" ? "поставщика" : "клиента";
-  const create_ = (n: string, p: string) =>
-    who === "supplier" ? supplierFromContact(n, p, currency) : customerFromContact(n, p, currency);
+  const otherCurrency = lookalike !== null && partyCurrency(lookalike, shopCurrency) !== currency;
+  /** «ТестЕржан» → «ТестЕржан $»; знак уже есть в конце — не дублируем. */
+  const withSign = (raw: string) => {
+    const clean = raw.replace(/\s+/g, " ").trim();
+    const sign = CURRENCY_SIGN[currency];
+    return clean.toLowerCase().endsWith(sign.toLowerCase()) ? clean : `${clean} ${sign}`.slice(0, 160);
+  };
+  const create_ = (n: string, p: string, confirmedNew: boolean) =>
+    who === "supplier" ? supplierFromContact(n, p, currency, confirmedNew) : customerFromContact(n, p, currency, confirmedNew);
 
-  async function create(force: boolean) {
-    const cleanName = name.replace(/\s+/g, " ").trim();
+  async function create(force: boolean, rename?: string) {
+    const cleanName = (rename ?? name).replace(/\s+/g, " ").trim();
     if (!cleanName) {
       setNote(`Впишите имя ${word}.`);
       return;
@@ -78,7 +85,7 @@ export function NewCustomerInline({
     setSaving(true);
     setNote(null);
     try {
-      const found = await create_(cleanName, phone);
+      const found = await create_(cleanName, phone, force);
       if ("error" in found) {
         setNote(`Не удалось добавить ${word}. Попробуйте ещё раз.`);
         return;
@@ -104,6 +111,12 @@ export function NewCustomerInline({
           <p>
             Похоже, это <strong>{lookalike.name}</strong>. Выбрать его?
           </p>
+          {otherCurrency && (
+            <p className="muted">
+              Его долг ведётся в {IN_CURRENCY[partyCurrency(lookalike, shopCurrency)]}, а вы выбрали {CURRENCY_SIGN[currency]}. Нужен
+              долг в {CURRENCY_SIGN[currency]} - нажмите «Нет, это новый»: появится отдельная карточка «{withSign(name)}».
+            </p>
+          )}
           <div className="simple-operation-actions">
             <button type="button" className="button primary" onClick={() => onPickExisting(lookalike.id)}>
               Да, это {lookalike.name}
@@ -113,7 +126,9 @@ export function NewCustomerInline({
               className="button"
               onClick={() => {
                 setLookalike(null);
-                void create(true);
+                // Тот же человек, долг в другой валюте — знак валюты в имени,
+                // чтобы две карточки не путали в списке.
+                void create(true, otherCurrency ? withSign(name) : undefined);
               }}
             >
               Нет, это новый {who === "supplier" ? "поставщик" : "клиент"}

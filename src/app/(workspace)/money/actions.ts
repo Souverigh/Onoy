@@ -970,18 +970,30 @@ function returnLinesInput(raw: FormDataEntryValue | null): { sale_item?: string;
  * контактов телефона или новый в одно касание»). Есть клиент с тем же
  * номером — возвращаем его; нет — создаём. Без перезагрузки формы.
  */
-export async function customerFromContact(rawName: string, rawPhone: string, rawCurrency?: string): Promise<PartyFromContact> {
-  return partyFromContact("customers", rawName, rawPhone, rawCurrency);
+export async function customerFromContact(
+  rawName: string,
+  rawPhone: string,
+  rawCurrency?: string,
+  confirmedNew?: boolean,
+): Promise<PartyFromContact> {
+  return partyFromContact("customers", rawName, rawPhone, rawCurrency, confirmedNew);
 }
 
 /**
  * Новый поставщик прямо в форме прихода — например, с накладной, которого
  * ещё нет в списке. Тот же номер уже есть — возвращаем его. Валюта долга
  * (и у клиента, и у поставщика) задаётся сразу: после первой записи её не
- * сменить.
+ * сменить. `confirmedNew` — человек ответил «Нет, это новый» на «Похоже,
+ * это …»: создаём, даже если номер уже есть (тот же человек, но долг в другой
+ * валюте — отдельной карточкой).
  */
-export async function supplierFromContact(rawName: string, rawPhone: string, rawCurrency?: string): Promise<PartyFromContact> {
-  return partyFromContact("suppliers", rawName, rawPhone, rawCurrency);
+export async function supplierFromContact(
+  rawName: string,
+  rawPhone: string,
+  rawCurrency?: string,
+  confirmedNew?: boolean,
+): Promise<PartyFromContact> {
+  return partyFromContact("suppliers", rawName, rawPhone, rawCurrency, confirmedNew);
 }
 
 type PartyFromContact =
@@ -993,6 +1005,7 @@ async function partyFromContact(
   rawName: string,
   rawPhone: string,
   rawCurrency?: string,
+  confirmedNew = false,
 ): Promise<PartyFromContact> {
   const name = String(rawName ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
   const phone = normalizePhone(String(rawPhone ?? "")).slice(0, 40);
@@ -1001,7 +1014,7 @@ async function partyFromContact(
   const { db, organizationId, currency: shopCurrency } = await getContext();
   // Валюта магазина — null, как у всех контрагентов без своей валюты.
   const currency = isCurrency(rawCurrency) && rawCurrency !== shopCurrency ? rawCurrency : null;
-  if (key) {
+  if (key && !confirmedNew) {
     const existing = await db
       .from(table === "customers" ? "customer_balances" : "supplier_balances")
       .select("id,name,phone,balance,currency")
