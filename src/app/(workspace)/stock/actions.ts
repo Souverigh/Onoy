@@ -4,7 +4,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getContext } from "@/lib/context";
 import { isProductUnit, stockNumber, type ProductUnit } from "@/lib/stock";
-import { rateInput } from "@/lib/currency";
+import { isCurrency, rateInput, type Currency } from "@/lib/currency";
 import { bishkekDate } from "@/lib/day-summary";
 import { recordDateTime } from "@/lib/record-date";
 
@@ -53,6 +53,9 @@ export async function saveProduct(form: FormData) {
   const salePrice = stockNumber(text(form, "sale_price") || "0", 2);
   const purchasePrice = stockNumber(text(form, "purchase_price") || "0", 2);
   if (salePrice === null || purchasePrice === null) back("invalid_price");
+  // Валюта цены закупки; пусто — валюта магазина.
+  const purchaseCurrency = text(form, "purchase_currency");
+  if (purchaseCurrency && !isCurrency(purchaseCurrency)) back("invalid_currency");
   const minStock = stockNumber(text(form, "min_stock") || "0", 3);
   const rawOpening = text(form, "opening_stock");
   const opening = rawOpening ? stockNumber(rawOpening, 3) : null;
@@ -70,6 +73,7 @@ export async function saveProduct(form: FormData) {
     p_min_stock: minStock,
     p_aliases: aliasList(text(form, "aliases")),
     p_opening_stock: id ? null : opening,
+    p_purchase_currency: purchaseCurrency || null,
   });
   if (result.error || !result.data) {
     console.error("saveProduct failed", { message: result.error?.message });
@@ -120,6 +124,8 @@ export type QuickProduct = {
   unit: string;
   sale_price: string;
   purchase_price: string;
+  /** Валюта цены закупки; null — валюта магазина. */
+  purchase_currency: string | null;
   stock: string;
   aliases: string[];
   sold_count: number;
@@ -131,6 +137,8 @@ export async function quickAddProduct(input: {
   unit: string;
   salePrice: string;
   purchasePrice?: string;
+  /** Валюта цены закупки — валюта поставщика в форме прихода. */
+  purchaseCurrency?: Currency;
 }): Promise<{ product: QuickProduct } | { error: string }> {
   try {
     if (!isProductUnit(input.unit)) return { error: "invalid_unit" };
@@ -146,11 +154,12 @@ export async function quickAddProduct(input: {
       p_unit: input.unit,
       p_sale_price: price,
       p_purchase_price: cost,
+      p_purchase_currency: isCurrency(input.purchaseCurrency) ? input.purchaseCurrency : null,
     });
     if (result.error || !result.data) return { error: failureCode(result.error?.message) };
     const row = await db
       .from("product_balances")
-      .select("id,name,sku,unit,sale_price,purchase_price,stock,aliases,sold_count")
+      .select("id,name,sku,unit,sale_price,purchase_price,purchase_currency,stock,aliases,sold_count")
       .eq("organization_id", organizationId)
       .eq("id", result.data)
       .single();
@@ -170,6 +179,7 @@ export type ImportPayload = {
   unit: ProductUnit | null;
   sale_price: string | null;
   purchase_price: string | null;
+  purchase_currency: Currency | null;
   stock: string | null;
 };
 export type ImportResult =
@@ -191,6 +201,7 @@ export async function importProducts(rows: ImportPayload[]): Promise<ImportResul
         unit: isProductUnit(r.unit) ? r.unit : null,
         sale_price: r.sale_price,
         purchase_price: r.purchase_price,
+        purchase_currency: r.purchase_price !== null && isCurrency(r.purchase_currency) ? r.purchase_currency : null,
         stock: r.stock,
       }));
       const result = await db.rpc("import_products", { p_org: organizationId, p_rows: chunk });
@@ -311,7 +322,8 @@ export async function receivePurchase(form: FormData) {
 
 /**
  * Приход товарами без фото: поставщик, строки «товар — количество — цена
- * закупки». Долг поставщику на сумму строк, остаток и закупочная цена — сразу.
+ * закупки» в валюте поставщика. Долг поставщику на сумму строк, остаток и
+ * закупочная цена (в той же валюте) — сразу.
  * Успех — экран результата прихода; ошибка возвращается в форму.
  */
 export async function commitPurchaseItems(previous: SaleItemsState, form: FormData): Promise<SaleItemsState> {
@@ -338,24 +350,21 @@ export async function commitPurchaseItems(previous: SaleItemsState, form: FormDa
       if (price === null) return { error: "price", attempt };
       clean.push({ product: line.product, qty, price });
     }
-    const rawRate = text(form, "fx_rate");
-    const rate = rawRate ? rateInput(rawRate) : null;
-    if (rawRate && !rate) return { error: "rate", attempt };
     const occurredAt = recordDateTime(text(form, "record_date"), bishkekDate());
     if (occurredAt === "invalid") return { error: "date", attempt };
     const { db, organizationId } = await getContext();
+    // Цены строк — в валюте поставщика, курс не нужен (миграция
+    // purchase_items_party_currency.sql).
     const result = await db.rpc("commit_purchase_items", {
       p_org: organizationId,
       p_supplier: supplier,
       p_lines: clean,
       p_idempotency_key: key,
-      p_fx_rate: rate,
       ...(occurredAt ? { p_occurred_at: occurredAt } : {}),
     });
     if (result.error || !result.data) {
       console.error("commitPurchaseItems: RPC failed", { message: result.error?.message, lines: clean.length });
-      const code = failureCode(result.error?.message);
-      return { error: code === "invalid_currency" ? "rate" : code, attempt };
+      return { error: failureCode(result.error?.message), attempt };
     }
     purchaseId = result.data as string;
   } catch (error) {

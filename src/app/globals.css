@@ -4506,6 +4506,19 @@ form .party-merge-field {
 .amount-currency .party-suggestion {
   min-width: 56px;
 }
+/* Цена закупки товара и её валюта в одну строку. */
+.input-with-select {
+  display: flex;
+  gap: 8px;
+}
+.input-with-select input {
+  flex: 1;
+  min-width: 0;
+}
+.input-with-select select {
+  width: auto;
+  flex: none;
+}
 /* Страница клиента: валюта перевода — радиокнопки в виде кнопок. */
 .claim-currency {
   border: 0;

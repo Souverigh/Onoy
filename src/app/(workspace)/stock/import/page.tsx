@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { StockImport } from "@/components/stock-import";
+import { getContext } from "@/lib/context";
 
-export default function StockImportPage() {
+export default async function StockImportPage() {
+  const { currency } = await getContext();
   return (
     <>
       <Link className="back-link" href="/stock">
@@ -20,7 +22,7 @@ export default function StockImportPage() {
         </div>
       </div>
       <section className="panel">
-        <StockImport />
+        <StockImport shopCurrency={currency} />
       </section>
     </>
   );

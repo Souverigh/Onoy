@@ -52,7 +52,7 @@ export default async function NewOperation({
     itemsKind && !params.documentId && wantedMode === "items"
       ? db
           .from("product_balances")
-          .select("id,name,sku,unit,sale_price,purchase_price,stock,aliases,sold_count")
+          .select("id,name,sku,unit,sale_price,purchase_price,purchase_currency,stock,aliases,sold_count")
           .eq("organization_id", organizationId)
           .is("archived_at", null)
           .order("name")

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateRawSync } from "node:zlib";
-import { detectColumns, importRows, normalizeUnit, stockNumber } from "../src/lib/stock.ts";
+import { costCurrency, detectColumns, importRows, normalizeUnit, stockNumber } from "../src/lib/stock.ts";
 import { normalizeText, searchProducts } from "../src/lib/match.ts";
 import { readCsv, readXlsx } from "../src/lib/xlsx-read.ts";
 import { buildXlsx } from "../src/lib/xlsx.ts";
@@ -48,11 +48,40 @@ test("detectColumns + importRows: header found below a title, purchase price not
   assert.equal(rows.length, 3);
   assert.deepEqual(rows[0], {
     line: 4, name: "Кабель ВВГнг 3х2,5", sku: "A-1", unit: "м",
-    sale_price: "85.5", purchase_price: "60", stock: "100", warnings: [],
+    sale_price: "85.5", purchase_price: "60", purchase_currency: "KGS", stock: "100", warnings: [],
   });
   assert.deepEqual([rows[1].unit, rows[1].sale_price, rows[1].stock, rows[1].sku], ["мешок", "1200", null, null]);
   assert.deepEqual(rows[2].warnings, ["Единица «ящик» - не знаем, будет «шт»", "Цена продажи: «abc» - не число"]);
   assert.equal(detectColumns([["1", "2"], ["3", "4"]]), null);
+});
+
+test("importRows: purchase currency from its column, from the price cell, else the file default", () => {
+  assert.deepEqual(
+    ["$", "USD", "доллар", "у.е.", "руб.", "₽", "сом", "KGS", "с", "", "евро"].map(costCurrency),
+    ["USD", "USD", "USD", "USD", "RUB", "RUB", "KGS", "KGS", "KGS", null, null],
+  );
+  assert.equal(stockNumber("$0,29", 2), "0.29");
+  assert.equal(stockNumber("0.29 USD", 2), "0.29");
+  const table = [
+    ["Наименование", "Код", "Цена закупки", "Валюта закупки", "Цена продажи", "Остаток"],
+    ["ВИЛКА 807", "", "0.6", "$", "70", "120"],
+    ["Кабель", "", "60", "сом", "85", "10"],
+    ["Розетка", "", "95", "руб", "150", "5"],
+    ["Выключатель", "", "0.75", "", "90", "96"],
+    ["Удлинитель", "", "2,5 $", "", "300", "3"],
+    ["Лампа", "", "", "$", "40", "1"],
+    ["Скотч", "", "1", "евро", "60", "1"],
+  ];
+  const found = detectColumns(table);
+  assert.deepEqual(found.columns, { name: 0, sku: 1, purchase_price: 2, purchase_currency: 3, sale_price: 4, stock: 5 });
+  const rows = importRows(table, found.header, found.columns, "USD");
+  assert.deepEqual(
+    rows.map((r) => [r.purchase_price, r.purchase_currency]),
+    [["0.6", "USD"], ["60", "KGS"], ["95", "RUB"], ["0.75", "USD"], ["2.5", "USD"], [null, null], ["1", "USD"]],
+  );
+  assert.deepEqual(rows[6].warnings, ["Валюта «евро» - не знаем, будет USD"]);
+  // Без колонки валюты — выбранная для файла; по умолчанию сом.
+  assert.equal(importRows(table, 0, { name: 0, purchase_price: 2 })[0].purchase_currency, "KGS");
 });
 
 test("searchProducts: popular first without a query; code, words in any order, aliases, typos", () => {

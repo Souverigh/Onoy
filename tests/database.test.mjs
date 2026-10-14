@@ -2339,6 +2339,33 @@ test("warehouse: products with codes, sale lines write off stock, reversal retur
   // Найден по названию в другом регистре — своё название остаётся.
   assert.equal((await db.query("select name from products where id=$1", [cable])).rows[0].name, "Кабель ВВГнг 3х2,5");
 
+  // Валюта закупки из файла: доллары остаются долларами, валюта магазина — null;
+  // без цены закупки валюта не меняется; неизвестная валюта — строка с ошибкой.
+  const fx = (
+    await db.query("select import_products($1,$2) as r", [
+      orgA,
+      JSON.stringify([
+        { name: "Вилка 807", purchase_price: "0.6", purchase_currency: "USD", sale_price: "70" },
+        { name: "Цемент М400", purchase_price: "450", purchase_currency: "KGS" },
+        { name: "Вилка 807", sale_price: "75" },
+        { name: "Скотч", purchase_price: "1", purchase_currency: "EUR" },
+      ]),
+    ])
+  ).rows[0].r;
+  assert.deepEqual(fx.errors, [{ row: 4, error: "invalid_currency" }]);
+  const cost = async (name) =>
+    Object.values((await db.query("select purchase_price,purchase_currency from product_balances where organization_id=$1 and name=$2", [orgA, name])).rows[0]);
+  assert.deepEqual(await cost("Вилка 807"), ["0.60", "USD"]);
+  assert.deepEqual(await cost("Цемент М400"), ["450.00", null]);
+  // Форма товара: валюта сохраняется; валюта магазина — снова null.
+  const fork = (await db.query("select id from products where organization_id=$1 and name='Вилка 807'", [orgA])).rows[0].id;
+  await db.query("select save_product($1,$2,'Вилка 807',null,'шт','75','0.65','0',null,null,'USD')", [orgA, fork]);
+  assert.deepEqual(await cost("Вилка 807"), ["0.65", "USD"]);
+  await db.query("select save_product($1,$2,'Вилка 807',null,'шт','75','57','0',null,null,'KGS')", [orgA, fork]);
+  assert.deepEqual(await cost("Вилка 807"), ["57.00", null]);
+  await assert.rejects(db.query("select save_product($1,$2,'Вилка 807',null,'шт','75','1','0',null,null,'EUR')", [orgA, fork]), /invalid_currency/);
+  assert.ok((await db.query("select purchase_currency, stock_value from product_list where id=$1", [fork])).rows[0]);
+
   // Архив: товар скрыт, вернуть можно; чужой магазин не видит и не продаёт.
   await db.query("select set_product_archived($1,$2,true)", [orgA, cable]);
   assert.ok((await db.query("select archived_at from product_balances where id=$1", [cable])).rows[0].archived_at);
@@ -2447,6 +2474,29 @@ test("auto stock: a checked purchase invoice goes to stock by itself; purchase l
   // Отмена прихода товарами возвращает остаток назад.
   await db.query("select reverse_purchase($1,$2,'Вернули поставщику')", [orgA, usdPurchase]);
   assert.equal(await stock(socket), 32);
+  // Новая форма — без курса: цены в $, долг ровно на сумму строк, закупка товара — в $.
+  const usdItems = (
+    await db.query("select commit_purchase_items($1,$2,$3,$4) as id", [orgA, usd, JSON.stringify([{ product: socket, qty: "4", price: "1.25" }]), k(12)])
+  ).rows[0].id;
+  assert.deepEqual(
+    Object.values((await db.query("select total,original_amount,original_currency,fx_rate from purchases where id=$1", [usdItems])).rows[0]),
+    ["5.00", null, null, null],
+  );
+  assert.deepEqual(
+    Object.values((await db.query("select unit_cost,cost_currency from inventory_movements where purchase_id=$1", [usdItems])).rows[0]),
+    ["1.25", "USD"],
+  );
+  assert.deepEqual(
+    Object.values((await db.query("select purchase_price,purchase_currency from products where id=$1", [socket])).rows[0]),
+    ["1.25", "USD"],
+  );
+  assert.equal(await stock(socket), 36);
+  // Поставщик в валюте магазина — закупка снова в сомах (null).
+  await db.query("select commit_purchase_items($1,$2,$3,$4)", [orgA, supplier, JSON.stringify([{ product: socket, qty: "1", price: "110" }]), k(13)]);
+  assert.deepEqual(
+    Object.values((await db.query("select purchase_price,purchase_currency from products where id=$1", [socket])).rows[0]),
+    ["110.00", null],
+  );
 
   await user(b);
   await assert.rejects(db.query("select commit_purchase_items($1,$2,$3,$4)", [orgA, supplier, lines, k(8)]), /not_a_member/);

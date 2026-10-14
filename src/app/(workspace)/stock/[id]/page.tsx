@@ -8,6 +8,8 @@ import { Submit } from "@/components/submit";
 import { QtyStepper } from "@/components/qty-stepper";
 import { adjustStock, archiveProduct } from "../actions";
 import { STOCK_ERROR_TEXT } from "@/lib/stock";
+import { convertAmount, isCurrency, ratePair } from "@/lib/currency";
+import { officialRates } from "@/lib/fx";
 
 type Movement = {
   id: string;
@@ -54,7 +56,7 @@ export default async function ProductPage({
   const [productResult, movementsResult, returnsResult] = await Promise.all([
     db
       .from("product_balances")
-      .select("id,name,sku,unit,sale_price,purchase_price,min_stock,aliases,stock,archived_at,sold_count")
+      .select("id,name,sku,unit,sale_price,purchase_price,purchase_currency,min_stock,aliases,stock,archived_at,sold_count")
       .eq("organization_id", organizationId)
       .eq("id", id)
       .maybeSingle(),
@@ -77,6 +79,14 @@ export default async function ProductPage({
   ]);
   const product = productResult.data as (ProductEntry & { stock: string; archived_at: string | null; sold_count: number }) | null;
   if (productResult.error || !product) notFound();
+  // Закупка в другой валюте — показываем и в валюте магазина по курсу сегодня.
+  const costCurrency = isCurrency(product.purchase_currency) ? product.purchase_currency : currency;
+  let costInShop: string | null = null;
+  if (costCurrency !== currency && Number(product.purchase_price) > 0) {
+    const [strong, weak] = ratePair(costCurrency, currency);
+    const quote = (await officialRates([costCurrency, currency]))[`${strong}/${weak}`];
+    if (quote) costInShop = money(convertAmount(Number(product.purchase_price), costCurrency, currency, quote.rate).toFixed(2), currency);
+  }
   // Возвраты от клиентов — в общей ленте (таблицы нет до миграции return_items).
   const returns: Movement[] = ((returnsResult.error ? [] : (returnsResult.data ?? [])) as unknown as ReturnRow[]).map((r) => ({
     id: r.id,
@@ -134,7 +144,8 @@ export default async function ProductPage({
           <h1>{product.name}</h1>
           <p className="muted">
             {Number(product.sale_price) > 0 ? `${money(product.sale_price, currency)} за ${product.unit}` : "цена не указана"}
-            {Number(product.purchase_price) > 0 && ` · закупка ${money(product.purchase_price, currency)}`}
+            {Number(product.purchase_price) > 0 && ` · закупка ${money(product.purchase_price, costCurrency)}`}
+            {costInShop && ` (≈ ${costInShop} по курсу сегодня)`}
             {product.sold_count > 0 && ` · продаж за 90 дней: ${product.sold_count}`}
           </p>
         </div>

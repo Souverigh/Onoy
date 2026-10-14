@@ -2,7 +2,7 @@ import { Submit } from "./submit";
 import { QtyStepper } from "./qty-stepper";
 import { saveProduct } from "@/app/(workspace)/stock/actions";
 import { PRODUCT_UNITS } from "@/lib/stock";
-import { CURRENCY_SIGN, type Currency } from "@/lib/currency";
+import { CURRENCIES, CURRENCY_SIGN, isCurrency, type Currency } from "@/lib/currency";
 
 export type ProductEntry = {
   id: string;
@@ -11,6 +11,8 @@ export type ProductEntry = {
   unit: string;
   sale_price: string;
   purchase_price: string;
+  /** Валюта цены закупки; null — валюта магазина. */
+  purchase_currency: string | null;
   min_stock: string;
   aliases: string[];
 };
@@ -76,14 +78,28 @@ export function ProductForm({ product, currency }: { product?: ProductEntry; cur
         <div className="more-fields-body">
           <div className="form-grid">
             <label>
-              Цена закупки, {sign}
-              <input
-                name="purchase_price"
-                inputMode="decimal"
-                autoComplete="off"
-                defaultValue={field(product?.purchase_price)}
-                placeholder="0"
-              />
+              Цена закупки
+              <span className="input-with-select">
+                <input
+                  name="purchase_price"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  defaultValue={field(product?.purchase_price)}
+                  placeholder="0"
+                />
+                <select
+                  name="purchase_currency"
+                  aria-label="Валюта закупки"
+                  defaultValue={isCurrency(product?.purchase_currency) ? product.purchase_currency : currency}
+                >
+                  {CURRENCIES.map((c) => (
+                    <option key={c} value={c}>
+                      {CURRENCY_SIGN[c]}
+                    </option>
+                  ))}
+                </select>
+              </span>
+              <small className="muted">Закупаете в долларах - выберите $, продажа останется в {sign}.</small>
             </label>
             <label>
               Минимальный остаток

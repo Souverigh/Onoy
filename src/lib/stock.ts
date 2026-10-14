@@ -64,7 +64,8 @@ export function normalizeUnit(raw: unknown): ProductUnit | null {
 export function stockNumber(raw: unknown, scale: number): string | null {
   let s = String(raw ?? "")
     .replace(/[\s\u00a0']/g, "")
-    .replace(/(сом|руб|р\.|₽|\$|c|с)$/i, "");
+    .replace(/^(\$|₽)/, "")
+    .replace(/(сом|руб|р\.|₽|\$|usd|kgs|rub|c|с)$/i, "");
   if (!s) return null;
   if (s.includes(",") && s.includes(".")) s = s.lastIndexOf(",") > s.lastIndexOf(".") ? s.replaceAll(".", "").replace(",", ".") : s.replaceAll(",", "");
   else s = s.replace(",", ".");
@@ -75,7 +76,7 @@ export function stockNumber(raw: unknown, scale: number): string | null {
   return String(rounded);
 }
 
-export type ImportField = "name" | "sku" | "unit" | "sale_price" | "purchase_price" | "stock";
+export type ImportField = "name" | "sku" | "unit" | "sale_price" | "purchase_price" | "purchase_currency" | "stock";
 export type ColumnMap = Partial<Record<ImportField, number>>;
 
 export const IMPORT_FIELD_LABEL: Record<ImportField, string> = {
@@ -84,11 +85,30 @@ export const IMPORT_FIELD_LABEL: Record<ImportField, string> = {
   unit: "Единица",
   sale_price: "Цена продажи",
   purchase_price: "Цена закупки",
+  purchase_currency: "Валюта закупки",
   stock: "Остаток",
 };
 
-// Порядок важен: «цена закупки» раньше просто «цены».
+/** Валюта цены закупки — как CURRENCIES в currency.ts (здесь без импортов). */
+export type CostCurrency = "KGS" | "USD" | "RUB";
+export const COST_CURRENCIES: CostCurrency[] = ["KGS", "USD", "RUB"];
+
+/**
+ * Валюта из ячейки или шапки прайса: «$», «USD», «долл.», «у.е.» — доллар;
+ * «₽», «руб» — рубль; «сом», «KGS», «с» — сом. Не нашли — null.
+ */
+export function costCurrency(raw: unknown): CostCurrency | null {
+  const text = String(raw ?? "").toLowerCase().replace(/ё/g, "е").trim();
+  if (!text) return null;
+  if (/\$|usd|долл|^дол\.?$|у\.\s?е\./.test(text)) return "USD";
+  if (/₽|rub|руб|^р\.?$/.test(text)) return "RUB";
+  if (/kgs|сом|^[сc]\.?$/.test(text)) return "KGS";
+  return null;
+}
+
+// Порядок важен: «валюта закупки» раньше «закупки», «цена закупки» раньше просто «цены».
 const HEADER_RULES: [ImportField, RegExp][] = [
+  ["purchase_currency", /валют|currency|^вал\.?$/],
   ["purchase_price", /закуп|себест|входн|приходн/],
   ["sale_price", /цена|розн|продаж|стоимост|price/],
   ["stock", /остат|кол-?во|количеств|налич|qty|склад/],
@@ -123,13 +143,24 @@ export type ImportRow = {
   unit: ProductUnit | null;
   sale_price: string | null;
   purchase_price: string | null;
+  /** Валюта цены закупки; null — цены закупки в строке нет. */
+  purchase_currency: CostCurrency | null;
   stock: string | null;
   /** Что не так с ячейками — строка всё равно уйдёт, без этих значений. */
   warnings: string[];
 };
 
-/** Строки прайса после шапки → товары. Строки без названия пропускаются. */
-export function importRows(table: string[][], header: number, columns: ColumnMap): ImportRow[] {
+/**
+ * Строки прайса после шапки → товары. Строки без названия пропускаются.
+ * Валюта закупки: из колонки валюты, иначе из ячейки цены («0,29 $»),
+ * иначе `currency` — выбранная для всего файла.
+ */
+export function importRows(
+  table: string[][],
+  header: number,
+  columns: ColumnMap,
+  currency: CostCurrency = "KGS",
+): ImportRow[] {
   const rows: ImportRow[] = [];
   const cell = (row: string[], field: ImportField) =>
     columns[field] === undefined ? "" : (row[columns[field]!] ?? "").trim();
@@ -148,13 +179,20 @@ export function importRows(table: string[][], header: number, columns: ColumnMap
     const rawUnit = cell(row, "unit");
     const unit = rawUnit ? normalizeUnit(rawUnit) : null;
     if (rawUnit && !unit) warnings.push(`Единица «${rawUnit}» - не знаем, будет «шт»`);
+    const purchasePrice = number("purchase_price", 2);
+    const rawCurrency = cell(row, "purchase_currency");
+    const ownCurrency = costCurrency(rawCurrency);
+    if (rawCurrency && !ownCurrency && purchasePrice !== null)
+      warnings.push(`Валюта «${rawCurrency}» - не знаем, будет ${currency}`);
     rows.push({
       line: r + 1,
       name,
       sku: cell(row, "sku").slice(0, 80) || null,
       unit,
       sale_price: number("sale_price", 2),
-      purchase_price: number("purchase_price", 2),
+      purchase_price: purchasePrice,
+      purchase_currency:
+        purchasePrice === null ? null : (ownCurrency ?? costCurrency(cell(row, "purchase_price").replace(/[\d\s.,]/g, "")) ?? currency),
       stock: number("stock", 3),
       warnings,
     });
@@ -167,6 +205,7 @@ export const STOCK_ERROR_TEXT: Record<string, string> = {
   name_taken: "Товар с таким названием уже есть - откройте его или назовите иначе.",
   sku_taken: "Этот код уже у другого товара.",
   invalid_unit: "Выберите единицу из списка.",
+  invalid_currency: "Валюта - сом, доллар или рубль.",
   invalid_price: "Цена - число не меньше нуля, до 2 знаков после запятой.",
   invalid_qty: "Количество - число не меньше нуля, до 3 знаков после запятой.",
   invalid_name: "Введите название (до 160 символов).",

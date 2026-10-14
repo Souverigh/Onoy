@@ -4,16 +4,21 @@ import Link from "next/link";
 import { useState } from "react";
 import { importProducts, type ImportResult } from "@/app/(workspace)/stock/actions";
 import { readTable, type Table } from "@/lib/xlsx-read";
+import { CURRENCY_NAME, CURRENCY_SIGN, type Currency } from "@/lib/currency";
 import {
+  COST_CURRENCIES,
   IMPORT_FIELD_LABEL,
   STOCK_ERROR_TEXT,
+  costCurrency,
   detectColumns,
   importRows,
   type ColumnMap,
+  type CostCurrency,
   type ImportField,
+  type ImportRow,
 } from "@/lib/stock";
 
-const FIELDS: ImportField[] = ["name", "sku", "unit", "sale_price", "purchase_price", "stock"];
+const FIELDS: ImportField[] = ["name", "sku", "unit", "sale_price", "purchase_price", "purchase_currency", "stock"];
 const MAX_ROWS = 2000;
 
 /** Буква колонки как в Excel: 0 → A, 26 → AA. */
@@ -27,11 +32,22 @@ function letter(index: number): string {
   return s;
 }
 
-export function StockImport() {
+/** Ячейка предпросмотра: цена закупки — со знаком своей валюты. */
+function previewCell(row: ImportRow, field: ImportField): string {
+  if (field === "unit") return row.unit ?? "шт";
+  if (field === "purchase_price" && row.purchase_price !== null && row.purchase_currency)
+    return `${row.purchase_price} ${CURRENCY_SIGN[row.purchase_currency]}`;
+  if (field === "purchase_currency") return row.purchase_currency ? CURRENCY_SIGN[row.purchase_currency] : "-";
+  return row[field] ?? "-";
+}
+
+export function StockImport({ shopCurrency }: { shopCurrency: Currency }) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [table, setTable] = useState<Table | null>(null);
   const [header, setHeader] = useState(0);
   const [columns, setColumns] = useState<ColumnMap>({});
+  // Валюта закупки для строк, где её нет ни в колонке валюты, ни в ячейке цены.
+  const [currency, setCurrency] = useState<CostCurrency>(shopCurrency);
   const [readError, setReadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -48,6 +64,10 @@ export function StockImport() {
       setTable(read);
       setHeader(found?.header ?? -1);
       setColumns(found?.columns ?? { name: 0 });
+      // «Цена закупки, $» в шапке — по умолчанию доллары.
+      const costColumn = found?.columns.purchase_price;
+      const headerCurrency = found && costColumn !== undefined ? costCurrency(read[found.header]?.[costColumn]) : null;
+      setCurrency(headerCurrency ?? shopCurrency);
     } catch (error) {
       console.error("readTable failed", error);
       setReadError(
@@ -58,7 +78,8 @@ export function StockImport() {
     }
   }
 
-  const rows = table ? importRows(table, header, columns) : [];
+  const rows = table ? importRows(table, header, columns, currency) : [];
+  const foreignCost = rows.filter((r) => r.purchase_currency && r.purchase_currency !== shopCurrency).length;
   const warned = rows.filter((r) => r.warnings.length > 0);
   const width = table ? Math.max(0, ...table.slice(0, 50).map((r) => r.length)) : 0;
   const headerCells = table && header >= 0 ? (table[header] ?? []) : [];
@@ -75,6 +96,7 @@ export function StockImport() {
             unit: r.unit,
             sale_price: r.sale_price,
             purchase_price: r.purchase_price,
+            purchase_currency: r.purchase_currency,
             stock: r.stock,
           })),
         ),
@@ -173,6 +195,23 @@ export function StockImport() {
                 </select>
               </label>
             ))}
+            {columns.purchase_price !== undefined && (
+              <label>
+                {columns.purchase_currency !== undefined ? "Валюта, если в строке пусто" : "Цена закупки в"}
+                <select value={currency} onChange={(e) => setCurrency(e.target.value as CostCurrency)}>
+                  {COST_CURRENCIES.map((c) => (
+                    <option key={c} value={c}>
+                      {CURRENCY_NAME[c]} ({CURRENCY_SIGN[c]})
+                    </option>
+                  ))}
+                </select>
+                <small className="muted">
+                  {columns.purchase_currency !== undefined
+                    ? "Если в колонке валюты пусто или «0,29 $» не написано в цене."
+                    : "Для всех товаров файла. Разные валюты - добавьте в Excel колонку «Валюта закупки»."}
+                </small>
+              </label>
+            )}
             <label>
               Шапка в строке
               <select value={header} onChange={(e) => setHeader(Number(e.target.value))}>
@@ -186,10 +225,28 @@ export function StockImport() {
             </label>
           </div>
 
+          {columns.purchase_price !== undefined && (
+            <div className="operation-hint">
+              Как писать валюту закупки в Excel - в колонке «Валюта закупки» или рядом с ценой («0,29 $»):
+              <ul>
+                <li>доллары - $, USD, доллар, у.е.</li>
+                <li>рубли - ₽, руб, RUB</li>
+                <li>сомы - сом, KGS, с</li>
+              </ul>
+              Большие или маленькие буквы - неважно.
+            </div>
+          )}
+
           <h2>
             Товаров в файле: {rows.length}
             {rows.length > MAX_ROWS && <span className="muted"> - загрузим первые {MAX_ROWS}</span>}
           </h2>
+          {foreignCost > 0 && (
+            <p className="muted">
+              Цена закупки не в {CURRENCY_SIGN[shopCurrency]} у {foreignCost} товаров - сохраним как есть, в валюте
+              закупки. Цена продажи остаётся в {CURRENCY_SIGN[shopCurrency]}.
+            </p>
+          )}
           {warned.length > 0 && (
             <p className="photo-check-mismatch" role="status">
               В {warned.length} строках есть непонятные значения - они загрузятся без них (подробности в таблице).
@@ -211,7 +268,7 @@ export function StockImport() {
                     <tr key={r.line} className={r.warnings.length ? "warning" : ""}>
                       <td>{r.line}</td>
                       {FIELDS.filter((f) => columns[f] !== undefined).map((f) => (
-                        <td key={f}>{f === "unit" ? (r.unit ?? "шт") : (r[f] ?? "-")}</td>
+                        <td key={f}>{previewCell(r, f)}</td>
                       ))}
                     </tr>
                   ))}

@@ -18,7 +18,7 @@ import { DatePicker } from "./date-picker";
 import { money, quantity } from "@/lib/format";
 import { searchProducts } from "@/lib/match";
 import { PRODUCT_UNITS, STOCK_ERROR_TEXT, stockNumber } from "@/lib/stock";
-import { CURRENCY_SIGN, convertAmount, formatRate, partyCurrency, ratePair, rateInput, type Currency } from "@/lib/currency";
+import { CURRENCY_SIGN, convertAmount, formatRate, isCurrency, partyCurrency, ratePair, rateInput, type Currency } from "@/lib/currency";
 import { creditLimitExceeded } from "@/lib/credit-limit";
 import type { RateQuotes } from "./operation-form";
 
@@ -82,6 +82,8 @@ export function SaleItemsForm({
 }) {
   const purchase = kind === "purchase";
   const priceOf = (p: QuickProduct) => (purchase ? p.purchase_price : p.sale_price);
+  const priceCurrencyOf = (p: QuickProduct): Currency =>
+    purchase && isCurrency(p.purchase_currency) ? p.purchase_currency : shopCurrency;
   const [products, setProducts] = useState(initialProducts);
   const [contactCustomers, setContactCustomers] = useState<Customer[]>([]);
   const [contactNote, setContactNote] = useState<string | null>(null);
@@ -121,11 +123,33 @@ export function SaleItemsForm({
   const customer = allCustomers.find((c) => c.id === party);
   const debtCurrency = partyCurrency(customer, shopCurrency);
   const foreign = debtCurrency !== shopCurrency;
+  // Приход — цены в валюте поставщика (у долларового — в $), долг без
+  // курса. Продажа — цены в валюте магазина, долг клиента в другой валюте —
+  // по курсу.
+  const lineCurrency = purchase ? debtCurrency : shopCurrency;
+  const needsRate = foreign && !purchase;
+  const priceFits = (p: QuickProduct) => priceCurrencyOf(p) === lineCurrency;
   const [strong, weak] = ratePair(shopCurrency, debtCurrency);
-  const quote = foreign ? rates[`${strong}/${weak}`] : undefined;
-  const rate = foreign ? rateInput(rateValue || (quote ? String(quote.rate) : "")) : null;
+  const quote = needsRate ? rates[`${strong}/${weak}`] : undefined;
+  const rate = needsRate ? rateInput(rateValue || (quote ? String(quote.rate) : "")) : null;
   const total = Math.round(lines.reduce((s, l) => s + lineSum(l.qty, l.price), 0) * 100) / 100;
-  const debt = foreign ? (rate ? convertAmount(total, shopCurrency, debtCurrency, Number(rate)) : 0) : total;
+  const debt = needsRate ? (rate ? convertAmount(total, shopCurrency, debtCurrency, Number(rate)) : 0) : total;
+
+  // Сменили поставщика на другую валюту — цены строк были в старой: ставим
+  // прошлую закупку в новой валюте или пусто.
+  const shownCurrency = useRef(lineCurrency);
+  useEffect(() => {
+    if (shownCurrency.current === lineCurrency) return;
+    shownCurrency.current = lineCurrency;
+    setLines((all) =>
+      all.map((l) => ({
+        ...l,
+        price: Number(priceOf(l.product)) > 0 && priceCurrencyOf(l.product) === lineCurrency ? asInput(priceOf(l.product)) : "",
+      })),
+    );
+    // priceOf / priceCurrencyOf зависят только от kind и валюты магазина.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineCurrency]);
   const overLimit = customer && !purchase ? creditLimitExceeded(customer.balance ?? 0, customer.credit_limit, debt, paidNow) : null;
 
   const trimmed = query.trim();
@@ -144,7 +168,7 @@ export function SaleItemsForm({
       setFlash(existing.key);
     } else {
       const key = ++lineKey.current;
-      setLines((all) => [...all, { key, product, qty: "1", price: Number(priceOf(product)) > 0 ? asInput(priceOf(product)) : "" }]);
+      setLines((all) => [...all, { key, product, qty: "1", price: Number(priceOf(product)) > 0 && priceFits(product) ? asInput(priceOf(product)) : "" }]);
       setFlash(key);
     }
     setQuery("");
@@ -181,7 +205,7 @@ export function SaleItemsForm({
     try {
       const result = await quickAddProduct(
         purchase
-          ? { name: creating.name.trim(), unit: creating.unit, salePrice: "0", purchasePrice: creating.price }
+          ? { name: creating.name.trim(), unit: creating.unit, salePrice: "0", purchasePrice: creating.price, purchaseCurrency: lineCurrency }
           : { name: creating.name.trim(), unit: creating.unit, salePrice: creating.price },
       );
       if ("error" in result) {
@@ -212,14 +236,14 @@ export function SaleItemsForm({
     if (lines.some((l) => stockNumber(l.price || "0", 2) === null)) return setLocalError("price");
     // Приход без цены закупки — себестоимость потеряется; просим указать.
     if (purchase && lines.some((l) => !l.price.trim())) return setLocalError("cost");
-    if (foreign && !rate) return setLocalError("rate");
+    if (needsRate && !rate) return setLocalError("rate");
     setLocalError(null);
     const form = new FormData(e.currentTarget);
     form.set(
       "lines",
       JSON.stringify(lines.map((l) => ({ product: l.product.id, qty: stockNumber(l.qty, 3), price: stockNumber(l.price || "0", 2) }))),
     );
-    if (foreign && rate) form.set("fx_rate", rate);
+    if (needsRate && rate) form.set("fx_rate", rate);
     startTransition(() => commit(form));
   }
 
@@ -357,7 +381,7 @@ export function SaleItemsForm({
                   {trimmed && (
                     <small className="muted">
                       {p.sku ? `${p.sku} · ` : ""}
-                      {Number(priceOf(p)) > 0 ? `${purchase ? "закупка " : ""}${money(priceOf(p), shopCurrency)} · ` : ""}есть {quantity(p.stock)} {p.unit}
+                      {Number(priceOf(p)) > 0 ? `${purchase ? "закупка " : ""}${money(priceOf(p), priceCurrencyOf(p))} · ` : ""}есть {quantity(p.stock)} {p.unit}
                     </small>
                   )}
                 </button>
@@ -398,7 +422,7 @@ export function SaleItemsForm({
                 </select>
               </label>
               <label>
-                {purchase ? "Цена закупки" : "Цена"}, {CURRENCY_SIGN[shopCurrency]}
+                {purchase ? "Цена закупки" : "Цена"}, {CURRENCY_SIGN[lineCurrency]}
                 <input
                   inputMode="decimal"
                   autoComplete="off"
@@ -472,23 +496,26 @@ export function SaleItemsForm({
                     className="sale-line-price"
                     inputMode="decimal"
                     autoComplete="off"
-                    aria-label={`Цена за ${line.product.unit}, ${CURRENCY_SIGN[shopCurrency]}`}
+                    aria-label={`Цена за ${line.product.unit}, ${CURRENCY_SIGN[lineCurrency]}`}
                     value={line.price}
                     onChange={(e) => update(line.key, { price: e.target.value })}
                     onFocus={(e) => e.currentTarget.select()}
                   />
-                  <span className="sale-line-sum">= {money(lineSum(line.qty, line.price).toFixed(2), shopCurrency)}</span>
+                  <span className="sale-line-sum">= {money(lineSum(line.qty, line.price).toFixed(2), lineCurrency)}</span>
                 </div>
                 {short && (
                   <small className="warning">
                     На складе {quantity(line.product.stock)} {line.product.unit} - продать можно, остаток уйдёт в минус.
                   </small>
                 )}
-                {line.price && Number(priceOf(line.product)) > 0 && stockNumber(line.price, 2) !== null && Number(stockNumber(line.price, 2)) !== Number(priceOf(line.product)) && (
-                  <small className="muted">
-                    {purchase ? "Прошлая закупка" : "Цена на складе"} - {money(priceOf(line.product), shopCurrency)}.
-                  </small>
-                )}
+                {Number(priceOf(line.product)) > 0 &&
+                  (priceFits(line.product)
+                    ? line.price && stockNumber(line.price, 2) !== null && Number(stockNumber(line.price, 2)) !== Number(priceOf(line.product))
+                    : true) && (
+                    <small className="muted">
+                      {purchase ? "Прошлая закупка" : "Цена на складе"} - {money(priceOf(line.product), priceCurrencyOf(line.product))}.
+                    </small>
+                  )}
                 {purchase && !line.price && <small className="muted">Укажите цену закупки за {line.product.unit}.</small>}
               </li>
             );
@@ -498,9 +525,14 @@ export function SaleItemsForm({
 
       <div className="sale-total">
         <span>Итого{lines.length ? ` · ${lines.length} ${lines.length === 1 ? "товар" : lines.length < 5 ? "товара" : "товаров"}` : ""}</span>
-        <strong>{money(total.toFixed(2), shopCurrency)}</strong>
+        <strong>{money(total.toFixed(2), lineCurrency)}</strong>
       </div>
-      {foreign && (
+      {purchase && foreign && (
+        <p className="muted">
+          Цены - в {CURRENCY_SIGN[debtCurrency]}, как у поставщика: долг ему ведётся в {CURRENCY_SIGN[debtCurrency]}, без курса.
+        </p>
+      )}
+      {needsRate && (
         <div className="fx-field">
           <label>
             Курс: 1 {CURRENCY_SIGN[strong]} = ? {CURRENCY_SIGN[weak]}
@@ -558,7 +590,7 @@ export function SaleItemsForm({
       )}
       <div className="simple-operation-actions">
         <Submit pending={saving} disabled={!lines.length}>
-          {lines.length ? `Записать ${purchase ? "товар" : "продажу"} · ${money(total.toFixed(2), shopCurrency)}` : "Добавьте товары"}
+          {lines.length ? `Записать ${purchase ? "товар" : "продажу"} · ${money(total.toFixed(2), lineCurrency)}` : "Добавьте товары"}
         </Submit>
       </div>
       <p className="operation-hint">

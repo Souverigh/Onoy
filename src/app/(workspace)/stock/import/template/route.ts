@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { getContext } from "@/lib/context";
 import { buildXlsx, type Cell } from "@/lib/xlsx";
+import { CURRENCY_SIGN, isCurrency } from "@/lib/currency";
 
 // Шаблон для импорта на склад. Если товары уже есть — это их выгрузка в том
 // же виде: цены и остатки можно поправить в Excel и загрузить обратно.
 export async function GET() {
-  const { db, organizationId } = await getContext();
+  const { db, organizationId, currency } = await getContext();
   const { data } = await db
     .from("product_balances")
-    .select("name,sku,unit,sale_price,purchase_price,stock")
+    .select("name,sku,unit,sale_price,purchase_price,purchase_currency,stock")
     .eq("organization_id", organizationId)
     .is("archived_at", null)
     .order("name")
@@ -19,12 +20,13 @@ export async function GET() {
     p.unit,
     Number(p.sale_price),
     Number(p.purchase_price),
+    CURRENCY_SIGN[isCurrency(p.purchase_currency) ? p.purchase_currency : currency],
     Number(p.stock),
   ]);
   if (!rows.length)
     rows.push(
-      ["Кабель ВВГнг 3х2,5", "", "м", 85.5, 60, 100],
-      ["Цемент М400 50 кг", "C-400", "мешок", 560, 480, 40],
+      ["Кабель ВВГнг 3х2,5", "", "м", 85.5, 60, CURRENCY_SIGN[currency], 100],
+      ["Розетка двойная", "R-2", "шт", 150, 1.2, CURRENCY_SIGN.USD, 40],
     );
   const xlsx = buildXlsx([
     {
@@ -35,6 +37,7 @@ export async function GET() {
         { header: "Ед. изм.", width: 10 },
         { header: "Цена продажи", width: 14, kind: "number" },
         { header: "Цена закупки", width: 14, kind: "number" },
+        { header: "Валюта закупки", width: 10 },
         { header: "Остаток", width: 12, kind: "number" },
       ],
       rows,
