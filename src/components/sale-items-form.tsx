@@ -330,6 +330,7 @@ export function SaleItemsForm({
         <NewCustomerInline
           key={newCustomer}
           who={purchase ? "supplier" : "customer"}
+          shopCurrency={shopCurrency}
           customers={allCustomers}
           initialName={newCustomer}
           onClose={() => setNewCustomer(null)}

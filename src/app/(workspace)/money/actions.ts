@@ -970,54 +970,58 @@ function returnLinesInput(raw: FormDataEntryValue | null): { sale_item?: string;
  * контактов телефона или новый в одно касание»). Есть клиент с тем же
  * номером — возвращаем его; нет — создаём. Без перезагрузки формы.
  */
-export async function customerFromContact(
-  rawName: string,
-  rawPhone: string,
-): Promise<{ id: string; name: string; balance: string; created: boolean } | { error: string }> {
-  return partyFromContact("customers", rawName, rawPhone);
+export async function customerFromContact(rawName: string, rawPhone: string, rawCurrency?: string): Promise<PartyFromContact> {
+  return partyFromContact("customers", rawName, rawPhone, rawCurrency);
 }
 
 /**
  * Новый поставщик прямо в форме прихода — например, с накладной, которого
- * ещё нет в списке. Тот же номер уже есть — возвращаем его.
+ * ещё нет в списке. Тот же номер уже есть — возвращаем его. Валюта долга
+ * (и у клиента, и у поставщика) задаётся сразу: после первой записи её не
+ * сменить.
  */
-export async function supplierFromContact(
-  rawName: string,
-  rawPhone: string,
-): Promise<{ id: string; name: string; balance: string; created: boolean } | { error: string }> {
-  return partyFromContact("suppliers", rawName, rawPhone);
+export async function supplierFromContact(rawName: string, rawPhone: string, rawCurrency?: string): Promise<PartyFromContact> {
+  return partyFromContact("suppliers", rawName, rawPhone, rawCurrency);
 }
+
+type PartyFromContact =
+  | { id: string; name: string; balance: string; currency: string | null; created: boolean }
+  | { error: string };
 
 async function partyFromContact(
   table: "customers" | "suppliers",
   rawName: string,
   rawPhone: string,
-): Promise<{ id: string; name: string; balance: string; created: boolean } | { error: string }> {
+  rawCurrency?: string,
+): Promise<PartyFromContact> {
   const name = String(rawName ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
   const phone = normalizePhone(String(rawPhone ?? "")).slice(0, 40);
   const key = phoneKey(phone);
   if (!name && !key) return { error: "empty" };
-  const { db, organizationId } = await getContext();
+  const { db, organizationId, currency: shopCurrency } = await getContext();
+  // Валюта магазина — null, как у всех контрагентов без своей валюты.
+  const currency = isCurrency(rawCurrency) && rawCurrency !== shopCurrency ? rawCurrency : null;
   if (key) {
     const existing = await db
       .from(table === "customers" ? "customer_balances" : "supplier_balances")
-      .select("id,name,phone,balance")
+      .select("id,name,phone,balance,currency")
       .eq("organization_id", organizationId)
       .neq("phone", "")
       .is("merged_into_id", null)
       .range(0, 999); // номер хранится как ввели («0555 12-34-56») — сравниваем нормализованно
     const match = (existing.data ?? []).find((c) => phoneKey(c.phone) === key);
-    if (match) return { id: match.id, name: match.name, balance: String(match.balance), created: false };
+    if (match)
+      return { id: match.id, name: match.name, balance: String(match.balance), currency: match.currency ?? null, created: false };
   }
   if (!name) return { error: "name" };
   const inserted = await db
     .from(table)
-    .insert({ organization_id: organizationId, name, phone })
+    .insert({ organization_id: organizationId, name, phone, ...(currency ? { currency } : {}) })
     .select("id,name")
     .single();
   if (inserted.error || !inserted.data) return { error: "save" };
   revalidatePath(`/${table}`);
-  return { id: inserted.data.id, name: inserted.data.name, balance: "0.00", created: true };
+  return { id: inserted.data.id, name: inserted.data.name, balance: "0.00", currency, created: true };
 }
 
 /**

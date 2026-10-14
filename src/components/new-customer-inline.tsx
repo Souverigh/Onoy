@@ -6,17 +6,22 @@ import { bestMatches } from "@/lib/match";
 import { phoneKey } from "@/lib/contacts";
 import type { PickerParty } from "./party-picker";
 import { IosAutofillHint, PhoneField, isIos } from "./contact-picker";
+import { CURRENCIES, CURRENCY_SIGN, type Currency } from "@/lib/currency";
+
+/** «Долг будет в долларах». */
+const IN_CURRENCY: Record<Currency, string> = { KGS: "сомах", USD: "долларах", RUB: "рублях" };
 
 /** Похожее имя — «Похоже, это Айбек» (задача 24). */
 const SAME_PERSON = 0.8;
 
-type Created = { id: string; name: string; phone: string; balance: string };
+type Created = { id: string; name: string; phone: string; balance: string; currency: string | null };
 
 /**
  * Новый покупатель прямо в форме продажи (задача 11): фото и сумма не
  * теряются. Имя и телефон с накладной можно передать сразу. Тот же телефон
  * или похожее имя — сначала «Похоже, это Айбек. Выбрать его?» (задача 24).
- * `who="supplier"` — то же для поставщика в форме прихода.
+ * `who="supplier"` — то же для поставщика в форме прихода. Валюта долга —
+ * сразу при создании: после первой записи её не сменить.
  */
 export function NewCustomerInline({
   who = "customer",
@@ -26,8 +31,14 @@ export function NewCustomerInline({
   onCreated,
   onPickExisting,
   onClose,
+  shopCurrency = "KGS",
+  initialCurrency,
 }: {
   who?: "customer" | "supplier";
+  /** Валюта магазина — по умолчанию для нового клиента или поставщика. */
+  shopCurrency?: Currency;
+  /** Сумма в форме уже в $ — предлагаем $. */
+  initialCurrency?: Currency;
   /** Уже есть в списке — для «Похоже, это …». */
   customers: PickerParty[];
   initialName?: string;
@@ -38,13 +49,15 @@ export function NewCustomerInline({
 }) {
   const [name, setName] = useState(initialName);
   const [phone, setPhone] = useState(initialPhone);
+  const [currency, setCurrency] = useState<Currency>(initialCurrency ?? shopCurrency);
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [lookalike, setLookalike] = useState<PickerParty | null>(null);
   const [ios, setIos] = useState(false);
   useEffect(() => setIos(isIos()), []);
   const word = who === "supplier" ? "поставщика" : "клиента";
-  const create_ = who === "supplier" ? supplierFromContact : customerFromContact;
+  const create_ = (n: string, p: string) =>
+    who === "supplier" ? supplierFromContact(n, p, currency) : customerFromContact(n, p, currency);
 
   async function create(force: boolean) {
     const cleanName = name.replace(/\s+/g, " ").trim();
@@ -75,7 +88,7 @@ export function NewCustomerInline({
         onPickExisting(found.id);
         return;
       }
-      onCreated({ id: found.id, name: found.name, phone, balance: found.balance });
+      onCreated({ id: found.id, name: found.name, phone, balance: found.balance, currency: found.currency });
     } catch (err) {
       console.error("partyFromContact failed", err);
       setNote(`Нет связи с сервером - ${who === "supplier" ? "поставщик" : "клиент"} не добавлен. Попробуйте ещё раз.`);
@@ -136,6 +149,23 @@ export function NewCustomerInline({
               <IosAutofillHint />
             </small>
           )}
+          <div className="new-party-currency">
+            <span>В какой валюте долг</span>
+            <span className="currency-pills" role="group" aria-label={`Валюта долга ${word}`}>
+              {CURRENCIES.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={currency === c ? "active" : ""}
+                  aria-pressed={currency === c}
+                  onClick={() => setCurrency(c)}
+                >
+                  {CURRENCY_SIGN[c]}
+                </button>
+              ))}
+            </span>
+            <small className="muted">Долг будет в {IN_CURRENCY[currency]}. После первой записи валюту не сменить.</small>
+          </div>
           {note && <p className="muted">{note}</p>}
           <div className="simple-operation-actions">
             <button type="button" className="button primary" disabled={saving} onClick={() => void create(false)}>

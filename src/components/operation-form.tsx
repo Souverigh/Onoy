@@ -888,6 +888,8 @@ export function OperationForm({
           key={`${newCustomer.name}|${newCustomer.phone}`}
           who="supplier"
           customers={allSuppliers}
+          shopCurrency={shopCurrency}
+          initialCurrency={docCurrency}
           initialName={newCustomer.name}
           initialPhone={newCustomer.phone}
           onClose={() => setNewCustomer(null)}
@@ -907,6 +909,8 @@ export function OperationForm({
         <NewCustomerInline
           key={`${newCustomer.name}|${newCustomer.phone}`}
           customers={allCustomers}
+          shopCurrency={shopCurrency}
+          initialCurrency={docCurrency}
           initialName={newCustomer.name}
           initialPhone={newCustomer.phone}
           onClose={() => setNewCustomer(null)}

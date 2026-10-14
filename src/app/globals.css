@@ -6313,6 +6313,13 @@ tr.row-link:has(a[data-pending]) {
 .new-customer-inline label {
   margin: 0;
 }
+/* Валюта долга нового поставщика: подпись, кнопки, пояснение — столбиком. */
+.new-party-currency {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
 .lookalike p {
   margin: 0 0 8px;
   font-size: 16px;
