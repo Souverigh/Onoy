@@ -1027,6 +1027,20 @@ async function partyFromContact(
       return { id: match.id, name: match.name, balance: String(match.balance), currency: match.currency ?? null, created: false };
   }
   if (!name) return { error: "name" };
+  if (confirmedNew) {
+    // «Нет, это новый», но имя, телефон и валюта те же — это он, не дублируем.
+    const twins = await db
+      .from(table === "customers" ? "customer_balances" : "supplier_balances")
+      .select("id,name,phone,balance,currency")
+      .eq("organization_id", organizationId)
+      .ilike("name", name.replace(/[\\%_]/g, "\\$&"))
+      .is("merged_into_id", null)
+      .range(0, 49);
+    const twin = (twins.data ?? []).find(
+      (c) => phoneKey(c.phone ?? "") === key && (c.currency ?? null) === currency,
+    );
+    if (twin) return { id: twin.id, name: twin.name, balance: String(twin.balance), currency: twin.currency ?? null, created: false };
+  }
   const inserted = await db
     .from(table)
     .insert({ organization_id: organizationId, name, phone, ...(currency ? { currency } : {}) })

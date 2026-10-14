@@ -8,6 +8,10 @@ import type { PickerParty } from "./party-picker";
 import { IosAutofillHint, PhoneField, isIos } from "./contact-picker";
 import { CURRENCIES, CURRENCY_SIGN, partyCurrency, type Currency } from "@/lib/currency";
 
+/** Имя без разницы в регистре и пробелах. */
+const sameName = (a: string, b: string) =>
+  a.replace(/\s+/g, " ").trim().toLowerCase() === b.replace(/\s+/g, " ").trim().toLowerCase();
+
 /** «Долг будет в долларах». */
 const IN_CURRENCY: Record<Currency, string> = { KGS: "сомах", USD: "долларах", RUB: "рублях" };
 
@@ -57,6 +61,12 @@ export function NewCustomerInline({
   useEffect(() => setIos(isIos()), []);
   const word = who === "supplier" ? "поставщика" : "клиента";
   const otherCurrency = lookalike !== null && partyCurrency(lookalike, shopCurrency) !== currency;
+  // То же имя, тот же телефон и та же валюта — это он и есть, вторую карточку не создаём.
+  const exactTwin =
+    lookalike !== null &&
+    !otherCurrency &&
+    sameName(lookalike.name, name) &&
+    phoneKey(lookalike.phone ?? "") === phoneKey(phone);
   /** «ТестЕржан» → «ТестЕржан $»; знак уже есть в конце — не дублируем. */
   const withSign = (raw: string) => {
     const clean = raw.replace(/\s+/g, " ").trim();
@@ -108,9 +118,15 @@ export function NewCustomerInline({
     <div className="new-customer-inline" role="group" aria-label={who === "supplier" ? "Новый поставщик" : "Новый клиент"}>
       {lookalike ? (
         <div className="lookalike">
-          <p>
-            Похоже, это <strong>{lookalike.name}</strong>. Выбрать его?
-          </p>
+          {exactTwin ? (
+            <p>
+              <strong>{lookalike.name}</strong> уже есть - то же имя, телефон и валюта. Выбрать его?
+            </p>
+          ) : (
+            <p>
+              Похоже, это <strong>{lookalike.name}</strong>. Выбрать его?
+            </p>
+          )}
           {otherCurrency && (
             <p className="muted">
               Его долг ведётся в {IN_CURRENCY[partyCurrency(lookalike, shopCurrency)]}, а вы выбрали {CURRENCY_SIGN[currency]}. Нужен
@@ -121,18 +137,24 @@ export function NewCustomerInline({
             <button type="button" className="button primary" onClick={() => onPickExisting(lookalike.id)}>
               Да, это {lookalike.name}
             </button>
-            <button
-              type="button"
-              className="button"
-              onClick={() => {
-                setLookalike(null);
-                // Тот же человек, долг в другой валюте — знак валюты в имени,
-                // чтобы две карточки не путали в списке.
-                void create(true, otherCurrency ? withSign(name) : undefined);
-              }}
-            >
-              Нет, это новый {who === "supplier" ? "поставщик" : "клиент"}
-            </button>
+            {exactTwin ? (
+              <button type="button" className="button" onClick={() => setLookalike(null)}>
+                Изменить имя
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="button"
+                onClick={() => {
+                  setLookalike(null);
+                  // Тот же человек, долг в другой валюте — знак валюты в имени,
+                  // чтобы две карточки не путали в списке.
+                  void create(true, otherCurrency ? withSign(name) : undefined);
+                }}
+              >
+                Нет, это новый {who === "supplier" ? "поставщик" : "клиент"}
+              </button>
+            )}
           </div>
         </div>
       ) : (
