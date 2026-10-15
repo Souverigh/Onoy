@@ -171,3 +171,25 @@ function makeZip(files) {
   end.writeUInt32LE(offset, 16);
   return Buffer.concat([...chunks, ...central, end]);
 }
+
+test("stockValue: what lies on the shelf, at purchase and at sale price", async () => {
+  const { stockValue } = await import("../src/lib/stock.ts");
+  const value = stockValue(
+    [
+      { stock: "10", purchase_price: "85.5", purchase_currency: null, sale_price: "100" },
+      { stock: "2.5", purchase_price: "0.29", purchase_currency: "USD", sale_price: "40" },
+      { stock: "3", purchase_price: "0", purchase_currency: null, sale_price: "0" },
+      // Ушёл в минус и закончился — сумму не трогают.
+      { stock: "-4", purchase_price: "1000", purchase_currency: null, sale_price: "1200" },
+      { stock: "0", purchase_price: "1000", purchase_currency: null, sale_price: "1200" },
+      // Валюта магазина записана явно — та же сумма, что и null.
+      { stock: "1", purchase_price: "0.01", purchase_currency: "KGS", sale_price: "0.01" },
+    ],
+    "KGS",
+  );
+  assert.deepEqual(value.cost, { KGS: "855.01", USD: "0.73" });
+  assert.equal(value.sale, "1100.01");
+  assert.equal(value.inStock, 4);
+  assert.equal(value.noCost, 1);
+  assert.equal(value.noSale, 1);
+});

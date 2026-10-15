@@ -6880,3 +6880,20 @@ tr.row-link:has(a[data-pending]) {
     max-width: none;
   }
 }
+
+/* Витрина склада: плитка «Проверить» — ссылки на списки, а не сумма. */
+.stock-tile-check a {
+  font-size: 15px;
+  font-weight: 600;
+  color: #a4762f;
+  text-decoration: none;
+  padding: 2px 0;
+}
+.stock-tile-check a:hover {
+  text-decoration: underline;
+}
+/* Закупка в нескольких валютах — каждая сумма своей строкой. */
+.stock-tile-sums {
+  display: flex;
+  flex-direction: column;
+}

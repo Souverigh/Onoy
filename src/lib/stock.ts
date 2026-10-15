@@ -218,3 +218,71 @@ export const STOCK_ERROR_TEXT: Record<string, string> = {
   empty: "Отметьте хотя бы одну строку.",
   save: "Не удалось сохранить. Проверьте данные и попробуйте снова.",
 };
+
+/** Число из базы ("12.5", "-3") → целое в 1/10^scale; мусор — 0. */
+function scaled(value: string | null | undefined, scale: number): bigint {
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(String(value ?? ""));
+  if (!match) return 0n;
+  const [, sign, whole, fraction = ""] = match;
+  const n = BigInt(whole + fraction.slice(0, scale).padEnd(scale, "0"));
+  return sign ? -n : n;
+}
+
+/** Целое в 1/10^5 → сумма с копейками ("1250.5"), округление до 2 знаков. */
+function fromScaled5(value: bigint): string {
+  const cents = (value + 500n) / 1000n;
+  const whole = cents / 100n;
+  const part = (cents % 100n).toString().padStart(2, "0").replace(/0+$/, "");
+  return whole.toString() + (part ? "." + part : "");
+}
+
+export type StockValueRow = {
+  stock: string;
+  purchase_price: string | null;
+  purchase_currency?: string | null;
+  sale_price: string | null;
+};
+
+export type StockValue = {
+  /** Остаток × цена закупки — по валютам закупки (null у товара — валюта магазина). */
+  cost: Partial<Record<CostCurrency, string>>;
+  /** Остаток × цена продажи, в валюте магазина (только товары с ценой продажи). */
+  sale: string;
+  /** Сколько товаров в наличии (остаток > 0). */
+  inStock: number;
+  /** В наличии, но без цены закупки — в сумму закупки не вошли. */
+  noCost: number;
+  /** В наличии, но без цены продажи. */
+  noSale: number;
+};
+
+/**
+ * Витрина склада (просьба пользователя 14.10.2026): сколько стоит то, что
+ * лежит на складе. Считаются только товары с остатком больше нуля —
+ * минус (продали больше, чем было) сумму не уменьшает. Точно, без float.
+ */
+export function stockValue(rows: StockValueRow[], shop: CostCurrency): StockValue {
+  const cost: Partial<Record<CostCurrency, bigint>> = {};
+  let sale = 0n;
+  let inStock = 0;
+  let noCost = 0;
+  let noSale = 0;
+  for (const row of rows) {
+    const qty = scaled(row.stock, 3);
+    if (qty <= 0n) continue;
+    inStock++;
+    const price = scaled(row.purchase_price, 2);
+    if (price > 0n) {
+      const currency = (COST_CURRENCIES as string[]).includes(row.purchase_currency ?? "")
+        ? (row.purchase_currency as CostCurrency)
+        : shop;
+      cost[currency] = (cost[currency] ?? 0n) + qty * price;
+    } else noCost++;
+    const salePrice = scaled(row.sale_price, 2);
+    if (salePrice > 0n) sale += qty * salePrice;
+    else noSale++;
+  }
+  const costText: Partial<Record<CostCurrency, string>> = {};
+  for (const currency of COST_CURRENCIES) if (cost[currency]) costText[currency] = fromScaled5(cost[currency]!);
+  return { cost: costText, sale: fromScaled5(sale), inStock, noCost, noSale };
+}
