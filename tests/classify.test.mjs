@@ -90,6 +90,8 @@ test("checkDocument: not an invoice — statement, receipt, price list, notebook
       fragment: false,
     });
   assert.equal(checkDocument(invoice("HOROZ", "Маликнур", { fragment: true }), "purchase", isOwn).fragment, true);
+  // В продаже «тетрадь» — рукописная накладная: без подсказки про тетрадь долгов.
+  assert.equal(checkDocument(invoice(null, null, { document_class: "notebook" }), "sale", isOwn).ok, true);
 });
 
 test("checkDocument: answers before v2 (no class, no sides) stay valid invoices", () => {

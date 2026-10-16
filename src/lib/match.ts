@@ -1,3 +1,5 @@
+import type { InvoiceLine } from "./adre/types";
+
 /**
  * Нечёткое сопоставление имён контрагентов (ТЗ §6): без внешних библиотек и
  * без pg_trgm (недоступно в тестовом PGlite) — коэффициент Дайса по биграммам
@@ -193,6 +195,8 @@ export type StockProduct = {
   name: string;
   sku: string | null;
   unit: string;
+  /** Цена продажи в валюте магазина; 0 — не указана. */
+  sale_price: string;
   stock: string;
   aliases: string[] | null;
   sold_count: number | null;
@@ -264,4 +268,63 @@ export function suggestProduct<T extends StockProduct>(name: string, products: T
     }
   }
   return best?.product ?? null;
+}
+
+/** Выбор продавца по строке: id товара или null — «Не списывать со склада». */
+export type StockChoices = Record<number, string | null>;
+
+/** Товар строки: выбор продавца, иначе точное совпадение; похожий — только после «Да». */
+export function chosenProduct(line: InvoiceLine, products: StockProduct[], choices: StockChoices): StockProduct | null {
+  if (line.n in choices) {
+    const id = choices[line.n];
+    return id ? (products.find((p) => p.id === id) ?? null) : null;
+  }
+  return exactProduct(line.name_raw, products);
+}
+
+/** Цена на фото есть: строка без цены — «0» или пусто. */
+const hasPrice = (line: InvoiceLine) => line.price.trim() !== "" && Number(line.price) > 0;
+
+/** Какую цену со склада поставили строке: номер строки → товар и цена. */
+export type StockPrices = Record<number, { product: string; price: string }>;
+
+const withPrice = (line: InvoiceLine, price: string): InvoiceLine => ({
+  ...line,
+  price,
+  sum: price === "" ? "" : String(Math.round(Number(line.qty) * Number(price) * 100) / 100),
+});
+
+/**
+ * Строки без цены на фото берут цену продажи товара со склада (просьба
+ * пользователя 16.10.2026). Продавец сменил товар — цена прежнего уходит,
+ * ставится цена нового. Цену, которую продавец исправил сам, не трогаем.
+ * null — менять нечего.
+ */
+export function linesWithStockPrices(
+  lines: InvoiceLine[],
+  products: StockProduct[],
+  choices: StockChoices,
+  given: StockPrices = {},
+): { lines: InvoiceLine[]; given: StockPrices } | null {
+  let changed = false;
+  const nextGiven: StockPrices = {};
+  const next = lines.map((line) => {
+    const product = chosenProduct(line, products, choices);
+    const before = given[line.n];
+    // Цена стоит наша и товар тот же — оставляем.
+    if (before && before.price === line.price && before.product === product?.id) {
+      nextGiven[line.n] = before;
+      return line;
+    }
+    // Цена наша, а товар сменили или убрали — снимаем её.
+    const own = before && before.price === line.price;
+    const base = own ? withPrice(line, "") : line;
+    if (own) changed = true;
+    if (hasPrice(base) || !(Number(base.qty) > 0) || !product || !(Number(product.sale_price) > 0)) return base;
+    changed = true;
+    const price = String(Number(product.sale_price));
+    nextGiven[line.n] = { product: product.id, price };
+    return withPrice(base, price);
+  });
+  return changed ? { lines: next, given: nextGiven } : null;
 }

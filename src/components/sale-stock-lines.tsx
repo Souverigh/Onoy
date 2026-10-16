@@ -2,21 +2,9 @@
 
 import { useState } from "react";
 import type { InvoiceLine } from "@/lib/adre/types";
-import { exactProduct, searchProducts, suggestProduct, type StockProduct } from "@/lib/match";
+import { chosenProduct, searchProducts, suggestProduct, type StockChoices, type StockProduct } from "@/lib/match";
 import { decimalLessThan, quantity } from "@/lib/format";
 import { InfoTip } from "./info-tip";
-
-/** Выбор продавца по строке: id товара или null — «Не списывать со склада». */
-export type StockChoices = Record<number, string | null>;
-
-/** Товар строки: выбор продавца, иначе точное совпадение; похожий — только после «Да». */
-export function chosenProduct(line: InvoiceLine, products: StockProduct[], choices: StockChoices): StockProduct | null {
-  if (line.n in choices) {
-    const id = choices[line.n];
-    return id ? (products.find((p) => p.id === id) ?? null) : null;
-  }
-  return exactProduct(line.name_raw, products);
-}
 
 /** Для commit_sale: по каждой строке — товар или null. Порядок строк — как на фото. */
 export function lineProductsValue(lines: InvoiceLine[], products: StockProduct[], choices: StockChoices): string {

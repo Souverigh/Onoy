@@ -84,7 +84,10 @@ export function checkDocument(
   isOwn: (name: string) => boolean,
 ): DocumentVerdict {
   const fragment = result.fragment === true;
-  const documentClass = result.document_class ?? "invoice";
+  // Тетрадь долгов — только в приходе и в «Из тетради»; в продаже это
+  // рукописная накладная (просьба пользователя 16.10.2026).
+  const documentClass =
+    result.document_class === "notebook" && kind === "sale" ? "invoice" : (result.document_class ?? "invoice");
   if (documentClass !== "invoice")
     return { ok: false, reason: documentClass, counterparty: null, fragment };
   const sides = documentSides(result, isOwn);

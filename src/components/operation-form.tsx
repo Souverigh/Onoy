@@ -31,10 +31,10 @@ import { PartyPicker, type PickerParty } from "./party-picker";
 import { NewCustomerInline } from "./new-customer-inline";
 import { ConfirmDialog } from "./confirm-dialog";
 import { RecognizedLines, lineWord, linesTotal } from "./recognized-lines";
-import { SaleStockLines, lineProductsValue, type StockChoices } from "./sale-stock-lines";
+import { SaleStockLines, lineProductsValue } from "./sale-stock-lines";
 import { LeaveGuard } from "./leave-guard";
 import { debtMoney, money, quantity } from "@/lib/format";
-import { bestMatches, type StockProduct } from "@/lib/match";
+import { bestMatches, linesWithStockPrices, type StockChoices, type StockPrices, type StockProduct } from "@/lib/match";
 import {
   CURRENCIES,
   CURRENCY_SIGN,
@@ -181,6 +181,8 @@ export function OperationForm({
   const [checkedPhoto, setCheckedPhoto] = useState<CheckedPhoto | null>(null);
   // Выбор товаров склада по строкам — для этого фото; новое фото — заново.
   const [stockChoices, setStockChoices] = useState<{ documentId: string; choices: StockChoices } | null>(null);
+  // Цены, поставленные со склада строкам без цены на фото (по номеру строки).
+  const stockPrices = useRef<{ documentId: string; given: StockPrices } | null>(null);
   const [checking, setChecking] = useState(false);
   // Чек оплаты: выбран → сразу загружаем и распознаём (без перезагрузки).
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -794,6 +796,25 @@ export function OperationForm({
     kind === "sale" && stockProducts?.length && checkedPhoto?.result?.lines.length ? checkedPhoto.result.lines : null;
   const currentStockChoices =
     stockChoices && stockChoices.documentId === checkedPhoto?.documentId ? stockChoices.choices : {};
+
+  // Строка совпала со складом, а цены на фото нет — ставим цену продажи товара.
+  // Цена товара в валюте магазина: накладная в другой валюте — не трогаем.
+  useEffect(() => {
+    const current = checkedPhoto?.result;
+    if (!stockLines || !checkedPhoto || !current || suggestionCurrency !== shopCurrency) return;
+    const given = stockPrices.current?.documentId === checkedPhoto.documentId ? stockPrices.current.given : {};
+    const filled = linesWithStockPrices(stockLines, stockProducts ?? [], currentStockChoices, given);
+    if (!filled) return;
+    stockPrices.current = { documentId: checkedPhoto.documentId, given: filled.given };
+    const lines = filled.lines;
+    const total = linesTotal(lines);
+    setCheckedPhoto({ ...checkedPhoto, result: { ...current, lines, total_computed: total, seller_edited: true } });
+    // Сумма пустая или стоял прежний итог строк — ставим новый итог.
+    setAmountValue((prev) => {
+      const entered = amountFromInput(prev);
+      return entered === 0 || entered === current.total_computed ? String(total) : prev;
+    });
+  }, [checkedPhoto, stockLines, stockProducts, currentStockChoices, suggestionCurrency, shopCurrency]);
 
   // Продавец исправил строки накладной: итог строк пересчитываем, а сумму в
   // поле меняем, только если там стоял прежний итог строк (подставлен с фото).

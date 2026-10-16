@@ -60,12 +60,13 @@ export default async function NewOperation({
           .range(0, 4999)
       : Promise.resolve({ data: [] as QuickProduct[], error: null });
   // Продажа по фото: строки накладной сверяем со складом (просьба пользователя
-  // 15.10.2026). Без цен закупки — продавцу они не нужны.
+  // 15.10.2026); цена продажи — для строк фото без цены. Без цен закупки —
+  // продавцу они не нужны.
   const stockRequest =
     kind === "sale" && wantedMode === "photo"
       ? db
           .from("product_balances")
-          .select("id,name,sku,unit,stock,aliases,sold_count")
+          .select("id,name,sku,unit,sale_price,stock,aliases,sold_count")
           .eq("organization_id", organizationId)
           .is("archived_at", null)
           .order("name")
