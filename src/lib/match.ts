@@ -183,3 +183,85 @@ export function searchProducts<T extends SearchableProduct>(query: string, produ
     .slice(0, limit)
     .map((x) => x.product);
 }
+
+/**
+ * Строки накладной продажи против склада (просьба пользователя 15.10.2026):
+ * точное название списывается само, похожее — только после «Да» продавца.
+ */
+export type StockProduct = {
+  id: string;
+  name: string;
+  sku: string | null;
+  unit: string;
+  stock: string;
+  aliases: string[] | null;
+  sold_count: number | null;
+};
+
+/** Как private.plain_name в базе: регистр, «ё» и пробелы не важны. */
+export function plainName(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLowerCase().replace(/ё/g, "е");
+}
+
+const textsOf = (product: StockProduct) => [product.name, ...(product.aliases ?? [])];
+
+/** Точное совпадение с названием или синонимом; название важнее синонима — как в базе. */
+export function exactProduct<T extends StockProduct>(name: string, products: T[]): T | null {
+  const plain = plainName(name);
+  if (!plain) return null;
+  return (
+    products.find((p) => plainName(p.name) === plain) ??
+    products.find((p) => (p.aliases ?? []).some((a) => plainName(a) === plain)) ??
+    null
+  );
+}
+
+/** Числа названия: 9W, 3х1,5, 220V — у разных товаров отличаются только ими. */
+function numbersOf(value: string): string {
+  return (normalizeText(value).match(/\d+(?:\.\d+)?/g) ?? [])
+    .map((n) => String(Number(n)))
+    .sort()
+    .join(" ");
+}
+
+/** Слова короче трёх букв (и, с, w) похожесть не решают. */
+const wordsOf = (value: string) =>
+  normalizeText(value)
+    .replace(/\d+(?:\.\d+)?/g, " ")
+    .split(" ")
+    .filter((w) => w.length >= 3);
+
+/**
+ * Похожесть по словам: каждое слово строки ищем среди слов товара
+ * («Лампочка 9 ватт Хороз» — «Лампа LED 9W Horoz»), и наоборот; берём
+ * меньшее, чтобы короткое название не подходило ко всему подряд.
+ */
+function wordScore(a: string, b: string): number {
+  const wa = wordsOf(a);
+  const wb = wordsOf(b);
+  if (!wa.length || !wb.length) return 0;
+  const cover = (from: string[], to: string[]) =>
+    from.reduce((sum, w) => sum + Math.max(...to.map((t) => similarity(w, t))), 0) / from.length;
+  return Math.min(cover(wa, wb), cover(wb, wa));
+}
+
+/** Ниже — уже не «тот же товар, написан иначе». */
+export const SUGGEST_SCORE = 0.55;
+
+/**
+ * Похожий товар для строки без точного совпадения: числа в названии
+ * совпадают все (иначе это другой размер или мощность), слова похожи.
+ */
+export function suggestProduct<T extends StockProduct>(name: string, products: T[]): T | null {
+  if (!plainName(name)) return null;
+  const numbers = numbersOf(name);
+  let best: { product: T; score: number } | null = null;
+  for (const product of products) {
+    for (const text of textsOf(product)) {
+      if (numbersOf(text) !== numbers) continue;
+      const score = Math.max(similarity(name, text), wordScore(name, text));
+      if (score >= SUGGEST_SCORE && (!best || score > best.score)) best = { product, score };
+    }
+  }
+  return best?.product ?? null;
+}

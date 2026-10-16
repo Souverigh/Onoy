@@ -31,9 +31,10 @@ import { PartyPicker, type PickerParty } from "./party-picker";
 import { NewCustomerInline } from "./new-customer-inline";
 import { ConfirmDialog } from "./confirm-dialog";
 import { RecognizedLines, lineWord, linesTotal } from "./recognized-lines";
+import { SaleStockLines, lineProductsValue, type StockChoices } from "./sale-stock-lines";
 import { LeaveGuard } from "./leave-guard";
 import { debtMoney, money, quantity } from "@/lib/format";
-import { bestMatches } from "@/lib/match";
+import { bestMatches, type StockProduct } from "@/lib/match";
 import {
   CURRENCIES,
   CURRENCY_SIGN,
@@ -108,6 +109,7 @@ export function OperationForm({
   fixedDirection,
   initialAmount,
   initialCurrency,
+  stockProducts,
 }: {
   kind: Operation;
   idempotencyKey: string;
@@ -127,6 +129,8 @@ export function OperationForm({
   /** «Записать правильно» — сумма и валюта отменённой записи (задача 28). */
   initialAmount?: string;
   initialCurrency?: Currency;
+  /** Продажа: товары склада — строки с фото списываются с них (просьба пользователя 15.10.2026). */
+  stockProducts?: StockProduct[];
 }) {
   const hasCustomers = customers.length > 0;
   const [direction, setDirection] = useState<"incoming" | "outgoing">(
@@ -175,6 +179,8 @@ export function OperationForm({
   const allCustomers = [...customers, ...contactCustomers.filter((c) => !customers.some((x) => x.id === c.id))];
   const allSuppliers = [...suppliers, ...addedSuppliers.filter((c) => !suppliers.some((x) => x.id === c.id))];
   const [checkedPhoto, setCheckedPhoto] = useState<CheckedPhoto | null>(null);
+  // Выбор товаров склада по строкам — для этого фото; новое фото — заново.
+  const [stockChoices, setStockChoices] = useState<{ documentId: string; choices: StockChoices } | null>(null);
   const [checking, setChecking] = useState(false);
   // Чек оплаты: выбран → сразу загружаем и распознаём (без перезагрузки).
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -783,6 +789,12 @@ export function OperationForm({
   const amountNote =
     foreign && debtAmount > 0 ? `В долг: ${money(debtAmount, debtCurrency)} по курсу ${formatRate(rate ?? 0)}` : null;
 
+  // Строки с фото против склада — только продажа и только если на складе что-то есть.
+  const stockLines =
+    kind === "sale" && stockProducts?.length && checkedPhoto?.result?.lines.length ? checkedPhoto.result.lines : null;
+  const currentStockChoices =
+    stockChoices && stockChoices.documentId === checkedPhoto?.documentId ? stockChoices.choices : {};
+
   // Продавец исправил строки накладной: итог строк пересчитываем, а сумму в
   // поле меняем, только если там стоял прежний итог строк (подставлен с фото).
   function editLines(lines: InvoiceLine[]) {
@@ -976,6 +988,13 @@ export function OperationForm({
             type="hidden"
             name="recognized_result"
             value={JSON.stringify(checkedPhoto.result)}
+          />
+        )}
+        {stockLines && (
+          <input
+            type="hidden"
+            name="line_products"
+            value={lineProductsValue(stockLines, stockProducts ?? [], currentStockChoices)}
           />
         )}
         {errorText && (
@@ -1557,6 +1576,16 @@ export function OperationForm({
             )}
             {receiptCheck?.duplicate && <p>Этот чек уже приложен к другой записи - проверьте, не задвоилось ли.</p>}
           </div>
+        )}
+        {stockLines && checkedPhoto && (
+          <SaleStockLines
+            lines={stockLines}
+            products={stockProducts ?? []}
+            choices={currentStockChoices}
+            onChoose={(n, productId) =>
+              setStockChoices({ documentId: checkedPhoto.documentId, choices: { ...currentStockChoices, [n]: productId } })
+            }
+          />
         )}
         {kind !== "payment" && (
           <details className="more-fields" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>

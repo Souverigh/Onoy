@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { ModeTabs } from "@/components/mode-tabs";
 import { OperationForm } from "@/components/operation-form";
 import { SaleItemsForm } from "@/components/sale-items-form";
+import type { StockProduct } from "@/lib/match";
 import type { QuickProduct } from "../../stock/actions";
 import { getContext } from "@/lib/context";
 import { officialRates } from "@/lib/fx";
@@ -58,7 +59,19 @@ export default async function NewOperation({
           .order("name")
           .range(0, 4999)
       : Promise.resolve({ data: [] as QuickProduct[], error: null });
-  const [customerResult, supplierResult, rates, productResult] = await Promise.all([
+  // Продажа по фото: строки накладной сверяем со складом (просьба пользователя
+  // 15.10.2026). Без цен закупки — продавцу они не нужны.
+  const stockRequest =
+    kind === "sale" && wantedMode === "photo"
+      ? db
+          .from("product_balances")
+          .select("id,name,sku,unit,stock,aliases,sold_count")
+          .eq("organization_id", organizationId)
+          .is("archived_at", null)
+          .order("name")
+          .range(0, 4999)
+      : Promise.resolve({ data: [] as StockProduct[], error: null });
+  const [customerResult, supplierResult, rates, productResult, stockResult] = await Promise.all([
     db
       .from("customer_balances")
       .select("id,name,phone,aliases,balance,credit_limit,currency")
@@ -78,8 +91,11 @@ export default async function NewOperation({
     // Курс НБКР / ЦБ РФ — для суммы в другой валюте, чем долг (кеш на час).
     officialRates(["KGS", "USD", "RUB"]),
     productsRequest,
+    stockRequest,
   ]);
   const products = (productResult.data ?? []) as QuickProduct[];
+  // Склад не загрузился — продажа всё равно пишется, просто без списания по выбору.
+  const stockProducts = (stockResult.data ?? []) as StockProduct[];
   // Фото из другой формы — всегда по фото.
   const saleMode = !itemsKind || params.documentId ? "photo" : wantedMode;
   if (customerResult.error || supplierResult.error)
@@ -225,6 +241,7 @@ export default async function NewOperation({
             initialParty={initialParty}
             shopCurrency={shopCurrency}
             rates={rates}
+            stockProducts={kind === "sale" ? stockProducts : undefined}
             fixedDirection={fixedDirection}
             initialAmount={
               !prefill && params.amount && /^\d{1,14}(\.\d{1,2})?$/.test(params.amount)

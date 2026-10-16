@@ -2502,6 +2502,107 @@ test("auto stock: a checked purchase invoice goes to stock by itself; purchase l
   await assert.rejects(db.query("select commit_purchase_items($1,$2,$3,$4)", [orgA, supplier, lines, k(8)]), /not_a_member/);
 });
 
+test("auto stock for sales: a checked sale invoice writes off the seller's choice or exact names; reversal and returns put it back", async () => {
+  const stock = async (id) => Number((await db.query("select stock from product_balances where id=$1", [id])).rows[0].stock);
+  const k = (n) => `aaaa7a7a-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
+  const recognize = (doc, lines, status) =>
+    db.query("select save_recognition($1,$2,'gemini','m','v1','{}'::jsonb,$3::jsonb,$4,1,0)", [orgA, doc, JSON.stringify(lines), status]);
+  const newDoc = async (name, status = "processing") => {
+    await owner();
+    const id = (
+      await db.query(
+        "insert into documents(organization_id,storage_path,file_hash,mime_type,kind,status) values ($1,$2,$2,'image/jpeg','sale',$3) returning id",
+        [orgA, name, status],
+      )
+    ).rows[0].id;
+    await user(a);
+    return id;
+  };
+  const sale = async (doc, key, amount, lineProducts = null) =>
+    (
+      await db.query(
+        "select commit_sale(p_org=>$1,p_customer=>$2,p_amount=>$3,p_paid_immediately=>false,p_idempotency_key=>$4,p_document=>$5,p_line_products=>$6::jsonb) as id",
+        [orgA, buyer, amount, key, doc, lineProducts && JSON.stringify(lineProducts)],
+      )
+    ).rows[0].id;
+
+  await owner();
+  const buyer = (await db.query("insert into customers(organization_id,name) values ($1,'Покупатель склада') returning id", [orgA])).rows[0].id;
+  await user(a);
+  const lamp = (await db.query("select save_product($1,null,'Лампа LED 9W Horoz',null,'шт','100',null,null,'{}') as id", [orgA])).rows[0].id;
+  const cable = (await db.query("select save_product($1,null,'Кабель ВВГ 3х1.5',null,'м','50',null,null,'{}') as id", [orgA])).rows[0].id;
+  const lamp0 = await stock(lamp);
+  const cable0 = await stock(cable);
+
+  // Старая форма, без выбора: продажа записана, накладная ещё читается — склад не трогаем;
+  // сверена — списываем только точные названия (регистр, «ё» и пробелы не важны).
+  const doc1 = await newDoc("sale-stock-1");
+  const first = await sale(doc1, k(1), "350");
+  assert.equal(await stock(lamp), lamp0);
+  await recognize(doc1, [
+    { n: 1, name_raw: "лампа  LED 9W horoz", qty: "2", unit: "шт", price: "100" },
+    { n: 2, name_raw: "Лампа LED 9 W", qty: "1", unit: "шт", price: "100" },
+    { n: 3, name_raw: "Доставка", qty: "1", unit: "шт", price: "50" },
+  ], "digitized");
+  assert.equal(await stock(lamp), lamp0 - 2);
+  assert.ok((await db.query("select stocked_at from sales where id=$1", [first])).rows[0].stocked_at);
+
+  // Выбор продавца: «Да» на похожий — списываем и запоминаем название; «Не списывать» —
+  // даже точное название не трогаем; строку, которую продавец не видел, — по точному.
+  const doc2 = await newDoc("sale-stock-2");
+  const choice = [
+    { n: 1, product: lamp },
+    { n: 2, product: null },
+  ];
+  const second = await sale(doc2, k(2), "800", choice);
+  assert.equal(await sale(doc2, k(2), "800", choice), second);
+  await assert.rejects(sale(doc2, k(2), "800", [{ n: 1, product: cable }]), /idempotency_conflict/);
+  await recognize(doc2, [
+    { n: 1, name_raw: "Лампочка 9 ватт Хороз", qty: "3", unit: "шт", price: "100" },
+    { n: 2, name_raw: "Кабель ВВГ 3х1.5", qty: "5", unit: "м", price: "50" },
+    { n: 3, name_raw: "кабель ввг 3х1.5", qty: "5", unit: "м", price: "50" },
+  ], "review");
+  assert.equal(await stock(lamp), lamp0 - 2); // «Расхождение» — ждём проверки
+  await db.query("select confirm_document_lines($1,$2)", [orgA, doc2]);
+  assert.equal(await stock(lamp), lamp0 - 5);
+  assert.equal(await stock(cable), cable0 - 5);
+  const aliases = (await db.query("select aliases from products where id=$1", [lamp])).rows[0].aliases;
+  assert.deepEqual(aliases, ["Лампочка 9 ватт Хороз"]);
+  assert.deepEqual(
+    (await db.query("select n,product_id from document_lines where document_id=$1 order by n", [doc2])).rows.map(Object.values),
+    [[1, lamp], [2, null], [3, cable]],
+  );
+
+  // Запомненное название в следующий раз совпадает точно, без выбора.
+  const doc3 = await newDoc("sale-stock-3", "digitized");
+  await owner();
+  await db.query("insert into document_lines(organization_id,document_id,n,name_raw,qty,unit,price) values ($1,$2,1,'лампочка 9 ватт хороз',1,'шт',100)", [orgA, doc3]);
+  await user(a);
+  const third = await sale(doc3, k(3), "100");
+  assert.equal(await stock(lamp), lamp0 - 6);
+  // Отменённая продажа возвращает остаток.
+  await db.query("select reverse_sale($1,$2,'Ошибка')", [orgA, third]);
+  assert.equal(await stock(lamp), lamp0 - 5);
+
+  // Возврат строкой фото возвращает списанный товар; несписанная строка — нет.
+  const line = (await db.query("select id from document_lines where document_id=$1 and n=1", [doc2])).rows[0].id;
+  const skipped = (await db.query("select id from document_lines where document_id=$1 and n=2", [doc2])).rows[0].id;
+  await db.query("select commit_return($1,$2,$3,'Вернул лампу',$4)", [orgA, buyer, JSON.stringify([{ document_line: line, qty: "1" }]), k(4)]);
+  assert.equal(await stock(lamp), lamp0 - 4);
+  await db.query("select commit_return($1,$2,$3,'Вернул кабель',$4)", [orgA, buyer, JSON.stringify([{ document_line: skipped, qty: "1" }]), k(5)]);
+  assert.equal(await stock(cable), cable0 - 5);
+
+  // Чужой товар, выбор без накладной, кривой номер строки — отказ.
+  await owner();
+  const foreign = (await db.query("insert into products(organization_id,name) values ($1,'Чужая лампа') returning id", [orgB])).rows[0].id;
+  await user(a);
+  const doc4 = await newDoc("sale-stock-4");
+  await assert.rejects(sale(doc4, k(6), "100", [{ n: 1, product: foreign }]), /invalid_product/);
+  await assert.rejects(sale(null, k(7), "100", [{ n: 1, product: lamp }]), /invalid_line/);
+  await assert.rejects(sale(doc4, k(8), "100", [{ n: 0, product: lamp }]), /invalid_line/);
+  await assert.rejects(sale(doc4, k(9), "100", [{ n: 1 }]), /invalid_line/);
+});
+
 test("member email follows a confirmed email change in auth.users", async () => {
   await owner();
   await db.query("update auth.users set email='old@shop.kg' where id=$1", [a]);

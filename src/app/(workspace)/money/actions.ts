@@ -55,6 +55,26 @@ function failureCode(message: string) {
   return "save";
 }
 
+/**
+ * Выбор товаров по строкам фото: [{n, product}] — product это id товара или
+ * null («Не списывать со склада»). Кривое — без выбора: база спишет только
+ * точные совпадения названий.
+ */
+function lineProductsInput(raw: FormDataEntryValue | null): { n: number; product: string | null }[] | null {
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > 200) return null;
+    const lines = parsed.map((item: { n?: unknown; product?: unknown }) => ({
+      n: Number(item?.n),
+      product: typeof item?.product === "string" && uuidPattern.test(item.product) ? item.product : null,
+    }));
+    return lines.every((l) => Number.isInteger(l.n) && l.n > 0 && l.n < 10000) ? lines : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Страницы накладной по порядку (одно фото — одна страница). */
 function photosOf(form: FormData) {
   return form
@@ -190,6 +210,8 @@ async function commitOperationOrRedirect(
     throw error;
   }
   if (!(Number(amount) > 0)) return { error: "amount" };
+  // Продажа по фото: какие строки списать со склада (выбор продавца в форме).
+  const lineProducts = operation === "sale" ? lineProductsInput(form.get("line_products")) : null;
 
   const { db, organizationId } = await getContext();
   // Исходная сумма и курс — только если валюта суммы не валюта долга.
@@ -224,6 +246,7 @@ async function commitOperationOrRedirect(
             p_idempotency_key: idempotencyKey,
             p_document: documentId,
             ...(occurredAt ? { p_occurred_at: occurredAt } : {}),
+            ...(lineProducts && documentId ? { p_line_products: lineProducts } : {}),
           })
         : await commitPayment(db, {
             p_org: organizationId,

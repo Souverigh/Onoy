@@ -1590,6 +1590,58 @@ div.photo-field {
 .recognized-lines ol + p {
   padding-top: 10px;
 }
+/* Продажа по фото: строки против склада — что спишем, что спросить. */
+.sale-stock-lines {
+  margin-top: 12px;
+}
+.sale-stock-asking {
+  color: #8a5a00;
+}
+.sale-stock-line {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  padding: 8px 14px;
+}
+.sale-stock-status {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin: 4px 0 0;
+}
+.sale-stock-ok {
+  color: var(--green);
+  font-weight: 600;
+}
+.sale-stock-tip {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 6px;
+  font-weight: 400;
+}
+.sale-stock-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+.sale-stock-actions .button {
+  min-height: 40px;
+  padding: 6px 18px;
+}
+.sale-stock-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 14px 12px;
+}
+.sale-stock-picker input {
+  min-height: 44px;
+  font-size: 16px;
+}
 /* Не тот документ: текст, кнопка нужного сценария, пояснение. */
 .document-kind-warning {
   display: grid;
