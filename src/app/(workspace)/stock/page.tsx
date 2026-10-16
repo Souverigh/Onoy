@@ -61,12 +61,13 @@ export default async function StockPage({
   const wide = filter === "low" || filter === "nocost";
   const query = q.trim().slice(0, 100);
   const current = Math.max(1, Math.min(1000, parseInt(page) || 1));
-  const { db, organizationId, currency } = await getContext();
+  const { db, organizationId, currency, isOwner } = await getContext();
 
   // Витрина (просьба пользователя 14.10.2026): весь действующий склад —
   // остаток × цена закупки и продажи. Запрос идёт параллельно со списком.
+  // Только владельцу (просьба пользователя 15.10.2026): продавцу деньги склада не показываем.
   const summaryPromise =
-    filter === "archive"
+    !isOwner || filter === "archive"
       ? null
       : db
           .from("product_balances")
