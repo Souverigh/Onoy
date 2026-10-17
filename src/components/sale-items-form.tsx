@@ -85,6 +85,10 @@ export function SaleItemsForm({
   /** Продолжить черновик: форма открывается с тем, что было введено. */
   draft?: Draft;
 }) {
+  // Ключ от двойной записи — один на всю жизнь формы: перерисовка страницы
+  // (после «+ Новый клиент» и т.п.) присылает новый, но повтор после сбоя
+  // связи должен уйти с тем же, иначе запись задвоится.
+  const [idempotencyKeyPinned] = useState(idempotencyKey);
   const purchase = kind === "purchase";
   const priceOf = (p: QuickProduct) => (purchase ? p.purchase_price : p.sale_price);
   const priceCurrencyOf = (p: QuickProduct): Currency =>
@@ -201,14 +205,9 @@ export function SaleItemsForm({
         const result = await saveDraft(kind, draftId.current, data);
         if ("id" in result) {
           draftSaved.current = json;
-          if (draftId.current !== result.id) {
-            draftId.current = result.id;
-            // Обновление страницы откроет тот же черновик.
-            const url = new URL(window.location.href);
-            url.searchParams.set("mode", "items");
-            url.searchParams.set("draft", result.id);
-            window.history.replaceState(window.history.state, "", url);
-          }
+          // Адрес страницы не меняем: с ним перерисовка страницы (после
+          // «+ Новый клиент») открыла бы черновик из базы вместо формы.
+          draftId.current = result.id;
           setDraftStatus(draftLatest.current.json === json ? "saved" : "saving");
         } else if (result.error === "gone") {
           draftStopped.current = true;
@@ -361,7 +360,7 @@ export function SaleItemsForm({
 
   return (
     <form onSubmit={submit} className="simple-operation-form sale-items-form">
-      <input type="hidden" name="idempotency_key" value={idempotencyKey} />
+      <input type="hidden" name="idempotency_key" value={idempotencyKeyPinned} />
       {recordDate && <input type="hidden" name="record_date" value={recordDate} />}
       <PartyPicker
         label={purchase ? "Поставщик" : "Клиент"}

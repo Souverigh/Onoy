@@ -50,6 +50,10 @@ export function ExpenseForm({
   minDate: string;
   currency: string;
 }) {
+  // Ключ от двойной записи — один на всю жизнь формы: перерисовка страницы
+  // (после «+ Новый клиент» и т.п.) присылает новый, но повтор после сбоя
+  // связи должен уйти с тем же, иначе запись задвоится.
+  const [idempotencyKeyPinned] = useState(idempotencyKey);
   const [category, setCategory] = useState<ExpenseCategory | "">("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
@@ -196,7 +200,7 @@ export function ExpenseForm({
 
   return (
     <form onSubmit={submit} className="simple-operation-form expense-form">
-      <input type="hidden" name="idempotency_key" value={idempotencyKey} />
+      <input type="hidden" name="idempotency_key" value={idempotencyKeyPinned} />
       <div className="photo-field invoice-dropzone">
         <span className="invoice-dropzone-title">
           Фото чека <span className="muted">(необязательно)</span>

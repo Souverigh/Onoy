@@ -116,7 +116,7 @@ export default async function Documents({ searchParams }: { searchParams: Promis
               const orphan = !links.linked.has(doc.id) && doc.status !== "processing";
               return (
                 <li key={doc.id} id={`doc-${doc.id}`}>
-                  <Link href={`/documents/${doc.id}`} className="doc-list-item">
+                  <Link href={`/documents/${doc.id}?from=documents`} className="doc-list-item">
                     <span className="doc-list-main">
                       <strong>{doc.kind ? kindLabel[doc.kind] : "Документ"}</strong>
                       {party ? (
@@ -187,7 +187,7 @@ export default async function Documents({ searchParams }: { searchParams: Promis
                         )}
                       </td>
                       <td>
-                        <Link href={`/documents/${doc.id}`} aria-label="Открыть документ">
+                        <Link href={`/documents/${doc.id}?from=documents`} aria-label="Открыть документ">
                           <Icon name="arrow" />
                         </Link>
                       </td>

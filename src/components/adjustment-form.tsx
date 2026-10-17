@@ -42,6 +42,10 @@ export function AdjustmentForm({
   idempotencyKey: string;
   shopCurrency: Currency;
 }) {
+  // Ключ от двойной записи — один на всю жизнь формы: перерисовка страницы
+  // (после «+ Новый клиент» и т.п.) присылает новый, но повтор после сбоя
+  // связи должен уйти с тем же, иначе запись задвоится.
+  const [idempotencyKeyPinned] = useState(idempotencyKey);
   const [party, setParty] = useState(initial);
   const [kind, setKind] = useState<"discount" | "return">("discount");
   const [amount, setAmount] = useState("");
@@ -147,7 +151,7 @@ export function AdjustmentForm({
         setError(null);
       }}
     >
-      <input type="hidden" name="idempotency_key" value={idempotencyKey} />
+      <input type="hidden" name="idempotency_key" value={idempotencyKeyPinned} />
       <input type="hidden" name="kind" value={kind} />
       {usingItems && (
         <input

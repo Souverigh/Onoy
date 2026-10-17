@@ -109,6 +109,10 @@ export function OperationForm({
   fixedDirection,
   initialAmount,
   initialCurrency,
+  initialDate,
+  correcting = false,
+  correction,
+  initialPaidNow,
   stockProducts,
 }: {
   kind: Operation;
@@ -129,9 +133,22 @@ export function OperationForm({
   /** «Записать правильно» — сумма и валюта отменённой записи (задача 28). */
   initialAmount?: string;
   initialCurrency?: Currency;
+  /** Дата записи («ГГГГ-ММ-ДД»): исправляем продажу не за сегодня. */
+  initialDate?: string;
+  /** «Исправить продажу»: подробности и строки накладной открыты сразу. */
+  correcting?: boolean;
+  /** «Исправить продажу/приход» по фото: распознавание (строки с правками) и выбор товаров склада из отменённой записи. */
+  correction?: { result: InvoiceResult; choices: StockChoices };
+  /** «Исправить приход»: «Сразу оплатили поставщику» из отменённого прихода. */
+  initialPaidNow?: string;
   /** Продажа: товары склада — строки с фото списываются с них (просьба пользователя 15.10.2026). */
   stockProducts?: StockProduct[];
 }) {
+  // Ключ от двойной записи — один на всю жизнь формы: перерисовка страницы
+  // (после «+ Новый клиент» и т.п.) присылает новый, но повтор после сбоя
+  // связи должен уйти с тем же, иначе запись задвоится.
+  const [idempotencyKeyPinned] = useState(idempotencyKey);
+  const [partPaymentKeyPinned] = useState(partPaymentKey);
   const hasCustomers = customers.length > 0;
   const [direction, setDirection] = useState<"incoming" | "outgoing">(
     fixedDirection ??
@@ -153,7 +170,7 @@ export function OperationForm({
   const [rateValue, setRateValue] = useState("");
   const [paidNow, setPaidNow] = useState(false);
   // «Сразу оплатили поставщику» — в «Подробностях»; заполнено — видно в заголовке.
-  const [paidNowValue, setPaidNowValue] = useState("");
+  const [paidNowValue, setPaidNowValue] = useState(initialPaidNow ?? "");
   // Клиенты, добавленные из контактов или «+ Новый клиент» прямо в форме (без перезагрузки).
   const [contactCustomers, setContactCustomers] = useState<Customer[]>([]);
   const [contactNote, setContactNote] = useState<string | null>(null);
@@ -173,7 +190,7 @@ export function OperationForm({
   // Продавец сказал «Да, верно» про клиента не с накладной (задача 38).
   const [partyConfirmed, setPartyConfirmed] = useState<string | null>(null);
   // Дата продажи или прихода (задача 15): пусто — сегодня.
-  const [recordDate, setRecordDate] = useState("");
+  const [recordDate, setRecordDate] = useState(initialDate ?? "");
   // «Накладной нет — записать сумму»: продажа по телефону, товар без бумаги.
   const [noInvoice, setNoInvoice] = useState(false);
   const allCustomers = [...customers, ...contactCustomers.filter((c) => !customers.some((x) => x.id === c.id))];
@@ -492,7 +509,7 @@ export function OperationForm({
   ]
     .filter(Boolean)
     .join(" · ");
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(correcting);
   // Ошибка сервера про поле из «Подробностей» — тоже раскрываем.
   const moreError = [localError, commit.error].some(
     (e) => e === "rate" || e === "date" || e === "currency" || e === "part",
@@ -681,6 +698,20 @@ export function OperationForm({
     if (!existingId || (kind !== "purchase" && kind !== "sale")) return;
     const request = ++photoRequest.current;
     setChecking(true);
+    // Исправление записи: всё — из отменённой записи (строки с правками,
+    // номер, дата, итог с бумаги); фото заново не читаем.
+    if (correction) {
+      setStockChoices({ documentId: existingId, choices: correction.choices });
+      setCheckedPhoto({
+        documentId: existingId,
+        result: correction.result,
+        duplicate: false,
+        verdict: { ok: true, counterparty: null, fragment: false },
+        suggestions: [],
+      });
+      setChecking(false);
+      return;
+    }
     checkExistingDocument(kind, existingId)
       .then((res) => {
         if (request === photoRequest.current) applyCheck(res);
@@ -823,7 +854,8 @@ export function OperationForm({
     if (!checkedPhoto || !current) return;
     const total = linesTotal(lines);
     setCheckedPhoto({ ...checkedPhoto, result: { ...current, lines, total_computed: total, seller_edited: true } });
-    if (amountFromInput(amountValue) === current.total_computed) setAmountValue(String(total));
+    // Исправление продажи: сумма всегда за строками, чтобы долг клиента совпал с накладной.
+    if (correcting || amountFromInput(amountValue) === current.total_computed) setAmountValue(String(total));
   }
 
   function takeSuggestion(value: number, key: "lines" | "paper") {
@@ -967,7 +999,17 @@ export function OperationForm({
 
   return (
     <>
-      <LeaveGuard active={(hasPhoto || Boolean(receiptFile)) && !saving && !pendingConfirm} />
+      <LeaveGuard
+        active={(hasPhoto || Boolean(receiptFile)) && !saving && !pendingConfirm}
+        {...(correcting
+          ? {
+              title: "Исправление не записано. Уйти?",
+              text: `Старая запись уже отменена и в долгах не считается. Вернуться к исправлению можно из списка «${
+                kind === "purchase" ? "Товар от поставщика" : "Продажа"
+              }» на главной - «Не записанные исправления».`,
+            }
+          : {})}
+      />
       <ConfirmDialog
         open={Boolean(pendingConfirm)}
         title={pendingConfirm?.steps[0]?.title ?? ""}
@@ -986,9 +1028,9 @@ export function OperationForm({
         {kind === "payment" && fixedDirection && <input type="hidden" name="direction" value={fixedDirection} />}
         {kind !== "payment" && recordDate && <input type="hidden" name="record_date" value={recordDate} />}
         {kind !== "payment" && noInvoice && !hasPhoto && <input type="hidden" name="no_invoice" value="1" />}
-        <input type="hidden" name="idempotency_key" value={idempotencyKey} />
+        <input type="hidden" name="idempotency_key" value={idempotencyKeyPinned} />
         {kind === "purchase" && partPaymentKey && (
-          <input type="hidden" name="part_payment_key" value={partPaymentKey} />
+          <input type="hidden" name="part_payment_key" value={partPaymentKeyPinned} />
         )}
         {prefill && <input type="hidden" name="document_id" value={prefill.documentId} />}
         {foreign && rate && (
@@ -1640,12 +1682,13 @@ export function OperationForm({
                   if (localError === "date") setLocalError(null);
                 }}
               />
-              {checkedPhoto?.result && checkedPhoto.result.lines.length > 0 && (
+              {checkedPhoto?.result && (checkedPhoto.result.lines.length > 0 || correcting) && (
                 <RecognizedLines
                   result={checkedPhoto.result}
                   currency={suggestionCurrency}
                   paperTotal={paperTotal}
                   onChange={editLines}
+                  defaultOpen={correcting}
                 />
               )}
             </div>

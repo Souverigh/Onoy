@@ -8,6 +8,9 @@ import { invoiceMessage } from "@/lib/invoice-message";
 import { SendInvoice } from "@/components/send-invoice";
 import { UndoForm } from "@/components/undo-form";
 import { ensureShareToken, waPhone } from "@/lib/share";
+import { correctSale } from "@/app/(workspace)/drafts/actions";
+import { ConfirmButton } from "@/components/confirm-button";
+import { hasActiveReturn } from "@/lib/sale-returns";
 
 const UNDO_MS = 2 * 60 * 1000;
 
@@ -21,12 +24,12 @@ export default async function SendSalePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ done?: string; duplicate?: string; undo?: string }>;
+  searchParams: Promise<{ done?: string; duplicate?: string; undo?: string; error?: string }>;
 }) {
   const { id } = await params;
-  const { done, duplicate, undo } = await searchParams;
+  const { done, duplicate, undo, error } = await searchParams;
   if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
-  const { db, organizationId, user, currency: shopCurrency } = await getContext();
+  const { db, organizationId, user, isOwner, currency: shopCurrency } = await getContext();
 
   const saleResult = await db
     .from("sales")
@@ -84,6 +87,15 @@ export default async function SendSalePage({
     ? saleItems.map((i) => ({ id: i.id, name: i.name_snapshot, unit: i.unit, qty: String(i.qty), price: String(i.price), sum: String(i.line_total) }))
     : photoLines.map((l) => ({ id: l.id, name: l.name_raw, unit: l.unit, qty: String(l.qty), price: String(l.price), sum: String(l.sum) }));
   const hasItems = saleItems.length > 0;
+  // «Исправить продажу»: и товарами со склада, и по фото — отмена и запись заново.
+  const mayCorrect =
+    shownLines.length > 0 &&
+    !sale.reversed_at &&
+    !sale.is_opening &&
+    (isOwner || (sale.created_by === user.id && Date.now() - Date.parse(sale.created_at) < UNDO_MS));
+  // Был возврат товара — сначала отменить его, иначе долг посчитается дважды.
+  const returned = mayCorrect ? await hasActiveReturn(db, organizationId, sale.id) : false;
+  const canCorrect = mayCorrect && !returned;
   // Строки — в валюте накладной: продажа в другой валюте — в валюте магазина.
   const lineCurrency = sale.original_currency ?? partyCurrency(customerResult.data, shopCurrency);
   const hasLines = shownLines.length > 0;
@@ -210,12 +222,26 @@ export default async function SendSalePage({
           {canUndo && <UndoForm kind="sale" id={sale.id} />}
         </section>
       )}
+      {/* Справа — товары продажи: со склада или строки фото. */}
       {hasLines && (
         <section className="panel send-lines-panel">
           <div className="section-title">
             <h2>Товары</h2>
-            <span className="muted">{shownLines.length} {shownLines.length === 1 ? "строка" : shownLines.length < 5 ? "строки" : "строк"}</span>
+            <span className="muted">
+              {shownLines.length} {shownLines.length === 1 ? "строка" : shownLines.length < 5 ? "строки" : "строк"}
+            </span>
           </div>
+          {(error === "fix" || error === "fix_owner" || error === "fix_return") && (
+            <p className="form-error" role="alert">
+              {error === "fix_owner"
+                ? "Исправить продажу через 2 минуты после записи может только владелец."
+                : error === "fix_return"
+                  ? "По этой продаже уже был возврат товара - сначала отмените возврат, потом исправляйте продажу."
+                  : "Не удалось исправить продажу - она осталась как была. Обновите страницу и попробуйте снова."}
+            </p>
+          )}
+          {/* Строки не правятся на месте: долг, склад и накладная меняются только
+              через «Исправить продажу» — отмена и запись заново. */}
           <ol className="invoice-lines">
             {shownLines.map((line, i) => (
               <li key={line.id} className="invoice-line invoice-line-static">
@@ -234,6 +260,29 @@ export default async function SendSalePage({
             <span>Итого</span>
             <strong>{money(shownLines.reduce((t, l) => t + Number(l.sum), 0).toFixed(2), lineCurrency)}</strong>
           </div>
+          {mayCorrect && returned && (
+            <p className="muted">По продаже был возврат товара - чтобы исправить её, сначала отмените возврат.</p>
+          )}
+          {canCorrect && (
+            <form action={correctSale} className="simple-operation-actions">
+              <input type="hidden" name="id" value={sale.id} />
+              <input type="hidden" name="back" value={`/money/send/${sale.id}`} />
+              <ConfirmButton
+                className="button"
+                danger={false}
+                message="Исправить продажу?"
+                text={
+                  sale.document_id
+                    ? "Эта продажа отменится (в истории она останется), долг клиента вернётся, списанные со склада товары - тоже. Откроется форма с тем же фото, клиентом и строками накладной - исправьте строки, дату или товары склада и запишите заново: сумма пересчитается, клиенту уйдёт новая накладная."
+                    : "Эта продажа отменится (в истории она останется), долг клиента и склад вернутся. Откроется форма с тем же клиентом и товарами - исправьте и запишите заново."
+                }
+                confirmLabel="Исправить"
+                cancelLabel="Не надо"
+              >
+                Исправить продажу
+              </ConfirmButton>
+            </form>
+          )}
         </section>
       )}
       </div>

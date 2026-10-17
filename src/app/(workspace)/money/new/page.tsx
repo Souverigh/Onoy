@@ -12,6 +12,8 @@ import { officialRates } from "@/lib/fx";
 import { isCurrency } from "@/lib/currency";
 import { documentPages, signedPhotoUrl } from "@/lib/storage";
 import { draftData, type Draft } from "@/lib/drafts";
+import type { InvoiceLine, InvoiceResult } from "@/lib/adre/types";
+import type { StockChoices } from "@/lib/match";
 
 type Operation = "purchase" | "sale" | "payment";
 type Party = { id: string; name: string; currency: string | null };
@@ -34,6 +36,12 @@ export default async function NewOperation({
     direction?: string;
     redo?: string;
     draft?: string;
+    fixed?: string;
+    fix?: string;
+    day?: string;
+    from?: string;
+    paid?: string;
+    part?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -166,6 +174,64 @@ export default async function NewOperation({
       };
     }
   }
+  // «Исправить продажу» по фото: строки накладной (с правками) и выбор товаров
+  // склада — из отменённой продажи; сумма и дата пришли в адресе.
+  // «Исправить продажу/приход» по фото: всё — из отменённой записи, фото не
+  // читается заново. Строки (с правками продавца) и выбор товаров склада —
+  // её; номер, дата и итог с бумаги — из её сохранённого распознавания.
+  let correction: { result: InvoiceResult; choices: StockChoices } | undefined;
+  if (itemsKind && params.fix === "1" && existingDocument && params.from && /^[a-f0-9-]{36}$/i.test(params.from)) {
+    const old = await db
+      .from(kind === "sale" ? "sales" : "purchases")
+      .select(kind === "sale" ? "document_id,line_products" : "document_id")
+      .eq("organization_id", organizationId)
+      .eq("id", params.from)
+      .maybeSingle();
+    const oldRow = old.data as { document_id: string | null; line_products?: unknown } | null;
+    if (oldRow?.document_id) {
+      const [oldLines, oldExtraction] = await Promise.all([
+        db
+          .from("document_lines")
+          .select("n,name_raw,qty,unit,price")
+          .eq("organization_id", organizationId)
+          .eq("document_id", oldRow.document_id)
+          .order("n"),
+        db
+          .from("document_extractions")
+          .select("payload")
+          .eq("organization_id", organizationId)
+          .eq("document_id", oldRow.document_id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+      const lines: InvoiceLine[] = (oldLines.data ?? []).map((l) => ({
+        n: Number(l.n),
+        name_raw: String(l.name_raw ?? ""),
+        qty: String(Number(l.qty)),
+        unit: String(l.unit ?? "шт"),
+        price: String(Number(l.price)),
+        sum: String(Math.round(Number(l.qty) * Number(l.price) * 100) / 100),
+        confidence: 1,
+      }));
+      const saved = (oldExtraction.data?.payload as { extracted?: Partial<InvoiceResult> } | null)?.extracted ?? {};
+      const result: InvoiceResult = {
+        ...saved,
+        date: saved.date ?? null,
+        number: saved.number ?? null,
+        total_declared: saved.total_declared ?? null,
+        currency: isCurrency(saved.currency) ? saved.currency : (isCurrency(params.currency) ? params.currency : shopCurrency),
+        warnings: [],
+        lines,
+        total_computed: Math.round(lines.reduce((t, l) => t + Number(l.sum), 0) * 100) / 100,
+        seller_edited: true,
+      };
+      const choices: StockChoices = {};
+      for (const c of Array.isArray(oldRow.line_products) ? (oldRow.line_products as { n?: unknown; product?: unknown }[]) : [])
+        if (typeof c?.n === "number") choices[c.n] = typeof c.product === "string" ? c.product : null;
+      correction = { result, choices };
+    }
+  }
   // Из карточки клиента/поставщика: берём, только если он из подходящего списка.
   const initialParty = [...(kind === "purchase" ? [] : customers), ...(kind === "sale" ? [] : suppliers)].some(
     (p) => p.id === params.party,
@@ -195,8 +261,6 @@ export default async function NewOperation({
         ? { href: "/customers/new", label: "Добавить клиента" }
         : { href: "/customers/new", label: "Добавить клиента" };
 
-  const itemsFormKey = randomUUID();
-
   return (
     <>
       <div className="page-heading operation-page-heading">
@@ -211,6 +275,17 @@ export default async function NewOperation({
           party={initialParty}
         />
       )}
+      {params.fixed === "1" && draft && (
+        <p className="notice success" role="status">
+          {kind === "sale"
+            ? "Прошлая продажа отменена - долг и склад вернулись, в истории она осталась."
+            : "Прошлый приход отменён - долг поставщику и склад вернулись, в истории он остался."}{" "}
+          Исправьте товары и запишите заново. Пока не записали - это черновик.
+          {kind === "purchase" && params.part && /^\d+(\.\d{1,2})?$/.test(params.part) && (
+            <> Оплата поставщику {params.part} тоже отменена - после записи внесите её через «Я заплатил поставщику».</>
+          )}
+        </p>
+      )}
       {draftParam && !draft && (
         <p className="notice" role="status">
           Этого черновика уже нет - его записали или удалили. Ниже - новая пустая форма.
@@ -218,8 +293,10 @@ export default async function NewOperation({
       )}
       {(params.undone || params.redo) && (
         <p className="notice success" role="status">
-          {params.undone ? "Прошлая запись отменена." : "Запись отменена."} Клиент, сумма и фото - как были: исправьте,
-          что нужно, и подтвердите.
+          {params.undone ? "Прошлая запись отменена." : "Запись отменена."}{" "}
+          {params.fix === "1"
+            ? `${kind === "purchase" ? "Поставщик" : "Клиент"}, строки, сумма, дата и фото - из прошлой записи: исправьте, что нужно, и подтвердите.`
+            : `${kind === "purchase" || (kind === "payment" && params.direction === "outgoing") ? "Поставщик" : "Клиент"}, сумма и фото - как были: исправьте, что нужно, и подтвердите.`}
         </p>
       )}
       {!needsParty ? (
@@ -249,14 +326,15 @@ export default async function NewOperation({
       ) : saleMode === "items" ? (
         <section className="panel simple-operation-panel">
           <SaleItemsForm
-            // Каждый переход — своя форма: «+ Продажа» из черновика не продолжает его.
-            key={itemsFormKey}
+            // Другой черновик — другая форма; перерисовка той же страницы (после
+            // «+ Новый клиент», «+ Новый товар») введённое не сбрасывает.
+            key={draft?.id ?? "new"}
             kind={kind === "purchase" ? "purchase" : "sale"}
             customers={kind === "purchase" ? suppliers : customers}
             products={products}
             shopCurrency={shopCurrency}
             rates={rates}
-            idempotencyKey={itemsFormKey}
+            idempotencyKey={randomUUID()}
             initialParty={initialParty}
             draft={draft}
           />
@@ -283,6 +361,15 @@ export default async function NewOperation({
                 : undefined
             }
             initialCurrency={!prefill && isCurrency(params.currency) ? params.currency : undefined}
+            // «Исправить продажу» по фото: дата прошлой продажи, строки накладной — сразу на виду.
+            initialDate={itemsKind && params.day && /^\d{4}-\d{2}-\d{2}$/.test(params.day) ? params.day : undefined}
+            correcting={params.fix === "1"}
+            correction={correction}
+            initialPaidNow={
+              kind === "purchase" && params.fix === "1" && params.paid && /^\d{1,14}(\.\d{1,2})?$/.test(params.paid)
+                ? params.paid.replace(".", ",")
+                : undefined
+            }
           />
         </section>
       )}

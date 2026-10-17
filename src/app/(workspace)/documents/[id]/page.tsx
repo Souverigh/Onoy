@@ -15,6 +15,15 @@ import { STOCK_ERROR_TEXT, normalizeUnit } from "@/lib/stock";
 import { TOLERANCE } from "@/lib/adre/reconcile";
 import { firstPaymentHref } from "@/lib/duplicates";
 import { partyCurrency } from "@/lib/currency";
+import { correctPurchase, correctSale } from "@/app/(workspace)/drafts/actions";
+import { ConfirmButton } from "@/components/confirm-button";
+
+const FIX_ERROR: Record<string, string> = {
+  fix: "Не удалось исправить запись - она осталась как была. Обновите страницу и попробуйте снова.",
+  fix_owner: "Исправить запись через 2 минуты после записи может только владелец.",
+  fix_return: "По этой продаже уже был возврат товара - сначала отмените возврат, потом исправляйте продажу.",
+};
+
 
 const dateTime = new Intl.DateTimeFormat("ru-RU", {
   dateStyle: "short",
@@ -81,6 +90,7 @@ export default async function DocumentDetail({
     error?: string;
     stocked?: string;
     stock_error?: string;
+    from?: string;
   }>;
 }) {
   const { id } = await params;
@@ -390,10 +400,18 @@ export default async function DocumentDetail({
           }[verdict.reason]
       : null;
 
+  // Назад — к записям продаж или прихода; из раздела «Документы» — туда же.
+  const back =
+    params2.from === "documents" || (doc.kind !== "sale" && doc.kind !== "purchase")
+      ? { href: "/documents", label: "Документы" }
+      : doc.kind === "sale"
+        ? { href: "/sales", label: "Все продажи" }
+        : { href: "/purchases", label: "Весь приход" };
+
   return (
     <>
-      <Link className="back-link" href="/documents">
-        ← Документы
+      <Link className="back-link" href={back.href}>
+        ← {back.label}
       </Link>
       <div className="page-heading">
         <div>
@@ -443,7 +461,7 @@ export default async function DocumentDetail({
       )}
       {params2.error && (
         <p className="form-error" role="alert">
-          Не удалось выполнить действие. Проверьте значения и попробуйте снова.
+          {FIX_ERROR[params2.error] ?? "Не удалось выполнить действие. Проверьте значения и попробуйте снова."}
         </p>
       )}
       {/* Сначала — всё, что требует внимания; ниже фото и позиции рядом. */}
@@ -584,6 +602,28 @@ export default async function DocumentDetail({
                 <Link className="text-button" href="/claims">
                   Рассмотреть в «Заявках»
                 </Link>
+              )}
+              {/* «Исправить»: запись отменяется, всё из неё (фото, строки, сумма, дата)
+                  открывается в новой форме — исправить и записать заново. */}
+              {isOwner && record && !record.reversed && (
+                <form action={record.kind === "sale" ? correctSale : correctPurchase}>
+                  <input type="hidden" name="id" value={record.id} />
+                  <input type="hidden" name="back" value={`/documents/${doc.id}`} />
+                  <ConfirmButton
+                    className="button"
+                    danger={false}
+                    message={record.kind === "sale" ? "Исправить продажу?" : "Исправить приход?"}
+                    text={
+                      record.kind === "sale"
+                        ? "Эта продажа отменится (в истории она останется), долг клиента вернётся, списанные со склада товары - тоже. Откроется форма с тем же фото, клиентом, строками, суммой и датой - исправьте что нужно и запишите заново: клиенту уйдёт новая накладная."
+                        : "Этот приход отменится (в истории он останется), долг поставщику и склад вернутся; оплата, внесённая вместе с ним, - тоже. Откроется форма с тем же фото, поставщиком, строками, суммой и датой - исправьте что нужно и запишите заново."
+                    }
+                    confirmLabel="Исправить"
+                    cancelLabel="Не надо"
+                  >
+                    Исправить запись
+                  </ConfirmButton>
+                </form>
               )}
               {isOwner &&
                 ((record && !record.reversed) || (payment && payment.status === "confirmed" && !payment.reversed_at)) && (

@@ -6,6 +6,7 @@ import { draftData, type DraftKind } from "@/lib/drafts";
 import { isCurrency } from "@/lib/currency";
 import { money } from "@/lib/format";
 import { memberLabels } from "@/lib/members";
+import { pendingCorrections } from "@/lib/correction-pending";
 
 const PAGE = 50;
 
@@ -59,7 +60,7 @@ export async function RecordsPage({
     : db
         .from("purchases")
         .select("id,total,occurred_at,reversed_at,reversal_comment,document_id,created_by,party_id:supplier_id,party:suppliers(name,currency)");
-  const [recordResult, draftResult, members] = await Promise.all([
+  const [recordResult, draftResult, members, unfinished] = await Promise.all([
     records
       .eq("organization_id", organizationId)
       .eq("status", "posted")
@@ -75,6 +76,7 @@ export async function RecordsPage({
       .order("updated_at", { ascending: false })
       .limit(50),
     memberLabels(db, organizationId),
+    pendingCorrections(db, organizationId, kind),
   ]);
   if (recordResult.error) throw new Error(sale ? "Не удалось загрузить продажи" : "Не удалось загрузить приход");
   // Черновики не загрузились (например, миграция ещё не применена) — список записей всё равно виден.
@@ -121,6 +123,36 @@ export async function RecordsPage({
         </p>
       )}
 
+      {/* «Исправить» по фото нажали, а заново не записали: старая запись уже
+          отменена — напоминаем и даём продолжить с теми же данными. */}
+      {unfinished.length > 0 && (
+        <section className="panel drafts-panel">
+          <div className="section-title">
+            <h2>Не записанные исправления</h2>
+          </div>
+          <p className="form-error" role="status">
+            {sale ? "Эти продажи отменены для исправления, но заново не записаны" : "Этот приход отменён для исправления, но заново не записан"} - в
+            долгах {sale ? "их" : "его"} сейчас нет. Нажмите «Продолжить» и запишите.
+          </p>
+          <ul className="draft-list">
+            {unfinished.map((u) => (
+              <li key={u.id} className="draft-row">
+                <Link className="draft-main" href={u.href}>
+                  <strong>{u.partyName}</strong>
+                  <span className="muted">
+                    {money(u.amount, isCurrency(u.currency) ? u.currency : shopCurrency)} · отменена {shortDateTime(u.reversedAt)}
+                  </span>
+                </Link>
+                <div className="draft-actions">
+                  <Link className="button primary" href={u.href}>
+                    Продолжить
+                  </Link>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {drafts.length > 0 && (
         <section className="panel drafts-panel">
           <div className="section-title">
@@ -151,7 +183,7 @@ export async function RecordsPage({
                       <ConfirmButton
                         className="text-button"
                         message="Удалить черновик?"
-                        text="Введённые товары пропадут. Записи, долги и склад не изменятся."
+                        text="Введённые товары пропадут. Записи, долги и склад от удаления не изменятся; если это исправление - прошлая запись останется отменённой."
                         confirmLabel="Удалить"
                         cancelLabel="Оставить"
                       >

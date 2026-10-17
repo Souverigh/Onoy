@@ -51,11 +51,13 @@ export function RecognizedLines({
   currency,
   paperTotal,
   onChange,
+  defaultOpen = false,
 }: {
   result: InvoiceResult;
   currency: string;
   paperTotal: number | null;
   onChange: (lines: InvoiceLine[]) => void;
+  defaultOpen?: boolean;
 }) {
   const [editing, setEditing] = useState<number | null>(null);
   const lines = result.lines;
@@ -79,6 +81,13 @@ export function RecognizedLines({
     );
   }
 
+  // Новая строка — сразу в правку; сумма записи пересчитается за строками.
+  function add() {
+    const n = lines.reduce((max, line) => Math.max(max, line.n), 0) + 1;
+    onChange([...lines, { n, name_raw: "", qty: "1", unit: "шт", price: "", sum: "0", confidence: 1 }]);
+    setEditing(n);
+  }
+
   function remove(n: number) {
     onChange(lines.filter((line) => line.n !== n));
     setEditing(null);
@@ -93,7 +102,7 @@ export function RecognizedLines({
   };
 
   return (
-    <details className="recognized-lines">
+    <details className="recognized-lines" open={defaultOpen || undefined}>
       <summary>
         Что прочитали в накладной · {lines.length} {lineWord(lines.length)}
       </summary>
@@ -172,6 +181,9 @@ export function RecognizedLines({
           );
         })}
       </ol>
+      <button type="button" className="button recognized-line-add" onClick={add}>
+        + Добавить строку
+      </button>
       <p className="muted">
         Сумма строк: {safe((v) => money(v, currency), linesTotal(lines))}
         {paperTotal != null && <> · итог накладной: {money(paperTotal, currency)}</>}. Нажмите на строку, чтобы

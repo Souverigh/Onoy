@@ -5,6 +5,13 @@ import { money, originalAmountText, quantity } from "@/lib/format";
 import { memberLabels } from "@/lib/members";
 import { waPhone } from "@/lib/share";
 import { SendInvoice } from "@/components/send-invoice";
+import { ConfirmButton } from "@/components/confirm-button";
+import { correctPurchase } from "@/app/(workspace)/drafts/actions";
+
+const FIX_ERROR: Record<string, string> = {
+  fix: "Не удалось исправить приход - он остался как был. Обновите страницу и попробуйте снова.",
+  fix_owner: "Исправить приход через 2 минуты после записи может только владелец.",
+};
 
 type Item = { id: string; name_snapshot: string; qty: string; price: string; line_total: string; unit: string | null; product_id: string };
 
@@ -16,10 +23,17 @@ const day = (value: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asi
  * Приход товарами без фото (просьба пользователя 17.10.2026): у него не было
  * своей страницы. Приход по фото открывается на странице документа.
  */
-export default async function PurchasePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PurchasePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ error?: string }>;
+}) {
   const { id } = await params;
+  const { error } = await searchParams;
   if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
-  const { db, organizationId, organizationName, isOwner, currency: shopCurrency } = await getContext();
+  const { db, organizationId, organizationName, isOwner, user, currency: shopCurrency } = await getContext();
 
   const recordResult = await db
     .from("purchases")
@@ -68,6 +82,11 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
   const supplierHref = `/suppliers/${record.supplier_id}`;
   const author = record.created_by ? members.get(record.created_by)?.name : undefined;
   const original = originalAmountText(record);
+  const canCorrect =
+    !record.reversed_at &&
+    !record.is_opening &&
+    items.length > 0 &&
+    (isOwner || (record.created_by === user.id && Date.now() - Date.parse(record.created_at) < 2 * 60 * 1000));
   const hasInvoice = !record.is_opening && !record.reversed_at && items.length > 0;
   const pdfUrl = `/purchases/${record.id}/pdf`;
   const shortDate = new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Asia/Bishkek" }).format(
@@ -90,6 +109,23 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
           </p>
         </div>
         <div className="page-heading-actions">
+          {/* «Исправить»: приход отменяется, те же товары открываются черновиком. */}
+          {canCorrect && (
+            <form action={correctPurchase}>
+              <input type="hidden" name="id" value={record.id} />
+              <input type="hidden" name="back" value={`/purchases/${record.id}`} />
+              <ConfirmButton
+                className="button primary"
+                danger={false}
+                message="Исправить приход?"
+                text="Этот приход отменится (в истории он останется), долг поставщику и склад вернутся. Откроется форма с тем же поставщиком, товарами, ценами и датой - исправьте и запишите заново."
+                confirmLabel="Исправить"
+                cancelLabel="Не надо"
+              >
+                Исправить приход
+              </ConfirmButton>
+            </form>
+          )}
           {!record.reversed_at && isOwner && (
             <Link className="button" href={`/money/reverse/purchase/${record.id}`}>
               Отменить
@@ -97,6 +133,11 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
           )}
         </div>
       </div>
+      {error && (
+        <p className="form-error" role="alert">
+          {FIX_ERROR[error] ?? FIX_ERROR.fix}
+        </p>
+      )}
       {record.reversed_at && (
         <p className="notice" role="status">
           Запись отменена{record.reversal_comment ? `: ${record.reversal_comment}` : ""}. Долг и склад уже пересчитаны,
@@ -138,7 +179,8 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
             text={sendText}
             fileText={sendText}
             imageUrl={pdfUrl}
-            fileName={`приход-${shortDate}.pdf`}
+            // Латиница без пробелов: Chrome на Android отклоняет share() с кириллицей.
+            fileName={`prihod-${day(record.occurred_at)}.pdf`}
             pending={false}
             fileType="application/pdf"
             to="поставщику"
