@@ -7067,3 +7067,155 @@ tr.row-link:has(a[data-pending]) {
 .send-lines-panel .sale-total {
   margin-top: 12px;
 }
+
+/* Продажа и приход на компьютере и планшете (просьба пользователя 17.10.2026):
+   не узкая колонка телефона, а рабочий экран. Телефон — как был. */
+.sale-items-side,
+.sale-items-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.sale-items-side > .party-picker,
+.sale-items-side > .new-customer-inline,
+.sale-items-side > .contact-note {
+  margin-bottom: 22px;
+}
+.sale-items-main > .date-picker {
+  margin: 2px 0 20px;
+}
+.sale-items-main > .cash-toggle {
+  margin-bottom: 16px;
+}
+.sale-lines-head {
+  display: none;
+}
+@media (min-width: 1100px) {
+  .wide-operation-panel {
+    max-width: 1200px;
+  }
+  /* Товары: слева — кто и поиск (не уезжает при прокрутке), справа — накладная. */
+  .sale-items-form {
+    display: grid;
+    grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
+    column-gap: 32px;
+    align-items: start;
+  }
+  .sale-items-side {
+    position: sticky;
+    top: 16px;
+  }
+  .sale-items-form .sale-lines {
+    gap: 0;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  /* Строка накладной — строкой таблицы: № · товар · кол-во · ед. · цена · сумма · ×. */
+  .sale-lines-head,
+  .sale-items-form .sale-line {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr) auto 40px 130px 130px 40px;
+    column-gap: 10px;
+    align-items: center;
+  }
+  .sale-lines-head {
+    padding: 0 12px 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .sale-lines-head span:nth-child(3) {
+    grid-column: span 2;
+  }
+  .sale-lines-head span:nth-child(5) {
+    text-align: right;
+  }
+  .sale-items-form .sale-line {
+    row-gap: 4px;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: 0;
+  }
+  .sale-items-form .sale-line + .sale-line {
+    border-top: 1px solid var(--line);
+  }
+  .sale-items-form .sale-line-head,
+  .sale-items-form .sale-line-body {
+    display: contents;
+  }
+  .sale-items-form .sale-line-n {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .sale-items-form .sale-line-head > :nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .sale-items-form .qty-stepper {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .sale-items-form .sale-line-unit {
+    grid-column: 4;
+    grid-row: 1;
+  }
+  .sale-items-form .sale-line-price {
+    grid-column: 5;
+    grid-row: 1;
+    width: 100% !important;
+  }
+  .sale-items-form .sale-line-sum {
+    grid-column: 6;
+    grid-row: 1;
+    margin-left: 0;
+    text-align: right;
+  }
+  .sale-items-form .sale-line-remove {
+    grid-column: 7;
+    grid-row: 1;
+    margin: 0;
+  }
+  .sale-items-form .sale-line small {
+    grid-column: 2 / -1;
+  }
+  .sale-items-form .sale-total strong {
+    font-size: 28px;
+  }
+
+  /* По фото: слева — фото накладной крупно, справа — поля. */
+  .photo-operation-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
+    column-gap: 32px;
+    align-items: start;
+  }
+  .photo-operation-form > * {
+    grid-column: 2;
+  }
+  .photo-operation-form > .invoice-dropzone,
+  .photo-operation-form > .no-invoice {
+    grid-column: 1;
+    grid-row: 1 / span 40;
+    position: sticky;
+    top: 16px;
+  }
+  /* Страницы накладной — крупно, чтобы читать строки, а не миниатюрами. */
+  .photo-operation-form .page-thumbs {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+  }
+  .photo-operation-form .page-thumb {
+    width: auto;
+    height: auto;
+    max-height: 72vh;
+    aspect-ratio: 3 / 4;
+    background: #f6f7f4;
+  }
+  .photo-operation-form .page-thumb img {
+    object-fit: contain;
+  }
+  .photo-operation-form .page-thumbs:has(> li:only-child) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

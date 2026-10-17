@@ -324,7 +324,7 @@ export default async function NewOperation({
           </div>
         </section>
       ) : saleMode === "items" ? (
-        <section className="panel simple-operation-panel">
+        <section className="panel simple-operation-panel wide-operation-panel">
           <SaleItemsForm
             // Другой черновик — другая форма; перерисовка той же страницы (после
             // «+ Новый клиент», «+ Новый товар») введённое не сбрасывает.
@@ -340,7 +340,7 @@ export default async function NewOperation({
           />
         </section>
       ) : (
-        <section className="panel simple-operation-panel">
+        <section className={`panel simple-operation-panel${kind === "payment" ? "" : " wide-operation-panel"}`}>
           <OperationForm
             kind={kind}
             idempotencyKey={randomUUID()}

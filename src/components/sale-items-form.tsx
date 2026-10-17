@@ -362,6 +362,8 @@ export function SaleItemsForm({
     <form onSubmit={submit} className="simple-operation-form sale-items-form">
       <input type="hidden" name="idempotency_key" value={idempotencyKeyPinned} />
       {recordDate && <input type="hidden" name="record_date" value={recordDate} />}
+      {/* Компьютер и планшет: слева — кто и поиск товаров, справа — накладная. */}
+      <div className="sale-items-side">
       <PartyPicker
         label={purchase ? "Поставщик" : "Клиент"}
         name={purchase ? "supplier_id" : "customer_id"}
@@ -555,7 +557,19 @@ export function SaleItemsForm({
           </div>
         )}
       </div>
+      </div>
 
+      <div className="sale-items-main">
+      {lines.length > 0 && (
+        <div className="sale-lines-head" aria-hidden="true">
+          <span>№</span>
+          <span>Товар</span>
+          <span>Кол-во</span>
+          <span>{purchase ? "Цена закупки" : "Цена"}</span>
+          <span>Сумма</span>
+          <span />
+        </div>
+      )}
       {lines.length > 0 && (
         <ol className="sale-lines">
           {lines.map((line, i) => {
@@ -708,6 +722,7 @@ export function SaleItemsForm({
           ? "Остаток на складе вырастет, цена закупки запомнится у товара, сумма добавится к долгу поставщику."
           : "Остаток на складе уменьшится, сумма добавится к долгу клиента. Клиенту можно сразу отправить накладную PDF."}
       </p>
+      </div>
     </form>
   );
 }

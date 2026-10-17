@@ -1019,7 +1019,12 @@ export function OperationForm({
         onCancel={() => setPendingConfirm(null)}
         onConfirm={confirmStep}
       />
-      <form onSubmit={submit} className="simple-operation-form" noValidate>
+      <form
+        onSubmit={submit}
+        // Продажа и приход по фото на широком экране: фото слева, поля справа.
+        className={kind === "payment" ? "simple-operation-form" : "simple-operation-form photo-operation-form"}
+        noValidate
+      >
         <input type="hidden" name="kind" value={kind} />
         {kind !== "payment" && invoiceName && <input type="hidden" name="counterparty_name" value={invoiceName} />}
         {confirmedTotal && <input type="hidden" name="amount_confirmed" value={confirmedTotal} />}
