@@ -473,6 +473,15 @@ export function SaleItemsForm({
         />
       )}
       {contactNote && <small className="muted contact-note">{contactNote}</small>}
+      {/* Дата — наверху и заметно (просьба пользователя 17.10.2026). */}
+      <DatePicker
+        variant="field"
+        value={recordDate}
+        onChange={(next) => {
+          setRecordDate(next);
+          if (localError === "date") setLocalError(null);
+        }}
+      />
       </div>
 
       {/* Накладная таблицей, как в 1С (просьба пользователя 17.10.2026): сверху
@@ -769,13 +778,6 @@ export function SaleItemsForm({
         Клиент оплатил наличными
       </label>
       )}
-      <DatePicker
-        value={recordDate}
-        onChange={(next) => {
-          setRecordDate(next);
-          if (localError === "date") setLocalError(null);
-        }}
-      />
       </div>
       <div className="sale-sheet-submit">
       {overLimit && (

@@ -7321,3 +7321,73 @@ tr.row-link:has(a[data-pending]) {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Дата записи — заметным полем наверху формы продажи и прихода. */
+.date-picker-field {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.date-picker-label {
+  font-size: 14px;
+  color: var(--muted);
+}
+.date-picker-field-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 50px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 17px;
+  text-align: left;
+  cursor: pointer;
+}
+.date-picker-field-button svg {
+  color: var(--green);
+  flex: none;
+}
+.date-picker-field-button.active,
+.date-picker-field-button:hover {
+  border-color: #cfe3c4;
+  background: #f6faf1;
+}
+.date-picker-note {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fbefd9;
+  color: #8a5a12;
+  font-size: 12px;
+  font-weight: 600;
+}
+.date-picker-past .date-picker-field-button {
+  border-color: #e9c98f;
+  background: #fffaf0;
+}
+.simple-operation-form > .date-picker-field {
+  margin-bottom: 20px;
+}
+.sale-sheet-top > .date-picker-field {
+  margin-bottom: 18px;
+}
+@media (min-width: 900px) {
+  /* Клиент и дата — в одну строку. */
+  .sale-sheet-top {
+    display: grid;
+    grid-template-columns: minmax(0, 480px) 260px;
+    column-gap: 24px;
+    max-width: none;
+    align-items: start;
+  }
+  .sale-sheet-top > * {
+    grid-column: 1;
+  }
+  .sale-sheet-top > .date-picker-field {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}

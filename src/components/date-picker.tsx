@@ -39,11 +39,14 @@ export function DatePicker({
   value,
   onChange,
   maxDaysBack = 365,
+  variant = "inline",
 }: {
   label?: string;
   value: string;
   onChange: (value: string) => void;
   maxDaysBack?: number;
+  /** «field» — заметное поле наверху формы (продажа, приход): день крупно, вся плашка — кнопка. */
+  variant?: "inline" | "field";
 }) {
   const [open, setOpen] = useState(false);
   // Сегодня считаем в браузере при открытии — без расхождения с сервером при отрисовке.
@@ -122,20 +125,41 @@ export function DatePicker({
     });
 
   return (
-    <div className="date-picker" ref={box}>
-      <span className="date-picker-text">
-        {label}: <strong>{value ? ruDate(value) : "сегодня"}</strong>
-      </span>
-      <button
-        type="button"
-        ref={toggleButton}
-        className={`date-picker-toggle${open ? " active" : ""}`}
-        aria-label="Выбрать дату"
-        aria-expanded={open}
-        onClick={toggle}
-      >
-        <Icon name="calendar" />
-      </button>
+    <div className={variant === "field" ? `date-picker date-picker-field${value ? " date-picker-past" : ""}` : "date-picker"} ref={box}>
+      {variant === "field" ? (
+        <>
+          <span className="date-picker-label">{label}</span>
+          <button
+            type="button"
+            ref={toggleButton}
+            className={`date-picker-field-button${open ? " active" : ""}`}
+            aria-label={`${label}: ${value ? ruDate(value) : "сегодня"}. Выбрать дату`}
+            aria-expanded={open}
+            onClick={toggle}
+          >
+            <Icon name="calendar" />
+            <strong>{value ? ruDate(value) : "Сегодня"}</strong>
+            {/* Запись не за сегодня — видно сразу, чтобы не ошибиться днём. */}
+            {value && <span className="date-picker-note">не сегодня</span>}
+          </button>
+        </>
+      ) : (
+        <>
+          <span className="date-picker-text">
+            {label}: <strong>{value ? ruDate(value) : "сегодня"}</strong>
+          </span>
+          <button
+            type="button"
+            ref={toggleButton}
+            className={`date-picker-toggle${open ? " active" : ""}`}
+            aria-label="Выбрать дату"
+            aria-expanded={open}
+            onClick={toggle}
+          >
+            <Icon name="calendar" />
+          </button>
+        </>
+      )}
       {open && today && (
         <div
           ref={popover}

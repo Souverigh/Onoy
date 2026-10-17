@@ -504,7 +504,6 @@ export function OperationForm({
     kind === "purchase" && amountFromInput(paidNowValue)
       ? `сразу оплатили ${money(amountFromInput(paidNowValue), debtCurrency)}`
       : null,
-    recordDate ? ruDate(recordDate) : "сегодня",
     recognizedCount ? `${recognizedCount} ${lineWord(recognizedCount)} с накладной` : null,
   ]
     .filter(Boolean)
@@ -1355,6 +1354,17 @@ export function OperationForm({
             </div>
           </div>
         )}
+        {kind !== "payment" && (
+          // Дата продажи или прихода — на виду, а не в «Подробностях».
+          <DatePicker
+            variant="field"
+            value={recordDate}
+            onChange={(next) => {
+              setRecordDate(next);
+              if (localError === "date") setLocalError(null);
+            }}
+          />
+        )}
         <div className="amount-head">
           <span className="label-with-tip">
             Сколько?
@@ -1680,13 +1690,6 @@ export function OperationForm({
                   />
                 </label>
               )}
-              <DatePicker
-                value={recordDate}
-                onChange={(next) => {
-                  setRecordDate(next);
-                  if (localError === "date") setLocalError(null);
-                }}
-              />
               {checkedPhoto?.result && (checkedPhoto.result.lines.length > 0 || correcting) && (
                 <RecognizedLines
                   result={checkedPhoto.result}
