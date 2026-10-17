@@ -120,11 +120,13 @@ export function Dashboard({
           </Link>
         </section>
       )}
+      {/* «Продажа» и «Товар от поставщика» открывают список записей с черновиками,
+          новая запись — кнопкой «+» сверху списка. */}
       <section className="quick-actions" aria-label="Добавить запись">
-        <Link className="quick-action" href={href("/money/new?type=sale")}>
+        <Link className="quick-action" href={href("/sales")}>
           Продажа
         </Link>
-        <Link className="quick-action" href={href("/money/new?type=purchase")}>
+        <Link className="quick-action" href={href("/purchases")}>
           Товар от поставщика
         </Link>
         <Link className="quick-action secondary-action" href={href("/money/new?type=payment&direction=incoming")}>

@@ -7,14 +7,11 @@ import { InstallApp } from "./install-app";
 
 type NavItem = [string, string, IconName];
 
-// Продажи и Приход — списки записей с черновиками (17.10.2026).
 // Склад — с 30.09.2026 (товары, остатки, продажа товарами); на телефоне — в «Ещё».
 const allNav: NavItem[] = [
   ["/", "Главная", "home"],
   ["/customers", "Клиенты", "people"],
   ["/suppliers", "Поставщики", "truck"],
-  ["/sales", "Продажи", "cart"],
-  ["/purchases", "Приход", "inbox"],
   ["/money", "Все записи", "wallet"],
   ["/stock", "Склад", "box"],
   ["/day", "Итог дня", "file"],
@@ -29,6 +26,9 @@ const OWNER_ONLY = new Set(["/day", "/reports", "/claims"]);
 /** Заголовки страниц без своего пункта меню. */
 const EXTRA_TITLES: [string, string][] = [
   ["/money/new", "Новая запись"],
+  // Открываются с главной («Продажа», «Товар от поставщика»), в меню их нет.
+  ["/sales", "Продажи"],
+  ["/purchases", "Приход"],
   ["/money/send", "Отправить клиенту"],
   ["/money/adjustment", "Скидка или возврат"],
   ["/money/reverse", "Отменить запись"],
