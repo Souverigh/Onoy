@@ -13,7 +13,9 @@ export type IconName =
   | "chart"
   | "menu"
   | "close"
-  | "calendar";
+  | "calendar"
+  | "cart"
+  | "inbox";
 const paths: Record<IconName, string> = {
   home: "M3 10 12 3l9 7v10H3V10Zm6 10v-7h6v7",
   people:
@@ -33,6 +35,8 @@ const paths: Record<IconName, string> = {
   menu: "M4 6h16M4 12h16M4 18h16",
   close: "M6 6l12 12M18 6 6 18",
   calendar: "M4 6h16v15H4V6Zm0 5h16M8 3v5m8-5v5",
+  cart: "M3 4h2l2.5 11h11L21 7H6.2M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm9 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z",
+  inbox: "M3 13h5l1.5 3h5l1.5-3h5M5 5h14l2 8v6H3v-6l2-8Z",
 };
 export function Icon({ name }: { name: IconName }) {
   return (

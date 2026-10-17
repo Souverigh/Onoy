@@ -11,6 +11,7 @@ import { getContext } from "@/lib/context";
 import { officialRates } from "@/lib/fx";
 import { isCurrency } from "@/lib/currency";
 import { documentPages, signedPhotoUrl } from "@/lib/storage";
+import { draftData, type Draft } from "@/lib/drafts";
 
 type Operation = "purchase" | "sale" | "payment";
 type Party = { id: string; name: string; currency: string | null };
@@ -32,6 +33,7 @@ export default async function NewOperation({
     mode?: string;
     direction?: string;
     redo?: string;
+    draft?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -48,7 +50,28 @@ export default async function NewOperation({
   // товарами со склада; открываем вид, где продавец был в прошлый раз.
   const itemsKind = kind === "sale" || kind === "purchase";
   const remembered = (await cookies()).get(`mode_${kind}`)?.value;
-  const wantedMode = params.mode === "items" || params.mode === "photo" ? params.mode : remembered === "items" ? "items" : "photo";
+  // Черновик (только ручной ввод товаров): свой, того же вида — RLS и фильтр.
+  const draftParam = itemsKind && params.draft && /^[a-f0-9-]{36}$/i.test(params.draft) ? params.draft : undefined;
+  const draftResult = draftParam
+    ? await db
+        .from("record_drafts")
+        .select("id,kind,data,updated_at")
+        .eq("organization_id", organizationId)
+        .eq("kind", kind)
+        .eq("id", draftParam)
+        .maybeSingle()
+    : null;
+  const draft: Draft | undefined = draftResult?.data
+    ? { id: draftResult.data.id, kind: kind as Draft["kind"], data: draftData(draftResult.data.data), updated_at: draftResult.data.updated_at }
+    : undefined;
+  const wantedMode =
+    draftParam || params.mode === "items"
+      ? "items"
+      : params.mode === "photo"
+        ? "photo"
+        : remembered === "items"
+          ? "items"
+          : "photo";
   const productsRequest =
     itemsKind && !params.documentId && wantedMode === "items"
       ? db
@@ -172,6 +195,8 @@ export default async function NewOperation({
         ? { href: "/customers/new", label: "Добавить клиента" }
         : { href: "/customers/new", label: "Добавить клиента" };
 
+  const itemsFormKey = randomUUID();
+
   return (
     <>
       <div className="page-heading operation-page-heading">
@@ -185,6 +210,11 @@ export default async function NewOperation({
           selected={saleMode}
           party={initialParty}
         />
+      )}
+      {draftParam && !draft && (
+        <p className="notice" role="status">
+          Этого черновика уже нет - его записали или удалили. Ниже - новая пустая форма.
+        </p>
       )}
       {(params.undone || params.redo) && (
         <p className="notice success" role="status">
@@ -219,13 +249,16 @@ export default async function NewOperation({
       ) : saleMode === "items" ? (
         <section className="panel simple-operation-panel">
           <SaleItemsForm
+            // Каждый переход — своя форма: «+ Продажа» из черновика не продолжает его.
+            key={itemsFormKey}
             kind={kind === "purchase" ? "purchase" : "sale"}
             customers={kind === "purchase" ? suppliers : customers}
             products={products}
             shopCurrency={shopCurrency}
             rates={rates}
-            idempotencyKey={randomUUID()}
+            idempotencyKey={itemsFormKey}
             initialParty={initialParty}
+            draft={draft}
           />
         </section>
       ) : (

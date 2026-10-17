@@ -32,7 +32,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 23);
+  assert.equal(rows.length, 24);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -3024,5 +3024,38 @@ test("returns by lines: price as bought, no more than bought, stock comes back, 
   await db.query("select commit_return($1,$2,$3,'Вернул 7',$4)", [orgA, buyer, JSON.stringify([{ sale_item: item, qty: "7" }]), k(10)]);
   assert.equal(await balance(buyer), "80.00");
   assert.equal(await stock(breaker), 17);
+  await owner();
+});
+test("record drafts: only the author sees and edits them, other shops get nothing, ledger untouched", async () => {
+  await user(a);
+  const sold = (await db.query("select count(*)::int as n from sales")).rows[0].n;
+  const id = (
+    await db.query("select save_record_draft($1,null,'sale',$2) as id", [orgA, JSON.stringify({ party: "x", lines: [] })])
+  ).rows[0].id;
+  assert.equal((await db.query("select save_record_draft($1,$2,'sale',$3) as id", [orgA, id, '{"party":"y"}'])).rows[0].id, id);
+  assert.equal((await db.query("select data->>'party' as p from record_drafts where id=$1", [id])).rows[0].p, "y");
+  // Тот же черновик другим видом или не объектом — нельзя.
+  await assert.rejects(db.query("select save_record_draft($1,$2,'purchase','{}')", [orgA, id]), /draft_gone/);
+  await assert.rejects(db.query("select save_record_draft($1,null,'payment','{}')", [orgA]), /invalid_draft/);
+  await assert.rejects(db.query("select save_record_draft($1,null,'sale','[]')", [orgA]), /invalid_draft/);
+  // Напрямую в таблицу писать нельзя.
+  await assert.rejects(db.query("update record_drafts set data='{}' where id=$1", [id]), /permission denied/);
+  // Чужой магазин: не видит, не меняет, не стирает.
+  await user(b);
+  assert.equal((await db.query("select * from record_drafts")).rows.length, 0);
+  await assert.rejects(db.query("select save_record_draft($1,$2,'sale','{}')", [orgA, id]), /not_a_member/);
+  await assert.rejects(db.query("select save_record_draft($1,$2,'sale','{}')", [orgB, id]), /draft_gone/);
+  await db.query("select delete_record_draft($1,$2)", [orgB, id]);
+  await user(a);
+  assert.equal((await db.query("select count(*)::int as n from record_drafts where id=$1", [id])).rows[0].n, 1);
+  // Стёртый не воскресает; повторное стирание — не ошибка; в журнале — создан и стёрт.
+  await db.query("select delete_record_draft($1,$2)", [orgA, id]);
+  await db.query("select delete_record_draft($1,$2)", [orgA, id]);
+  await assert.rejects(db.query("select save_record_draft($1,$2,'sale','{}')", [orgA, id]), /draft_gone/);
+  assert.deepEqual(
+    (await db.query("select action from audit_events where entity_id=$1 order by created_at, action", [id])).rows.map((r) => r.action).sort(),
+    ["draft.created", "draft.deleted"],
+  );
+  assert.equal((await db.query("select count(*)::int as n from sales")).rows[0].n, sold);
   await owner();
 });

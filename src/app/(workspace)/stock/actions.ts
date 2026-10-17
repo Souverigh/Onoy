@@ -223,6 +223,19 @@ export async function importProducts(rows: ImportPayload[]): Promise<ImportResul
   }
 }
 
+/** Записали по черновику — он больше не нужен. Ошибка не мешает записи. */
+async function dropDraft(form: FormData) {
+  const id = text(form, "draft_id");
+  if (!uuidPattern.test(id)) return;
+  try {
+    const { db, organizationId } = await getContext();
+    const result = await db.rpc("delete_record_draft", { p_org: organizationId, p_id: id });
+    if (result.error) console.error("dropDraft failed", { message: result.error.message });
+  } catch (error) {
+    console.error("dropDraft failed", error);
+  }
+}
+
 export type SaleLine = { product: string; qty: string; price: string };
 export type SaleItemsState = { error?: string; attempt?: number };
 
@@ -276,6 +289,7 @@ export async function commitSaleItems(previous: SaleItemsState, form: FormData):
       return { error: code === "invalid_currency" ? "rate" : code, attempt };
     }
     saleId = result.data as string;
+    await dropDraft(form);
   } catch (error) {
     unstable_rethrow(error);
     console.error("commitSaleItems: unexpected failure", error);
@@ -367,6 +381,7 @@ export async function commitPurchaseItems(previous: SaleItemsState, form: FormDa
       return { error: failureCode(result.error?.message), attempt };
     }
     purchaseId = result.data as string;
+    await dropDraft(form);
   } catch (error) {
     unstable_rethrow(error);
     console.error("commitPurchaseItems: unexpected failure", error);

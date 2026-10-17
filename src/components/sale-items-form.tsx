@@ -10,6 +10,8 @@ import {
   type SaleItemsState,
 } from "@/app/(workspace)/stock/actions";
 import { customerFromContact } from "@/app/(workspace)/money/actions";
+import { saveDraft } from "@/app/(workspace)/drafts/actions";
+import type { Draft, DraftData } from "@/lib/drafts";
 import { Submit } from "./submit";
 import { ContactPicker } from "./contact-picker";
 import { PartyPicker } from "./party-picker";
@@ -70,6 +72,7 @@ export function SaleItemsForm({
   rates,
   idempotencyKey,
   initialParty,
+  draft,
 }: {
   kind?: "sale" | "purchase";
   /** Клиенты для продажи, поставщики для прихода. */
@@ -79,6 +82,8 @@ export function SaleItemsForm({
   rates: RateQuotes;
   idempotencyKey: string;
   initialParty?: string;
+  /** Продолжить черновик: форма открывается с тем, что было введено. */
+  draft?: Draft;
 }) {
   const purchase = kind === "purchase";
   const priceOf = (p: QuickProduct) => (purchase ? p.purchase_price : p.sale_price);
@@ -88,17 +93,25 @@ export function SaleItemsForm({
   const [contactCustomers, setContactCustomers] = useState<Customer[]>([]);
   const [contactNote, setContactNote] = useState<string | null>(null);
   const allCustomers = [...customers, ...contactCustomers.filter((c) => !customers.some((x) => x.id === c.id))];
-  const [party, setParty] = useState(initialParty ?? "");
+  const [party, setParty] = useState(draft?.data.party ?? initialParty ?? "");
   // «+ Новый клиент» / «+ Новый поставщик» открыт: имя — что набрали в поиске.
   const [newCustomer, setNewCustomer] = useState<string | null>(null);
-  const [lines, setLines] = useState<Line[]>([]);
-  const lineKey = useRef(0);
+  // Строки черновика: товар — свежий со склада (остаток, цены), иначе снимок.
+  const [lines, setLines] = useState<Line[]>(() =>
+    (draft?.data.lines ?? []).map((l, i) => ({
+      key: i + 1,
+      product: initialProducts.find((p) => p.id === l.product.id) ?? l.product,
+      qty: l.qty,
+      price: l.price,
+    })),
+  );
+  const lineKey = useRef(draft?.data.lines.length ?? 0);
   const [query, setQuery] = useState("");
   const [flash, setFlash] = useState<number | null>(null);
-  const [paidNow, setPaidNow] = useState(false);
+  const [paidNow, setPaidNow] = useState(draft?.data.paidNow ?? false);
   // Дата записи: пусто — сегодня; «забыл записать вчера» — другой день.
-  const [recordDate, setRecordDate] = useState("");
-  const [rateValue, setRateValue] = useState("");
+  const [recordDate, setRecordDate] = useState(draft?.data.recordDate ?? "");
+  const [rateValue, setRateValue] = useState(draft?.data.rate ?? "");
   const [localError, setLocalError] = useState<string | null>(null);
   // Новый товар прямо отсюда, если поиск ничего не нашёл.
   const [creating, setCreating] = useState<{ name: string; unit: string; price: string } | null>(null);
@@ -151,6 +164,89 @@ export function SaleItemsForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lineCurrency]);
   const overLimit = customer && !purchase ? creditLimitExceeded(customer.balance ?? 0, customer.credit_limit, debt, paidNow) : null;
+
+  // Черновик: всё введённое сохраняется в базе само (через секунду после
+  // правки, сразу — при уходе со страницы или сворачивании), чтобы переход в
+  // другой раздел ничего не стирал. Запись по черновику стирает его.
+  const draftId = useRef<string | null>(draft?.id ?? null);
+  const draftSnapshot: DraftData = {
+    party,
+    partyName: customer?.name ?? "",
+    lines: lines.map((l) => ({ product: l.product, qty: l.qty, price: l.price })),
+    paidNow,
+    recordDate,
+    rate: rateValue,
+    total: total.toFixed(2),
+    currency: lineCurrency,
+  };
+  const draftJson = JSON.stringify(draftSnapshot);
+  const draftLatest = useRef({ json: draftJson, data: draftSnapshot });
+  draftLatest.current = { json: draftJson, data: draftSnapshot };
+  // Что уже в базе; открытая и не тронутая форма черновика не создаёт.
+  const draftSaved = useRef(draftJson);
+  const draftSaving = useRef<Promise<void> | null>(null);
+  const draftStopped = useRef(false);
+  const [draftStatus, setDraftStatus] = useState<"saved" | "saving" | "error" | null>(draft ? "saved" : null);
+
+  const flushDraft = useRef(async (): Promise<void> => {});
+  flushDraft.current = async () => {
+    while (draftSaving.current) await draftSaving.current;
+    const { json, data } = draftLatest.current;
+    if (draftStopped.current || json === draftSaved.current) return;
+    // Пустую новую форму не сохраняем — черновик появляется с первой правкой.
+    if (!draftId.current && !data.party && !data.lines.length) return;
+    setDraftStatus("saving");
+    draftSaving.current = (async () => {
+      try {
+        const result = await saveDraft(kind, draftId.current, data);
+        if ("id" in result) {
+          draftSaved.current = json;
+          if (draftId.current !== result.id) {
+            draftId.current = result.id;
+            // Обновление страницы откроет тот же черновик.
+            const url = new URL(window.location.href);
+            url.searchParams.set("mode", "items");
+            url.searchParams.set("draft", result.id);
+            window.history.replaceState(window.history.state, "", url);
+          }
+          setDraftStatus(draftLatest.current.json === json ? "saved" : "saving");
+        } else if (result.error === "gone") {
+          draftStopped.current = true;
+          setDraftStatus(null);
+        } else setDraftStatus("error");
+      } catch {
+        setDraftStatus("error");
+      } finally {
+        draftSaving.current = null;
+      }
+    })();
+    await draftSaving.current;
+  };
+
+  useEffect(() => {
+    if (draftStopped.current || draftJson === draftSaved.current) return;
+    const timer = setTimeout(() => void flushDraft.current(), 1000);
+    return () => clearTimeout(timer);
+  }, [draftJson]);
+
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === "hidden") void flushDraft.current();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", onHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", onHide);
+      // Ушли в другой раздел внутри Depter — сохраняем, что не успело.
+      void flushDraft.current();
+    };
+  }, []);
+
+  // Запись не удалась — черновик снова сохраняется.
+  useEffect(() => {
+    if (state.error) draftStopped.current = false;
+  }, [state.attempt, state.error]);
 
   const trimmed = query.trim();
   const inCart = new Set(lines.map((l) => l.product.id));
@@ -227,7 +323,7 @@ export function SaleItemsForm({
     }
   }
 
-  function submit(e: React.FormEvent<HTMLFormElement>) {
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (saving) return;
     if (!party) return setLocalError("party");
@@ -239,6 +335,11 @@ export function SaleItemsForm({
     if (needsRate && !rate) return setLocalError("rate");
     setLocalError(null);
     const form = new FormData(e.currentTarget);
+    // Черновик в записи: дождаться его сохранения (нужен id), дальше не сохранять —
+    // успешная запись его сотрёт.
+    if (draftSaving.current) await draftSaving.current;
+    draftStopped.current = true;
+    if (draftId.current) form.set("draft_id", draftId.current);
     form.set(
       "lines",
       JSON.stringify(lines.map((l) => ({ product: l.product.id, qty: stockNumber(l.qty, 3), price: stockNumber(l.price || "0", 2) }))),
@@ -588,6 +689,15 @@ export function SaleItemsForm({
         <p className="form-error" role="alert" ref={errorRef}>
           {errorText}
         </p>
+      )}
+      {draftStatus && (
+        <small className="muted draft-status" role="status">
+          {draftStatus === "saving"
+            ? "Сохраняем черновик…"
+            : draftStatus === "saved"
+              ? `Черновик сохранён - найдёте его в разделе «${purchase ? "Приход" : "Продажи"}».`
+              : "Черновик не сохранился - проверьте интернет. Введённое на этом экране не пропало."}
+        </small>
       )}
       <div className="simple-operation-actions">
         <Submit pending={saving} disabled={!lines.length}>
