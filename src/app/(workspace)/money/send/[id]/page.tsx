@@ -2,7 +2,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
-import { debtMoney, money, originalAmountText } from "@/lib/format";
+import { debtMoney, money, originalAmountText, quantity } from "@/lib/format";
 import { partyCurrency } from "@/lib/currency";
 import { invoiceMessage } from "@/lib/invoice-message";
 import { SendInvoice } from "@/components/send-invoice";
@@ -54,14 +54,21 @@ export default async function SendSalePage({
       : Promise.resolve({ data: null }),
     db.from("organizations").select("name").eq("id", organizationId).maybeSingle(),
     ensureShareToken(db, organizationId, sale.customer_id),
-    db.from("sale_items").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("sale_id", sale.id),
+    // Строки — для списка товаров справа: товары со склада или строки фото.
+    db
+      .from("sale_items")
+      .select("id,n,name_snapshot,unit,qty,price,line_total")
+      .eq("organization_id", organizationId)
+      .eq("sale_id", sale.id)
+      .order("n"),
     sale.document_id
       ? db
           .from("document_lines")
-          .select("id", { count: "exact", head: true })
+          .select("id,n,name_raw,unit,qty,price,sum")
           .eq("organization_id", organizationId)
           .eq("document_id", sale.document_id)
-      : Promise.resolve({ count: 0 }),
+          .order("n")
+      : Promise.resolve({ data: [] }),
   ]);
   const customer = customerResult.data;
   if (!customer) notFound();
@@ -70,8 +77,16 @@ export default async function SendSalePage({
   const h = await headers();
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
   const status = docResult.data?.status ?? null;
-  const hasItems = (itemsResult.count ?? 0) > 0;
-  const hasLines = hasItems || (linesResult.count ?? 0) > 0;
+  type ShownLine = { id: string; name: string; unit: string | null; qty: string; price: string; sum: string };
+  const saleItems = (itemsResult.data ?? []) as { id: string; name_snapshot: string; unit: string | null; qty: string; price: string; line_total: string }[];
+  const photoLines = (linesResult.data ?? []) as { id: string; name_raw: string; unit: string | null; qty: string; price: string; sum: string }[];
+  const shownLines: ShownLine[] = saleItems.length
+    ? saleItems.map((i) => ({ id: i.id, name: i.name_snapshot, unit: i.unit, qty: String(i.qty), price: String(i.price), sum: String(i.line_total) }))
+    : photoLines.map((l) => ({ id: l.id, name: l.name_raw, unit: l.unit, qty: String(l.qty), price: String(l.price), sum: String(l.sum) }));
+  const hasItems = saleItems.length > 0;
+  // Строки — в валюте накладной: продажа в другой валюте — в валюте магазина.
+  const lineCurrency = sale.original_currency ?? partyCurrency(customerResult.data, shopCurrency);
+  const hasLines = shownLines.length > 0;
   const checked = (hasItems || status === "digitized") && hasLines && !sale.reversed_at && !sale.is_opening;
   const pending = status === "uploaded" || status === "processing";
   const date = new Intl.DateTimeFormat("ru-RU", {
@@ -132,6 +147,8 @@ export default async function SendSalePage({
         {sale.reversed_at && <p className="form-error">Эта продажа отменена - отправлять её клиенту не нужно.</p>}
       </section>
 
+      {/* Слева — накладная и отправка, справа — товары продажи (если это не одна сумма). */}
+      <div className={hasLines ? "send-columns" : undefined}>
       {!sale.reversed_at && (
         <section className="panel send-invoice-panel">
           {imageUrl ? (
@@ -193,6 +210,33 @@ export default async function SendSalePage({
           {canUndo && <UndoForm kind="sale" id={sale.id} />}
         </section>
       )}
+      {hasLines && (
+        <section className="panel send-lines-panel">
+          <div className="section-title">
+            <h2>Товары</h2>
+            <span className="muted">{shownLines.length} {shownLines.length === 1 ? "строка" : shownLines.length < 5 ? "строки" : "строк"}</span>
+          </div>
+          <ol className="invoice-lines">
+            {shownLines.map((line, i) => (
+              <li key={line.id} className="invoice-line invoice-line-static">
+                <span className="invoice-line-n">{i + 1}</span>
+                <span className="invoice-line-body">
+                  <span className="invoice-line-name">{line.name}</span>
+                  <span className="invoice-line-calc nowrap">
+                    {quantity(line.qty)} {line.unit ?? "шт"} × {money(line.price, lineCurrency)}
+                  </span>
+                </span>
+                <span className="invoice-line-sum">{money(line.sum, lineCurrency)}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="sale-total">
+            <span>Итого</span>
+            <strong>{money(shownLines.reduce((t, l) => t + Number(l.sum), 0).toFixed(2), lineCurrency)}</strong>
+          </div>
+        </section>
+      )}
+      </div>
     </>
   );
 }

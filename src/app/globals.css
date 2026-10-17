@@ -7043,3 +7043,27 @@ tr.row-link:has(a[data-pending]) {
 .record-send-actions {
   margin-top: 12px;
 }
+/* Экран продажи: накладная слева, товары справа (17.10.2026). */
+.send-columns {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+.send-columns .send-invoice-panel {
+  max-width: none;
+}
+@media (min-width: 1000px) {
+  .send-columns {
+    grid-template-columns: minmax(0, 640px) minmax(0, 1fr);
+  }
+}
+.invoice-line-static {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 12px 4px;
+}
+.send-lines-panel .sale-total {
+  margin-top: 12px;
+}
