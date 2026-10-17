@@ -7006,3 +7006,37 @@ tr.row-link:has(a[data-pending]) {
     justify-content: space-between;
   }
 }
+/* Строка списка продаж/прихода ведёт на запись: ссылка с даты на всю строку. */
+.record-row {
+  position: relative;
+}
+.record-row:hover {
+  background: #f6f8f4;
+}
+.record-row-link {
+  color: inherit;
+  text-decoration: none;
+}
+.record-row-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.record-row-action {
+  position: relative;
+  z-index: 1;
+}
+.record-details {
+  grid-template-columns: 140px 1fr;
+  gap: 12px 22px;
+  margin: 0;
+}
+@media (max-width: 560px) {
+  .record-details {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .record-details dd {
+    margin-bottom: 10px;
+  }
+}

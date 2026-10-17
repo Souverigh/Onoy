@@ -87,8 +87,7 @@ export async function RecordsPage({
   const newHref = `/money/new?type=${kind}`;
   const currencyOf = (row: Row) => row.party?.currency ?? shopCurrency;
   const partyName = (row: Row) => row.party?.name ?? (sale ? "Клиент" : "Поставщик");
-  const recordHref = (row: Row) =>
-    row.document_id ? `/documents/${row.document_id}` : sale ? `/money/send/${row.id}` : `/suppliers/${row.party_id}`;
+  const recordHref = (row: Row) => `/records/${kind}/${row.id}`;
   const authorOf = (row: Row) => (row.created_by ? members.get(row.created_by)?.name : undefined);
   const payment = (row: Row) => (sale ? (row.paid_immediately ? "Наличными" : "В долг") : null);
   const pageHref = (page: number) => (page > 1 ? `${base}?page=${page}` : base);
@@ -211,12 +210,15 @@ export async function RecordsPage({
                 </thead>
                 <tbody>
                   {rows.map((row) => (
-                    <tr key={row.id} className={row.reversed_at ? "reversed-row" : ""}>
-                      <td>{dateTime(row.occurred_at)}</td>
+                    // Строка нажимается целиком: ссылка с даты растянута на всю строку.
+                    <tr key={row.id} className={row.reversed_at ? "record-row reversed-row" : "record-row"}>
                       <td>
-                        <Link className="entry-link" href={recordHref(row)}>
-                          {partyName(row)}
+                        <Link className="record-row-link" href={recordHref(row)}>
+                          {dateTime(row.occurred_at)}
                         </Link>
+                      </td>
+                      <td>
+                        {partyName(row)}
                         {row.reversed_at && <span className="tag reversed-tag">отменена</span>}
                       </td>
                       <td>{money(row.total, currencyOf(row))}</td>
@@ -228,7 +230,7 @@ export async function RecordsPage({
                             {row.reversal_comment}
                           </span>
                         ) : isOwner ? (
-                          <Link className="text-button" href={`/money/reverse/${kind}/${row.id}`}>
+                          <Link className="text-button record-row-action" href={`/money/reverse/${kind}/${row.id}`}>
                             Отменить
                           </Link>
                         ) : null}
