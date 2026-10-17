@@ -14,6 +14,10 @@ type Props = {
   fileName: string;
   /** Распознавание ещё идёт — обновляем страницу, пока не закончится. */
   pending: boolean;
+  /** Тип файла: картинка накладной (по умолчанию) или PDF (приход). */
+  fileType?: "image/png" | "application/pdf";
+  /** Кому: «клиенту» или «поставщику» — в подписях кнопок. */
+  to?: string;
 };
 
 const REFRESH_MS = 4000;
@@ -25,7 +29,7 @@ const REFRESH_LIMIT = 15;
  * (браузер не делится файлами): «Скачать» и «Открыть WhatsApp». share()
  * требует свежего нажатия, поэтому картинку скачиваем заранее.
  */
-export function SendInvoice({ phone, text, fileText, imageUrl, fileName, pending }: Props) {
+export function SendInvoice({ phone, text, fileText, imageUrl, fileName, pending, fileType = "image/png", to = "клиенту" }: Props) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [canShareFile, setCanShareFile] = useState(false);
@@ -37,14 +41,14 @@ export function SendInvoice({ phone, text, fileText, imageUrl, fileName, pending
 
   useEffect(() => {
     if (!imageUrl || typeof navigator.canShare !== "function") return;
-    const probe = new File([""], "probe.png", { type: "image/png" });
+    const probe = new File([""], fileType === "image/png" ? "probe.png" : "probe.pdf", { type: fileType });
     if (!navigator.canShare({ files: [probe] })) return;
     setCanShareFile(true);
     let cancelled = false;
     fetch(imageUrl)
       .then((res) => (res.ok ? res.blob() : Promise.reject(new Error(String(res.status)))))
       .then((blob) => {
-        if (!cancelled) setFile(new File([blob], fileName, { type: "image/png" }));
+        if (!cancelled) setFile(new File([blob], fileName, { type: fileType }));
       })
       .catch(() => {
         if (!cancelled) setCanShareFile(false);
@@ -52,7 +56,7 @@ export function SendInvoice({ phone, text, fileText, imageUrl, fileName, pending
     return () => {
       cancelled = true;
     };
-  }, [imageUrl, fileName]);
+  }, [imageUrl, fileName, fileType]);
 
   useEffect(() => {
     if (!pending) return;
@@ -71,7 +75,7 @@ export function SendInvoice({ phone, text, fileText, imageUrl, fileName, pending
       try {
         const res = await fetch(imageUrl!);
         if (!res.ok) throw new Error(String(res.status));
-        image = new File([await res.blob()], fileName, { type: "image/png" });
+        image = new File([await res.blob()], fileName, { type: fileType });
         setFile(image);
       } catch {
         setState("error");
@@ -101,7 +105,7 @@ export function SendInvoice({ phone, text, fileText, imageUrl, fileName, pending
     return (
       <div className="send-invoice">
         <a className="button primary send-main" href={waHref} target="_blank" rel="noreferrer">
-          Отправить клиенту в WhatsApp
+          Отправить {to} в WhatsApp
         </a>
       </div>
     );
@@ -110,7 +114,7 @@ export function SendInvoice({ phone, text, fileText, imageUrl, fileName, pending
     return (
       <div className="send-invoice">
         <button className="button primary send-main" type="button" onClick={shareFile} disabled={state === "loading"}>
-          {state === "loading" ? "Готовим накладную…" : state === "retry" ? "Накладная готова - отправить" : "Отправить клиенту"}
+          {state === "loading" ? "Готовим накладную…" : state === "retry" ? "Накладная готова - отправить" : `Отправить ${to}`}
         </button>
         {state === "sent" && <p className="muted">Отправлено? Если WhatsApp не открылся - нажмите ещё раз.</p>}
         {state === "error" && (
@@ -126,7 +130,7 @@ export function SendInvoice({ phone, text, fileText, imageUrl, fileName, pending
 
   return (
     <div className="send-invoice send-invoice-desktop">
-      <p className="send-invoice-title">Отправить клиенту</p>
+      <p className="send-invoice-title">Отправить {to}</p>
       <div className="send-invoice-actions">
         <a className="button primary" href={`${imageUrl}?download=1`} download={fileName}>
           1. Скачать накладную
@@ -136,7 +140,7 @@ export function SendInvoice({ phone, text, fileText, imageUrl, fileName, pending
         </a>
       </div>
       <small className="muted">
-        В WhatsApp перетащите скачанный файл в чат с клиентом - текст со ссылкой уже будет вписан.
+        В WhatsApp перетащите скачанный файл в чат с {to === "клиенту" ? "клиентом" : "поставщиком"} - текст{to === "клиенту" ? " со ссылкой" : ""} уже будет вписан.
       </small>
     </div>
   );

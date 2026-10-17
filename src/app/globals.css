@@ -7040,3 +7040,6 @@ tr.row-link:has(a[data-pending]) {
     margin-bottom: 10px;
   }
 }
+.record-send-actions {
+  margin-top: 12px;
+}

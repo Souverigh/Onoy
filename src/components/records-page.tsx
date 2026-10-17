@@ -87,7 +87,10 @@ export async function RecordsPage({
   const newHref = `/money/new?type=${kind}`;
   const currencyOf = (row: Row) => row.party?.currency ?? shopCurrency;
   const partyName = (row: Row) => row.party?.name ?? (sale ? "Клиент" : "Поставщик");
-  const recordHref = (row: Row) => `/records/${kind}/${row.id}`;
+  // Запись открывается там, где она уже есть: по фото — документ, продажа —
+  // её накладная, приход без фото — /purchases/<id>.
+  const recordHref = (row: Row) =>
+    row.document_id ? `/documents/${row.document_id}` : sale ? `/money/send/${row.id}` : `/purchases/${row.id}`;
   const authorOf = (row: Row) => (row.created_by ? members.get(row.created_by)?.name : undefined);
   const payment = (row: Row) => (sale ? (row.paid_immediately ? "Наличными" : "В долг") : null);
   const pageHref = (page: number) => (page > 1 ? `${base}?page=${page}` : base);

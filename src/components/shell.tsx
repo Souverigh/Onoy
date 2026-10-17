@@ -29,8 +29,6 @@ const EXTRA_TITLES: [string, string][] = [
   // Открываются с главной («Продажа», «Товар от поставщика»), в меню их нет.
   ["/sales", "Продажи"],
   ["/purchases", "Приход"],
-  ["/records/sale", "Продажа"],
-  ["/records/purchase", "Товар от поставщика"],
   ["/money/send", "Отправить клиенту"],
   ["/money/adjustment", "Скидка или возврат"],
   ["/money/reverse", "Отменить запись"],

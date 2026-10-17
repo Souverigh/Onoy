@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getContext } from "@/lib/context";
 import { money, originalAmountText, quantity } from "@/lib/format";
 import { memberLabels } from "@/lib/members";
+import { waPhone } from "@/lib/share";
+import { SendInvoice } from "@/components/send-invoice";
 
 type Item = { id: string; name_snapshot: string; qty: string; price: string; line_total: string; unit: string | null; product_id: string };
 
@@ -11,32 +13,22 @@ const dateTime = (value: string) =>
 const day = (value: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bishkek" }).format(new Date(value));
 
 /**
- * Одна продажа или один приход из списка «Продажа» / «Товар от поставщика»
- * (просьба пользователя 17.10.2026): кто, когда, сколько и какие товары.
+ * Приход товарами без фото (просьба пользователя 17.10.2026): у него не было
+ * своей страницы. Приход по фото открывается на странице документа.
  */
-export default async function RecordPage({ params }: { params: Promise<{ kind: string; id: string }> }) {
-  const { kind, id } = await params;
-  if ((kind !== "sale" && kind !== "purchase") || !/^[a-f0-9-]{36}$/i.test(id)) notFound();
-  const sale = kind === "sale";
-  const { db, organizationId, isOwner, currency: shopCurrency } = await getContext();
+export default async function PurchasePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
+  const { db, organizationId, organizationName, isOwner, currency: shopCurrency } = await getContext();
 
-  const recordResult = sale
-    ? await db
-        .from("sales")
-        .select(
-          "id,total,occurred_at,created_at,status,is_opening,paid_immediately,reversed_at,reversal_comment,document_id,created_by,original_amount,original_currency,fx_rate,party_id:customer_id,party:customers(name,currency)",
-        )
-        .eq("organization_id", organizationId)
-        .eq("id", id)
-        .maybeSingle()
-    : await db
-        .from("purchases")
-        .select(
-          "id,total,occurred_at,created_at,status,is_opening,reversed_at,reversal_comment,document_id,created_by,original_amount,original_currency,fx_rate,party_id:supplier_id,party:suppliers(name,currency)",
-        )
-        .eq("organization_id", organizationId)
-        .eq("id", id)
-        .maybeSingle();
+  const recordResult = await db
+    .from("purchases")
+    .select(
+      "id,total,occurred_at,created_at,status,is_opening,reversed_at,reversal_comment,document_id,created_by,original_amount,original_currency,fx_rate,supplier_id,suppliers(name,phone,currency)",
+    )
+    .eq("organization_id", organizationId)
+    .eq("id", id)
+    .maybeSingle();
   const record = recordResult.data as unknown as {
     id: string;
     total: string;
@@ -44,7 +36,6 @@ export default async function RecordPage({ params }: { params: Promise<{ kind: s
     created_at: string;
     status: string;
     is_opening: boolean;
-    paid_immediately?: boolean;
     reversed_at: string | null;
     reversal_comment: string | null;
     document_id: string | null;
@@ -52,55 +43,55 @@ export default async function RecordPage({ params }: { params: Promise<{ kind: s
     original_amount: string | null;
     original_currency: string | null;
     fx_rate: string | null;
-    party_id: string;
-    party: { name: string; currency: string | null } | null;
+    supplier_id: string;
+    suppliers: { name: string; phone: string | null; currency: string | null } | null;
   } | null;
   if (recordResult.error || !record || record.status !== "posted") notFound();
+  if (record.document_id) redirect(`/documents/${record.document_id}`);
 
   const [itemsResult, members] = await Promise.all([
     db
-      .from(sale ? "sale_items" : "purchase_items")
+      .from("purchase_items")
       .select("id,name_snapshot,qty,price,line_total,unit,product_id")
       .eq("organization_id", organizationId)
-      .eq(sale ? "sale_id" : "purchase_id", record.id)
+      .eq("purchase_id", record.id)
       .order("n")
       .order("created_at"),
     memberLabels(db, organizationId),
   ]);
   const items = (itemsResult.data ?? []) as Item[];
 
-  const debtCurrency = record.party?.currency ?? shopCurrency;
-  // Строки — в валюте накладной: продажа в другой валюте — в валюте магазина
-  // (долг пересчитан по курсу), иначе — в валюте долга.
+  const debtCurrency = record.suppliers?.currency ?? shopCurrency;
+  // Строки — в валюте поставщика (purchase_items_party_currency.sql).
   const lineCurrency = record.original_currency ?? debtCurrency;
-  const partyName = record.party?.name ?? (sale ? "Клиент" : "Поставщик");
-  const partyHref = `/${sale ? "customers" : "suppliers"}/${record.party_id}`;
+  const supplierName = record.suppliers?.name ?? "Поставщик";
+  const supplierHref = `/suppliers/${record.supplier_id}`;
   const author = record.created_by ? members.get(record.created_by)?.name : undefined;
   const original = originalAmountText(record);
-  const title = record.is_opening ? "Долг из тетради" : sale ? "Продажа" : "Товар от поставщика";
+  const hasInvoice = !record.is_opening && !record.reversed_at && items.length > 0;
+  const pdfUrl = `/purchases/${record.id}/pdf`;
+  const shortDate = new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Asia/Bishkek" }).format(
+    new Date(record.occurred_at),
+  );
+  const sendText = `Приходная накладная от ${shortDate}: ${money(record.original_amount ?? record.total, lineCurrency)}. ${organizationName}`;
 
   return (
     <>
-      <Link className="back-link" href={sale ? "/sales" : "/purchases"}>
-        ← {sale ? "Все продажи" : "Весь приход"}
+      <Link className="back-link" href="/purchases">
+        ← Весь приход
       </Link>
       <div className="page-heading">
         <div>
           <h1>
-            {title} · {money(record.total, debtCurrency)}
+            {record.is_opening ? "Долг из тетради" : "Товар от поставщика"} · {money(record.total, debtCurrency)}
           </h1>
           <p className="muted">
-            <Link href={partyHref}>{partyName}</Link> · {dateTime(record.occurred_at)}
+            <Link href={supplierHref}>{supplierName}</Link> · {dateTime(record.occurred_at)}
           </p>
         </div>
         <div className="page-heading-actions">
-          {sale && !record.reversed_at && !record.is_opening && (
-            <Link className="button primary" href={`/money/send/${record.id}`}>
-              Отправить клиенту
-            </Link>
-          )}
           {!record.reversed_at && isOwner && (
-            <Link className="button" href={`/money/reverse/${kind}/${record.id}`}>
+            <Link className="button" href={`/money/reverse/purchase/${record.id}`}>
               Отменить
             </Link>
           )}
@@ -108,28 +99,22 @@ export default async function RecordPage({ params }: { params: Promise<{ kind: s
       </div>
       {record.reversed_at && (
         <p className="notice" role="status">
-          Запись отменена{record.reversal_comment ? `: ${record.reversal_comment}` : ""}. Долг{sale ? "" : " и склад"} уже
-          пересчитаны, запись осталась в истории.
+          Запись отменена{record.reversal_comment ? `: ${record.reversal_comment}` : ""}. Долг и склад уже пересчитаны,
+          запись осталась в истории.
         </p>
       )}
 
       <section className="panel">
         <dl className="details record-details">
-          <dt>{sale ? "Клиент" : "Поставщик"}</dt>
+          <dt>Поставщик</dt>
           <dd>
-            <Link href={partyHref}>{partyName}</Link>
+            <Link href={supplierHref}>{supplierName}</Link>
           </dd>
           <dt>Сумма</dt>
           <dd>
             {money(record.total, debtCurrency)}
             {original && <span className="muted"> ({original})</span>}
           </dd>
-          {sale && (
-            <>
-              <dt>Оплата</dt>
-              <dd>{record.paid_immediately ? "Наличными сразу" : "В долг"}</dd>
-            </>
-          )}
           <dt>Дата</dt>
           <dd>{dateTime(record.occurred_at)}</dd>
           <dt>Кто внёс</dt>
@@ -140,22 +125,50 @@ export default async function RecordPage({ params }: { params: Promise<{ kind: s
               <span className="muted"> · внесено {dateTime(record.created_at)}</span>
             )}
           </dd>
-          {record.document_id && (
-            <>
-              <dt>Накладная</dt>
-              <dd>
-                <Link href={`/documents/${record.document_id}`}>Фото и строки накладной →</Link>
-              </dd>
-            </>
-          )}
         </dl>
       </section>
 
-      <section className="panel">
+      <section className="panel record-send">
         <div className="section-title">
-          <h2>Товары</h2>
+          <h2>Накладная</h2>
         </div>
-        {items.length ? (
+        {hasInvoice ? (
+          <SendInvoice
+            phone={waPhone(record.suppliers?.phone)}
+            text={sendText}
+            fileText={sendText}
+            imageUrl={pdfUrl}
+            fileName={`приход-${shortDate}.pdf`}
+            pending={false}
+            fileType="application/pdf"
+            to="поставщику"
+          />
+        ) : (
+          <p className="muted">
+            {record.reversed_at
+              ? "Запись отменена - накладную не отправляем."
+              : record.is_opening
+                ? "Долг из тетради - накладной нет."
+                : "Приход записан одной суммой, без товаров - PDF не из чего собрать."}
+          </p>
+        )}
+        <div className="simple-operation-actions record-send-actions">
+          {hasInvoice && (
+            <a className="button" href={pdfUrl} target="_blank" rel="noreferrer">
+              Открыть PDF
+            </a>
+          )}
+          <Link className="button" href={supplierHref}>
+            Открыть поставщика и все записи
+          </Link>
+        </div>
+      </section>
+
+      {items.length > 0 && (
+        <section className="panel">
+          <div className="section-title">
+            <h2>Товары</h2>
+          </div>
           <div className="table-wrap">
             <table>
               <thead>
@@ -194,16 +207,8 @@ export default async function RecordPage({ params }: { params: Promise<{ kind: s
               </tfoot>
             </table>
           </div>
-        ) : (
-          <p className="muted">
-            {record.document_id
-              ? "Записано по фото накладной - строки смотрите в накладной."
-              : record.is_opening
-                ? "Долг перенесён из тетради одной суммой, без товаров."
-                : "Записано одной суммой, без списка товаров."}
-          </p>
-        )}
-      </section>
+        </section>
+      )}
     </>
   );
 }
