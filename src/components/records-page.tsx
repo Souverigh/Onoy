@@ -7,20 +7,23 @@ import { isCurrency } from "@/lib/currency";
 import { money } from "@/lib/format";
 import { memberLabels } from "@/lib/members";
 import { pendingCorrections } from "@/lib/correction-pending";
+import { bishkekDate } from "@/lib/day-summary";
+import { journalData, type JournalRow, type JournalTotal } from "@/lib/journal";
+import { journalHref, parseJournal, periodDays, periodText, type JournalSort } from "@/lib/journal-filters";
+import { JournalBar } from "./journal-bar";
 
-const PAGE = 50;
-
-type Row = {
-  id: string;
-  total: string;
-  occurred_at: string;
-  reversed_at: string | null;
-  reversal_comment: string | null;
-  document_id: string | null;
-  paid_immediately?: boolean;
-  created_by: string | null;
-  party_id: string;
-  party: { name: string; currency: string | null } | null;
+type Row = JournalRow;
+type JournalParams = {
+  page?: string;
+  deleted?: string;
+  error?: string;
+  period?: string;
+  from?: string;
+  to?: string;
+  q?: string;
+  status?: string;
+  by?: string;
+  sort?: string;
 };
 
 const dateTime = (value: string) =>
@@ -36,38 +39,25 @@ const shortDateTime = (value: string) =>
 
 /**
  * Разделы «Продажи» и «Приход» (просьба пользователя 17.10.2026): сверху
- * «+ Продажа» / «+ Приход», под ней свои черновики, ниже — таблица записей.
+ * «+ Продажа» / «+ Приход», под ней свои черновики, ниже — журнал записей
+ * как в 1С: период, отборы, сортировка, итоги, выгрузка в Excel.
  */
 export async function RecordsPage({
   kind,
   searchParams,
 }: {
   kind: DraftKind;
-  searchParams: Promise<{ page?: string; deleted?: string; error?: string }>;
+  searchParams: Promise<JournalParams>;
 }) {
   const params = await searchParams;
-  const { db, organizationId, isOwner, currency: shopCurrency } = await getContext();
+  const { db, organizationId, isOwner, user, currency: shopCurrency } = await getContext();
   const sale = kind === "sale";
   const base = sale ? "/sales" : "/purchases";
-  const current = Math.max(1, Math.min(1000, Number.parseInt(params.page ?? "1", 10) || 1));
-  const from = (current - 1) * PAGE;
-  const records = sale
-    ? db
-        .from("sales")
-        .select(
-          "id,total,occurred_at,reversed_at,reversal_comment,document_id,paid_immediately,created_by,party_id:customer_id,party:customers(name,currency)",
-        )
-    : db
-        .from("purchases")
-        .select("id,total,occurred_at,reversed_at,reversal_comment,document_id,created_by,party_id:supplier_id,party:suppliers(name,currency)");
-  const [recordResult, draftResult, members, unfinished] = await Promise.all([
-    records
-      .eq("organization_id", organizationId)
-      .eq("status", "posted")
-      .eq("is_opening", false)
-      .order("occurred_at", { ascending: false })
-      .order("id")
-      .range(from, from + PAGE),
+  const today = bishkekDate();
+  const filters = parseJournal(params, { allowBy: isOwner });
+  const current = filters.page;
+  const [journal, draftResult, members, unfinished] = await Promise.all([
+    journalData(db, organizationId, kind, filters, today),
     db
       .from("record_drafts")
       .select("id,data,updated_at")
@@ -78,12 +68,9 @@ export async function RecordsPage({
     memberLabels(db, organizationId),
     pendingCorrections(db, organizationId, kind),
   ]);
-  if (recordResult.error) throw new Error(sale ? "Не удалось загрузить продажи" : "Не удалось загрузить приход");
   // Черновики не загрузились (например, миграция ещё не применена) — список записей всё равно виден.
   if (draftResult.error) console.error("RecordsPage: drafts failed", { message: draftResult.error.message });
-  const all = (recordResult.data ?? []) as unknown as Row[];
-  const rows = all.slice(0, PAGE);
-  const hasMore = all.length > PAGE;
+  const { rows, hasMore } = journal;
   const drafts = (draftResult.data ?? []).map((d) => ({ id: d.id as string, updated_at: d.updated_at as string, data: draftData(d.data) }));
 
   const newHref = `/money/new?type=${kind}`;
@@ -95,7 +82,34 @@ export async function RecordsPage({
     row.document_id ? `/documents/${row.document_id}` : sale ? `/money/send/${row.id}` : `/purchases/${row.id}`;
   const authorOf = (row: Row) => (row.created_by ? members.get(row.created_by)?.name : undefined);
   const payment = (row: Row) => (sale ? (row.paid_immediately ? "Наличными" : "В долг") : null);
-  const pageHref = (page: number) => (page > 1 ? `${base}?page=${page}` : base);
+  const pageHref = (page: number) => journalHref(base, filters, { page });
+  // Заголовок «Дата» / «Сумма» — нажали — сортировка по нему; ещё раз — обратно.
+  const sortHref = (column: "date" | "sum") =>
+    journalHref(base, filters, {
+      sort: (filters.sort === `${column}_desc` ? `${column}_asc` : `${column}_desc`) as JournalSort,
+    });
+  const sortMark = (column: "date" | "sum") =>
+    filters.sort === `${column}_desc` ? " ↓" : filters.sort === `${column}_asc` ? " ↑" : "";
+  const days = periodDays(filters, today);
+  const filtered = filters.period !== "month" || Boolean(filters.q) || filters.status !== "all" || Boolean(filters.by);
+  const people = isOwner && members.size > 1 ? [...members.entries()].map(([id, m]) => ({ id, label: id === user.id ? "Я" : m.name })) : [];
+  // Excel — с теми же отборами (только владелец, как и вся выгрузка).
+  const query = journalHref("", filters, { page: 1 });
+  const exportHref = isOwner ? `/journal/export?kind=${kind}${query ? `&${query.slice(1)}` : ""}` : null;
+  const statuses = sale
+    ? [
+        { value: "all" as const, label: "Все продажи" },
+        { value: "debt" as const, label: "В долг" },
+        { value: "cash" as const, label: "Наличными" },
+        { value: "reversed" as const, label: "Отменённые" },
+      ]
+    : [
+        { value: "all" as const, label: "Весь приход" },
+        { value: "active" as const, label: "Действующий" },
+        { value: "reversed" as const, label: "Отменённый" },
+      ];
+  const one = journal.totals.length === 1 ? journal.totals[0] : null;
+  const totalMoney = (t: JournalTotal, field: "sum" | "debt" | "cash" = "sum") => money(t[field].toFixed(2), t.currency ?? shopCurrency);
 
   return (
     <>
@@ -198,10 +212,47 @@ export async function RecordsPage({
         </section>
       )}
 
+      <JournalBar
+        base={base}
+        filters={filters}
+        statuses={statuses}
+        partyLabel={sale ? "Клиент" : "Поставщик"}
+        people={people}
+        exportHref={exportHref}
+      />
+
       <section className="panel operation-history">
         <div className="section-title">
-          <h2>{sale ? "Записанные продажи" : "Записанный приход"}</h2>
+          <h2>
+            {sale ? "Продажи" : "Приход"} {periodText(days)}
+          </h2>
         </div>
+        {/* Итоги — по всем отобранным записям, не только по этой странице; отменённые не считаются. */}
+        {(journal.count > 0 || journal.reversedCount > 0) && (
+          <div className="journal-totals">
+            {journal.totals.map((t) => (
+              <div key={t.currency ?? "shop"} className="journal-total">
+                <span className="muted">
+                  {t.count} {sale ? (t.count === 1 ? "продажа" : t.count < 5 ? "продажи" : "продаж") : t.count === 1 ? "приход" : "прихода"}
+                </span>
+                <strong>
+                  {journal.partial ? "не меньше " : ""}
+                  {totalMoney(t)}
+                </strong>
+                {sale && t.cash > 0 && (
+                  <span className="muted">
+                    в долг {totalMoney(t, "debt")} · наличными {totalMoney(t, "cash")}
+                  </span>
+                )}
+              </div>
+            ))}
+            {journal.reversedCount > 0 && filters.status !== "reversed" && (
+              <span className="muted journal-reversed">
+                Отменено: {journal.reversedCount} - в итог не входят.
+              </span>
+            )}
+          </div>
+        )}
         {rows.length ? (
           <>
             {/* Телефон: список вместо широкой таблицы. */}
@@ -233,9 +284,17 @@ export async function RecordsPage({
               <table>
                 <thead>
                   <tr>
-                    <th>Дата</th>
+                    <th aria-sort={filters.sort.startsWith("date") ? (filters.sort.endsWith("asc") ? "ascending" : "descending") : undefined}>
+                      <Link className="journal-sort" href={sortHref("date")}>
+                        Дата{sortMark("date")}
+                      </Link>
+                    </th>
                     <th>{sale ? "Клиент" : "Поставщик"}</th>
-                    <th>Сумма</th>
+                    <th aria-sort={filters.sort.startsWith("sum") ? (filters.sort.endsWith("asc") ? "ascending" : "descending") : undefined}>
+                      <Link className="journal-sort" href={sortHref("sum")}>
+                        Сумма{sortMark("sum")}
+                      </Link>
+                    </th>
                     {sale && <th>Оплата</th>}
                     <th>Кто внёс</th>
                     <th>
@@ -273,6 +332,15 @@ export async function RecordsPage({
                     </tr>
                   ))}
                 </tbody>
+                {one && (
+                  <tfoot>
+                    <tr className="journal-total-row">
+                      <td colSpan={2}>Итого за период{hasMore || current > 1 ? " (все страницы)" : ""}</td>
+                      <td>{totalMoney(one)}</td>
+                      <td colSpan={sale ? 3 : 2} />
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
             {(current > 1 || hasMore) && (
@@ -285,10 +353,25 @@ export async function RecordsPage({
           </>
         ) : (
           <div className="empty">
-            <h2>{sale ? "Продаж пока нет" : "Прихода пока нет"}</h2>
-            <p>
-              Нажмите «+ {sale ? "Продажа" : "Приход"}» - запись появится здесь.
-            </p>
+            {filtered ? (
+              <>
+                <h2>По этим отборам ничего нет</h2>
+                <p>
+                  Попробуйте другой период или{" "}
+                  <Link className="text-button" href={base}>
+                    сбросьте отборы
+                  </Link>
+                  .
+                </p>
+              </>
+            ) : (
+              <>
+                <h2>{sale ? "В этом месяце продаж пока нет" : "В этом месяце прихода пока нет"}</h2>
+                <p>
+                  Нажмите «+ {sale ? "Продажа" : "Приход"}» - запись появится здесь. Прошлые - кнопка «Всё время» выше.
+                </p>
+              </>
+            )}
           </div>
         )}
       </section>

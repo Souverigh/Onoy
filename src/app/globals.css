@@ -7391,3 +7391,129 @@ tr.row-link:has(a[data-pending]) {
     grid-row: 1;
   }
 }
+
+/* Журнал продаж и прихода: период кнопками, отборы, итоги (17.10.2026). */
+.journal-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.journal-periods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.journal-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 6px 14px;
+  border: 1px solid #dbe1da;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.journal-chip:hover {
+  border-color: #cfe3c4;
+  background: #f6faf1;
+}
+.journal-chip.selected {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
+}
+.journal-custom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+.journal-custom label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.journal-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+}
+.journal-search {
+  display: flex;
+  gap: 8px;
+  flex: 1 1 280px;
+  max-width: 420px;
+}
+.journal-search input {
+  flex: 1;
+  min-width: 0;
+}
+.journal-select {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.journal-select select {
+  min-width: 160px;
+}
+.journal-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+.journal-totals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 28px;
+  margin: 4px 0 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #f4faf5;
+}
+.journal-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.journal-total strong {
+  font-size: 22px;
+  font-weight: 650;
+}
+.journal-reversed {
+  font-size: 13px;
+}
+.journal-sort {
+  color: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.journal-sort:hover {
+  text-decoration: underline;
+}
+.journal-total-row td {
+  font-weight: 650;
+  border-top: 2px solid var(--line);
+}
+@media (max-width: 640px) {
+  .journal-search {
+    max-width: none;
+    flex-basis: 100%;
+  }
+  .journal-actions {
+    margin-left: 0;
+  }
+}
