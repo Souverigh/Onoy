@@ -249,7 +249,30 @@ export function SaleItemsForm({
 
   const trimmed = query.trim();
   const inCart = new Set(lines.map((l) => l.product.id));
-  const results = searchProducts(trimmed, products, trimmed ? 8 : 5);
+  const results = trimmed ? searchProducts(trimmed, products, 8) : [];
+  // Пять частых товаров — над таблицей.
+  const popular = searchProducts("", products, 5);
+  // Подсказки строки ввода: выделенная (стрелки), открыты — пока в поиске есть текст.
+  const [active, setActive] = useState(0);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const dropdownOpen = searchFocused && trimmed.length > 0 && !creating;
+  const qtyInputs = useRef(new Map<number, HTMLInputElement>());
+  const priceInputs = useRef(new Map<number, HTMLInputElement>());
+  // Добавленная строка: курсор — в её «Кол-во».
+  const [focusQty, setFocusQty] = useState<number | null>(null);
+  useEffect(() => {
+    if (focusQty === null) return;
+    const input = qtyInputs.current.get(focusQty);
+    input?.focus();
+    input?.select();
+    setFocusQty(null);
+  }, [focusQty, lines]);
+
+  function startCreating() {
+    if (!trimmed) return;
+    setCreating({ name: trimmed, unit: "шт", price: "" });
+    setCreateError(null);
+  }
 
   function add(product: QuickProduct) {
     setLocalError(null);
@@ -261,14 +284,16 @@ export function SaleItemsForm({
         all.map((l) => (l.key === existing.key ? { ...l, qty: asInput(String(Number(next ?? 0) + 1)) } : l)),
       );
       setFlash(existing.key);
+      setFocusQty(existing.key);
     } else {
       const key = ++lineKey.current;
       setLines((all) => [...all, { key, product, qty: "1", price: Number(priceOf(product)) > 0 && priceFits(product) ? asInput(priceOf(product)) : "" }]);
       setFlash(key);
+      setFocusQty(key);
     }
     setQuery("");
+    setActive(0);
     setCreating(null);
-    searchInput.current?.focus();
   }
 
   useEffect(() => {
@@ -359,11 +384,10 @@ export function SaleItemsForm({
     : null;
 
   return (
-    <form onSubmit={submit} className="simple-operation-form sale-items-form">
+    <form onSubmit={submit} className="simple-operation-form sale-items-form sale-sheet-form">
       <input type="hidden" name="idempotency_key" value={idempotencyKeyPinned} />
       {recordDate && <input type="hidden" name="record_date" value={recordDate} />}
-      {/* Компьютер и планшет: слева — кто и поиск товаров, справа — накладная. */}
-      <div className="sale-items-side">
+      <div className="sale-sheet-top">
       <PartyPicker
         label={purchase ? "Поставщик" : "Клиент"}
         name={purchase ? "supplier_id" : "customer_id"}
@@ -449,63 +473,201 @@ export function SaleItemsForm({
         />
       )}
       {contactNote && <small className="muted contact-note">{contactNote}</small>}
+      </div>
 
-      <div className="product-picker">
-        <label htmlFor="product-search" className="product-picker-title">
-          Товары
-        </label>
-        <input
-          id="product-search"
-          ref={searchInput}
-          type="search"
-          enterKeyHint="search"
-          autoComplete="off"
-          placeholder="Найти: название или код"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setCreating(null);
-          }}
-          onKeyDown={(e) => {
-            // Enter в поиске добавляет первый найденный, а не отправляет форму.
-            if (e.key === "Enter") {
-              e.preventDefault();
-              if (trimmed && results[0]) add(results[0]);
-            }
-          }}
-        />
-        {!trimmed && results.length > 0 && <span className="product-picker-hint muted">Частые:</span>}
-        {(results.length > 0 || trimmed) && (
-          <ul className={trimmed ? "product-results" : "product-results product-chips"}>
-            {results.map((p) => (
-              <li key={p.id}>
-                <button type="button" className={inCart.has(p.id) ? "in-cart" : ""} onClick={() => add(p)}>
-                  <span className="product-result-name">{p.name}</span>
-                  {trimmed && (
-                    <small className="muted">
-                      {p.sku ? `${p.sku} · ` : ""}
-                      {Number(priceOf(p)) > 0 ? `${purchase ? "закупка " : ""}${money(priceOf(p), priceCurrencyOf(p))} · ` : ""}есть {quantity(p.stock)} {p.unit}
-                    </small>
-                  )}
-                </button>
-              </li>
-            ))}
-            {trimmed && !creating && (
-              <li>
-                <button
-                  type="button"
-                  className="product-new"
-                  onClick={() => {
-                    setCreating({ name: trimmed, unit: "шт", price: "" });
-                    setCreateError(null);
-                  }}
-                >
-                  + Новый товар «{trimmed}»
-                </button>
-              </li>
-            )}
-          </ul>
+      {/* Накладная таблицей, как в 1С (просьба пользователя 17.10.2026): сверху
+          частые товары, последняя строка — поиск. Название → Enter → цена
+          подставилась, курсор в «Кол-во» → Enter → снова поиск новой строки. */}
+      <div className="sale-sheet">
+        {popular.length > 0 && (
+          <div className="sale-sheet-popular">
+            <span className="muted">Частые:</span>
+            <ul className="product-results product-chips">
+              {popular.map((p) => (
+                <li key={p.id}>
+                  <button type="button" className={inCart.has(p.id) ? "in-cart" : ""} onClick={() => add(p)}>
+                    <span className="product-result-name">{p.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
+        <div className="sale-sheet-table">
+          <div className="sale-sheet-row sale-sheet-head" aria-hidden="true">
+            <span>№</span>
+            <span>Товар</span>
+            <span>Кол-во</span>
+            <span>Ед.</span>
+            <span>{purchase ? "Цена закупки" : "Цена"}</span>
+            <span>Сумма</span>
+            <span />
+          </div>
+          <ol className="sale-sheet-lines">
+            {lines.map((line, i) => {
+              const qtyNum = Number(stockNumber(line.qty, 3) ?? 0);
+              const short = !purchase && qtyNum > Number(line.product.stock);
+              const otherPrice =
+                Number(priceOf(line.product)) > 0 &&
+                (priceFits(line.product)
+                  ? line.price && stockNumber(line.price, 2) !== null && Number(stockNumber(line.price, 2)) !== Number(priceOf(line.product))
+                  : true);
+              return (
+                <li key={line.key} className={flash === line.key ? "sale-sheet-row sale-sheet-line flash" : "sale-sheet-row sale-sheet-line"}>
+                  <span className="sale-sheet-n">{i + 1}</span>
+                  <span className="sale-sheet-name">
+                    <strong>{line.product.name}</strong>
+                    {short && (
+                      <small className="warning">
+                        На складе {quantity(line.product.stock)} {line.product.unit} - остаток уйдёт в минус.
+                      </small>
+                    )}
+                    {otherPrice && (
+                      <small className="muted">
+                        {purchase ? "Прошлая закупка" : "Цена на складе"} - {money(priceOf(line.product), priceCurrencyOf(line.product))}.
+                      </small>
+                    )}
+                    {purchase && !line.price && <small className="muted">Укажите цену закупки.</small>}
+                  </span>
+                  <span className="qty-stepper sale-sheet-qty">
+                    <button type="button" tabIndex={-1} aria-label="Меньше" onClick={() => step(line, -1)}>
+                      −
+                    </button>
+                    <input
+                      ref={(el) => {
+                        if (el) qtyInputs.current.set(line.key, el);
+                        else qtyInputs.current.delete(line.key);
+                      }}
+                      inputMode="decimal"
+                      autoComplete="off"
+                      aria-label={`Количество, ${line.product.unit}`}
+                      value={line.qty}
+                      onChange={(e) => update(line.key, { qty: e.target.value })}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onKeyDown={(e) => {
+                        // Enter — дальше: цены нет — в цену, иначе — в поиск новой строки.
+                        if (e.key !== "Enter") return;
+                        e.preventDefault();
+                        if (!line.price.trim()) priceInputs.current.get(line.key)?.focus();
+                        else searchInput.current?.focus();
+                      }}
+                    />
+                    <button type="button" tabIndex={-1} aria-label="Больше" onClick={() => step(line, 1)}>
+                      +
+                    </button>
+                  </span>
+                  <span className="sale-sheet-unit muted">{line.product.unit}</span>
+                  <input
+                    ref={(el) => {
+                      if (el) priceInputs.current.set(line.key, el);
+                      else priceInputs.current.delete(line.key);
+                    }}
+                    className="sale-sheet-price"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    aria-label={`Цена за ${line.product.unit}, ${CURRENCY_SIGN[lineCurrency]}`}
+                    value={line.price}
+                    onChange={(e) => update(line.key, { price: e.target.value })}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      searchInput.current?.focus();
+                    }}
+                  />
+                  <span className="sale-sheet-sum">{money(lineSum(line.qty, line.price).toFixed(2), lineCurrency)}</span>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    className="sale-line-remove"
+                    aria-label={`Убрать ${line.product.name}`}
+                    onClick={() => setLines((all) => all.filter((l) => l.key !== line.key))}
+                  >
+                    ×
+                  </button>
+                </li>
+              );
+            })}
+            {/* Пустая строка ввода: поиск товара по названию или коду. */}
+            <li className="sale-sheet-row sale-sheet-entry">
+              <span className="sale-sheet-n">{lines.length + 1}</span>
+              <span className="sale-sheet-search">
+                <input
+                  id="product-search"
+                  ref={searchInput}
+                  type="search"
+                  enterKeyHint="search"
+                  autoComplete="off"
+                  role="combobox"
+                  aria-expanded={dropdownOpen}
+                  aria-controls="product-search-results"
+                  aria-label="Товар: название или код"
+                  placeholder={lines.length ? "Следующий товар: название или код" : "Товар: название или код"}
+                  value={query}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setActive(0);
+                    setCreating(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                      if (!dropdownOpen) return;
+                      e.preventDefault();
+                      const count = results.length + 1;
+                      setActive((a) => (a + (e.key === "ArrowDown" ? 1 : count - 1)) % count);
+                    } else if (e.key === "Enter") {
+                      // Enter добавляет выбранный товар, а не отправляет форму.
+                      e.preventDefault();
+                      if (!trimmed) return;
+                      if (active < results.length) add(results[active]);
+                      else startCreating();
+                    } else if (e.key === "Escape") {
+                      setQuery("");
+                    }
+                  }}
+                />
+                {dropdownOpen && (
+                  <ul id="product-search-results" className="product-results sale-sheet-dropdown" role="listbox">
+                    {results.map((p, i) => (
+                      <li key={p.id} role="option" aria-selected={i === active}>
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          className={`${i === active ? "active" : ""} ${inCart.has(p.id) ? "in-cart" : ""}`}
+                          // Не терять фокус поиска до клика.
+                          onMouseDown={(e) => e.preventDefault()}
+                          onMouseEnter={() => setActive(i)}
+                          onClick={() => add(p)}
+                        >
+                          <span className="product-result-name">{p.name}</span>
+                          <small className="muted">
+                            {p.sku ? `${p.sku} · ` : ""}
+                            {Number(priceOf(p)) > 0 ? `${purchase ? "закупка " : ""}${money(priceOf(p), priceCurrencyOf(p))} · ` : ""}есть{" "}
+                            {quantity(p.stock)} {p.unit}
+                          </small>
+                        </button>
+                      </li>
+                    ))}
+                    <li role="option" aria-selected={active === results.length}>
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        className={`product-new ${active === results.length ? "active" : ""}`}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onMouseEnter={() => setActive(results.length)}
+                        onClick={startCreating}
+                      >
+                        + Новый товар «{trimmed}»
+                      </button>
+                    </li>
+                  </ul>
+                )}
+              </span>
+            </li>
+          </ol>
+        </div>
         {products.length === 0 && !trimmed && (
           <small className="muted">На складе пока нет товаров - начните вводить название, добавим новый.</small>
         )}
@@ -556,92 +718,14 @@ export function SaleItemsForm({
             </div>
           </div>
         )}
-      </div>
-      </div>
-
-      <div className="sale-items-main">
-      {lines.length > 0 && (
-        <div className="sale-lines-head" aria-hidden="true">
-          <span>№</span>
-          <span>Товар</span>
-          <span>Кол-во</span>
-          <span>{purchase ? "Цена закупки" : "Цена"}</span>
-          <span>Сумма</span>
-          <span />
+        <div className="sale-total">
+          <span>Итого{lines.length ? ` · ${lines.length} ${lines.length === 1 ? "товар" : lines.length < 5 ? "товара" : "товаров"}` : ""}</span>
+          <strong>{money(total.toFixed(2), lineCurrency)}</strong>
         </div>
-      )}
-      {lines.length > 0 && (
-        <ol className="sale-lines">
-          {lines.map((line, i) => {
-            const qtyNum = Number(stockNumber(line.qty, 3) ?? 0);
-            const short = !purchase && qtyNum > Number(line.product.stock);
-            return (
-              <li key={line.key} className={flash === line.key ? "sale-line flash" : "sale-line"}>
-                <div className="sale-line-head">
-                  <span className="sale-line-n">{i + 1}.</span>
-                  <strong>{line.product.name}</strong>
-                  <button
-                    type="button"
-                    className="sale-line-remove"
-                    aria-label={`Убрать ${line.product.name}`}
-                    onClick={() => setLines((all) => all.filter((l) => l.key !== line.key))}
-                  >
-                    ×
-                  </button>
-                </div>
-                <div className="sale-line-body">
-                  <span className="qty-stepper">
-                    <button type="button" aria-label="Меньше" onClick={() => step(line, -1)}>
-                      −
-                    </button>
-                    <input
-                      inputMode="decimal"
-                      autoComplete="off"
-                      aria-label={`Количество, ${line.product.unit}`}
-                      value={line.qty}
-                      onChange={(e) => update(line.key, { qty: e.target.value })}
-                      onFocus={(e) => e.currentTarget.select()}
-                    />
-                    <button type="button" aria-label="Больше" onClick={() => step(line, 1)}>
-                      +
-                    </button>
-                  </span>
-                  <span className="sale-line-unit">{line.product.unit} ×</span>
-                  <input
-                    className="sale-line-price"
-                    inputMode="decimal"
-                    autoComplete="off"
-                    aria-label={`Цена за ${line.product.unit}, ${CURRENCY_SIGN[lineCurrency]}`}
-                    value={line.price}
-                    onChange={(e) => update(line.key, { price: e.target.value })}
-                    onFocus={(e) => e.currentTarget.select()}
-                  />
-                  <span className="sale-line-sum">= {money(lineSum(line.qty, line.price).toFixed(2), lineCurrency)}</span>
-                </div>
-                {short && (
-                  <small className="warning">
-                    На складе {quantity(line.product.stock)} {line.product.unit} - продать можно, остаток уйдёт в минус.
-                  </small>
-                )}
-                {Number(priceOf(line.product)) > 0 &&
-                  (priceFits(line.product)
-                    ? line.price && stockNumber(line.price, 2) !== null && Number(stockNumber(line.price, 2)) !== Number(priceOf(line.product))
-                    : true) && (
-                    <small className="muted">
-                      {purchase ? "Прошлая закупка" : "Цена на складе"} - {money(priceOf(line.product), priceCurrencyOf(line.product))}.
-                    </small>
-                  )}
-                {purchase && !line.price && <small className="muted">Укажите цену закупки за {line.product.unit}.</small>}
-              </li>
-            );
-          })}
-        </ol>
-      )}
-
-      <div className="sale-total">
-        <span>Итого{lines.length ? ` · ${lines.length} ${lines.length === 1 ? "товар" : lines.length < 5 ? "товара" : "товаров"}` : ""}</span>
-        <strong>{money(total.toFixed(2), lineCurrency)}</strong>
       </div>
+
+      <div className="sale-sheet-footer">
+      <div className="sale-sheet-options">
       {purchase && foreign && (
         <p className="muted">
           Цены - в {CURRENCY_SIGN[debtCurrency]}, как у поставщика: долг ему ведётся в {CURRENCY_SIGN[debtCurrency]}, без курса.
@@ -692,6 +776,8 @@ export function SaleItemsForm({
           if (localError === "date") setLocalError(null);
         }}
       />
+      </div>
+      <div className="sale-sheet-submit">
       {overLimit && (
         <p className="form-error limit-warning" role="alert">
           Долг станет {money(overLimit.debtAfter, debtCurrency)} - больше лимита {money(overLimit.limit, debtCurrency)}. Продать
@@ -722,6 +808,7 @@ export function SaleItemsForm({
           ? "Остаток на складе вырастет, цена закупки запомнится у товара, сумма добавится к долгу поставщику."
           : "Остаток на складе уменьшится, сумма добавится к долгу клиента. Клиенту можно сразу отправить накладную PDF."}
       </p>
+      </div>
       </div>
     </form>
   );
