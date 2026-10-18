@@ -31,8 +31,13 @@ function minusDays(day: string, days: number) {
 
 /**
  * Дата записи (задача 15): «Дата: сегодня» и иконка календаря — в ней месяц
- * сеткой. `value` — "ГГГГ-ММ-ДД" или пусто (сегодня). Выбрать можно с года
- * назад по сегодня (по Бишкеку), как проверяет сервер.
+ * сеткой, по-русски, неделя с понедельника. `value` — "ГГГГ-ММ-ДД" или пусто
+ * (сегодня). Выбрать можно с года назад по сегодня (по Бишкеку), как
+ * проверяет сервер.
+ *
+ * `emptyLabel` — обычное поле даты (отборы, срок оплаты, акт сверки): пусто —
+ * «не выбрано» (эта подпись), любой день, и сегодняшний, приходит датой.
+ * `min` / `max` — свои границы (срок оплаты — в будущем).
  */
 export function DatePicker({
   label = "Дата",
@@ -40,6 +45,10 @@ export function DatePicker({
   onChange,
   maxDaysBack = 365,
   variant = "inline",
+  emptyLabel,
+  min: minProp,
+  max: maxProp,
+  clearable = false,
 }: {
   label?: string;
   value: string;
@@ -47,7 +56,15 @@ export function DatePicker({
   maxDaysBack?: number;
   /** «field» — заметное поле наверху формы (продажа, приход): день крупно, вся плашка — кнопка. */
   variant?: "inline" | "field";
+  emptyLabel?: string;
+  min?: string;
+  max?: string;
+  /** Обычное поле: можно снова сделать «не выбрано». */
+  clearable?: boolean;
 }) {
+  // Режим записи: пусто — сегодня. Обычное поле: пусто — не выбрано.
+  const plain = emptyLabel !== undefined;
+  const shownText = value ? ruDate(value) : plain ? emptyLabel : "Сегодня";
   const [open, setOpen] = useState(false);
   // Сегодня считаем в браузере при открытии — без расхождения с сервером при отрисовке.
   const [today, setToday] = useState("");
@@ -107,8 +124,9 @@ export function DatePicker({
     setOpen(true);
   }
 
-  const min = today ? minusDays(today, maxDaysBack) : "";
-  const selected = value || today;
+  const min = minProp ?? (today ? minusDays(today, maxDaysBack) : "");
+  const max = maxProp ?? today;
+  const selected = value || (plain ? "" : today);
   // Сетка месяца с понедельника.
   const first = new Date(Date.UTC(view.y, view.m, 1));
   const lead = (first.getUTCDay() + 6) % 7;
@@ -117,7 +135,7 @@ export function DatePicker({
   const monthStart = iso(view.y, view.m, 1);
   const monthEnd = iso(view.y, view.m, days);
   const canPrev = Boolean(min) && monthStart > min;
-  const canNext = Boolean(today) && monthEnd < today;
+  const canNext = Boolean(max) && monthEnd < max;
   const shift = (delta: number) =>
     setView(({ y, m }) => {
       const next = m + delta;
@@ -125,7 +143,12 @@ export function DatePicker({
     });
 
   return (
-    <div className={variant === "field" ? `date-picker date-picker-field${value ? " date-picker-past" : ""}` : "date-picker"} ref={box}>
+    <div
+      className={
+        variant === "field" ? `date-picker date-picker-field${value && !plain ? " date-picker-past" : ""}` : "date-picker"
+      }
+      ref={box}
+    >
       {variant === "field" ? (
         <>
           <span className="date-picker-label">{label}</span>
@@ -133,20 +156,20 @@ export function DatePicker({
             type="button"
             ref={toggleButton}
             className={`date-picker-field-button${open ? " active" : ""}`}
-            aria-label={`${label}: ${value ? ruDate(value) : "сегодня"}. Выбрать дату`}
+            aria-label={`${label}: ${shownText}. Выбрать дату`}
             aria-expanded={open}
             onClick={toggle}
           >
             <Icon name="calendar" />
-            <strong>{value ? ruDate(value) : "Сегодня"}</strong>
+            <strong className={!value && plain ? "date-picker-empty" : undefined}>{shownText}</strong>
             {/* Запись не за сегодня — видно сразу, чтобы не ошибиться днём. */}
-            {value && <span className="date-picker-note">не сегодня</span>}
+            {value && !plain && <span className="date-picker-note">не сегодня</span>}
           </button>
         </>
       ) : (
         <>
           <span className="date-picker-text">
-            {label}: <strong>{value ? ruDate(value) : "сегодня"}</strong>
+            {label}: <strong>{plain ? shownText : value ? ruDate(value) : "сегодня"}</strong>
           </span>
           <button
             type="button"
@@ -194,10 +217,10 @@ export function DatePicker({
                   key={day}
                   type="button"
                   className={[day === selected ? "selected" : "", day === today ? "today" : ""].filter(Boolean).join(" ")}
-                  disabled={day > today || day < min}
+                  disabled={day > max || day < min}
                   aria-pressed={day === selected}
                   onClick={() => {
-                    onChange(day === today ? "" : day);
+                    onChange(day === today && !plain ? "" : day);
                     setOpen(false);
                   }}
                 >
@@ -206,20 +229,92 @@ export function DatePicker({
               );
             })}
           </div>
-          {value && (
-            <button
-              type="button"
-              className="text-button date-picker-today"
-              onClick={() => {
-                onChange("");
-                setOpen(false);
-              }}
-            >
-              Сегодня
-            </button>
+          {plain ? (
+            <div className="date-picker-foot">
+              {today >= min && today <= max && value !== today && (
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => {
+                    onChange(today);
+                    setOpen(false);
+                  }}
+                >
+                  Сегодня
+                </button>
+              )}
+              {clearable && value && (
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => {
+                    onChange("");
+                    setOpen(false);
+                  }}
+                >
+                  Убрать дату
+                </button>
+              )}
+            </div>
+          ) : (
+            value && (
+              <button
+                type="button"
+                className="text-button date-picker-today"
+                onClick={() => {
+                  onChange("");
+                  setOpen(false);
+                }}
+              >
+                Сегодня
+              </button>
+            )
           )}
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Поле даты для обычной формы (акт сверки, срок оплаты): русский календарь
+ * вместо браузерного (там формат языка браузера — mm/dd/yyyy), дата уходит
+ * скрытым полем `name` как "ГГГГ-ММ-ДД".
+ */
+export function DateField({
+  name,
+  label,
+  defaultValue = "",
+  emptyLabel = "Выбрать дату",
+  min,
+  max,
+  maxDaysBack,
+  clearable = true,
+}: {
+  name: string;
+  label: string;
+  defaultValue?: string;
+  emptyLabel?: string;
+  min?: string;
+  max?: string;
+  maxDaysBack?: number;
+  clearable?: boolean;
+}) {
+  const [value, setValue] = useState(defaultValue);
+  return (
+    <>
+      <input type="hidden" name={name} value={value} />
+      <DatePicker
+        variant="field"
+        label={label}
+        value={value}
+        onChange={setValue}
+        emptyLabel={emptyLabel}
+        min={min}
+        max={max}
+        maxDaysBack={maxDaysBack}
+        clearable={clearable}
+      />
+    </>
   );
 }

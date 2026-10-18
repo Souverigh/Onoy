@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DateField } from "@/components/date-picker";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
@@ -793,10 +794,14 @@ export default async function EntryPage({
                   </div>
                   <details className="promise-date" open={false}>
                     <summary>Дата</summary>
-                    <label>
-                      Обещал оплатить до
-                      <input type="date" name="promised_date" min={today} defaultValue={entry.promised_date ?? ""} />
-                    </label>
+                    <DateField
+                      name="promised_date"
+                      label="Обещал оплатить до"
+                      defaultValue={entry.promised_date ?? ""}
+                      min={today}
+                      max={new Date(Date.now() + 730 * 86400000).toISOString().slice(0, 10)}
+                      clearable={false}
+                    />
                     <button className="button" type="submit">
                       Сохранить дату
                     </button>

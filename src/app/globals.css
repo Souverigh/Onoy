@@ -7403,87 +7403,191 @@ tr.row-link:has(a[data-pending]) {
   }
 }
 
-/* Журнал продаж и прихода: период кнопками, отборы, итоги (17.10.2026). */
+/* Журнал продаж и прихода: одна строка — поиск, период, фильтры, Excel;
+   включённые отборы — метками с × (17.10.2026). */
 .journal-bar {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 16px;
 }
-.journal-periods {
+.journal-toolbar {
   display: flex;
   flex-wrap: wrap;
+  align-items: stretch;
   gap: 8px;
 }
-.journal-chip {
+.journal-search {
+  display: flex;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.journal-search input {
+  width: 100%;
+  min-height: 44px;
+}
+.journal-drop {
+  position: relative;
+}
+.journal-drop-button {
   display: inline-flex;
   align-items: center;
-  min-height: 38px;
-  padding: 6px 14px;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid #dce2d9;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 15px;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+}
+.journal-drop-button svg {
+  color: var(--green);
+}
+.journal-drop-button:hover,
+.journal-drop-button.active {
+  border-color: #cfe3c4;
+  background: #f6faf1;
+}
+.journal-count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--green);
+  color: #fff;
+  font-size: 12px;
+  text-align: center;
+}
+.journal-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  width: min(320px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(20, 30, 25, 0.16);
+}
+.journal-panel-right {
+  left: auto;
+  right: 0;
+}
+.journal-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.journal-options button {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  font-size: 15px;
+  text-align: left;
+}
+.journal-options button:hover {
+  background: #f1f4ee;
+}
+.journal-options button.selected {
+  background: #edf4e9;
+  color: var(--green);
+  font-weight: 600;
+}
+.journal-options button.selected::after {
+  content: " ✓";
+}
+.journal-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.journal-panel-title {
+  margin: 10px 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.journal-panel-title:first-child {
+  margin-top: 0;
+}
+.journal-segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.journal-segments button {
+  min-height: 36px;
+  padding: 6px 12px;
   border: 1px solid #dbe1da;
   border-radius: 999px;
   background: #fff;
   color: var(--ink);
   font-size: 14px;
-  text-decoration: none;
-  cursor: pointer;
 }
-.journal-chip:hover {
-  border-color: #cfe3c4;
-  background: #f6faf1;
-}
-.journal-chip.selected {
+.journal-segments button.selected {
   border-color: var(--green);
   background: var(--green);
   color: #fff;
 }
-.journal-custom {
+.journal-chips {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px;
-}
-.journal-custom label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0;
-  font-size: 13px;
-  color: var(--muted);
-}
-.journal-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px 14px;
-}
-.journal-search {
-  display: flex;
-  gap: 8px;
-  flex: 1 1 280px;
-  max-width: 420px;
-}
-.journal-search input {
-  flex: 1;
-  min-width: 0;
-}
-.journal-select {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0;
-  font-size: 13px;
-  color: var(--muted);
-}
-.journal-select select {
-  min-width: 160px;
-}
-.journal-actions {
-  display: flex;
   align-items: center;
-  gap: 12px;
-  margin-left: auto;
+  gap: 8px;
 }
+.journal-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 1px solid #cfe3c4;
+  border-radius: 999px;
+  background: #edf4e9;
+  color: var(--ink);
+  font-size: 14px;
+  cursor: pointer;
+}
+.journal-chip span {
+  color: var(--muted);
+  font-size: 16px;
+}
+@media (max-width: 640px) {
+  .journal-search {
+    flex-basis: 100%;
+  }
+  .journal-drop {
+    flex: 1;
+  }
+  .journal-drop-button {
+    width: 100%;
+    justify-content: space-between;
+  }
+  /* На телефоне окно — во всю ширину строки, под ней. */
+  .journal-toolbar {
+    position: relative;
+  }
+  .journal-drop {
+    position: static;
+  }
+  .journal-panel,
+  .journal-panel-right {
+    left: 0;
+    right: 0;
+    width: auto;
+  }
+}
+
 .journal-totals {
   display: flex;
   flex-wrap: wrap;
@@ -7518,15 +7622,6 @@ tr.row-link:has(a[data-pending]) {
 .journal-total-row td {
   font-weight: 650;
   border-top: 2px solid var(--line);
-}
-@media (max-width: 640px) {
-  .journal-search {
-    max-width: none;
-    flex-basis: 100%;
-  }
-  .journal-actions {
-    margin-left: 0;
-  }
 }
 
 /* Отчёт: прибыль и лидеры продаж (17.10.2026). */
@@ -7714,4 +7809,25 @@ tr.row-link:has(a[data-pending]) {
 }
 .sale-items-form .draft-status {
   margin-top: 6px;
+}
+
+/* Обычное поле даты: «не выбрано» — серым; внизу календаря — «Сегодня» и «Убрать». */
+.date-picker-empty {
+  color: var(--muted);
+  font-weight: 500;
+}
+.date-picker-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+/* Поля даты с русским календарем в обычных формах. */
+.statement-period .date-picker-field {
+  flex: 0 1 220px;
+}
+.promise-date .date-picker-field,
+.admin-form .date-picker-field {
+  flex: 1 1 220px;
 }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DateField } from "@/components/date-picker";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
 import { money } from "@/lib/format";
@@ -44,14 +45,9 @@ export default async function Statement({
         </div>
       </div>
       <form className="statement-period no-print" action={`/${kind}/${id}/statement`}>
-        <label>
-          С
-          <input type="date" name="from" defaultValue={from} />
-        </label>
-        <label>
-          По
-          <input type="date" name="to" defaultValue={to} />
-        </label>
+        {/* Русский календарь вместо браузерного (там mm/dd/yyyy). */}
+        <DateField name="from" label="С" defaultValue={from} emptyLabel="Начало" maxDaysBack={3650} />
+        <DateField name="to" label="По" defaultValue={to} emptyLabel="Сегодня" maxDaysBack={3650} />
         <button className="button" type="submit">
           Показать
         </button>

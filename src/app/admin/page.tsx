@@ -1,4 +1,5 @@
 import { requirePlatformAdmin } from "@/lib/admin";
+import { DateField } from "@/components/date-picker";
 import { bishkekDate } from "@/lib/day-summary";
 import { Submit } from "@/components/submit";
 import { subscriptionState } from "@/lib/subscription";
@@ -137,10 +138,14 @@ export default async function AdminShops({
                       <option value="business">Бизнес (5 000 сом)</option>
                     </select>
                   </label>
-                  <label>
-                    Оплачено до
-                    <input type="date" name="paid_until" defaultValue={s.paid_until ?? ""} />
-                  </label>
+                  <DateField
+                    name="paid_until"
+                    label="Оплачено до"
+                    defaultValue={s.paid_until ?? ""}
+                    emptyLabel="Не оплачено"
+                    maxDaysBack={3650}
+                    max={new Date(Date.now() + 3650 * 86400000).toISOString().slice(0, 10)}
+                  />
                   <Submit>Сохранить тариф</Submit>
                 </form>
                 {s.blocked_at ? (
