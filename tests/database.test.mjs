@@ -32,7 +32,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 24);
+  assert.equal(rows.length, 25);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -3190,5 +3190,29 @@ test("correct_purchase: photo copied with all pages, purchase and its paid-now p
   assert.equal(await supplierBalance(supplier), "-50.00");
   await user(a);
   await assert.rejects(db.query("select correct_purchase($1,$2,null)", [orgA, purchase.id]), /invalid_purchase/);
+  await owner();
+});
+test("cash moves: only the owner takes or puts cash, once per key, reversible, other shops see nothing", async () => {
+  const k = (n) => `aaaabbbb-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
+  await user(a);
+  const out = (await db.query("select commit_cash_move($1,'out','5000','Выручку домой',$2) as id", [orgA, k(1)])).rows[0].id;
+  assert.equal((await db.query("select commit_cash_move($1,'out','5000','Выручку домой',$2) as id", [orgA, k(1)])).rows[0].id, out);
+  await db.query("select commit_cash_move($1,'in','1000','Размен',$2)", [orgA, k(2)]);
+  assert.deepEqual(
+    (await db.query("select direction,amount,note,currency from cash_moves where organization_id=$1 order by direction", [orgA])).rows,
+    [
+      { direction: "in", amount: "1000.00", note: "Размен", currency: "KGS" },
+      { direction: "out", amount: "5000.00", note: "Выручку домой", currency: "KGS" },
+    ],
+  );
+  await assert.rejects(db.query("select commit_cash_move($1,'out','-5',null,$2)", [orgA, k(3)]), /invalid_cash_move/);
+  await assert.rejects(db.query("select commit_cash_move($1,'sideways','5',null,$2)", [orgA, k(4)]), /invalid_cash_move/);
+  await assert.rejects(db.query("insert into cash_moves(organization_id,direction,amount,currency,idempotency_key) values ($1,'in',1,'KGS',$2)", [orgA, k(5)]), /permission denied/);
+  await db.query("select reverse_cash_move($1,$2)", [orgA, out]);
+  await assert.rejects(db.query("select reverse_cash_move($1,$2)", [orgA, out]), /invalid_cash_move/);
+  // Чужой магазин: не видит и не пишет.
+  await user(b);
+  assert.equal((await db.query("select * from cash_moves")).rows.length, 0);
+  await assert.rejects(db.query("select commit_cash_move($1,'out','1',null,$2)", [orgA, k(6)]), /owner_only/);
   await owner();
 });

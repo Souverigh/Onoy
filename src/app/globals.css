@@ -7517,3 +7517,110 @@ tr.row-link:has(a[data-pending]) {
     margin-left: 0;
   }
 }
+
+/* Отчёт: прибыль и лидеры продаж (17.10.2026). */
+.report-profit {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.report-profit h2 {
+  margin: 0;
+}
+.report-profit-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--green);
+}
+.report-profit-value.negative {
+  color: #b2402f;
+}
+.report-profit-lines {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) auto;
+  gap: 6px 24px;
+  margin: 0;
+  font-size: 15px;
+}
+.report-profit-lines dt {
+  color: var(--muted);
+}
+.report-profit-lines dd {
+  margin: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+.report-profit p {
+  margin: 0;
+  font-size: 13px;
+}
+.report-leaders {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+@media (min-width: 1000px) {
+  .report-leaders {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    align-items: start;
+  }
+}
+
+/* Касса дня: остаток на утро, «Забрал / Положил» (17.10.2026). */
+.day-cash-lines {
+  display: flex;
+  flex-direction: column;
+  margin: 6px 0 4px;
+}
+.day-cash-opening span small {
+  font-size: 12px;
+}
+.cash-moves {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 14px;
+}
+.cash-moves li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px dashed var(--line);
+}
+.cash-moves li form {
+  margin: 0 0 0 auto;
+}
+.cash-move-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.cash-move {
+  flex: 1 1 220px;
+}
+.cash-move summary {
+  list-style: none;
+  text-align: center;
+  cursor: pointer;
+}
+.cash-move summary::-webkit-details-marker {
+  display: none;
+}
+.cash-move[open] summary {
+  border-color: var(--green);
+}
+.cash-move-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+.cash-move-form label {
+  margin: 0;
+}
+.day-cash-hint {
+  margin: 8px 0 0;
+  font-size: 13px;
+}

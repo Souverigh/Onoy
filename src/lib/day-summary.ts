@@ -5,7 +5,7 @@ import { memberLabels } from "./members";
 import { isCurrency, type Currency } from "./currency";
 import { foreignParties, recordCurrency } from "./party-currency";
 import { expenseCategoryLabel, expensesByCategory } from "./expenses";
-import { cashbox, paymentMethod, type Cashbox } from "./cashbox";
+import { cashbox, drawerExpected, paymentMethod, type Cashbox, type CashMove, type Drawer } from "./cashbox";
 
 /** День по Бишкеку (YYYY-MM-DD): сменяется в 00:00 UTC+6. */
 export function bishkekDate(value: string | Date = new Date()) {
@@ -59,6 +59,8 @@ export type DaySummary = {
   adjustments?: { discount: number; return: number };
   /** «В кассе по факту» при закрытии дня. */
   counted?: number | null;
+  /** Касса с остатком на утро (17.10.2026). В старых снимках нет — касса дня с нуля. */
+  drawer?: Drawer;
 } & DayMoney;
 export type DayExpenses = { total: number; count: number; byCategory: { category: string; amount: number }[] };
 
@@ -305,6 +307,35 @@ export async function computeDaySummary(
   }
 
   const expensesTotal = round(expenseCategories.reduce((s, c) => s + c.amount, 0));
+  const box = cashbox({
+    shopCurrency,
+    cashSales: saleRows
+      .filter((r) => r.paid_immediately)
+      .map((r) => ({ amount: r.total, original_amount: r.original_amount, original_currency: r.original_currency, currency: currencyOf(r) })),
+    payments: paymentRows.map((p) => ({ ...p, currency: currencyOf(p) })),
+    expenses: expensesTotal,
+  });
+  // Касса с остатком на утро. Таблицы cash_moves ещё нет (миграция не
+  // применена) — касса дня, как раньше, без остатка.
+  let drawer: Drawer | null = null;
+  try {
+    const [opening, moves] = await Promise.all([
+      openingCash(db, organizationId, shopCurrency, date, foreign),
+      cashMovesBetween(db, organizationId, shopCurrency, start, end),
+    ]);
+    const movesIn = round(moves.filter((m) => m.direction === "in").reduce((t, m) => t + m.amount, 0));
+    const movesOut = round(moves.filter((m) => m.direction === "out").reduce((t, m) => t + m.amount, 0));
+    drawer = {
+      opening: opening.amount,
+      openingFrom: opening.from,
+      movesIn,
+      movesOut,
+      moves,
+      expected: drawerExpected(opening.amount, box.left, movesIn, movesOut),
+    };
+  } catch (error) {
+    console.error("computeDaySummary: drawer failed", error);
+  }
   const ownAdjustments = ((adjustments.data ?? []) as { customer_id: string; kind: string; amount: string }[]).filter(
     (a) => currencyOf(a) === shopCurrency,
   );
@@ -321,14 +352,8 @@ export async function computeDaySummary(
       count: expenseRows.length,
       byCategory: expenseCategories,
     },
-    cashbox: cashbox({
-      shopCurrency,
-      cashSales: saleRows
-        .filter((r) => r.paid_immediately)
-        .map((r) => ({ amount: r.total, original_amount: r.original_amount, original_currency: r.original_currency, currency: currencyOf(r) })),
-      payments: paymentRows.map((p) => ({ ...p, currency: currencyOf(p) })),
-      expenses: expensesTotal,
-    }),
+    cashbox: box,
+    ...(drawer ? { drawer } : {}),
     adjustments: {
       discount: sum(ownAdjustments.filter((a) => a.kind === "discount"), (a) => a.amount),
       return: sum(ownAdjustments.filter((a) => a.kind === "return"), (a) => a.amount),
@@ -729,3 +754,117 @@ export async function unclosedDays(db: SupabaseClient, organizationId: string): 
   for (const row of (expenses.data ?? []) as { spent_on: string }[]) active.add(row.spent_on);
   return [...active].filter((day) => !closed.has(day)).sort().reverse();
 }
+
+/** «Забрал из кассы» / «Положил в кассу» за время [start; end) в валюте магазина. */
+async function cashMovesBetween(
+  db: SupabaseClient,
+  organizationId: string,
+  shopCurrency: string,
+  start: string,
+  end: string,
+): Promise<CashMove[]> {
+  const { data, error } = await db
+    .from("cash_moves")
+    .select("id,direction,amount,note,occurred_at")
+    .eq("organization_id", organizationId)
+    .eq("currency", shopCurrency)
+    .is("reversed_at", null)
+    .gte("occurred_at", start)
+    .lt("occurred_at", end)
+    .order("occurred_at")
+    .range(0, 4999);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as { id: string; direction: "out" | "in"; amount: string; note: string | null; occurred_at: string }[]).map((m) => ({
+    id: m.id,
+    direction: m.direction,
+    amount: Number(m.amount),
+    note: m.note,
+    at: m.occurred_at,
+  }));
+}
+
+/**
+ * Наличные за дни [fromDay; toDay] (незакрытые дни между прошлым закрытием и
+ * сегодня): пришло наличными − ушло наличными − расходы + положил − забрал.
+ */
+async function cashNetBetween(
+  db: SupabaseClient,
+  organizationId: string,
+  shopCurrency: Currency,
+  fromDay: string,
+  toDay: string,
+  foreign: Map<string, Currency>,
+): Promise<number> {
+  const start = dayBounds(fromDay).start;
+  const end = dayBounds(toDay).end;
+  const [sales, payments, expenses, moves] = await Promise.all([
+    db
+      .from("sales")
+      .select("customer_id,total,original_amount,original_currency")
+      .eq("organization_id", organizationId)
+      .eq("status", "posted")
+      .eq("paid_immediately", true)
+      .is("reversed_at", null)
+      .eq("is_opening", false)
+      .gte("occurred_at", start)
+      .lt("occurred_at", end)
+      .range(0, 9999),
+    dayPayments(db, organizationId, start, end),
+    db
+      .from("expenses")
+      .select("amount")
+      .eq("organization_id", organizationId)
+      .eq("currency", shopCurrency)
+      .is("reversed_at", null)
+      .gte("spent_on", fromDay)
+      .lte("spent_on", toDay)
+      .range(0, 9999),
+    cashMovesBetween(db, organizationId, shopCurrency, start, end),
+  ]);
+  if (sales.error || payments.error) throw new Error("cashNetBetween failed");
+  const currencyOf = (row: { customer_id?: string | null; supplier_id?: string | null }) => recordCurrency(row, foreign, shopCurrency);
+  const box = cashbox({
+    shopCurrency,
+    cashSales: ((sales.data ?? []) as unknown as SaleRow[]).map((r) => ({ ...r, amount: r.total, currency: currencyOf(r) })),
+    payments: ((payments.data ?? []) as unknown as PaymentRow[]).map((p) => ({ ...p, currency: currencyOf(p) })),
+    expenses: sum((expenses.data ?? []) as { amount: string }[], (e) => e.amount),
+  });
+  const movesNet = moves.reduce((t, m) => t + (m.direction === "in" ? m.amount : -m.amount), 0);
+  return round(box.left + movesNet);
+}
+
+/**
+ * Остаток в кассе на утро дня `date`: что оставили при закрытии последнего
+ * закрытого дня до него плюс наличные незакрытых дней между ними. Закрытых
+ * дней не было или последний закрыт до 17.10.2026 (остатка не знает) — 0.
+ */
+async function openingCash(
+  db: SupabaseClient,
+  organizationId: string,
+  shopCurrency: Currency,
+  date: string,
+  foreign: Map<string, Currency>,
+): Promise<{ amount: number; from: string | null }> {
+  const last = await db
+    .from("day_closures")
+    .select("day,snapshot")
+    .eq("organization_id", organizationId)
+    .lt("day", date)
+    .order("day", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (last.error || !last.data) return { amount: 0, from: null };
+  const snapshot = last.data.snapshot as { drawer?: Drawer } | null;
+  // Закрыт до этой версии — остатка не знает; незакрытые дни после него не
+  // складываем (выручку тогда забирали без записи) — касса с нуля.
+  if (snapshot?.drawer?.carried == null) return { amount: 0, from: null };
+  const base = snapshot.drawer.carried;
+  const firstGap = addDay(last.data.day as string, 1);
+  const lastGap = addDay(date, -1);
+  const gap = firstGap <= lastGap ? await cashNetBetween(db, organizationId, shopCurrency, firstGap, lastGap, foreign) : 0;
+  return { amount: round(base + gap), from: last.data.day as string };
+}
+
+const addDay = (date: string, days: number) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
+

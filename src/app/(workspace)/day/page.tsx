@@ -17,7 +17,9 @@ import {
   type PartyAmount,
   unclosedDays,
 } from "@/lib/day-summary";
-import { closeDay } from "./actions";
+import { addCashMove, closeDay, reverseCashMove } from "./actions";
+import { randomUUID } from "node:crypto";
+import { ConfirmButton } from "@/components/confirm-button";
 import { DayNav } from "@/components/day-nav";
 import { InfoTip } from "@/components/info-tip";
 import { expenseCategoryLabel } from "@/lib/expenses";
@@ -89,9 +91,13 @@ function SupplierTip({ m, cur }: { m: DayMoney; cur: string }) {
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
+const clock = (iso: string) =>
+  new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+
 /**
- * Главная карточка (задача 32): сколько наличных должно быть в кассе,
- * откуда эта сумма и закрытие дня. Пояснения — в «!».
+ * Касса дня как в 1С, но просто (17.10.2026): утром было + пришло − ушло −
+ * забрали + положили = должно быть. Вечером — «по факту» и «забираю», остальное
+ * остаётся на завтра (остаток на утро следующего дня).
  */
 function CashCard({
   summary,
@@ -101,6 +107,7 @@ function CashCard({
   closedTime,
   afterCount,
   pdfHref,
+  moveKeys,
 }: {
   summary: DaySummary;
   date: string;
@@ -109,24 +116,41 @@ function CashCard({
   closedTime: string | null;
   afterCount: number;
   pdfHref: string;
+  /** Ключи от двойной записи для «Забрал» и «Положил». */
+  moveKeys: { out: string; in: string };
 }) {
   const cur = summary.currency ?? "KGS";
   const net = dayNet(summary);
-  const diff = summary.counted != null ? round(summary.counted - net.left) : null;
+  const drawer = summary.drawer;
+  const due = drawer?.expected ?? net.left;
+  const diff = summary.counted != null ? round(summary.counted - due) : null;
+  const canMove = Boolean(drawer) && isToday && !closure;
   return (
     <section className={`panel day-cash${closure ? " day-cash-closed" : ""}`}>
       <div className="day-cash-head">
         <span className="label-with-tip">
           В кассе должно быть
           <InfoTip>
-            Наличные за день: пришло наличными (продажи и оплаты клиентов) минус наличные поставщикам и
-            расходы. Переводы в кассу не входят.
+            Наличные: утром было, плюс пришло наличными (продажи и оплаты клиентов), минус наличные поставщикам и
+            расходы, минус что забрали из кассы и плюс что положили. Переводы в кассу не входят.
           </InfoTip>
         </span>
-        <strong className="day-cash-sum">{money(net.left, cur)}</strong>
+        <strong className="day-cash-sum">{money(due, cur)}</strong>
       </div>
-      <details className="day-cash-from">
-        <summary>Откуда эта сумма</summary>
+      <div className="day-cash-lines">
+        {drawer && (
+          <div className="day-line day-line-sub day-cash-opening">
+            <span>
+              Утром в кассе
+              <small className="muted">
+                {drawer.openingFrom
+                  ? ` · осталось после ${dayName(drawer.openingFrom)}`
+                  : " · закрытого дня с остатком раньше не было"}
+              </small>
+            </span>
+            <strong>{money(drawer.opening, cur)}</strong>
+          </div>
+        )}
         <div className="day-line day-line-sub">
           <span>Пришло наличными</span>
           <strong>+ {money(net.income, cur)}</strong>
@@ -139,8 +163,20 @@ function CashCard({
           <span>Расходы</span>
           <strong>− {money(net.expenses, cur)}</strong>
         </div>
-        {net.transferIn != null && (net.transferIn > 0 || (net.transferOut ?? 0) > 0) && (
+        {drawer && drawer.movesOut > 0 && (
           <div className="day-line day-line-sub">
+            <span>Забрали из кассы</span>
+            <strong>− {money(drawer.movesOut, cur)}</strong>
+          </div>
+        )}
+        {drawer && drawer.movesIn > 0 && (
+          <div className="day-line day-line-sub">
+            <span>Положили в кассу</span>
+            <strong>+ {money(drawer.movesIn, cur)}</strong>
+          </div>
+        )}
+        {net.transferIn != null && (net.transferIn > 0 || (net.transferOut ?? 0) > 0) && (
+          <div className="day-line day-line-sub muted">
             <span>Переводом - не в кассе</span>
             <strong>
               получено {money(net.transferIn, cur)}
@@ -148,7 +184,70 @@ function CashCard({
             </strong>
           </div>
         )}
-      </details>
+      </div>
+
+      {drawer && drawer.moves.length > 0 && (
+        <ul className="cash-moves">
+          {drawer.moves.map((m) => (
+            <li key={m.id}>
+              <span className="muted">{clock(m.at)}</span>
+              <span>
+                {m.direction === "out" ? "Забрали" : "Положили"} {money(m.amount, cur)}
+                {m.note && <span className="muted"> · {m.note}</span>}
+              </span>
+              {canMove && (
+                <form action={reverseCashMove}>
+                  <input type="hidden" name="id" value={m.id} />
+                  <ConfirmButton
+                    className="text-button"
+                    message="Отменить эту запись?"
+                    text="Сумма вернётся в расчёт кассы. Запись останется в истории отменённой."
+                    confirmLabel="Отменить"
+                    cancelLabel="Оставить"
+                  >
+                    Отменить
+                  </ConfirmButton>
+                </form>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {canMove && (
+        <div className="cash-move-actions">
+          {(["out", "in"] as const).map((direction) => (
+            <details key={direction} className="cash-move">
+              <summary className="button">{direction === "out" ? "Забрал из кассы" : "Положил в кассу"}</summary>
+              <form action={addCashMove} className="cash-move-form">
+                <input type="hidden" name="direction" value={direction} />
+                <input type="hidden" name="idempotency_key" value={moveKeys[direction]} />
+                <label>
+                  Сумма, {CURRENCY_SIGN[cur as Currency] ?? cur}
+                  <input name="amount" inputMode="decimal" autoComplete="off" required placeholder="0" />
+                </label>
+                <label>
+                  Зачем (необязательно)
+                  <input
+                    name="note"
+                    maxLength={200}
+                    autoComplete="off"
+                    placeholder={direction === "out" ? "Выручку домой, в банк" : "Размен, утренний остаток"}
+                  />
+                </label>
+                <button type="submit" className="button primary">
+                  Записать
+                </button>
+              </form>
+            </details>
+          ))}
+        </div>
+      )}
+      {canMove && drawer && !drawer.openingFrom && (
+        <p className="muted day-cash-hint">
+          Если утром в кассе уже были деньги - запишите их через «Положил в кассу», и расчёт сойдётся.
+        </p>
+      )}
 
       {closure ? (
         <div className="day-cash-status">
@@ -165,11 +264,16 @@ function CashCard({
               {diff === 0 ? "сходится" : diff < 0 ? `не хватает ${money(-diff, cur)}` : `лишние ${money(diff, cur)}`}
             </span>
           )}
+          {drawer?.carried != null && (
+            <span className="muted">
+              {drawer.taken ? `Забрали ${money(drawer.taken, cur)} · ` : ""}на завтра осталось {money(drawer.carried, cur)}
+            </span>
+          )}
           <a className="button" href={pdfHref}>
             Скачать PDF
           </a>
         </div>
-      ) : dayIsEmpty(summary) ? (
+      ) : dayIsEmpty(summary) && !(drawer && (drawer.opening || drawer.moves.length)) ? (
         <p className="muted day-cash-status">
           {isToday ? "Записей пока нет - закрывать нечего." : "В этот день записей нет."}
         </p>
@@ -181,12 +285,21 @@ function CashCard({
               В кассе по факту
               <InfoTip>
                 {isToday
-                  ? "Цифры обновляются с каждой записью. Вечером пересчитайте наличные, впишите сумму и закройте день - итоги сохранятся."
+                  ? "Вечером пересчитайте наличные и впишите сумму - увидите, сходится ли касса. Пусто - считаем, что сходится."
                   : "Итоги посчитаны сейчас по действующим записям. Пересчитайте кассу и закройте день, чтобы сохранить их."}
               </InfoTip>
             </span>
-            <input name="counted" inputMode="decimal" autoComplete="off" placeholder={money(net.left, cur)} />
+            <input name="counted" inputMode="decimal" autoComplete="off" placeholder={money(due, cur)} />
           </label>
+          {drawer && (
+            <label>
+              <span className="label-with-tip">
+                Забираю с собой
+                <InfoTip>Сколько наличных забираете из кассы. Остальное останется на завтра - с этой суммы начнётся утро.</InfoTip>
+              </span>
+              <input name="taken" inputMode="decimal" autoComplete="off" placeholder="0 - всё остаётся в кассе" />
+            </label>
+          )}
           <Submit>Закрыть день</Submit>
           <a className="text-button" href={pdfHref}>
             PDF на сейчас
@@ -340,10 +453,10 @@ function ForeignPart({ m }: { m: DayMoney & { currency: string } }) {
 export default async function DayClose({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; closed?: string; error?: string }>;
+  searchParams: Promise<{ date?: string; closed?: string; error?: string; cash?: string }>;
 }) {
   const { db, organizationId, currency: shopCurrency } = await requireOwner();
-  const { date: rawDate, closed, error } = await searchParams;
+  const { date: rawDate, closed, error, cash } = await searchParams;
   const today = bishkekDate();
   // Будущие дни не показываем — сразу сегодняшний.
   const date =
@@ -440,6 +553,21 @@ export default async function DayClose({
           «В кассе по факту» - только число, например 12 500.
         </p>
       )}
+      {error === "taken" && (
+        <p className="form-error" role="alert">
+          «Забираю с собой» - число, не больше того, что в кассе.
+        </p>
+      )}
+      {error === "cash_move" && (
+        <p className="form-error" role="alert">
+          Не удалось записать движение кассы - проверьте сумму и попробуйте снова.
+        </p>
+      )}
+      {(cash === "out" || cash === "in" || cash === "reversed") && (
+        <p className="notice success" role="status">
+          {cash === "out" ? "Записали: забрали из кассы." : cash === "in" ? "Записали: положили в кассу." : "Запись отменена."} Касса пересчитана.
+        </p>
+      )}
 
       {(attentionDays.length > 0 || pendingCount > 0) && (
         <div className="notice claims-notice unclosed-days day-attention" role="status">
@@ -473,6 +601,7 @@ export default async function DayClose({
         closedTime={closure ? time(closure.closedAt) : null}
         afterCount={afterCount}
         pdfHref={pdfHref}
+        moveKeys={{ out: randomUUID(), in: randomUUID() }}
       />
       <DayTiles summary={summary} date={date} />
       <DebtLines summary={summary} />

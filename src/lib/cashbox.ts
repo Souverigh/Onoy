@@ -84,3 +84,40 @@ export function cashbox(input: {
     transferOut: round(transferOut),
   };
 }
+
+/** «Забрал из кассы» / «Положил в кассу» (cash_moves). */
+export type CashMove = { id: string; direction: "out" | "in"; amount: number; note: string | null; at: string };
+
+/**
+ * Касса как в 1С, но просто (17.10.2026): утром было + пришло наличными −
+ * ушло наличными − забрал + положил = должно быть. Утро — то, что оставили
+ * в кассе при закрытии прошлого дня (`carried`), плюс движение незакрытых
+ * дней между ними.
+ */
+export type Drawer = {
+  opening: number;
+  /** День, с закрытия которого взят остаток; null — закрытых дней не было (утро = 0). */
+  openingFrom: string | null;
+  movesIn: number;
+  movesOut: number;
+  moves: CashMove[];
+  /** Должно быть в кассе. */
+  expected: number;
+  /** При закрытии: сколько забрали и сколько осталось на завтра. */
+  taken?: number;
+  carried?: number;
+};
+
+export function drawerExpected(opening: number, dayLeft: number, movesIn: number, movesOut: number): number {
+  return round(opening + dayLeft + movesIn - movesOut);
+}
+
+/**
+ * Остаток на завтра при закрытии: пересчитанное по факту (не пересчитали —
+ * сколько должно быть) минус то, что забрали. Забрать больше, чем есть, нельзя.
+ */
+export function carriedOver(expected: number, counted: number | null, taken: number): number | null {
+  const base = counted ?? expected;
+  if (taken < 0 || taken > base) return null;
+  return round(base - taken);
+}

@@ -4,6 +4,8 @@ import { money } from "@/lib/format";
 import { bishkekDate } from "@/lib/day-summary";
 import { change, period, type PeriodKind } from "@/lib/periods";
 import { periodReport } from "@/lib/period-report";
+import { periodProfit } from "@/lib/profit";
+import { quantity } from "@/lib/format";
 import { sellersDebtTotals, sellersOverview } from "@/lib/seller-sales";
 import { DayColumns } from "@/components/day-columns";
 import { InfoTip } from "@/components/info-tip";
@@ -55,10 +57,15 @@ export default async function Reports({
   const today = bishkekDate();
   const p = period(kind, today, offset);
   const { db, organizationId, currency: shopCurrency } = await requireOwner();
-  const [report, sellers, owed] = await Promise.all([
+  const [report, sellers, owed, profit] = await Promise.all([
     periodReport(db, organizationId, p),
     sellersOverview(db, organizationId, p.start, p.through, shopCurrency),
     sellersDebtTotals(db, organizationId, shopCurrency).catch(() => new Map<string, number>()),
+    // Прибыль не посчиталась — остальной отчёт всё равно показываем.
+    periodProfit(db, organizationId, shopCurrency, p.start, p.through).catch((error) => {
+      console.error("Reports: profit failed", error);
+      return null;
+    }),
   ]);
 
   const title =
@@ -182,6 +189,150 @@ export default async function Reports({
           <strong>{money(current.paidSuppliers, cur)}</strong>
         </div>
       </section>
+
+
+      {/* Прибыль и лидеры (просьба пользователя 17.10.2026). */}
+      {profit && (
+        <section className="panel report-profit">
+          <h2 className="label-with-tip">
+            Прибыль
+            <InfoTip>
+              Выручка по товарам склада минус их закупочная цена (средняя по приходам), минус скидки и возвраты. Расходы
+              магазина - отдельно, выше.
+            </InfoTip>
+          </h2>
+          {profit.revenue > 0 ? (
+            <>
+              <strong className={profit.profit < 0 ? "report-profit-value negative" : "report-profit-value"}>
+                {money(profit.profit, cur)}
+              </strong>
+              <dl className="report-profit-lines">
+                <dt>Выручка по товарам</dt>
+                <dd>{money(profit.revenue, cur)}</dd>
+                <dt>Себестоимость (закупка)</dt>
+                <dd>− {money(profit.cost, cur)}</dd>
+                {profit.discounts > 0 && (
+                  <>
+                    <dt>Скидки клиентам</dt>
+                    <dd>− {money(profit.discounts, cur)}</dd>
+                  </>
+                )}
+                {profit.returns.revenue > 0 && (
+                  <>
+                    <dt>Возвраты товара</dt>
+                    <dd>− {money(Math.round((profit.returns.revenue - profit.returns.cost) * 100) / 100, cur)}</dd>
+                  </>
+                )}
+                <dt>Наценка</dt>
+                <dd>{profit.cost > 0 ? `${Math.round(((profit.revenue - profit.cost) / profit.cost) * 100)}%` : "-"}</dd>
+                {current.expenses > 0 && (
+                  <>
+                    <dt>Прибыль минус расходы магазина</dt>
+                    <dd>
+                      <strong>{money(Math.round((profit.profit - current.expenses) * 100) / 100, cur)}</strong>
+                    </dd>
+                  </>
+                )}
+              </dl>
+              {profit.coverage < 0.995 && (
+                <p className="muted">
+                  Посчитано по {Math.round(profit.coverage * 100)}% продаж ({money(profit.revenue, cur)} из{" "}
+                  {money(profit.sold, cur)}). Не входят продажи одной суммой, строки без товара склада и товары без
+                  закупочной цены.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="muted">
+              {profit.sold > 0
+                ? "Прибыль считается по товарам склада с закупочной ценой. В этом периоде таких продаж нет - продажи записаны суммой или без закупочной цены."
+                : "Продаж в этом периоде нет."}
+            </p>
+          )}
+          {profit.withoutCost.length > 0 && (
+            <p className="muted">
+              Без закупочной цены:{" "}
+              {profit.withoutCost.slice(0, 5).map((p, i) => (
+                <span key={p.id}>
+                  {i > 0 && ", "}
+                  <Link href={`/stock/${p.id}`}>{p.name}</Link>
+                </span>
+              ))}
+              {profit.withoutCost.length > 5 && ` и ещё ${profit.withoutCost.length - 5}`}. Укажите цену закупки - они
+              войдут в прибыль.
+            </p>
+          )}
+        </section>
+      )}
+
+      {profit && (profit.topProducts.length > 0 || profit.topCustomers.length > 0) && (
+        <div className="report-leaders">
+          {profit.topProducts.length > 0 && (
+            <section className="panel">
+              <h2 className="label-with-tip">
+                Что продаётся лучше всего
+                <InfoTip>Товары склада по выручке за период. Прибыль - выручка минус закупочная цена.</InfoTip>
+              </h2>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Товар</th>
+                      <th>Продано</th>
+                      <th>Выручка</th>
+                      <th>Прибыль</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {profit.topProducts.map((p) => (
+                      <tr key={p.id}>
+                        <td>
+                          <Link href={`/stock/${p.id}`}>{p.name}</Link>
+                        </td>
+                        <td className="nowrap">
+                          {quantity(p.qty)} {p.unit}
+                        </td>
+                        <td className="nowrap">{money(p.revenue, cur)}</td>
+                        <td className="nowrap">{p.profit == null ? <span className="muted">нет закупки</span> : money(p.profit, cur)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+          {profit.topCustomers.length > 0 && (
+            <section className="panel">
+              <h2 className="label-with-tip">
+                Лучшие клиенты
+                <InfoTip>Кто больше всех купил за период - в долг и за наличные.</InfoTip>
+              </h2>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Клиент</th>
+                      <th>Продаж</th>
+                      <th>Сумма</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {profit.topCustomers.map((c) => (
+                      <tr key={c.id}>
+                        <td>
+                          <Link href={`/customers/${c.id}`}>{c.name}</Link>
+                        </td>
+                        <td>{c.count}</td>
+                        <td className="nowrap">{money(c.sold, cur)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+        </div>
+      )}
 
       {foreign.map((f) => {
         const sign = CURRENCY_SIGN[f.currency];

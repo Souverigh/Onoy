@@ -53,3 +53,17 @@ test("old payments without a method: reference, receipt or claim means transfer"
   assert.equal(paymentMethod({ direction: "incoming", amount: 1, created_by: null }), "transfer");
   assert.equal(paymentMethod({ direction: "incoming", amount: 1, created_by: null, method: "cash" }), "cash");
 });
+
+test("drawer: morning cash + day's cash − taken + put = expected; what stays for tomorrow", async () => {
+  const { drawerExpected, carriedOver } = await import("../src/lib/cashbox.ts");
+  // Утром 20 000, за день наличными +15 000 (уже за вычетом поставщиков и расходов), забрал 10 000, положил 500.
+  assert.equal(drawerExpected(20000, 15000, 500, 10000), 25500);
+  assert.equal(drawerExpected(0, 0, 0, 0), 0);
+  // Вечером: по факту 25 300, забираю 20 000 — на завтра 5 300; не пересчитали — от «должно быть».
+  assert.equal(carriedOver(25500, 25300, 20000), 5300);
+  assert.equal(carriedOver(25500, null, 0), 25500);
+  assert.equal(carriedOver(25500, null, 25500), 0);
+  // Забрать больше, чем есть, или минус — нельзя.
+  assert.equal(carriedOver(25500, 25300, 25301), null);
+  assert.equal(carriedOver(25500, null, -1), null);
+});

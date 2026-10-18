@@ -91,15 +91,24 @@ function ExpensesBlock({ s }: { s: DaySummary }) {
         <Row key={c.category} label={expenseCategoryLabel(c.category)} value={sum(c.amount, cur)} />
       ))}
 
-      <Text style={styles.title}>Осталось за день</Text>
+      <Text style={styles.title}>{s.drawer ? "Касса" : "Осталось за день"}</Text>
+      {s.drawer && <Row label="Утром в кассе" value={sum(s.drawer.opening, cur)} />}
       <Row
         label={net.transferIn == null ? "Пришло (наличные продажи + собрано)" : "Наличными от клиентов и продаж"}
         value={sum(net.income, cur)}
       />
       <Row label="Наличными поставщикам" value={`− ${sum(net.paid, cur)}`} />
       <Row label="Расходы" value={`− ${sum(net.expenses, cur)}`} />
-      <Row label="В кассе должно быть наличных" value={sum(net.left, cur)} strong />
+      {s.drawer && s.drawer.movesOut > 0 && <Row label="Забрали из кассы" value={`− ${sum(s.drawer.movesOut, cur)}`} />}
+      {s.drawer && s.drawer.movesIn > 0 && <Row label="Положили в кассу" value={`+ ${sum(s.drawer.movesIn, cur)}`} />}
+      <Row label="В кассе должно быть наличных" value={sum(s.drawer?.expected ?? net.left, cur)} strong />
       {s.counted != null && <Row label="В кассе по факту" value={sum(s.counted, cur)} />}
+      {s.drawer?.carried != null && (
+        <>
+          {Boolean(s.drawer.taken) && <Row label="Забрали при закрытии" value={sum(s.drawer.taken ?? 0, cur)} />}
+          <Row label="Осталось в кассе на завтра" value={sum(s.drawer.carried, cur)} strong />
+        </>
+      )}
       {net.transferIn != null && net.transferIn > 0 && (
         <Row label="Переводом - не в кассе" value={sum(net.transferIn, cur)} />
       )}
