@@ -574,6 +574,7 @@ export function SaleItemsForm({
                     className="sale-sheet-price"
                     inputMode="decimal"
                     autoComplete="off"
+                    placeholder="Цена"
                     aria-label={`Цена за ${line.product.unit}, ${CURRENCY_SIGN[lineCurrency]}`}
                     value={line.price}
                     onChange={(e) => update(line.key, { price: e.target.value })}

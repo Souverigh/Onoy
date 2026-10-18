@@ -7240,14 +7240,25 @@ tr.row-link:has(a[data-pending]) {
   .sale-sheet-head {
     display: none;
   }
+  /* Строка: название и × / кол-во, ед., цена — широко / сумма отдельной строкой справа. */
   .sale-sheet-line {
-    grid-template-columns: 22px auto 28px minmax(0, 1fr) auto;
+    grid-template-columns: 22px auto 28px minmax(96px, 1fr) auto;
     grid-template-areas:
       "n name name name x"
-      ". qty unit price sum";
+      ". qty unit price price"
+      ". sum sum sum sum";
     row-gap: 8px;
     column-gap: 8px;
     padding: 10px;
+  }
+  .sale-sheet-line .sale-sheet-price {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .sale-sheet-line .sale-sheet-sum::before {
+    content: "= ";
+    color: var(--muted);
+    font-weight: 400;
   }
   .sale-sheet-line .sale-sheet-n {
     grid-area: n;
