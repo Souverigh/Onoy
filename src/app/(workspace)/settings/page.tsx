@@ -1,4 +1,6 @@
 import { headers } from "next/headers";
+import { ContactLinks } from "@/components/contact-links";
+import Link from "next/link";
 import { LogoutButton } from "@/components/logout-button";
 import { InstallApp } from "@/components/install-app";
 import { getContext } from "@/lib/context";
@@ -325,6 +327,29 @@ export default async function Settings({
               businessStaffLimit={staffLimits.business}
             />
           )}
+
+          {/* Юридическое (просьба пользователя 17.10.2026): документы, выгрузка, удаление. */}
+          <section className="panel settings-card" id="legal">
+            <header>
+              <h2>Документы и данные</h2>
+            </header>
+            <ul className="settings-legal">
+              <li>
+                <Link href="/privacy">Политика конфиденциальности</Link>
+                <small className="muted">Какие данные хранятся, где и кому передаются</small>
+              </li>
+              <li>
+                <Link href="/terms">Пользовательское соглашение</Link>
+                <small className="muted">Условия сервиса, тарифы и оплата</small>
+              </li>
+            </ul>
+            <p className="muted">
+              {isOwner
+                ? "Выгрузить все данные магазина - ниже, «Выгрузка в Excel». Удалить аккаунт и данные магазина - напишите нам с email аккаунта: удалим в течение 30 дней. Восстановить удалённое нельзя - сначала выгрузите."
+                : "Выгрузить или удалить данные магазина может владелец. По вопросам о ваших данных - напишите нам."}
+            </p>
+            <ContactLinks />
+          </section>
 
           {isOwner && (
             <section className="panel settings-card" id="export">

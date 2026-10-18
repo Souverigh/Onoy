@@ -9,6 +9,7 @@ const errors: Record<string, string> = {
   signup_disabled: "Регистрация новых аккаунтов выключена. Попросите владельца магазина или администратора.",
   accept: "Не удалось присоединиться. Возможно, ссылка уже использована - попросите новую.",
   member: "Вы уже работаете в этом магазине.",
+  consent: "Чтобы создать аккаунт, примите Пользовательское соглашение и Политику конфиденциальности.",
 };
 
 // Приглашение продавца (ТЗ, тариф «Бизнес»): ссылка от владельца, 7 дней, одна.
@@ -79,6 +80,20 @@ export default async function JoinPage({
                     <label>
                       Придумайте пароль (не короче 6 символов)
                       <input name="password" type="password" autoComplete="new-password" required minLength={6} maxLength={1024} />
+                    </label>
+                    <label className="consent">
+                      <input type="checkbox" name="accept" value="1" required />
+                      <span>
+                        Принимаю{" "}
+                        <a href="/terms" target="_blank" rel="noreferrer">
+                          Пользовательское соглашение
+                        </a>{" "}
+                        и{" "}
+                        <a href="/privacy" target="_blank" rel="noreferrer">
+                          Политику конфиденциальности
+                        </a>
+                        , согласен на обработку персональных данных
+                      </span>
                     </label>
                     <Submit>Создать аккаунт и присоединиться</Submit>
                   </form>

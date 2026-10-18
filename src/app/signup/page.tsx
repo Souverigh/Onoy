@@ -24,7 +24,9 @@ export default async function SignUp({ searchParams }: { searchParams: Promise<{
             <p className="form-error" role="alert">
               {error === "disabled"
                 ? "Регистрация сейчас выключена. Напишите в Depter."
-                : "Не удалось создать аккаунт. Проверьте email; пароль - не короче 6 символов."}
+                : error === "consent"
+                  ? "Чтобы создать аккаунт, примите Пользовательское соглашение и Политику конфиденциальности."
+                  : "Не удалось создать аккаунт. Проверьте email; пароль - не короче 6 символов."}
             </p>
           )}
           <form action={signUp}>
@@ -35,6 +37,20 @@ export default async function SignUp({ searchParams }: { searchParams: Promise<{
             <label>
               Пароль (не короче 6 символов)
               <input name="password" type="password" autoComplete="new-password" required minLength={6} maxLength={1024} />
+            </label>
+            <label className="consent">
+              <input type="checkbox" name="accept" value="1" required />
+              <span>
+                Принимаю{" "}
+                <a href="/terms" target="_blank" rel="noreferrer">
+                  Пользовательское соглашение
+                </a>{" "}
+                и{" "}
+                <a href="/privacy" target="_blank" rel="noreferrer">
+                  Политику конфиденциальности
+                </a>
+                , согласен на обработку персональных данных
+              </span>
             </label>
             <Submit>Создать аккаунт</Submit>
           </form>

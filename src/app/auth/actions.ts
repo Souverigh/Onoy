@@ -1,5 +1,6 @@
 "use server";
 import { redirect } from "next/navigation";
+import { LEGAL } from "@/lib/legal";
 import { revalidatePath } from "next/cache";
 import { createAnonClient, createClient, configured } from "@/lib/supabase/server";
 import { getUserContext } from "@/lib/context";
@@ -50,17 +51,23 @@ export async function login(form: FormData) {
  * Регистрация нового владельца магазина. Магазин он создаст на /onboarding —
  * только с кодом доступа от Depter. Нужна включённая регистрация в Supabase.
  */
+/** Согласие с документами при регистрации: какая редакция и когда — в данных аккаунта (Supabase Auth). */
+function consentRecord() {
+  return { terms_version: LEGAL.version, terms_accepted_at: new Date().toISOString() };
+}
+
 export async function signUp(form: FormData) {
   if (!configured()) redirect("/login?error=setup");
   const email = String(form.get("email") ?? "").trim(),
     password = String(form.get("password") ?? "");
   if (!email || email.length > 254 || password.length < 6 || password.length > 1024)
     redirect("/signup?error=invalid");
+  if (form.get("accept") !== "1") redirect("/signup?error=consent");
   const db = await createClient();
   const { data, error } = await db.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/onboarding` },
+    options: { emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/onboarding`, data: consentRecord() },
   });
   if (error)
     redirect(`/signup?error=${error.message.toLowerCase().includes("disabled") ? "disabled" : "invalid"}`);
@@ -83,6 +90,7 @@ export async function signUpByInvite(form: FormData) {
     password = String(form.get("password") ?? "");
   if (!email || email.length > 254 || password.length < 6 || password.length > 1024)
     redirect(`${back}?error=signup`);
+  if (form.get("accept") !== "1") redirect(`${back}?error=consent`);
   // Аккаунт — только по действующему приглашению (саму регистрацию в
   // Supabase это не закрывает: она включается целиком, см. handover).
   const invite = await createAnonClient().rpc("get_invite", { p_token: token });
@@ -91,7 +99,7 @@ export async function signUpByInvite(form: FormData) {
   const { data, error } = await db.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=${back}` },
+    options: { emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=${back}`, data: consentRecord() },
   });
   if (error) redirect(`${back}?error=${error.message.toLowerCase().includes("disabled") ? "signup_disabled" : "signup"}`);
   if (!data.session) redirect(`${back}?check=email`);

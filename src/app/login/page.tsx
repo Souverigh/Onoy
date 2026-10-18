@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LegalLinks } from "@/components/legal-page";
 import Link from "next/link";
 import { login } from "../auth/actions";
 import { configured } from "@/lib/supabase/server";
@@ -158,6 +159,10 @@ export default async function Login({
                   </p>
                 ) : null}
                 <Submit>Войти в Depter</Submit>
+                <small className="muted consent-note">
+                  Входя, вы принимаете <Link href="/terms">Пользовательское соглашение</Link> и{" "}
+                  <Link href="/privacy">Политику конфиденциальности</Link>.
+                </small>
               </form>
               <small className="muted">
                 Новый магазин? <a href="/signup">Зарегистрироваться</a> - понадобится код доступа от Depter.
@@ -226,6 +231,7 @@ export default async function Login({
           </form>
         )}
         <small>Сделано для ежедневной работы</small>
+        <LegalLinks />
       </section>
     </main>
   );

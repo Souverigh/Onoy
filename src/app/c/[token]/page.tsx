@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LegalLinks } from "@/components/legal-page";
 import { notFound } from "next/navigation";
 import { createAnonClient } from "@/lib/supabase/server";
 import { money, phoneText } from "@/lib/format";
@@ -286,6 +287,7 @@ export default async function ClientPage({
         <a href="https://depter.kg" className="text-button">
           Сделано в Depter
         </a>
+        <LegalLinks />
       </footer>
     </main>
   );
