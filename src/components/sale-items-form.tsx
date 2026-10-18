@@ -792,15 +792,6 @@ export function SaleItemsForm({
           {errorText}
         </p>
       )}
-      {draftStatus && (
-        <small className="muted draft-status" role="status">
-          {draftStatus === "saving"
-            ? "Сохраняем черновик…"
-            : draftStatus === "saved"
-              ? `Черновик сохранён - найдёте его на главной в «${purchase ? "Товар от поставщика" : "Продажа"}».`
-              : "Черновик не сохранился - проверьте интернет. Введённое на этом экране не пропало."}
-        </small>
-      )}
       <div className="simple-operation-actions">
         <Submit pending={saving} disabled={!lines.length}>
           {lines.length ? `Записать ${purchase ? "товар" : "продажу"} · ${money(total.toFixed(2), lineCurrency)}` : "Добавьте товары"}
@@ -811,6 +802,16 @@ export function SaleItemsForm({
           ? "Остаток на складе вырастет, цена закупки запомнится у товара, сумма добавится к долгу поставщику."
           : "Остаток на складе уменьшится, сумма добавится к долгу клиента. Клиенту можно сразу отправить накладную PDF."}
       </p>
+      {/* Пояснения — в самом низу, под кнопкой записи. */}
+      {draftStatus && (
+        <small className="muted draft-status" role="status">
+          {draftStatus === "saving"
+            ? "Сохраняем черновик…"
+            : draftStatus === "saved"
+              ? `Черновик сохранён - найдёте его на главной в «${purchase ? "Товар от поставщика" : "Продажа"}».`
+              : "Черновик не сохранился - проверьте интернет. Введённое на этом экране не пропало."}
+        </small>
+      )}
       </div>
       </div>
     </form>

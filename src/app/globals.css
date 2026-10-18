@@ -7695,3 +7695,23 @@ tr.row-link:has(a[data-pending]) {
     max-width: 200px;
   }
 }
+
+/* Клиент и дата наверху формы — подписи и поля на одной линии. */
+.sale-sheet-top .party-picker-label,
+.sale-sheet-top .date-picker-label {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.sale-sheet-top .date-picker-field-button {
+  min-height: 48px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.sale-items-form .operation-hint {
+  margin-top: 10px;
+}
+.sale-items-form .draft-status {
+  margin-top: 6px;
+}
