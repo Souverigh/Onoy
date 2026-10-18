@@ -490,11 +490,11 @@ export function SaleItemsForm({
       <div className="sale-sheet">
         {popular.length > 0 && (
           <div className="sale-sheet-popular">
-            <span className="muted">Частые:</span>
+            <span className="muted sale-sheet-popular-title">Частые товары - нажмите, чтобы добавить</span>
             <ul className="product-results product-chips">
               {popular.map((p) => (
                 <li key={p.id}>
-                  <button type="button" className={inCart.has(p.id) ? "in-cart" : ""} onClick={() => add(p)}>
+                  <button type="button" title={p.name} className={inCart.has(p.id) ? "in-cart" : ""} onClick={() => add(p)}>
                     <span className="product-result-name">{p.name}</span>
                   </button>
                 </li>

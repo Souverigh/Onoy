@@ -7624,3 +7624,55 @@ tr.row-link:has(a[data-pending]) {
   margin: 8px 0 0;
   font-size: 13px;
 }
+
+/* Частые товары над таблицей: подпись сверху, кнопки с «+», длинное название —
+   с многоточием; на телефоне — одной строкой с прокруткой вбок. */
+.sale-sheet-popular {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.sale-sheet-popular-title {
+  font-size: 13px;
+}
+.sale-sheet-popular .product-chips button {
+  flex-direction: row;
+  align-items: center;
+  max-width: 260px;
+}
+.sale-sheet-popular .product-chips button::before {
+  content: "+";
+  margin-right: 6px;
+  color: var(--green);
+  font-weight: 700;
+}
+.sale-sheet-popular .product-chips button.in-cart::before {
+  content: "✓";
+}
+.sale-sheet-popular .product-chips button.in-cart .product-result-name::after {
+  content: none;
+}
+.sale-sheet-popular .product-result-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+@media (max-width: 700px) {
+  .sale-sheet-popular .product-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 0 -4px;
+    padding: 2px 4px 6px;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .sale-sheet-popular .product-chips li {
+    flex: none;
+    scroll-snap-align: start;
+  }
+  .sale-sheet-popular .product-chips button {
+    max-width: 200px;
+  }
+}
