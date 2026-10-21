@@ -8996,3 +8996,25 @@ tr.row-link:has(a[data-pending]) {
     flex: none;
   }
 }
+@media (max-width: 900px) {
+  /* Строка «Клиент … [Сегодня]» — высотой с кнопку даты и с отступом до поля,
+     чтобы кнопка не прилипала к полю клиента. */
+  /* Точнее правила «label без отступа» выше — и для <label>, и для <span>. */
+  .sale-sheet-top > .party-picker > .party-picker-label {
+    display: flex;
+    /* form label — колонкой; здесь строкой, текст по центру высоты кнопки даты. */
+    flex-direction: row;
+    align-items: center;
+    min-height: 34px;
+    margin: 0 0 10px;
+  }
+  .sale-sheet-top > .date-picker-field {
+    top: 0;
+  }
+  .sale-sheet-top > .date-picker-field .date-picker-field-button {
+    min-height: 34px;
+  }
+  .sale-sheet-top > .party-picker {
+    margin-bottom: 20px;
+  }
+}
