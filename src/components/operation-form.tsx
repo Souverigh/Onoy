@@ -172,6 +172,8 @@ export function OperationForm({
   const [paidNow, setPaidNow] = useState(false);
   // «Сразу оплатили поставщику» — в «Подробностях»; заполнено — видно в заголовке.
   const [paidNowValue, setPaidNowValue] = useState(initialPaidNow ?? "");
+  // Приход: «Оплатили сразу» — переключателем в нижней панели, как «Наличными» у продажи.
+  const [purchasePaid, setPurchasePaid] = useState(Boolean(initialPaidNow));
   // Клиенты, добавленные из контактов или «+ Новый клиент» прямо в форме (без перезагрузки).
   const [contactCustomers, setContactCustomers] = useState<Customer[]>([]);
   const [contactNote, setContactNote] = useState<string | null>(null);
@@ -508,16 +510,13 @@ export function OperationForm({
   // тоже в свёрнутых «Подробностях», чтобы на виду были фото, кто и сколько.
   const recordSummary = [
     foreign && rate ? `курс ${formatRate(rate)}` : null,
-    kind === "purchase" && amountFromInput(paidNowValue)
-      ? `сразу оплатили ${money(amountFromInput(paidNowValue), debtCurrency)}`
-      : null,
   ]
     .filter(Boolean)
     .join(" · ");
   const [moreOpen, setMoreOpen] = useState(correcting);
   // «Подробности» — только когда в них что-то есть: курс или «Сразу оплатили»
   // (приход). Строки накладной — отдельным списком «Товары накладной».
-  const hasDetails = foreign || kind === "purchase";
+  const hasDetails = foreign;
   // Долг после записи — в нижней панели.
   const barDebtAfter =
     partyBalance != null && debtAmount > 0
@@ -1105,7 +1104,7 @@ export function OperationForm({
             {errorText}
           </p>
         )}
-        {kind === "sale" && (
+        {(kind === "sale" || kind === "purchase") && (
           <div className="party-date">
             {partySection}
             {recordDatePicker}
@@ -1364,12 +1363,6 @@ export function OperationForm({
                 </button>
               ))}
             </div>
-          </div>
-        )}
-        {kind === "purchase" && (
-          <div className="party-date">
-            {partySection}
-            {recordDatePicker}
           </div>
         )}
         {kind === "payment" && partySection}
@@ -1753,23 +1746,6 @@ export function OperationForm({
             </summary>
             <div className="more-fields-body">
               {foreign && rateField}
-              {kind === "purchase" && (
-                <label>
-                  <span className="label-with-tip label-with-tip-inline">
-                    Сразу оплатили поставщику, {CURRENCY_SIGN[debtCurrency]} (необязательно)
-                    <InfoTip>Запишем оплату поставщику вместе с товаром - долг перед ним вырастет только на остаток.</InfoTip>
-                  </span>
-                  <input
-                    name="paid_now"
-                    inputMode="decimal"
-                    autoComplete="off"
-                    pattern="[0-9 ]+([.,][0-9]{1,2})?"
-                    placeholder="0"
-                    value={paidNowValue}
-                    onChange={(e) => setPaidNowValue(e.target.value)}
-                  />
-                </label>
-              )}
             </div>
           </details>
         )}
@@ -1820,8 +1796,26 @@ export function OperationForm({
             </Submit>
           </div>
         ) : (
-          // Панель внизу, как у «Товаров со склада»: «В долг / Наличными», сумма,
-          // каким станет долг, и «Записать» — прилипает к низу экрана.
+          <>
+          {kind === "purchase" && purchasePaid && (
+            <label className="paid-now-field">
+              <span className="label-with-tip label-with-tip-inline">
+                Сколько оплатили сразу, {CURRENCY_SIGN[debtCurrency]}
+                <InfoTip>Запишем оплату поставщику вместе с товаром - долг перед ним вырастет только на остаток.</InfoTip>
+              </span>
+              <input
+                name="paid_now"
+                inputMode="decimal"
+                autoComplete="off"
+                pattern="[0-9 ]+([.,][0-9]{1,2})?"
+                placeholder="0"
+                value={paidNowValue}
+                onChange={(e) => setPaidNowValue(e.target.value)}
+              />
+            </label>
+          )}
+          {/* Панель внизу, как у «Товаров со склада»: «В долг / Наличными», сумма,
+              каким станет долг, и «Записать» — прилипает к низу экрана. */}
           <div className="sale-bar">
             {kind === "sale" && (
               <div className="sale-bar-pay">
@@ -1832,6 +1826,35 @@ export function OperationForm({
                   </button>
                   <button type="button" className={paidNow ? "active" : ""} aria-pressed={paidNow} onClick={() => setPaidNow(true)}>
                     Наличными
+                  </button>
+                </span>
+              </div>
+            )}
+            {kind === "purchase" && (
+              <div className="sale-bar-pay">
+                <span className="method-pills" role="group" aria-label="Оплатили ли поставщику">
+                  <button
+                    type="button"
+                    className={purchasePaid ? "" : "active"}
+                    aria-pressed={!purchasePaid}
+                    onClick={() => {
+                      setPurchasePaid(false);
+                      setPaidNowValue("");
+                    }}
+                  >
+                    В долг
+                  </button>
+                  <button
+                    type="button"
+                    className={purchasePaid ? "active" : ""}
+                    aria-pressed={purchasePaid}
+                    onClick={() => {
+                      setPurchasePaid(true);
+                      // По умолчанию — оплатили всё; часть — поправить в поле выше.
+                      setPaidNowValue((prev) => (prev.trim() ? prev : debtAmount > 0 ? String(debtAmount) : ""));
+                    }}
+                  >
+                    Оплатили сразу
                   </button>
                 </span>
               </div>
@@ -1868,6 +1891,7 @@ export function OperationForm({
               )}
             </Submit>
           </div>
+          </>
         )}
       </form>
     </>

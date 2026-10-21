@@ -9217,3 +9217,26 @@ tr.row-link:has(a[data-pending]) {
 .recognized-lines > summary .sale-stock-tip {
   margin-left: 6px;
 }
+/* Приход «Оплатили сразу»: сколько — полем над нижней панелью. */
+.paid-now-field {
+  margin: 4px 0 6px;
+}
+.sale-bar-pay .method-pills button {
+  white-space: nowrap;
+  padding: 0 10px;
+}
+@media (max-width: 560px) {
+  /* Узкий телефон: «Мой долг станет …» переносится, кнопка остаётся рядом с суммой. */
+  .sale-bar-total {
+    flex: 1;
+  }
+  .sale-bar-total small {
+    white-space: normal;
+  }
+}
+.photo-operation-form .sale-bar-total {
+  flex: 1;
+}
+.photo-operation-form .sale-bar-total small {
+  white-space: normal;
+}
