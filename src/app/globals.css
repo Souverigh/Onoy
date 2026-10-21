@@ -9018,3 +9018,105 @@ tr.row-link:has(a[data-pending]) {
     margin-bottom: 20px;
   }
 }
+
+/* ===== Продажа/приход по фото (21.10.2026): как «Товары со склада» ===== */
+/* Клиент/поставщик во всю ширину, дата — маленькой кнопкой в строке подписи. */
+.party-date {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 18px;
+}
+.party-date > .party-picker {
+  width: 100%;
+}
+.party-date > .party-picker > .party-picker-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 34px;
+  margin: 0 0 10px;
+}
+.party-date > .date-picker-field {
+  position: absolute;
+  top: 0;
+  right: 0;
+  margin: 0;
+}
+.party-date > .date-picker-field .date-picker-label {
+  display: none;
+}
+.party-date > .date-picker-field .date-picker-field-button {
+  min-height: 34px;
+  padding: 4px 10px;
+  gap: 6px;
+  border-radius: 999px;
+  font-size: 14px;
+}
+.party-date > .date-picker-field .date-picker-field-button svg {
+  width: 16px;
+  height: 16px;
+}
+.party-date .party-picked .button {
+  flex: none;
+}
+.party-date > .new-customer-inline,
+.party-date > .contact-note {
+  margin-top: 10px;
+}
+/* «По фото / Без накладной». */
+.invoice-source {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.invoice-source .invoice-source-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.invoice-source-note {
+  margin: 0;
+  font-size: 14px;
+}
+.invoice-source > .photo-field {
+  margin-bottom: 0;
+}
+.photo-operation-form .note-toggle {
+  margin: 0 0 14px;
+}
+@media (min-width: 1100px) {
+  .photo-operation-form > .invoice-source {
+    grid-column: 1;
+    grid-row: 1 / span 40;
+    position: sticky;
+    top: 16px;
+  }
+}
+.invoice-source .invoice-source-switch button {
+  padding: 0 8px;
+  white-space: nowrap;
+  font-size: 15px;
+}
+/* Форма по фото: панель в правой колонке узкая — «В долг / Наличными»
+   строкой сверху, под ним сумма и кнопка (как на телефоне). */
+.photo-operation-form .sale-bar {
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 12px 12px 14px;
+}
+.photo-operation-form .sale-bar-pay {
+  width: 100%;
+}
+.photo-operation-form .sale-bar-pay .method-pills {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+}
+.photo-operation-form .sale-bar-total {
+  margin-left: 0;
+  text-align: left;
+}
+.photo-operation-form .sale-bar .button.primary {
+  margin-left: auto;
+}

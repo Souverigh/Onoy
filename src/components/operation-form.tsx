@@ -196,6 +196,7 @@ export function OperationForm({
   const [noInvoice, setNoInvoice] = useState(false);
   // Комментарий к продаже или приходу (необязательно).
   const [note, setNote] = useState("");
+  const [noteOpen, setNoteOpen] = useState(false);
   const allCustomers = [...customers, ...contactCustomers.filter((c) => !customers.some((x) => x.id === c.id))];
   const allSuppliers = [...suppliers, ...addedSuppliers.filter((c) => !suppliers.some((x) => x.id === c.id))];
   const [checkedPhoto, setCheckedPhoto] = useState<CheckedPhoto | null>(null);
@@ -516,6 +517,21 @@ export function OperationForm({
     .filter(Boolean)
     .join(" · ");
   const [moreOpen, setMoreOpen] = useState(correcting);
+  // «Подробности» — только когда в них что-то есть: курс, «Сразу оплатили»
+  // (приход) или строки с накладной (их важно видеть и править).
+  const hasDetails =
+    foreign ||
+    kind === "purchase" ||
+    Boolean(checkedPhoto?.result && (checkedPhoto.result.lines.length > 0 || correcting));
+  // Долг после записи — в нижней панели.
+  const barDebtAfter =
+    partyBalance != null && debtAmount > 0
+      ? kind === "purchase"
+        ? partyBalance + debtAmount - amountFromInput(paidNowValue)
+        : kind === "sale"
+          ? partyBalance + (paidNow ? 0 : debtAmount)
+          : null
+      : null;
   // Ошибка сервера про поле из «Подробностей» — тоже раскрываем.
   const moreError = [localError, commit.error].some(
     (e) => e === "rate" || e === "date" || e === "currency" || e === "part",
@@ -931,6 +947,18 @@ export function OperationForm({
       + Новый поставщик{query ? ` «${query}»` : ""}
     </button>
   );
+  // Дата продажи или прихода — маленькой кнопкой в строке подписи «Клиент» /
+  // «Поставщик», как во вкладке «Товары со склада» (21.10.2026).
+  const recordDatePicker = (
+    <DatePicker
+      variant="field"
+      value={recordDate}
+      onChange={(next) => {
+        setRecordDate(next);
+        if (localError === "date") setLocalError(null);
+      }}
+    />
+  );
   const partySection = (
     <>
       <PartyPicker
@@ -1082,19 +1110,44 @@ export function OperationForm({
             {errorText}
           </p>
         )}
-        {kind === "sale" && partySection}
-        {!prefill && receiptDocumentId && <input type="hidden" name="document_id" value={receiptDocumentId} />}
-        {kind !== "payment" && noInvoice && !hasPhoto && (
-          <div className="photo-field no-invoice">
-            <p className="muted">
-              Без накладной - запишем только сумму. В истории будет пометка «без накладной».
-            </p>
-            <button type="button" className="text-button" onClick={() => setNoInvoice(false)}>
-              Приложить фото накладной
-            </button>
+        {kind === "sale" && (
+          <div className="party-date">
+            {partySection}
+            {recordDatePicker}
           </div>
         )}
-        {kind !== "payment" && !(noInvoice && !hasPhoto) && (
+        {!prefill && receiptDocumentId && <input type="hidden" name="document_id" value={receiptDocumentId} />}
+        {kind !== "payment" && (
+          // «По фото / Без накладной» — переключателем, а не пунктирным блоком (21.10.2026).
+          <div className="invoice-source">
+            {!hasPhoto && (
+              <span className="method-pills invoice-source-switch" role="group" aria-label="Накладная">
+                <button
+                  type="button"
+                  className={noInvoice ? "" : "active"}
+                  aria-pressed={!noInvoice}
+                  onClick={() => setNoInvoice(false)}
+                >
+                  По фото
+                </button>
+                <button
+                  type="button"
+                  className={noInvoice ? "active" : ""}
+                  aria-pressed={noInvoice}
+                  onClick={() => {
+                    setNoInvoice(true);
+                    setCheckNote(null);
+                    if (localError === "photo") setLocalError(null);
+                  }}
+                >
+                  Без накладной
+                </button>
+              </span>
+            )}
+            {noInvoice && !hasPhoto && (
+              <p className="muted invoice-source-note">Запишем только сумму - в истории будет пометка «без накладной».</p>
+            )}
+        {!(noInvoice && !hasPhoto) && (
           <div className="photo-field invoice-dropzone">
             <span className="invoice-dropzone-title">
               Фото накладной
@@ -1186,19 +1239,6 @@ export function OperationForm({
                 </label>
               </div>
             )}
-            {!hasPhoto && (
-              <button
-                type="button"
-                className="button no-invoice-button"
-                onClick={() => {
-                  setNoInvoice(true);
-                  setCheckNote(null);
-                  if (localError === "photo") setLocalError(null);
-                }}
-              >
-                Накладной нет - записать сумму
-              </button>
-            )}
             <input
               ref={pagesInput}
               // Фото уже загружены при проверке — второй раз не отправляем,
@@ -1208,6 +1248,8 @@ export function OperationForm({
               multiple
               hidden
             />
+          </div>
+        )}
           </div>
         )}
         {kind === "payment" && !prefill && (
@@ -1329,7 +1371,13 @@ export function OperationForm({
             </div>
           </div>
         )}
-        {kind !== "sale" && partySection}
+        {kind === "purchase" && (
+          <div className="party-date">
+            {partySection}
+            {recordDatePicker}
+          </div>
+        )}
+        {kind === "payment" && partySection}
         {invoiceName && (
           <div className="party-suggestions">
             <span className="muted">
@@ -1384,17 +1432,6 @@ export function OperationForm({
               </button>
             </div>
           </div>
-        )}
-        {kind !== "payment" && (
-          // Дата продажи или прихода — на виду, а не в «Подробностях».
-          <DatePicker
-            variant="field"
-            value={recordDate}
-            onChange={(next) => {
-              setRecordDate(next);
-              if (localError === "date") setLocalError(null);
-            }}
-          />
         )}
         <div className="amount-head">
           <span className="label-with-tip">
@@ -1603,19 +1640,15 @@ export function OperationForm({
             )}
           </div>
         )}
-        {kind !== "payment" && <NoteField value={note} onChange={setNote} />}
-        {kind === "sale" && (
-          <label className="cash-toggle">
-            <input
-              type="checkbox"
-              name="paid_immediately"
-              value="true"
-              checked={paidNow}
-              onChange={(e) => setPaidNow(e.target.checked)}
-            />
-            Клиент оплатил наличными
-          </label>
-        )}
+        {/* Комментарий нужен редко — свёрнут ссылкой, пока его не открыли. */}
+        {kind !== "payment" &&
+          (noteOpen || note ? (
+            <NoteField value={note} onChange={setNote} />
+          ) : (
+            <button type="button" className="text-button note-toggle" onClick={() => setNoteOpen(true)}>
+              + Комментарий
+            </button>
+          ))}
         {kind === "payment" && (
           <div className="method-row" role="group" aria-label="Наличные или перевод">
             <span>{direction === "incoming" ? "Как принесли деньги?" : "Как заплатили?"}</span>
@@ -1639,7 +1672,7 @@ export function OperationForm({
             </span>
           </div>
         )}
-        {debtAfter != null && partyBalance != null && (
+        {kind === "payment" && debtAfter != null && partyBalance != null && (
           <p className="debt-preview">
             {kind === "payment" && direction === "outgoing" ? "Мой долг" : "Долг"}{" "}
             {debtMoney(partyBalance.toFixed(2), debtCurrency)} →{" "}
@@ -1697,7 +1730,7 @@ export function OperationForm({
             }
           />
         )}
-        {kind !== "payment" && (
+        {kind !== "payment" && hasDetails && (
           <details className="more-fields" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
             <summary>
               <span className="more-fields-title">Подробности</span>
@@ -1774,20 +1807,55 @@ export function OperationForm({
             {submitErrorText}
           </p>
         )}
-        <div className="simple-operation-actions">
-          <Submit
-            pending={saving}
-            disabled={checking || checkingReceipt || switching || (kind !== "payment" && !hasPhoto && !noInvoice)}
-          >
-            {checking
-              ? "Проверяем фото…"
-              : checkingReceipt
-                ? "Читаем чек…"
-              : kind !== "payment" && !hasPhoto && !noInvoice
-                ? "Приложите фото накладной"
-                : confirmLabel}
-          </Submit>
-        </div>
+        {kind === "payment" ? (
+          <div className="simple-operation-actions">
+            <Submit pending={saving} disabled={checking || checkingReceipt || switching}>
+              {checking ? "Проверяем фото…" : checkingReceipt ? "Читаем чек…" : confirmLabel}
+            </Submit>
+          </div>
+        ) : (
+          // Панель внизу, как у «Товаров со склада»: «В долг / Наличными», сумма,
+          // каким станет долг, и «Записать» — прилипает к низу экрана.
+          <div className="sale-bar">
+            {kind === "sale" && (
+              <div className="sale-bar-pay">
+                {paidNow && <input type="hidden" name="paid_immediately" value="true" />}
+                <span className="method-pills" role="group" aria-label="Как платит клиент">
+                  <button type="button" className={paidNow ? "" : "active"} aria-pressed={!paidNow} onClick={() => setPaidNow(false)}>
+                    В долг
+                  </button>
+                  <button type="button" className={paidNow ? "active" : ""} aria-pressed={paidNow} onClick={() => setPaidNow(true)}>
+                    Наличными
+                  </button>
+                </span>
+              </div>
+            )}
+            <div className="sale-bar-total">
+              <span className="muted">{kind === "sale" ? "Продажа" : "Товар от поставщика"}</span>
+              <strong>{enteredAmount > 0 ? money(enteredAmount.toFixed(2), docCurrency) : "-"}</strong>
+              {barDebtAfter != null && (
+                <small className="muted">
+                  {kind === "purchase" ? "Мой долг станет" : "Долг станет"} {money(barDebtAfter.toFixed(2), debtCurrency)}
+                </small>
+              )}
+            </div>
+            <Submit pending={saving} disabled={checking || switching || (!hasPhoto && !noInvoice)}>
+              {checking ? (
+                "Проверяем…"
+              ) : !hasPhoto && !noInvoice ? (
+                <>
+                  <span className="sale-bar-long">Приложите фото накладной</span>
+                  <span className="sale-bar-short">Нужно фото</span>
+                </>
+              ) : (
+                <>
+                  <span className="sale-bar-long">{confirmLabel}</span>
+                  <span className="sale-bar-short">Записать</span>
+                </>
+              )}
+            </Submit>
+          </div>
+        )}
       </form>
     </>
   );
