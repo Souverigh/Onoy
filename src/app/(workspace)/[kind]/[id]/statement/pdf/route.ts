@@ -29,7 +29,7 @@ export async function GET(
   return new NextResponse(new Uint8Array(pdf), {
     headers: {
       "content-type": "application/pdf",
-      "content-disposition": `attachment; filename="akt-sverki-${id.slice(0, 8)}.pdf"`,
+      "content-disposition": `attachment; filename="akt-sverki-${statement.from}_${statement.to}.pdf"`,
     },
   });
 }

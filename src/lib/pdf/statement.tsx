@@ -1,26 +1,30 @@
 import "server-only";
 import { Document, Page, Text, View, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import { ensureFontsRegistered } from "./fonts";
-import { statementEntryLabel, type StatementEntry } from "../statement-data";
+import { statementDay, statementEntryLabel, statementRows, type StatementEntry } from "../statement-data";
 import { money } from "../format";
 
 const styles = StyleSheet.create({
-  page: { fontFamily: "PT Sans", fontSize: 11, padding: 36, color: "#1d2a2a" },
-  shopName: { fontSize: 18, fontWeight: "bold", marginBottom: 2 },
+  page: { fontFamily: "PT Sans", fontSize: 10, padding: 36, color: "#1d2a2a" },
+  eyebrow: { color: "#73807e", fontSize: 9, letterSpacing: 1, marginBottom: 2 },
+  party: { fontSize: 18, fontWeight: "bold", marginBottom: 2 },
   muted: { color: "#73807e", fontSize: 10 },
-  title: { fontSize: 14, fontWeight: "bold", marginTop: 18, marginBottom: 10 },
-  balanceRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderTop: "1 solid #e4e8e4" },
-  table: { marginTop: 4 },
-  tr: { flexDirection: "row", borderBottom: "1 solid #e4e8e4", paddingVertical: 6 },
-  thDate: { width: 90, fontWeight: "bold" },
-  thKind: { flex: 1, fontWeight: "bold" },
-  thSum: { width: 90, fontWeight: "bold", textAlign: "right" },
-  date: { width: 90, color: "#73807e" },
-  kindCell: { flex: 1 },
-  sum: { width: 90, textAlign: "right" },
-  reversed: { color: "#a4762f" },
+  totals: { flexDirection: "row", marginTop: 16, marginBottom: 14, borderTop: "1 solid #e4e8e4", borderBottom: "1 solid #e4e8e4" },
+  total: { flex: 1, paddingVertical: 8, paddingRight: 8 },
+  totalLabel: { color: "#73807e", fontSize: 9, marginBottom: 3 },
+  totalValue: { fontSize: 12, fontWeight: "bold" },
+  tr: { flexDirection: "row", borderBottom: "1 solid #e4e8e4", paddingVertical: 5 },
+  edge: { backgroundColor: "#f6f7f4", fontWeight: "bold" },
+  th: { fontWeight: "bold", color: "#4d5b58" },
+  date: { width: "15%", paddingHorizontal: 3 },
+  what: { width: "28%", paddingHorizontal: 3 },
+  num: { width: "19%", paddingHorizontal: 3, textAlign: "right" },
+  plus: { color: "#a0472c" },
+  minus: { color: "#245d4c" },
+  reversed: { color: "#a4762f", textDecoration: "line-through" },
+  sign: { flexDirection: "row", marginTop: 36, gap: 40 },
+  signBox: { flex: 1, borderTop: "1 solid #9aa5a2", paddingTop: 4, color: "#73807e", fontSize: 9 },
 });
-
 
 export type StatementPdfData = {
   shopName: string;
@@ -33,45 +37,84 @@ export type StatementPdfData = {
   entries: StatementEntry[];
 };
 
+const day = (iso: string) =>
+  new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Asia/Bishkek" }).format(
+    new Date(iso),
+  );
+
+/** Акт сверки: итоги в одну строку, таблица «+ / − / остаток», места для подписей. */
 function StatementDocument({ data }: { data: StatementPdfData }) {
+  const cur = data.currency;
+  const sum = (n: number) => money(n.toFixed(2), cur);
+  const { rows, plus, minus } = statementRows(data);
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        <Text style={styles.shopName}>{data.shopName}</Text>
-        <Text style={styles.muted}>Акт сверки - {data.partyName}</Text>
-        <Text style={styles.title}>
-          Период: {data.from} - {data.to}
+        <Text style={styles.eyebrow}>АКТ СВЕРКИ</Text>
+        <Text style={styles.party}>{data.partyName}</Text>
+        <Text style={styles.muted}>
+          {data.shopName} · {statementDay(data.from)} – {statementDay(data.to)}
         </Text>
-        <View style={styles.balanceRow}>
-          <Text>Долг на начало</Text>
-          <Text>{money(data.opening.toFixed(2), data.currency)}</Text>
-        </View>
-        <View style={styles.table}>
-          <View style={styles.tr}>
-            <Text style={styles.thDate}>Дата</Text>
-            <Text style={styles.thKind}>Операция</Text>
-            <Text style={styles.thSum}>Сумма</Text>
+
+        <View style={styles.totals}>
+          <View style={styles.total}>
+            <Text style={styles.totalLabel}>Долг на {statementDay(data.from)}</Text>
+            <Text style={styles.totalValue}>{sum(data.opening)}</Text>
           </View>
-          {data.entries.map((entry, i) => (
-            <View style={styles.tr} key={i}>
-              <Text style={entry.reversed ? [styles.date, styles.reversed] : styles.date}>
-                {new Intl.DateTimeFormat("ru-RU", { dateStyle: "short", timeZone: "Asia/Bishkek" }).format(
-                  new Date(entry.occurred_at),
-                )}
-              </Text>
-              <Text style={entry.reversed ? [styles.kindCell, styles.reversed] : styles.kindCell}>
-                {statementEntryLabel(entry)}
-                {entry.reversed ? " (отменена)" : ""}
-              </Text>
-              <Text style={entry.reversed ? [styles.sum, styles.reversed] : styles.sum}>
-                {entry.amount.toFixed(2)}
-              </Text>
-            </View>
-          ))}
+          <View style={styles.total}>
+            <Text style={styles.totalLabel}>Долг вырос</Text>
+            <Text style={[styles.totalValue, styles.plus]}>+ {sum(plus)}</Text>
+          </View>
+          <View style={styles.total}>
+            <Text style={styles.totalLabel}>Долг уменьшился</Text>
+            <Text style={[styles.totalValue, styles.minus]}>− {sum(minus)}</Text>
+          </View>
+          <View style={styles.total}>
+            <Text style={styles.totalLabel}>Долг на {statementDay(data.to)}</Text>
+            <Text style={styles.totalValue}>{sum(data.closing)}</Text>
+          </View>
         </View>
-        <View style={styles.balanceRow}>
-          <Text>Долг на конец</Text>
-          <Text>{money(data.closing.toFixed(2), data.currency)}</Text>
+
+        <View style={styles.tr} fixed>
+          <Text style={[styles.date, styles.th]}>Дата</Text>
+          <Text style={[styles.what, styles.th]}>Операция</Text>
+          <Text style={[styles.num, styles.th]}>Долг вырос</Text>
+          <Text style={[styles.num, styles.th]}>Уменьшился</Text>
+          <Text style={[styles.num, styles.th]}>Остаток</Text>
+        </View>
+        <View style={[styles.tr, styles.edge]} wrap={false}>
+          <Text style={styles.date}>{statementDay(data.from)}</Text>
+          <Text style={styles.what}>Долг на начало</Text>
+          <Text style={styles.num} />
+          <Text style={styles.num} />
+          <Text style={styles.num}>{sum(data.opening)}</Text>
+        </View>
+        {rows.map((row, i) => {
+          const off = row.reversed ? styles.reversed : undefined;
+          return (
+            <View style={styles.tr} key={i} wrap={false}>
+              <Text style={[styles.date, off ?? {}]}>{day(row.occurred_at)}</Text>
+              <Text style={[styles.what, off ?? {}]}>
+                {statementEntryLabel(row)}
+                {row.reversed ? " (отменена)" : ""}
+              </Text>
+              <Text style={[styles.num, off ?? styles.plus]}>{row.plus ? sum(row.plus) : ""}</Text>
+              <Text style={[styles.num, off ?? styles.minus]}>{row.minus ? sum(row.minus) : ""}</Text>
+              <Text style={styles.num}>{row.reversed ? "" : sum(row.balance)}</Text>
+            </View>
+          );
+        })}
+        <View style={[styles.tr, styles.edge]} wrap={false}>
+          <Text style={styles.date}>{statementDay(data.to)}</Text>
+          <Text style={styles.what}>Долг на конец</Text>
+          <Text style={[styles.num, styles.plus]}>{sum(plus)}</Text>
+          <Text style={[styles.num, styles.minus]}>{sum(minus)}</Text>
+          <Text style={styles.num}>{sum(data.closing)}</Text>
+        </View>
+
+        <View style={styles.sign} wrap={false}>
+          <Text style={styles.signBox}>{data.shopName}</Text>
+          <Text style={styles.signBox}>{data.partyName}</Text>
         </View>
       </Page>
     </Document>

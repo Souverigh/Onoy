@@ -8356,3 +8356,214 @@ tr.row-link:has(a[data-pending]) {
     padding: 6px 8px;
   }
 }
+
+/* Акт сверки (21.10.2026): шапка документа, период, итоги, таблица «+ / − / остаток». */
+.statement-heading {
+  align-items: flex-start;
+}
+.statement-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.statement-period {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin-bottom: 18px;
+}
+.statement-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.statement-presets a {
+  padding: 9px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.statement-presets a:hover {
+  border-color: #cfe3c4;
+  background: #f6faf1;
+}
+.statement-presets a.active {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
+}
+.statement-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.statement-range .date-picker-field {
+  flex: none;
+}
+.statement-range .date-picker-label {
+  display: none;
+}
+.statement-range .date-picker-field-button {
+  min-height: 42px;
+  padding: 8px 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.statement-range-dash {
+  color: var(--muted);
+}
+.statement-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.statement-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 16px;
+  min-width: 0;
+}
+.statement-tile span {
+  color: var(--muted);
+  font-size: 14px;
+}
+.statement-tile strong {
+  font-size: 22px;
+  white-space: nowrap;
+}
+.statement-tile-total {
+  border-color: #b9d6c4;
+  background: #f4faf5;
+}
+.statement-tile-total strong {
+  color: var(--green);
+}
+.statement-plus {
+  color: #a0472c;
+}
+.statement-minus {
+  color: var(--green);
+}
+.statement-panel {
+  max-width: none;
+}
+.statement-table th.num,
+.statement-table td.num {
+  text-align: right;
+  white-space: nowrap;
+}
+.statement-table .statement-edge td {
+  background: #f6f7f4;
+  font-weight: 700;
+}
+.statement-empty {
+  margin: 0;
+  padding: 8px 0;
+}
+@media (max-width: 800px) {
+  .statement-tiles {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 560px) {
+  .statement-heading {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .statement-presets {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    width: 0;
+    min-width: 100%;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+  .statement-range {
+    width: 100%;
+  }
+  .statement-range .date-picker-field {
+    flex: 1;
+    min-width: 0;
+  }
+  .statement-range .date-picker-field-button {
+    width: 100%;
+    font-size: 14px;
+    padding: 8px 10px;
+  }
+  .statement-tile strong {
+    font-size: 18px;
+  }
+}
+@media print {
+  .statement-tiles {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+.statement-table .narrow-only {
+  display: none;
+}
+@media (max-width: 560px) {
+  .statement-table .wide-only {
+    display: none;
+  }
+  .statement-table .narrow-only {
+    display: table-cell;
+  }
+  .statement-table th,
+  .statement-table td {
+    padding: 10px 6px;
+    font-size: 14px;
+  }
+  .statement-table small.narrow-only.statement-date {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--muted);
+  }
+  .statement-table .tag {
+    display: block;
+    width: fit-content;
+    margin: 4px 0 0;
+  }
+}
+/* Телефон: кнопка с датой занимает всё место между стрелками. */
+@media (max-width: 560px) {
+  .day-heading .day-nav > .date-picker-field .date-picker-field-button {
+    flex: 1;
+    width: 100%;
+    justify-content: center;
+  }
+}
+/* Узкие экраны и планшеты (до 800px): строка периода — под заголовком во всю
+   ширину, кнопка с датой растянута между стрелками. */
+@media (max-width: 800px) {
+  .day-heading .day-nav {
+    width: 100%;
+    margin-top: 10px;
+  }
+  .day-heading .report-switch {
+    margin-right: auto;
+  }
+  .day-heading .day-nav > .date-picker {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    justify-content: center;
+  }
+  .day-heading .day-nav > .date-picker-field .date-picker-field-button {
+    flex: 1;
+    width: 100%;
+    justify-content: center;
+  }
+}

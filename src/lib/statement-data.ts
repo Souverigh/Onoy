@@ -123,3 +123,38 @@ export async function getStatementData(
     entries,
   };
 }
+
+export type StatementRow = StatementEntry & {
+  /** Сколько долг вырос (продажа, товар) и уменьшился (оплата, скидка, возврат). */
+  plus: number;
+  minus: number;
+  /** Долг после этой строки; отменённая строка долг не меняет. */
+  balance: number;
+};
+
+/**
+ * Строки акта с остатком после каждой операции и итоги периода — одни и те
+ * же для страницы, PDF и Excel (ТЗ §15.2: «как в бухгалтерском акте»).
+ */
+export function statementRows(data: Pick<NonNullable<StatementData>, "opening" | "entries">) {
+  let balance = data.opening;
+  let plus = 0;
+  let minus = 0;
+  const rows: StatementRow[] = data.entries.map((e) => {
+    const up = e.amount > 0 ? e.amount : 0;
+    const down = e.amount < 0 ? -e.amount : 0;
+    if (!e.reversed) {
+      balance = Math.round((balance + e.amount) * 100) / 100;
+      plus += up;
+      minus += down;
+    }
+    return { ...e, plus: up, minus: down, balance };
+  });
+  return { rows, plus: Math.round(plus * 100) / 100, minus: Math.round(minus * 100) / 100 };
+}
+
+/** «01.10.2026» из "2026-10-01". */
+export function statementDay(date: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : date;
+}
