@@ -3498,7 +3498,7 @@ tr.line-mismatch {
 }
 .report-charts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
   gap: 14px;
   margin-bottom: 14px;
 }
@@ -7813,8 +7813,16 @@ tr.row-link:has(a[data-pending]) {
 }
 .report-leaders {
   display: grid;
+  /* Колонка не шире экрана: без этого широкая таблица растягивает колонку,
+     а с ней всю страницу и нижнюю панель; таблица прокручивается в .table-wrap. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   margin-bottom: 16px;
+}
+.report-leaders > *,
+.report-charts > *,
+.report-tiles > * {
+  min-width: 0;
 }
 @media (min-width: 1000px) {
   .report-leaders {
@@ -8225,4 +8233,65 @@ tr.row-link:has(a[data-pending]) {
     padding: 10px 6px;
     text-align: center;
   }
+}
+
+/* Телефон: выбор периода в отчётах — строкой во всю ширину под заголовком.
+   «Месяц / Неделя» слева, стрелки справа; у дня — ‹ дата › по краям. */
+@media (max-width: 560px) {
+  .day-heading .day-nav {
+    width: 100%;
+    margin-top: 10px;
+  }
+  .day-heading .report-switch {
+    margin-right: auto;
+  }
+  .day-heading .day-nav > .date-picker {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+  }
+}
+/* Период датами между стрелками (продажи продавцов). */
+.day-nav-period {
+  font-weight: 600;
+  white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .day-heading .day-nav-period {
+    flex: 1;
+    text-align: center;
+    font-size: 14px;
+  }
+}
+@media (max-width: 560px) {
+  .day-heading .day-nav-period ~ .date-picker {
+    flex: none;
+  }
+}
+
+/* «Скачать» отчёт: иконка рядом со стрелками периода, меню Excel / PDF. */
+.download-menu .download-toggle {
+  list-style: none;
+  cursor: pointer;
+  color: var(--green);
+}
+.download-menu .download-toggle::-webkit-details-marker {
+  display: none;
+}
+.download-menu .download-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+.download-menu .more-menu-list {
+  left: auto;
+  right: 0;
+}
+.download-menu .more-menu-list a {
+  display: grid;
+  gap: 2px;
+  font-weight: 600;
+}
+.download-menu .more-menu-list small {
+  font-weight: 400;
+  font-size: 12px;
 }

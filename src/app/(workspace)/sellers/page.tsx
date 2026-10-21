@@ -6,6 +6,9 @@ import { period } from "@/lib/periods";
 import { memberLabels } from "@/lib/members";
 import { sellerCustomerDebts, sellerDetail, sellersDebtTotals, sellersOverview } from "@/lib/seller-sales";
 import { InfoTip } from "@/components/info-tip";
+import { PeriodDayPicker } from "@/components/day-nav";
+import { DownloadMenu } from "@/components/download-menu";
+import { ruDate } from "@/lib/ru-date";
 import { ReportTabs } from "@/components/report-tabs";
 
 const fmt = (date: string, options: Intl.DateTimeFormatOptions) =>
@@ -50,6 +53,8 @@ export default async function Sellers({
   };
   const title = day ? fmt(day, { day: "numeric", month: "long", year: "numeric" }) : fmt(p.start, { month: "long", year: "numeric" }).replace(/ г\.$/, "");
 
+  // Период датами: «01.10.2026 – 21.10.2026» (один день — одной датой).
+  const periodText = start === end ? ruDate(start) : `${ruDate(start)} – ${ruDate(end)}`;
   const nav = (
     <div className="day-nav">
       {day ? (
@@ -57,21 +62,23 @@ export default async function Sellers({
           Весь месяц
         </Link>
       ) : (
-        <>
-          <Link className="day-nav-arrow" href={query({ offset: offset - 1 })} aria-label="Прошлый месяц">
-            ‹
-          </Link>
-          {offset < 0 ? (
-            <Link className="day-nav-arrow" href={query({ offset: offset + 1 })} aria-label="Следующий месяц">
-              ›
-            </Link>
-          ) : (
-            <span className="day-nav-arrow disabled" aria-hidden="true">
-              ›
-            </span>
-          )}
-        </>
+        <Link className="day-nav-arrow" href={query({ offset: offset - 1 })} aria-label="Прошлый месяц">
+          ‹
+        </Link>
       )}
+      <span className="day-nav-period">{periodText}</span>
+      <PeriodDayPicker value={day ?? ""} base={query({ offset: 0 })} />
+      {!day &&
+        (offset < 0 ? (
+          <Link className="day-nav-arrow" href={query({ offset: offset + 1 })} aria-label="Следующий месяц">
+            ›
+          </Link>
+        ) : (
+          <span className="day-nav-arrow disabled" aria-hidden="true">
+            ›
+          </span>
+        ))}
+      <DownloadMenu href={query({ date: day, offset }).replace(/^\/sellers/, "/sellers/export")} />
     </div>
   );
 

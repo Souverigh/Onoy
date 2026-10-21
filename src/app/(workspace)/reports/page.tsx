@@ -10,6 +10,7 @@ import { sellersDebtTotals, sellersOverview } from "@/lib/seller-sales";
 import { DayColumns } from "@/components/day-columns";
 import { InfoTip } from "@/components/info-tip";
 import { ReportTabs } from "@/components/report-tabs";
+import { DownloadMenu } from "@/components/download-menu";
 import { CURRENCY_SIGN } from "@/lib/currency";
 
 const fmt = (date: string, options: Intl.DateTimeFormatOptions) =>
@@ -125,6 +126,7 @@ export default async function Reports({
               ›
             </span>
           )}
+          <DownloadMenu href={`/reports/export?period=${kind}${offset ? `&offset=${offset}` : ""}`} />
         </div>
       </div>
       <p className="muted day-date">
