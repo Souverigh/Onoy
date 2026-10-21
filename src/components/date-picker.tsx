@@ -290,6 +290,7 @@ export function DateField({
   max,
   maxDaysBack,
   clearable = true,
+  autoSubmit = false,
 }: {
   name: string;
   label: string;
@@ -299,16 +300,29 @@ export function DateField({
   max?: string;
   maxDaysBack?: number;
   clearable?: boolean;
+  /** Выбрал день — форма отправляется сама, без кнопки «Сохранить». */
+  autoSubmit?: boolean;
 }) {
   const [value, setValue] = useState(defaultValue);
+  const input = useRef<HTMLInputElement>(null);
+  const picked = useRef(false);
+  useEffect(() => {
+    // Отправляем после отрисовки — в скрытом поле уже новая дата.
+    if (!autoSubmit || !picked.current) return;
+    picked.current = false;
+    input.current?.form?.requestSubmit();
+  }, [autoSubmit, value]);
   return (
     <>
-      <input type="hidden" name={name} value={value} />
+      <input ref={input} type="hidden" name={name} value={value} />
       <DatePicker
         variant="field"
         label={label}
         value={value}
-        onChange={setValue}
+        onChange={(next) => {
+          picked.current = next !== value;
+          setValue(next);
+        }}
         emptyLabel={emptyLabel}
         min={min}
         max={max}

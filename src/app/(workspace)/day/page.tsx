@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 import { ConfirmButton } from "@/components/confirm-button";
 import { DayNav } from "@/components/day-nav";
 import { InfoTip } from "@/components/info-tip";
+import { ReportTabs } from "@/components/report-tabs";
 import { expenseCategoryLabel } from "@/lib/expenses";
 
 const HISTORY_DAYS = 14;
@@ -530,6 +531,7 @@ export default async function DayClose({
 
   return (
     <>
+      <ReportTabs current="day" />
       <div className="page-heading day-heading">
         <h1 className="label-with-tip">
           Итог дня

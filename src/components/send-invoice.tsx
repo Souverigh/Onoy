@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Icon } from "./icon";
 
 type Props = {
   /** Номер клиента, только цифры; пусто — WhatsApp спросит, кому отправить. */
@@ -24,6 +25,8 @@ type Props = {
    * не умеет выбрать чат сам, и новый клиент в его списке не появляется.
    */
   chatFirst?: boolean;
+  /** Ещё действия — иконками в ряд под главной кнопкой (печать, ещё продажа…). */
+  children?: React.ReactNode;
 };
 
 const REFRESH_MS = 4000;
@@ -45,6 +48,7 @@ export function SendInvoice({
   fileType = "image/png",
   to = "клиенту",
   chatFirst = false,
+  children,
 }: Props) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
@@ -116,29 +120,49 @@ export function SendInvoice({
     }
   }
 
+  // Второстепенное — одним рядом иконок под главной кнопкой (как в банковских
+  // приложениях): файлом / скачать, затем то, что передала страница.
+  const row = (file: React.ReactNode) =>
+    file || children ? (
+      <div className="send-actions">
+        {file}
+        {children}
+      </div>
+    ) : null;
+  const waMain = (
+    <a className="button primary send-main" href={waHref} target="_blank" rel="noreferrer">
+      <Icon name="chat" />
+      Отправить {to} в WhatsApp
+    </a>
+  );
+
   // Накладная не сверена — только текст с долгом и ссылкой.
   if (!imageUrl)
     return (
       <div className="send-invoice">
-        <a className="button primary send-main" href={waHref} target="_blank" rel="noreferrer">
-          Отправить {to} в WhatsApp
-        </a>
+        {waMain}
+        {row(null)}
       </div>
     );
 
-  if (canShareFile && chatFirst && phone)
+  // Ссылка на накладную в тексте и телефон есть — сразу в чат клиента, файл — иконкой.
+  if (chatFirst && phone)
     return (
       <div className="send-invoice">
-        <a className="button primary send-main" href={waHref} target="_blank" rel="noreferrer">
-          Отправить {to} в WhatsApp
-        </a>
-        <button className="button" type="button" onClick={shareFile} disabled={state === "loading"}>
-          {state === "loading"
-            ? "Готовим накладную…"
-            : state === "retry"
-              ? "Накладная готова - отправить файлом"
-              : "Отправить файлом (выбрать чат)"}
-        </button>
+        {waMain}
+        {row(
+          canShareFile ? (
+            <button className="send-action" type="button" onClick={shareFile} disabled={state === "loading"}>
+              <Icon name="share" />
+              <span>{state === "loading" ? "Готовим…" : "Поделиться"}</span>
+            </button>
+          ) : (
+            <a className="send-action" href={`${imageUrl}?download=1`} download={fileName}>
+              <Icon name="download" />
+              <span>Скачать</span>
+            </a>
+          ),
+        )}
         {state === "error" && (
           <p className="form-error" role="alert">
             Не удалось приложить файл - отправьте ссылкой кнопкой выше.
@@ -153,6 +177,7 @@ export function SendInvoice({
         <button className="button primary send-main" type="button" onClick={shareFile} disabled={state === "loading"}>
           {state === "loading" ? "Готовим накладную…" : state === "retry" ? "Накладная готова - отправить" : `Отправить ${to}`}
         </button>
+        {row(null)}
         {state === "sent" && <p className="muted">Отправлено? Если WhatsApp не открылся - нажмите ещё раз.</p>}
         {state === "error" && (
           <p className="form-error" role="alert">
@@ -179,6 +204,7 @@ export function SendInvoice({
       <small className="muted">
         В WhatsApp перетащите скачанный файл в чат с {to === "клиенту" ? "клиентом" : "поставщиком"} - текст{to === "клиенту" ? " со ссылкой" : ""} уже будет вписан.
       </small>
+      {row(null)}
     </div>
   );
 }

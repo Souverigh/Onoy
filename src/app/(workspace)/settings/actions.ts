@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { getContext, getUserContext, requireOwner } from "@/lib/context";
 import { storedPhone } from "@/lib/contacts";
+import { templateInput } from "@/lib/invoice-message";
 
 /** Картинка QR для оплаты — в data URL до ~300 КБ (колонка pay_qr_image). */
 async function qrImage(file: File): Promise<string | null> {
@@ -47,6 +48,8 @@ export async function updateShop(form: FormData) {
     if (!url) redirect("/settings?error=qr#pay");
     details.pay_qr_image = url;
   } else if (form.get("pay_qr_remove") === "on") details.pay_qr_image = null;
+  // Свой текст сообщения клиенту — только если поле есть в форме (владелец).
+  if (form.has("invoice_message")) details.invoice_message = templateInput(String(form.get("invoice_message") ?? ""));
   const blockDuplicatePhotos = form.get("block_duplicate_photos") === "on";
   const currency = String(form.get("currency") ?? "");
   // Как магазин написан на накладных — по строке на вариант (classify.ts).

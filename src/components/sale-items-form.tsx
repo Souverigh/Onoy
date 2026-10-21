@@ -801,18 +801,13 @@ export function SaleItemsForm({
           {lines.length ? `Записать ${purchase ? "товар" : "продажу"} · ${money(total.toFixed(2), lineCurrency)}` : "Добавьте товары"}
         </Submit>
       </div>
-      <p className="operation-hint">
-        {purchase
-          ? "Остаток на складе вырастет, цена закупки запомнится у товара, сумма добавится к долгу поставщику."
-          : "Остаток на складе уменьшится, сумма добавится к долгу клиента. Клиенту можно сразу отправить накладную PDF."}
-      </p>
       {/* Пояснения — в самом низу, под кнопкой записи. */}
       {draftStatus && (
-        <small className="muted draft-status" role="status">
+        <small className={`draft-status${draftStatus === "saved" ? " draft-status-saved" : " muted"}`} role="status">
           {draftStatus === "saving"
             ? "Сохраняем черновик…"
             : draftStatus === "saved"
-              ? `Черновик сохранён - найдёте его на главной в «${purchase ? "Товар от поставщика" : "Продажа"}».`
+              ? "Черновик сохранён"
               : "Черновик не сохранился - проверьте интернет. Введённое на этом экране не пропало."}
         </small>
       )}

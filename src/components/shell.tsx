@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Icon, type IconName } from "./icon";
 import { InstallApp } from "./install-app";
+import { REPORT_TAB_KEY, reportTabHref } from "./report-tabs";
 
 type NavItem = [string, string, IconName];
 
@@ -14,15 +15,16 @@ const allNav: NavItem[] = [
   ["/suppliers", "Поставщики", "truck"],
   ["/money", "Все записи", "wallet"],
   ["/stock", "Склад", "box"],
-  ["/day", "Итог дня", "file"],
-  ["/reports", "Отчёт за месяц", "chart"],
-  ["/sellers", "Продажи продавцов", "chart"],
+  // Итог дня, отчёт за месяц и продавцы — вкладками одного раздела (report-tabs.tsx).
+  ["/day", "Отчёты", "chart"],
   ["/claims", "Платежи", "check"],
   ["/documents", "Документы", "camera"],
   ["/settings", "Настройки", "settings"],
 ];
 /** Разделы только для владельца (итоги, заявки клиентов). */
-const OWNER_ONLY = new Set(["/day", "/reports", "/claims"]);
+const OWNER_ONLY = new Set(["/day", "/claims"]);
+/** Страницы раздела «Отчёты» — пункт меню подсвечен на любой из них. */
+const REPORT_PATHS = ["/day", "/reports", "/sellers"];
 /** Заголовки страниц без своего пункта меню. */
 const EXTRA_TITLES: [string, string][] = [
   ["/money/new", "Новая запись"],
@@ -39,7 +41,7 @@ const EXTRA_TITLES: [string, string][] = [
 
 /**
  * Каркас кабинета. Телефон (аудит ТЗ 15.1 п. 6): внизу Главная · Клиенты ·
- * [+ Продажа] · Итог дня · Ещё; «Ещё» открывает меню над панелью (там же
+ * [+ Продажа] · Отчёты · Ещё; «Ещё» открывает меню над панелью (там же
  * Платежи — их бейдж выносится на «Ещё»). «Выйти» — только в Настройках (п. 8). ПК: подписи у иконок
  * при любой ширине (п. 11).
  */
@@ -71,14 +73,28 @@ export function Shell({
     return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
-  // Продавец видит в «Продажах продавцов» только свои продажи.
+  // «Отчёты» ведут на последнюю открытую вкладку (запоминает report-tabs.tsx).
+  const [reportsHref, setReportsHref] = useState("/day");
+  useEffect(() => {
+    try {
+      setReportsHref(reportTabHref(localStorage.getItem(REPORT_TAB_KEY)));
+    } catch {
+      // Приватный режим — «День».
+    }
+  }, [path]);
+  // Продавцу отчёты не видны — у него вместо них «Мои продажи».
   const nav = isOwner
     ? allNav
-    : allNav.map(([href, label, icon]): NavItem => [href, href === "/sellers" ? "Мои продажи" : label, icon]);
+    : allNav.map((item): NavItem => (item[0] === "/day" ? ["/sellers", "Мои продажи", "chart"] : item));
   const allowed = ([href]: NavItem) => isOwner || !OWNER_ONLY.has(href);
-  const link = (href: string) => (preview ? "/preview" : href);
+  const inPath = (href: string) => path === href || path.startsWith(href + "/");
+  const link = (href: string) => (preview ? "/preview" : isOwner && href === "/day" ? reportsHref : href);
   const active = (href: string) =>
-    href === "/" ? path === "/" || (preview && path === "/preview") : path === href || path.startsWith(href + "/");
+    href === "/"
+      ? path === "/" || (preview && path === "/preview")
+      : isOwner && href === "/day"
+        ? REPORT_PATHS.some(inPath)
+        : inPath(href);
   const badge = (href: string) =>
     href === "/claims" && claimsCount > 0 ? (
       <span className="nav-badge">{claimsCount}</span>
@@ -88,7 +104,7 @@ export function Shell({
 
   // Внизу у продавца вместо «Итога дня» (итоги — у владельца) — «Поставщики».
   const bottom: NavItem[] = isOwner
-    ? [["/", "Главная", "home"], ["/customers", "Клиенты", "people"], ["/day", "Итог дня", "file"]]
+    ? [["/", "Главная", "home"], ["/customers", "Клиенты", "people"], ["/day", "Отчёты", "chart"]]
     : [["/", "Главная", "home"], ["/customers", "Клиенты", "people"], ["/suppliers", "Поставщики", "truck"]];
   const more = nav.filter(allowed).filter(([href]) => !bottom.some(([b]) => b === href));
   const moreActive = more.some(([href]) => active(href));

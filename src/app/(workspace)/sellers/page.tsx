@@ -6,6 +6,7 @@ import { period } from "@/lib/periods";
 import { memberLabels } from "@/lib/members";
 import { sellerCustomerDebts, sellerDetail, sellersDebtTotals, sellersOverview } from "@/lib/seller-sales";
 import { InfoTip } from "@/components/info-tip";
+import { ReportTabs } from "@/components/report-tabs";
 
 const fmt = (date: string, options: Intl.DateTimeFormatOptions) =>
   new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", ...options }).format(
@@ -81,6 +82,7 @@ export default async function Sellers({
     ]);
     return (
       <>
+        <ReportTabs current="sellers" />
         <div className="page-heading day-heading">
           <h1 className="label-with-tip">
             Продажи продавцов
@@ -140,6 +142,7 @@ export default async function Sellers({
 
   return (
     <>
+      {isOwner && <ReportTabs current="sellers" />}
       <div className="page-heading day-heading">
         <h1>{name}</h1>
         {nav}

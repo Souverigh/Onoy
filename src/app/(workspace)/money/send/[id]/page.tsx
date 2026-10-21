@@ -7,6 +7,7 @@ import { partyCurrency } from "@/lib/currency";
 import { invoiceMessage } from "@/lib/invoice-message";
 import { SendInvoice } from "@/components/send-invoice";
 import { UndoForm } from "@/components/undo-form";
+import { Icon } from "@/components/icon";
 import { ensureShareToken, waPhone } from "@/lib/share";
 import { correctSale } from "@/app/(workspace)/drafts/actions";
 import { ConfirmButton } from "@/components/confirm-button";
@@ -75,6 +76,13 @@ export default async function SendSalePage({
   ]);
   const customer = customerResult.data;
   if (!customer) notFound();
+  // Свой текст сообщения магазина (Настройки → Магазин); миграции нет — стандартный.
+  const template = await db
+    .from("organizations")
+    .select("invoice_message")
+    .eq("id", organizationId)
+    .maybeSingle()
+    .then((r) => (r.error ? null : ((r.data?.invoice_message as string | null) ?? null)));
 
   const { token, revoked } = share;
   const h = await headers();
@@ -122,6 +130,7 @@ export default async function SendSalePage({
       invoiceUrl: !attached && checked && token ? `${origin}/c/${token}/invoice/${sale.id}` : null,
       invoiceAttached: attached,
       debtUrl: token ? `${origin}/c/${token}` : null,
+      template,
     });
   const back = `/customers/${customer.id}`;
   const debtBefore = Math.round((balance - (sale.paid_immediately ? 0 : Number(sale.total))) * 100) / 100;
@@ -149,9 +158,9 @@ export default async function SendSalePage({
           <strong className="nowrap">{money(sale.total, cur)}</strong>
           {originalAmountText(sale) && <span className="muted"> ({originalAmountText(sale)})</span>}
         </p>
-        {sale.note && <p className="muted">Комментарий: {sale.note}</p>}
+        {sale.note && <p className="muted sale-done-note">Комментарий: {sale.note}</p>}
         {done && !sale.reversed_at && (
-          <p className="muted">
+          <p className="muted sale-done-debt">
             Долг клиента: {debtMoney(debtBefore.toFixed(2), cur)} → <strong>{debtMoney(balance.toFixed(2), cur)}</strong>
           </p>
         )}
@@ -195,7 +204,18 @@ export default async function SendSalePage({
             // Ссылка на накладную в тексте — сразу в чат клиента.
             chatFirst={checked && Boolean(token)}
             pending={pending}
-          />
+          >
+            {imageUrl && (
+              <a className="send-action" href={`/money/send/${sale.id}/pdf?print=1`} target="_blank" rel="noreferrer">
+                <Icon name="printer" />
+                <span>Печать</span>
+              </a>
+            )}
+            <Link className="send-action" href={back}>
+              <Icon name="user" />
+              <span>Клиент</span>
+            </Link>
+          </SendInvoice>
           {revoked && (
             <p className="muted">
               Ссылки нет ·{" "}
@@ -205,24 +225,7 @@ export default async function SendSalePage({
             </p>
           )}
           {!customer.phone && <p className="muted">У клиента нет телефона - WhatsApp спросит, кому отправить.</p>}
-          <details className="send-invoice-text">
-            <summary>Текст сообщения</summary>
-            <pre className="send-invoice-preview">{message(Boolean(imageUrl))}</pre>
-          </details>
-          <div className="record-result-actions send-secondary">
-            {imageUrl && (
-              <a className="button" href={`/money/send/${sale.id}/pdf?print=1`} target="_blank" rel="noreferrer">
-                Печать
-              </a>
-            )}
-            <Link className="button" href="/money/new?type=sale">
-              Ещё продажа
-            </Link>
-            <Link className="button" href={back}>
-              Открыть клиента
-            </Link>
-          </div>
-          {canUndo && <UndoForm kind="sale" id={sale.id} />}
+          {canUndo && <UndoForm kind="sale" id={sale.id} quiet />}
         </section>
       )}
       {/* Справа — товары продажи: со склада или строки фото. */}

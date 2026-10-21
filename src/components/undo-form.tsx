@@ -12,11 +12,14 @@ export function UndoForm({
   kind,
   id,
   partPayment,
+  quiet = false,
 }: {
   kind: "sale" | "purchase" | "payment";
   id: string;
   /** «10 $» — оплата, внесённая вместе с приходом. */
   partPayment?: string | null;
+  /** Тихой красной ссылкой, а не кнопкой: рядом с отправкой клиенту её легко нажать случайно. */
+  quiet?: boolean;
 }) {
   const form = useRef<HTMLFormElement>(null);
   const withPayment = useRef<HTMLInputElement>(null);
@@ -27,18 +30,22 @@ export function UndoForm({
     form.current?.requestSubmit();
   };
   return (
-    <form ref={form} action={undoRecent} className="record-result-undo">
+    <form ref={form} action={undoRecent} className={`record-result-undo${quiet ? " record-result-undo-quiet" : ""}`}>
       <input type="hidden" name="kind" value={kind} />
       <input type="hidden" name="id" value={id} />
       <input ref={withPayment} type="hidden" name="with_payment" value="1" />
       <button
         type={partPayment ? "button" : "submit"}
-        className="button danger-outline"
+        className={quiet ? "text-button undo-link" : "button danger-outline"}
         onClick={partPayment ? () => setAsking(true) : undefined}
       >
         Отменить - ошиблись
       </button>
-      <small className="muted">Можно в течение 2 минут, без причины. Форма откроется снова с тем же фото и суммой.</small>
+      <small className="muted">
+        {quiet
+          ? "в течение 2 минут"
+          : "Можно в течение 2 минут, без причины. Форма откроется снова с тем же фото и суммой."}
+      </small>
       {partPayment && (
         <ConfirmDialog
           open={asking}

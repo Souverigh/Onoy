@@ -9,6 +9,7 @@ import { Submit } from "@/components/submit";
 import { NoAutofillInput } from "@/components/no-autofill-input";
 import { changeEmail, changePassword, updateShop } from "./actions";
 import { EXPORT_TABLES } from "@/lib/export-data";
+import { DEFAULT_MESSAGE_TEMPLATE, MESSAGE_LINK_LINES, MESSAGE_PLACEHOLDERS, MESSAGE_TEMPLATE_MAX } from "@/lib/invoice-message";
 
 /** Итог смены пароля / email (?account=… от settings/actions.ts и /auth/confirm). */
 const ACCOUNT_TEXT: Record<string, string> = {
@@ -98,6 +99,16 @@ export default async function Settings({
     invoice_show_debt: boolean;
     invoice_show_qr: boolean;
   } | null;
+  // Свой текст сообщения клиенту — отдельно: пока миграция не применена,
+  // колонки нет, а остальное работает (null — поля нет на странице).
+  const messageTemplate = isOwner
+    ? await db
+        .from("organizations")
+        .select("invoice_message")
+        .eq("id", organizationId)
+        .maybeSingle()
+        .then((r) => (r.error ? null : ((r.data?.invoice_message as string | null) ?? DEFAULT_MESSAGE_TEMPLATE)))
+    : null;
   // Продавец: своё имя и телефон для накладной (пусто — из настроек магазина).
   const ownInvoice = isOwner
     ? null
@@ -308,6 +319,42 @@ export default async function Settings({
                 <input type="checkbox" role="switch" name="invoice_show_qr" defaultChecked={seller?.invoice_show_qr ?? true} />
               </label>
             </section>
+
+            {messageTemplate !== null && (
+              <section className="panel settings-card" id="message">
+                <header>
+                  <h2>Сообщение клиенту</h2>
+                  <p className="muted">Текст, который уходит клиенту в WhatsApp после продажи.</p>
+                </header>
+                <label>
+                  Текст сообщения
+                  <textarea
+                    name="invoice_message"
+                    rows={5}
+                    maxLength={MESSAGE_TEMPLATE_MAX}
+                    defaultValue={messageTemplate}
+                  />
+                  <small className="muted">
+                    Слова в фигурных скобках заменятся сами. Если подставить нечего (например, долга нет), строка с
+                    ними не отправится. Очистите поле - вернётся стандартный текст.
+                  </small>
+                </label>
+                {/* Ссылки не в поле: их нельзя стереть случайно. */}
+                <div className="message-links">
+                  <span className="muted">Добавится в конце само - убрать нельзя:</span>
+                  {MESSAGE_LINK_LINES.map((line) => (
+                    <p key={line}>🔒 {line}</p>
+                  ))}
+                </div>
+                <ul className="message-placeholders">
+                  {MESSAGE_PLACEHOLDERS.map((p) => (
+                    <li key={p.key}>
+                      <code>{p.key}</code> <span className="muted">- {p.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
             <div className="settings-save">
               <Submit>Сохранить изменения</Submit>

@@ -13,7 +13,14 @@ export type IconName =
   | "chart"
   | "menu"
   | "close"
-  | "calendar";
+  | "calendar"
+  | "printer"
+  | "download"
+  | "user"
+  | "share"
+  | "chat"
+  | "phone"
+  | "more";
 const paths: Record<IconName, string> = {
   home: "M3 10 12 3l9 7v10H3V10Zm6 10v-7h6v7",
   people:
@@ -33,6 +40,13 @@ const paths: Record<IconName, string> = {
   menu: "M4 6h16M4 12h16M4 18h16",
   close: "M6 6l12 12M18 6 6 18",
   calendar: "M4 6h16v15H4V6Zm0 5h16M8 3v5m8-5v5",
+  printer: "M6 9V3h12v6M6 18H3V9h18v9h-3M6 14h12v7H6v-7Z",
+  download: "M12 3v12m-5-5 5 5 5-5M4 21h16",
+  share: "M12 15V3m-4 4 4-4 4 4M8 10H5v11h14V10h-3",
+  chat: "M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-5A8 8 0 1 1 21 12Z",
+  phone: "M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z",
+  more: "M5 10.8a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm7 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm7 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Z",
+  user: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z",
 };
 export function Icon({ name }: { name: IconName }) {
   return (

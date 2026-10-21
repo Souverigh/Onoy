@@ -9,6 +9,7 @@ import { quantity } from "@/lib/format";
 import { sellersDebtTotals, sellersOverview } from "@/lib/seller-sales";
 import { DayColumns } from "@/components/day-columns";
 import { InfoTip } from "@/components/info-tip";
+import { ReportTabs } from "@/components/report-tabs";
 import { CURRENCY_SIGN } from "@/lib/currency";
 
 const fmt = (date: string, options: Intl.DateTimeFormatOptions) =>
@@ -86,6 +87,7 @@ export default async function Reports({
 
   return (
     <>
+      <ReportTabs current="month" />
       <div className="page-heading day-heading">
         <h1 className="label-with-tip">
           {kind === "week" ? "Отчёт за неделю" : "Отчёт за месяц"}

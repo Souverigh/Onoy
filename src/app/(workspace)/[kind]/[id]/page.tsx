@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Icon } from "@/components/icon";
 import { DateField } from "@/components/date-picker";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
@@ -489,34 +490,53 @@ export default async function EntryPage({
               ) : null}
             </div>
           </div>
+          {/* Два главных действия — кнопками; связь — круглыми иконками, как в
+              карточке контакта; редкое — в «Ещё». */}
           <div className="party-hero-actions">
-            <Link className="button primary" href={newOperationHref(kind === "customers" ? "sale" : "purchase")}>
-              + {kind === "customers" ? "Продажа" : "Товар от поставщика"}
-            </Link>
-            <Link
-              className="button primary"
-              href={`${newOperationHref("payment")}&direction=${kind === "customers" ? "incoming" : "outgoing"}`}
-            >
-              {kind === "customers" ? "Клиент принёс деньги" : "Я заплатил поставщику"}
-            </Link>
-            {waHref && (
-              <a className="button whatsapp" href={waHref} target="_blank" rel="noreferrer">
-                {reminderBalance > 0 && kind === "customers" ? "Напомнить в WhatsApp" : "WhatsApp"}
-              </a>
-            )}
-            {entry.phone && (
-              <a className="button" href={`tel:${entry.phone.replace(/[^\d+]/g, "")}`}>
-                Позвонить
-              </a>
-            )}
-            <Link className="button" href={`/${kind}/${entry.id}/statement`}>
-              Акт сверки
-            </Link>
-            {isOwner && (
-              <Link className="button" href={`/money/adjustment?party=${entry.id}`}>
-                Скидка / возврат
+            <div className="party-hero-main">
+              <Link className="button primary" href={newOperationHref(kind === "customers" ? "sale" : "purchase")}>
+                + {kind === "customers" ? "Продажа" : "Товар от поставщика"}
               </Link>
-            )}
+              <Link
+                className="button primary"
+                href={`${newOperationHref("payment")}&direction=${kind === "customers" ? "incoming" : "outgoing"}`}
+              >
+                {kind === "customers" ? "Клиент принёс деньги" : "Я заплатил поставщику"}
+              </Link>
+            </div>
+            <div className="party-hero-icons">
+              {waHref && (
+                <a
+                  className="icon-action icon-action-whatsapp"
+                  href={waHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={reminderBalance > 0 && kind === "customers" ? "Напомнить в WhatsApp" : "Написать в WhatsApp"}
+                  title={reminderBalance > 0 && kind === "customers" ? "Напомнить в WhatsApp" : "Написать в WhatsApp"}
+                >
+                  <Icon name="chat" />
+                </a>
+              )}
+              {entry.phone && (
+                <a
+                  className="icon-action"
+                  href={`tel:${entry.phone.replace(/[^\d+]/g, "")}`}
+                  aria-label="Позвонить"
+                  title="Позвонить"
+                >
+                  <Icon name="phone" />
+                </a>
+              )}
+              <details className="more-menu">
+                <summary className="icon-action" aria-label="Ещё" title="Ещё">
+                  <Icon name="more" />
+                </summary>
+                <div className="more-menu-list">
+                  <Link href={`/${kind}/${entry.id}/statement`}>Акт сверки</Link>
+                  {isOwner && <Link href={`/money/adjustment?party=${entry.id}`}>Скидка / возврат</Link>}
+                </div>
+              </details>
+            </div>
           </div>
         </section>
       ) : (
@@ -779,34 +799,21 @@ export default async function EntryPage({
                 )}
                 <form action={setPromisedDate} className="promise-form">
                   <input type="hidden" name="customer_id" value={entry.id} />
-                  <span>Обещал оплатить</span>
-                  <div className="promise-presets">
-                    <button className="button" type="submit" name="preset" value="tomorrow">
-                      Завтра
+                  <DateField
+                    name="promised_date"
+                    label="Обещал оплатить до"
+                    emptyLabel="Выбрать дату"
+                    defaultValue={entry.promised_date ?? ""}
+                    min={today}
+                    max={bishkekDate(new Date(Date.now() + 730 * 86400000))}
+                    clearable={false}
+                    autoSubmit
+                  />
+                  {entry.promised_date && (
+                    <button className="text-button promise-clear" type="submit" name="preset" value="clear">
+                      Убрать срок
                     </button>
-                    <button className="button" type="submit" name="preset" value="week">
-                      Через неделю
-                    </button>
-                    {entry.promised_date && (
-                      <button className="text-button" type="submit" name="preset" value="clear">
-                        Убрать срок
-                      </button>
-                    )}
-                  </div>
-                  <details className="promise-date" open={false}>
-                    <summary>Дата</summary>
-                    <DateField
-                      name="promised_date"
-                      label="Обещал оплатить до"
-                      defaultValue={entry.promised_date ?? ""}
-                      min={today}
-                      max={new Date(Date.now() + 730 * 86400000).toISOString().slice(0, 10)}
-                      clearable={false}
-                    />
-                    <button className="button" type="submit">
-                      Сохранить дату
-                    </button>
-                  </details>
+                  )}
                 </form>
                 {aging && (
                   <>

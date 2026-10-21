@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { invoiceMessage } from "../src/lib/invoice-message.ts";
+import { DEFAULT_MESSAGE_TEMPLATE, invoiceMessage, templateInput } from "../src/lib/invoice-message.ts";
 
 const base = {
   customerName: "Маликнур",
@@ -47,4 +47,47 @@ test("invoiceMessage: paid sale, zero balance and advance wording", () => {
     invoiceMessage({ ...base, balance: -500, advanceText: "500 сом" }),
     /Долга нет, аванс: 500 сом\./,
   );
+});
+
+test("invoiceMessage: shop template fills placeholders, links always added at the end", () => {
+  const template = "Салам, {клиент}! {сумма} от {дата}\nДолг: {долг}\n{магазин}";
+  assert.equal(
+    invoiceMessage({ ...base, template }),
+    [
+      "Салам, Маликнур! 54 270 сом от 27 сент. 2026 г.",
+      "Долг: 60 000 сом",
+      "Магазин A",
+      "Накладная: https://x/c/t/invoice/s",
+      "Посмотреть и оплатить: https://x/c/t",
+    ].join("\n"),
+  );
+});
+
+test("invoiceMessage: template without any placeholders still carries the links", () => {
+  assert.equal(
+    invoiceMessage({ ...base, template: "Спасибо за покупку!" }),
+    ["Спасибо за покупку!", "Накладная: https://x/c/t/invoice/s", "Посмотреть и оплатить: https://x/c/t"].join("\n"),
+  );
+});
+
+test("invoiceMessage: template drops lines with nothing to show", () => {
+  const text = invoiceMessage({
+    ...base,
+    template: DEFAULT_MESSAGE_TEMPLATE + "\nСпасибо!",
+    invoiceUrl: null,
+    debtUrl: null,
+    balance: 0,
+    paidImmediately: true,
+  });
+  assert.equal(
+    text,
+    ["Здравствуйте, Маликнур!", "Накладная от 27 сент. 2026 г. на 54 270 сом (оплачено).", "Магазин A", "Спасибо!"].join("\n"),
+  );
+  assert.match(invoiceMessage({ ...base, template: "{неизвестно} {клиент}" }), /^\{неизвестно\} Маликнур\n/);
+});
+
+test("templateInput: empty or default text means the standard message", () => {
+  assert.equal(templateInput("   "), null);
+  assert.equal(templateInput(DEFAULT_MESSAGE_TEMPLATE.replace(/\n/g, "\r\n") + "\n"), null);
+  assert.equal(templateInput(" Привет, {клиент} "), "Привет, {клиент}");
 });
