@@ -209,6 +209,8 @@ export function OperationForm({
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [receiptCheck, setReceiptCheck] = useState<ReceiptCheck | null>(null);
   const [checkingReceipt, setCheckingReceipt] = useState(false);
+  // Чек тащат мышью над полем (компьютер) — подсвечиваем.
+  const [receiptDragging, setReceiptDragging] = useState(false);
   const [bankRef, setBankRef] = useState(prefill?.bankRef ?? "");
   // Дата оплаты: с чека или «сейчас» (ставится в браузере — без расхождения
   // с сервером при отрисовке); продавец может поменять.
@@ -1025,8 +1027,14 @@ export function OperationForm({
       />
       <form
         onSubmit={submit}
-        // Продажа и приход по фото на широком экране: фото слева, поля справа.
-        className={kind === "payment" ? "simple-operation-form" : "simple-operation-form photo-operation-form"}
+        // Широкий экран: фото накладной (или чек оплаты) слева, поля справа.
+        className={
+          kind !== "payment"
+            ? "simple-operation-form photo-operation-form"
+            : prefill
+              ? "simple-operation-form"
+              : "simple-operation-form payment-operation-form"
+        }
         noValidate
       >
         <input type="hidden" name="kind" value={kind} />
@@ -1203,7 +1211,24 @@ export function OperationForm({
           </div>
         )}
         {kind === "payment" && !prefill && (
-          <div className="photo-field receipt-field">
+          <div
+            className={`photo-field receipt-field${receiptDragging ? " dragging" : ""}`}
+            // Компьютер: чек можно перетащить мышью из папки или браузера.
+            onDragOver={(e) => {
+              if (!e.dataTransfer.types.includes("Files")) return;
+              e.preventDefault();
+              setReceiptDragging(true);
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setReceiptDragging(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setReceiptDragging(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) void pickReceipt(file);
+            }}
+          >
             <span className="invoice-dropzone-title">
               Чек или скриншот перевода (необязательно)
               {!receiptFile && <InfoTip>Сумму, дату, номер перевода и клиента заполним с чека.</InfoTip>}
@@ -1243,6 +1268,7 @@ export function OperationForm({
             ) : (
               <label className="button page-add">
                 <span className="page-add-long">Сфотографировать или выбрать чек</span>
+                <span className="page-add-drop">Перетащите чек сюда или нажмите, чтобы выбрать файл</span>
                 <span className="page-add-short">Фото или файл чека</span>
                 <input
                   type="file"

@@ -148,6 +148,12 @@ export default async function DocumentDetail({
   const doc = docResult.data as DocRow;
   // Ссылки на фото — пока считается остальное (ждём ниже).
   const photoUrlsRequest = Promise.all(pages.map((page) => signedPhotoUrl(db, page.storage_path)));
+  // Нажатие на фото — скачать файл (ссылка с «скачать», а не открыть в браузере).
+  const downloadUrlsRequest = Promise.all(
+    pages.map((page, i) =>
+      signedPhotoUrl(db, page.storage_path, `depter-${id.slice(0, 8)}-${i + 1}.${({ "application/pdf": "pdf", "image/png": "png", "image/webp": "webp" } as Record<string, string>)[page.mime_type] ?? "jpg"}`),
+    ),
+  );
 
   const lines = (linesResult.data ?? []) as Line[];
   // Последняя строка — итог оцифровки; задержка вызова Gemini записана в
@@ -334,7 +340,7 @@ export default async function DocumentDetail({
           : "подтверждена";
   const expenseFields = doc.kind === "expense" ? (extraction?.payload?.extracted as ExpenseResult | undefined) : undefined;
 
-  const photoUrls = await photoUrlsRequest;
+  const [photoUrls, downloadUrls] = await Promise.all([photoUrlsRequest, downloadUrlsRequest]);
   const linesTotal = lines.reduce((sum, line) => sum + Number(line.sum), 0);
   const totalsMismatch =
     declaredTotal != null && Math.abs(linesTotal - declaredTotal) > TOLERANCE;
@@ -647,9 +653,11 @@ export default async function DocumentDetail({
           </div>
         )}
         {orphan && (
+          // Компьютер: одной строкой — текст слева, кнопки справа обычного размера;
+          // телефон: кнопки во всю ширину под текстом.
           <div className="doc-orphan">
             <p>Фото без записи - по нему ещё ничего не записали. Запишите или удалите фото.</p>
-            <div className="simple-operation-actions">
+            <div className="doc-orphan-actions">
               {doc.kind === "expense" ? (
                 <Link className="button primary" href="/money/expense">
                   Записать расход
@@ -721,7 +729,7 @@ export default async function DocumentDetail({
           <DocumentPhotos
             pages={
               photoUrls.length
-                ? photoUrls.map((url, i) => ({ url, mimeType: pages[i].mime_type }))
+                ? photoUrls.map((url, i) => ({ url, mimeType: pages[i].mime_type, downloadUrl: downloadUrls[i] }))
                 : [{ url: null, mimeType: "image/jpeg" }]
             }
           />

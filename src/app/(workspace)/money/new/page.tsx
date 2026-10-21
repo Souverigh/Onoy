@@ -340,7 +340,9 @@ export default async function NewOperation({
           />
         </section>
       ) : (
-        <section className={`panel simple-operation-panel${kind === "payment" ? "" : " wide-operation-panel"}`}>
+        <section
+          className={`panel simple-operation-panel${kind === "payment" && prefill ? "" : " wide-operation-panel"}`}
+        >
           <OperationForm
             kind={kind}
             idempotencyKey={randomUUID()}

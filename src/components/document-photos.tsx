@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 
-export type DocumentPageView = { url: string | null; mimeType: string };
+export type DocumentPageView = {
+  url: string | null;
+  mimeType: string;
+  /** Ссылка, которая скачивает файл; нет — открываем обычную. */
+  downloadUrl?: string | null;
+};
 
 /**
  * Страницы документа: фото или PDF. У многостраничной накладной —
@@ -44,12 +49,21 @@ export function DocumentPhotos({ pages }: { pages: DocumentPageView[] }) {
           </a>
         </>
       ) : (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={page.url}
-          alt={pages.length > 1 ? `Страница ${current + 1}` : "Фото документа"}
-          className="document-photo"
-        />
+        // Нажатие на фото — скачать его (на компьютере фото показано уменьшенным).
+        <a
+          className="document-photo-link"
+          href={page.downloadUrl ?? page.url}
+          download
+          title="Нажмите, чтобы скачать фото"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={page.url}
+            alt={pages.length > 1 ? `Страница ${current + 1}` : "Фото документа"}
+            className="document-photo"
+          />
+          <span className="document-photo-hint">⬇ Скачать фото</span>
+        </a>
       )}
     </>
   );

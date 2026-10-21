@@ -7243,7 +7243,7 @@ tr.row-link:has(a[data-pending]) {
 }
 .sale-sheet-row {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) 150px 44px 130px 130px 40px;
+  grid-template-columns: 36px minmax(0, 1fr) 168px 44px 120px 130px 40px;
   column-gap: 14px;
   align-items: center;
   padding: 12px 16px;
@@ -7287,10 +7287,11 @@ tr.row-link:has(a[data-pending]) {
 .sale-sheet-qty > * {
   flex-shrink: 0;
 }
+/* Поле количества — под 6–7 цифр («12 500», «1 250,5»), а не под 4. */
 .sale-sheet-qty input {
-  width: 64px;
+  width: 88px;
   min-height: 42px;
-  padding: 6px;
+  padding: 6px 4px;
   text-align: center;
 }
 .sale-sheet-qty button {
@@ -7389,13 +7390,15 @@ tr.row-link:has(a[data-pending]) {
   /* Строка: название и × / кол-во, ед., цена — широко / сумма отдельной строкой справа. */
   /* Кол-во начинается от левого края (под номером) — так ему хватает места. */
   .sale-sheet-line {
-    grid-template-columns: 22px auto auto minmax(88px, 1fr) auto;
+    /* Вторая колонка — под поле количества (− 76px +, оно занимает и колонку номера):
+       «auto» сетка недодавала, и «шт» наезжало на «+». */
+    grid-template-columns: 22px 112px auto minmax(60px, 1fr) auto;
     grid-template-areas:
       "n name name name x"
       "qty qty unit price price"
       "sum sum sum sum sum";
     row-gap: 12px;
-    column-gap: 10px;
+    column-gap: 8px;
     padding: 14px 12px;
   }
   .sale-sheet-line .sale-sheet-price {
@@ -7436,8 +7439,19 @@ tr.row-link:has(a[data-pending]) {
   .sale-sheet-line .sale-sheet-qty button {
     min-height: 44px;
   }
+  /* Телефон: количество шире (до 6–7 цифр), − и + чуть уже, цена — остаток строки. */
   .sale-sheet-qty input {
-    width: 56px;
+    width: 76px;
+  }
+  .sale-sheet-line .sale-sheet-qty button {
+    width: 32px;
+  }
+  .sale-sheet-line .sale-sheet-unit {
+    padding-left: 4px;
+  }
+  .sale-sheet-line .sale-sheet-price {
+    padding-left: 8px;
+    padding-right: 8px;
   }
 }
 
@@ -8565,5 +8579,193 @@ tr.row-link:has(a[data-pending]) {
     flex: 1;
     width: 100%;
     justify-content: center;
+  }
+}
+
+/* Оплата: на узком экране — колонкой телефона; на широком — чек слева
+   большой зоной (перетащить или выбрать), поля справа. */
+.payment-operation-form {
+  max-width: 480px;
+}
+.page-add-drop {
+  display: none;
+}
+.receipt-field.dragging {
+  border-color: var(--green);
+  background: #eef6ea;
+}
+/* Две колонки — когда самой панели формы хватает ширины (а не всему окну):
+   так и в окне ~1000px с боковым меню форма раскладывается. */
+.simple-operation-panel.wide-operation-panel {
+  container-type: inline-size;
+}
+@container (min-width: 700px) {
+  .payment-operation-form {
+    max-width: none;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 440px);
+    column-gap: 28px;
+    align-items: start;
+  }
+  .payment-operation-form > * {
+    grid-column: 2;
+  }
+  .payment-operation-form > .receipt-field {
+    grid-column: 1;
+    grid-row: 1 / span 40;
+    position: sticky;
+    top: 16px;
+    min-height: 420px;
+    margin: 0;
+    padding: 18px;
+    border: 1.5px dashed #c9d2cc;
+    border-radius: 12px;
+    background: #fafbf9;
+  }
+  .payment-operation-form > .receipt-field.dragging {
+    border-color: var(--green);
+    background: #eef6ea;
+  }
+  /* Пустая зона: одна большая кнопка на всю высоту — «перетащите или выберите». */
+  .payment-operation-form .receipt-field > .page-add {
+    align-self: stretch;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 340px;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 16px;
+    text-align: center;
+    white-space: normal;
+  }
+  .payment-operation-form .receipt-field > .page-add::before {
+    content: "";
+    width: 56px;
+    height: 56px;
+    margin-bottom: 14px;
+    border-radius: 16px;
+    background:
+      no-repeat center / 28px
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23245d4c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 15V3m-4 4 4-4 4 4M5 13v8h14v-8'/%3E%3C/svg%3E"),
+      #e6f0e1;
+  }
+  .payment-operation-form .receipt-field .page-add-long {
+    display: none;
+  }
+  .payment-operation-form .receipt-field .page-add-drop {
+    display: block;
+    max-width: 260px;
+  }
+  .payment-operation-form .receipt-field > .page-add:hover {
+    color: var(--green);
+  }
+  /* Выбранный чек — крупно, чтобы сверить сумму и номер перевода глазами. */
+  .payment-operation-form .receipt-picked {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px;
+  }
+  .payment-operation-form .receipt-picked img,
+  .payment-operation-form .receipt-picked .page-thumb-pdf {
+    width: 100%;
+    height: auto;
+    max-height: 64vh;
+    flex: none;
+    object-fit: contain;
+    background: #f6f7f4;
+  }
+  .payment-operation-form .receipt-picked .page-thumb-pdf {
+    min-height: 240px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .payment-operation-form .receipt-remove {
+    margin-left: 0;
+    align-self: flex-start;
+  }
+}
+
+/* Фото без записи: на компьютере — одной строкой, кнопки обычного размера справа;
+   на телефоне — кнопки во всю ширину под текстом. */
+.doc-orphan-actions .button {
+  white-space: nowrap;
+}
+@media (min-width: 761px) {
+  .doc-orphan {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .doc-orphan p {
+    margin: 0;
+  }
+  .doc-orphan .doc-orphan-actions {
+    flex: none;
+    flex-wrap: nowrap;
+    align-items: center;
+    margin: 0;
+  }
+  .doc-orphan .doc-orphan-actions .button {
+    min-height: 40px;
+    padding: 8px 16px;
+    font-size: 14px;
+  }
+}
+@media (max-width: 760px) {
+  .doc-orphan .doc-orphan-actions {
+    flex-direction: column;
+  }
+  .doc-orphan .doc-orphan-actions .button {
+    width: 100%;
+  }
+}
+
+/* Фото документа: нажатие — скачать. На компьютере — меньше, а не на весь экран. */
+.document-photo-link {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+  cursor: pointer;
+}
+.document-photo-hint {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(20, 30, 25, 0.72);
+  color: #fff;
+  font-size: 13px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.document-photo-link:hover .document-photo-hint,
+.document-photo-link:focus-visible .document-photo-hint {
+  opacity: 1;
+}
+@media (hover: none) {
+  .document-photo-hint {
+    opacity: 1;
+  }
+}
+@media (min-width: 761px) {
+  .document-photo {
+    max-height: 520px;
+    width: auto;
+    object-fit: contain;
+  }
+}
+/* Две колонки документа (с 901px): фото уже, позиции шире. */
+@media (min-width: 901px) {
+  .documents-layout {
+    grid-template-columns: minmax(280px, 2fr) minmax(0, 3fr);
   }
 }

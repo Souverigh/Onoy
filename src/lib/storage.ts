@@ -230,8 +230,13 @@ export async function uploadClaimPhoto(
   return data as string;
 }
 
-/** Подписанная ссылка на фото на час — фото не публичны, доступ только участникам магазина. */
-export async function signedPhotoUrl(db: SupabaseClient, path: string) {
-  const { data } = await db.storage.from("receipts").createSignedUrl(path, 3600);
+/**
+ * Подписанная ссылка на фото на час — фото не публичны, доступ только участникам магазина.
+ * `download` — имя файла: ссылка скачивает файл, а не открывает его в браузере.
+ */
+export async function signedPhotoUrl(db: SupabaseClient, path: string, download?: string) {
+  const { data } = await db.storage
+    .from("receipts")
+    .createSignedUrl(path, 3600, download ? { download } : undefined);
   return data?.signedUrl ?? null;
 }
