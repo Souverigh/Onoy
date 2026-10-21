@@ -18,6 +18,12 @@ type Props = {
   fileType?: "image/png" | "application/pdf";
   /** Кому: «клиенту» или «поставщику» — в подписях кнопок. */
   to?: string;
+  /**
+   * В тексте есть ссылка на накладную: с телефоном главная кнопка сразу
+   * открывает чат с этим человеком, файл — второй кнопкой. «Поделиться»
+   * не умеет выбрать чат сам, и новый клиент в его списке не появляется.
+   */
+  chatFirst?: boolean;
 };
 
 const REFRESH_MS = 4000;
@@ -29,7 +35,17 @@ const REFRESH_LIMIT = 15;
  * (браузер не делится файлами): «Скачать» и «Открыть WhatsApp». share()
  * требует свежего нажатия, поэтому картинку скачиваем заранее.
  */
-export function SendInvoice({ phone, text, fileText, imageUrl, fileName, pending, fileType = "image/png", to = "клиенту" }: Props) {
+export function SendInvoice({
+  phone,
+  text,
+  fileText,
+  imageUrl,
+  fileName,
+  pending,
+  fileType = "image/png",
+  to = "клиенту",
+  chatFirst = false,
+}: Props) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [canShareFile, setCanShareFile] = useState(false);
@@ -107,6 +123,27 @@ export function SendInvoice({ phone, text, fileText, imageUrl, fileName, pending
         <a className="button primary send-main" href={waHref} target="_blank" rel="noreferrer">
           Отправить {to} в WhatsApp
         </a>
+      </div>
+    );
+
+  if (canShareFile && chatFirst && phone)
+    return (
+      <div className="send-invoice">
+        <a className="button primary send-main" href={waHref} target="_blank" rel="noreferrer">
+          Отправить {to} в WhatsApp
+        </a>
+        <button className="button" type="button" onClick={shareFile} disabled={state === "loading"}>
+          {state === "loading"
+            ? "Готовим накладную…"
+            : state === "retry"
+              ? "Накладная готова - отправить файлом"
+              : "Отправить файлом (выбрать чат)"}
+        </button>
+        {state === "error" && (
+          <p className="form-error" role="alert">
+            Не удалось приложить файл - отправьте ссылкой кнопкой выше.
+          </p>
+        )}
       </div>
     );
 

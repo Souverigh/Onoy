@@ -29,7 +29,7 @@ export default async function DonePage({
     const row = (
       await db
         .from("purchases")
-        .select("id,supplier_id,total,created_at,created_by,reversed_at,original_amount,original_currency,fx_rate")
+        .select("id,supplier_id,total,created_at,created_by,reversed_at,original_amount,original_currency,fx_rate,note")
         .eq("organization_id", organizationId)
         .eq("id", id)
         .maybeSingle()
@@ -61,6 +61,7 @@ export default async function DonePage({
           partPayment={partPayment ? money(partPayment.amount, partyCurrency(supplier, shopCurrency)) : null}
           notes={
             <>
+              {row.note && <p className="muted">Комментарий: {row.note}</p>}
               {paid > 0 && <p className="notice success">Сразу оплачено поставщику: {money(paid, partyCurrency(supplier, shopCurrency))}.</p>}
               {part === "failed" && (
                 <p className="form-error">Оплату поставщику записать не удалось - внесите её через «Я заплатил поставщику».</p>

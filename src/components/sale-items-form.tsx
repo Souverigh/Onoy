@@ -17,6 +17,7 @@ import { ContactPicker } from "./contact-picker";
 import { PartyPicker } from "./party-picker";
 import { NewCustomerInline } from "./new-customer-inline";
 import { DatePicker } from "./date-picker";
+import { NoteField } from "./note-field";
 import { money, quantity } from "@/lib/format";
 import { searchProducts } from "@/lib/match";
 import { PRODUCT_UNITS, STOCK_ERROR_TEXT, stockNumber } from "@/lib/stock";
@@ -115,6 +116,7 @@ export function SaleItemsForm({
   const [paidNow, setPaidNow] = useState(draft?.data.paidNow ?? false);
   // Дата записи: пусто — сегодня; «забыл записать вчера» — другой день.
   const [recordDate, setRecordDate] = useState(draft?.data.recordDate ?? "");
+  const [note, setNote] = useState(draft?.data.note ?? "");
   const [rateValue, setRateValue] = useState(draft?.data.rate ?? "");
   const [localError, setLocalError] = useState<string | null>(null);
   // Новый товар прямо отсюда, если поиск ничего не нашёл.
@@ -182,6 +184,7 @@ export function SaleItemsForm({
     rate: rateValue,
     total: total.toFixed(2),
     currency: lineCurrency,
+    note,
   };
   const draftJson = JSON.stringify(draftSnapshot);
   const draftLatest = useRef({ json: draftJson, data: draftSnapshot });
@@ -779,6 +782,7 @@ export function SaleItemsForm({
         Клиент оплатил наличными
       </label>
       )}
+      <NoteField value={note} onChange={setNote} />
       </div>
       <div className="sale-sheet-submit">
       {overLimit && (

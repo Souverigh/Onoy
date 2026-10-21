@@ -33,7 +33,7 @@ export default async function SendSalePage({
 
   const saleResult = await db
     .from("sales")
-    .select("id,customer_id,total,occurred_at,paid_immediately,reversed_at,is_opening,document_id,status,created_at,created_by,original_amount,original_currency,fx_rate")
+    .select("id,customer_id,total,occurred_at,paid_immediately,reversed_at,is_opening,document_id,status,created_at,created_by,original_amount,original_currency,fx_rate,note")
     .eq("organization_id", organizationId)
     .eq("id", id)
     .maybeSingle();
@@ -149,6 +149,7 @@ export default async function SendSalePage({
           <strong className="nowrap">{money(sale.total, cur)}</strong>
           {originalAmountText(sale) && <span className="muted"> ({originalAmountText(sale)})</span>}
         </p>
+        {sale.note && <p className="muted">Комментарий: {sale.note}</p>}
         {done && !sale.reversed_at && (
           <p className="muted">
             Долг клиента: {debtMoney(debtBefore.toFixed(2), cur)} → <strong>{debtMoney(balance.toFixed(2), cur)}</strong>
@@ -191,6 +192,8 @@ export default async function SendSalePage({
             // Латиница без пробелов: Chrome на Android отклоняет share() с
             // кириллицей, пробелами и «..» в имени файла.
             fileName={`nakladnaya-${fileDate}.png`}
+            // Ссылка на накладную в тексте — сразу в чат клиента.
+            chatFirst={checked && Boolean(token)}
             pending={pending}
           />
           {revoked && (

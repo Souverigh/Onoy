@@ -38,7 +38,7 @@ export default async function PurchasePage({
   const recordResult = await db
     .from("purchases")
     .select(
-      "id,total,occurred_at,created_at,status,is_opening,reversed_at,reversal_comment,document_id,created_by,original_amount,original_currency,fx_rate,supplier_id,suppliers(name,phone,currency)",
+      "id,total,occurred_at,created_at,status,is_opening,reversed_at,reversal_comment,document_id,created_by,original_amount,original_currency,fx_rate,note,supplier_id,suppliers(name,phone,currency)",
     )
     .eq("organization_id", organizationId)
     .eq("id", id)
@@ -57,6 +57,7 @@ export default async function PurchasePage({
     original_amount: string | null;
     original_currency: string | null;
     fx_rate: string | null;
+    note: string | null;
     supplier_id: string;
     suppliers: { name: string; phone: string | null; currency: string | null } | null;
   } | null;
@@ -166,6 +167,12 @@ export default async function PurchasePage({
               <span className="muted"> · внесено {dateTime(record.created_at)}</span>
             )}
           </dd>
+          {record.note && (
+            <>
+              <dt>Комментарий</dt>
+              <dd>{record.note}</dd>
+            </>
+          )}
         </dl>
       </section>
 

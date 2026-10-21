@@ -33,6 +33,7 @@ import { ConfirmDialog } from "./confirm-dialog";
 import { RecognizedLines, lineWord, linesTotal } from "./recognized-lines";
 import { SaleStockLines, lineProductsValue } from "./sale-stock-lines";
 import { LeaveGuard } from "./leave-guard";
+import { NoteField } from "./note-field";
 import { debtMoney, money, quantity } from "@/lib/format";
 import { bestMatches, linesWithStockPrices, type StockChoices, type StockPrices, type StockProduct } from "@/lib/match";
 import {
@@ -193,6 +194,8 @@ export function OperationForm({
   const [recordDate, setRecordDate] = useState(initialDate ?? "");
   // «Накладной нет — записать сумму»: продажа по телефону, товар без бумаги.
   const [noInvoice, setNoInvoice] = useState(false);
+  // Комментарий к продаже или приходу (необязательно).
+  const [note, setNote] = useState("");
   const allCustomers = [...customers, ...contactCustomers.filter((c) => !customers.some((x) => x.id === c.id))];
   const allSuppliers = [...suppliers, ...addedSuppliers.filter((c) => !suppliers.some((x) => x.id === c.id))];
   const [checkedPhoto, setCheckedPhoto] = useState<CheckedPhoto | null>(null);
@@ -313,6 +316,7 @@ export function OperationForm({
       ? (recognized.currency as Currency)
       : null;
   const currencyHint = suggestedCurrency && suggestedCurrency !== docCurrency ? suggestedCurrency : null;
+  const hasPhoto = pages.length > 0 || useExisting;
   const [similar, setSimilar] = useState<SimilarRecord[]>([]);
   const similarRequest = useRef(0);
   const checkedDocumentId = checkedPhoto?.documentId ?? null;
@@ -328,7 +332,9 @@ export function OperationForm({
           kind,
           checkedDocumentId,
           selectedParty || null,
-          similarAmount,
+          // Без фото — только сумма: такие же суммы у клиента бывают часто,
+          // это не повод пугать продавца (просьба пользователя 20.10.2026).
+          hasPhoto ? similarAmount : null,
         );
         if (request === similarRequest.current) setSimilar(found);
       } catch (err) {
@@ -336,7 +342,7 @@ export function OperationForm({
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [kind, checkedDocumentId, selectedParty, similarAmount]);
+  }, [kind, checkedDocumentId, selectedParty, similarAmount, hasPhoto]);
   // Номер перевода уже есть в другой оплате — «Дубликат» сразу, до
   // подтверждения (запишется на проверку владельцу, долг не изменится).
   const [referenceDuplicate, setReferenceDuplicate] = useState<ReferencePayment | null>(null);
@@ -379,7 +385,6 @@ export function OperationForm({
         : kind === "sale"
           ? "Подтвердить продажу"
           : "Подтвердить оплату";
-  const hasPhoto = pages.length > 0 || useExisting;
   // Имя на накладной и выбранный клиент не похожи (задача 38) — видно до записи.
   const invoiceName = verdict?.ok && (kind === "purchase" || kind === "sale") ? verdict.counterparty : null;
   const partyScore =
@@ -1572,6 +1577,7 @@ export function OperationForm({
             )}
           </div>
         )}
+        {kind !== "payment" && <NoteField value={note} onChange={setNote} />}
         {kind === "sale" && (
           <label className="cash-toggle">
             <input

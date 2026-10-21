@@ -105,7 +105,7 @@ export default async function EntryPage({
       ? start(
           db
             .from(kind === "customers" ? "sales" : "purchases")
-            .select("id,total,occurred_at,reversed_at,reversal_comment,document_id,is_opening,created_by,reversed_by,original_amount,original_currency,fx_rate")
+            .select("id,total,occurred_at,reversed_at,reversal_comment,document_id,is_opening,created_by,reversed_by,original_amount,original_currency,fx_rate,note")
             .eq("organization_id", organizationId)
             .eq(partyColumn, id)
             .eq("status", "posted")
@@ -297,6 +297,7 @@ export default async function EntryPage({
         kind: (kind === "customers" ? "sale" : "purchase") as HistoryRow["kind"],
         id: r.id,
         label: r.is_opening ? "Долг из тетради" : kind === "customers" ? "Продажа" : "Товар от поставщика",
+        note: r.note,
         amount: r.total,
         original: originalAmountText(r),
         occurred_at: r.occurred_at,

@@ -16,6 +16,8 @@ export type DraftData = {
   rate: string;
   total: string;
   currency: string;
+  /** Комментарий к записи. */
+  note?: string;
 };
 
 export type Draft = { id: string; kind: DraftKind; data: DraftData; updated_at: string };
@@ -40,5 +42,6 @@ export function draftData(raw: unknown): DraftData {
     rate: text(d.rate, 30),
     total: text(d.total, 30),
     currency: text(d.currency, 3),
+    note: text(d.note, 500),
   };
 }

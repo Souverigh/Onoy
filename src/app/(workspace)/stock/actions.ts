@@ -7,6 +7,7 @@ import { isProductUnit, stockNumber, type ProductUnit } from "@/lib/stock";
 import { isCurrency, rateInput, type Currency } from "@/lib/currency";
 import { bishkekDate } from "@/lib/day-summary";
 import { recordDateTime } from "@/lib/record-date";
+import { noteInput, saveRecordNote } from "@/lib/record-note";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -289,6 +290,7 @@ export async function commitSaleItems(previous: SaleItemsState, form: FormData):
       return { error: code === "invalid_currency" ? "rate" : code, attempt };
     }
     saleId = result.data as string;
+    await saveRecordNote(db, organizationId, "sale", saleId, noteInput(form.get("note")));
     await dropDraft(form);
   } catch (error) {
     unstable_rethrow(error);
@@ -381,6 +383,7 @@ export async function commitPurchaseItems(previous: SaleItemsState, form: FormDa
       return { error: failureCode(result.error?.message), attempt };
     }
     purchaseId = result.data as string;
+    await saveRecordNote(db, organizationId, "purchase", purchaseId, noteInput(form.get("note")));
     await dropDraft(form);
   } catch (error) {
     unstable_rethrow(error);
