@@ -4,6 +4,8 @@ import { useState } from "react";
 import type { InvoiceLine, InvoiceResult } from "@/lib/adre/types";
 import { money, quantity } from "@/lib/format";
 import { ruDate } from "@/lib/ru-date";
+import { InfoTip } from "./info-tip";
+import { StockLineStatus, stockSummary, type StockMatching } from "./sale-stock-lines";
 
 /** «1 строка», «3 строки», «5 строк». */
 export function lineWord(n: number): string {
@@ -42,9 +44,11 @@ function safe(format: (v: string) => string, value: string | number): string {
 const decimalText = (v: string) => v.replace(/\s+/g, "").replace(",", ".");
 
 /**
- * Что прочитали с фото накладной — до записи. Список прокручивается внутри
- * блока; нажатие на строку открывает её правку. Исправленные строки уходят
- * в запись вместо распознанных (onChange).
+ * Товары накладной — что прочитали с фото, до записи. Список прокручивается
+ * внутри блока; нажатие на строку открывает её правку. Исправленные строки
+ * уходят в запись вместо распознанных (onChange). Продажа со складом
+ * (`stock`) — у каждой строки сразу и как она спишется со склада: один
+ * список вместо двух одинаковых (21.10.2026).
  */
 export function RecognizedLines({
   result,
@@ -52,12 +56,14 @@ export function RecognizedLines({
   paperTotal,
   onChange,
   defaultOpen = false,
+  stock,
 }: {
   result: InvoiceResult;
   currency: string;
   paperTotal: number | null;
   onChange: (lines: InvoiceLine[]) => void;
   defaultOpen?: boolean;
+  stock?: StockMatching;
 }) {
   const [editing, setEditing] = useState<number | null>(null);
   const lines = result.lines;
@@ -101,10 +107,24 @@ export function RecognizedLines({
     }
   };
 
+  const summary = stock ? stockSummary(lines, stock) : null;
   return (
-    <details className="recognized-lines" open={defaultOpen || undefined}>
+    // Есть что проверить по складу — список открыт сразу.
+    <details className="recognized-lines" open={defaultOpen || Boolean(summary?.asking) || undefined}>
       <summary>
-        Что прочитали в накладной · {lines.length} {lineWord(lines.length)}
+        Товары накладной · {lines.length} {lineWord(lines.length)}
+        {summary && <span className="muted"> · со склада {summary.writtenOff}</span>}
+        {summary && summary.asking > 0 && <span className="sale-stock-asking"> · проверьте {summary.asking}</span>}
+        {stock && (
+          // Нажатие на «!» не должно сворачивать блок.
+          <span className="sale-stock-tip" onClick={(e) => e.preventDefault()}>
+            <InfoTip>
+              Нажмите на строку, чтобы исправить название, количество или цену. «✓ Со склада» - спишем с остатка.
+              Похожий товар спишем только после «Да» - название с фото запомним. «Не списывать» - строка останется в
+              накладной и долге клиента, склад не изменится.
+            </InfoTip>
+          </span>
+        )}
       </summary>
       {head && <p className="muted">{head}</p>}
       <ol>
@@ -177,6 +197,7 @@ export function RecognizedLines({
                 </span>
                 <span className="recognized-line-sum">{safe((v) => money(v, currency), total)}</span>
               </button>
+              {stock && <StockLineStatus line={line} stock={stock} />}
             </li>
           );
         })}

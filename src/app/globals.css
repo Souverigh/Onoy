@@ -9120,3 +9120,100 @@ tr.row-link:has(a[data-pending]) {
 .photo-operation-form .sale-bar .button.primary {
   margin-left: auto;
 }
+
+/* Итоги накладной разошлись: блок выбора суммы (21.10.2026). */
+.amount-choice {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0 14px;
+  padding: 12px 14px;
+  border: 1px solid #f0dfb8;
+  border-radius: 12px;
+  background: #fffaf0;
+}
+.amount-choice-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #7a5a12;
+}
+.amount-choice-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.amount-choice-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.amount-choice-option span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.amount-choice-option strong {
+  font-size: 17px;
+  white-space: nowrap;
+}
+.amount-choice-option:hover {
+  border-color: #cfe3c4;
+}
+.amount-choice-option.active {
+  border-color: var(--green);
+  background: #edf4e9;
+}
+.amount-choice-option.active span {
+  color: var(--green);
+  font-weight: 600;
+}
+.amount-choice small {
+  font-size: 12px;
+  line-height: 1.4;
+}
+/* Предупреждения под суммой — с отступами между собой, а не вплотную. */
+.photo-check {
+  display: grid;
+  gap: 10px;
+  margin: 4px auto 14px;
+}
+.photo-check:empty {
+  display: none;
+}
+.sale-bar-total .sale-bar-hint {
+  font-size: 15px;
+  font-weight: 600;
+  color: #a4762f;
+}
+
+/* «Товары накладной»: под строкой (название, кол-во × цена, сумма) — склад. */
+.stock-line {
+  padding: 0 14px 10px;
+}
+.stock-line .sale-stock-status {
+  margin: 0;
+  font-size: 14px;
+}
+.stock-line .sale-stock-picker {
+  padding: 8px 0 0;
+}
+.stock-line .sale-stock-doubt {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #fff4dc;
+}
+.stock-line .text-button {
+  min-height: 32px;
+  padding: 4px 0;
+  font-size: 14px;
+}
+.recognized-lines > summary .sale-stock-tip {
+  margin-left: 6px;
+}

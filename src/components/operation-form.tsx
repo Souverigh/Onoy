@@ -30,8 +30,8 @@ import { ContactPicker } from "./contact-picker";
 import { PartyPicker, type PickerParty } from "./party-picker";
 import { NewCustomerInline } from "./new-customer-inline";
 import { ConfirmDialog } from "./confirm-dialog";
-import { RecognizedLines, lineWord, linesTotal } from "./recognized-lines";
-import { SaleStockLines, lineProductsValue } from "./sale-stock-lines";
+import { RecognizedLines, linesTotal } from "./recognized-lines";
+import { lineProductsValue } from "./sale-stock-lines";
 import { LeaveGuard } from "./leave-guard";
 import { NoteField } from "./note-field";
 import { debtMoney, money, quantity } from "@/lib/format";
@@ -506,23 +506,18 @@ export function OperationForm({
     .join(" · ");
   // Приход и продажа: курс, «Сразу оплатили», дата и строки с накладной —
   // тоже в свёрнутых «Подробностях», чтобы на виду были фото, кто и сколько.
-  const recognizedCount = checkedPhoto?.result?.lines.length ?? 0;
   const recordSummary = [
     foreign && rate ? `курс ${formatRate(rate)}` : null,
     kind === "purchase" && amountFromInput(paidNowValue)
       ? `сразу оплатили ${money(amountFromInput(paidNowValue), debtCurrency)}`
       : null,
-    recognizedCount ? `${recognizedCount} ${lineWord(recognizedCount)} с накладной` : null,
   ]
     .filter(Boolean)
     .join(" · ");
   const [moreOpen, setMoreOpen] = useState(correcting);
-  // «Подробности» — только когда в них что-то есть: курс, «Сразу оплатили»
-  // (приход) или строки с накладной (их важно видеть и править).
-  const hasDetails =
-    foreign ||
-    kind === "purchase" ||
-    Boolean(checkedPhoto?.result && (checkedPhoto.result.lines.length > 0 || correcting));
+  // «Подробности» — только когда в них что-то есть: курс или «Сразу оплатили»
+  // (приход). Строки накладной — отдельным списком «Товары накладной».
+  const hasDetails = foreign || kind === "purchase";
   // Долг после записи — в нижней панели.
   const barDebtAfter =
     partyBalance != null && debtAmount > 0
@@ -1484,19 +1479,29 @@ export function OperationForm({
           />
         </label>
         {amountSuggestions.length > 0 && (
-          <div className="amount-suggestions">
-            {amountSuggestions.map((s) => (
-              <button
-                key={s.key}
-                type="button"
-                className={`button${confirmedTotal === s.key ? " primary" : ""}`}
-                aria-pressed={confirmedTotal === s.key}
-                onClick={() => takeSuggestion(s.value, s.key)}
-              >
-                {confirmedTotal === s.key ? "✓ " : ""}
-                {s.label}: {money(s.value, suggestionCurrency)}
-              </button>
-            ))}
+          // Итоги накладной разошлись — один блок выбора: вопрос, две суммы, подсказка.
+          <div className="amount-choice" role="group" aria-label="Какую сумму записать">
+            <p className="amount-choice-title">Сумма строк и итог накладной не сходятся - какую записать?</p>
+            <div className="amount-choice-options">
+              {amountSuggestions.map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  className={`amount-choice-option${confirmedTotal === s.key ? " active" : ""}`}
+                  aria-pressed={confirmedTotal === s.key}
+                  onClick={() => takeSuggestion(s.value, s.key)}
+                >
+                  <span>
+                    {confirmedTotal === s.key ? "✓ " : ""}
+                    {s.label}
+                  </span>
+                  <strong>{money(s.value, suggestionCurrency)}</strong>
+                </button>
+              ))}
+            </div>
+            <small className="muted">
+              Возможно, какая-то строка не распозналась или в накладной ошибка в сложении - сверьте с фото.
+            </small>
           </div>
         )}
         {currencyHint && (
@@ -1625,19 +1630,15 @@ export function OperationForm({
                 {paperTotal != null && <> Итог накладной: {money(paperTotal, docCurrency)}.</>}
               </p>
             )}
-            {checkedPhoto?.result && !noPrices && enteredAmount > 0 && (checkMismatch || paperMismatch) && (
+            {/* Итоги накладной разошлись — суммы уже в блоке выбора; здесь — только когда введённая сумма не та. */}
+            {checkedPhoto?.result && !noPrices && enteredAmount > 0 && checkMismatch && !paperMismatch && (
               <p className="photo-check-mismatch">
                 Сумма строк: {money(checkedPhoto.result.total_computed, docCurrency)}
                 {paperTotal != null && <> · итог накладной: {money(paperTotal, docCurrency)}</>}
                 {checkMismatch && " - отличается от введённой суммы"}
               </p>
             )}
-            {paperMismatch && (
-              <p className="photo-check-mismatch" role="status">
-                Сумма строк и итог накладной не сходятся: возможно, какая-то строка не распозналась
-                или в накладной ошибка в сложении. Посмотрите на фото, какая сумма верная.
-              </p>
-            )}
+            {/* Расхождение итогов объяснено в блоке выбора суммы выше. */}
           </div>
         )}
         {/* Комментарий нужен редко — свёрнут ссылкой, пока его не открыли. */}
@@ -1720,13 +1721,27 @@ export function OperationForm({
             {receiptCheck?.duplicate && <p>Этот чек уже приложен к другой записи - проверьте, не задвоилось ли.</p>}
           </div>
         )}
-        {stockLines && checkedPhoto && (
-          <SaleStockLines
-            lines={stockLines}
-            products={stockProducts ?? []}
-            choices={currentStockChoices}
-            onChoose={(n, productId) =>
-              setStockChoices({ documentId: checkedPhoto.documentId, choices: { ...currentStockChoices, [n]: productId } })
+        {/* Товары накладной — один список: строки с фото (исправить) и у продажи со
+            складом — как каждая спишется (21.10.2026; раньше — два списка). */}
+        {kind !== "payment" && checkedPhoto?.result && (checkedPhoto.result.lines.length > 0 || correcting) && (
+          <RecognizedLines
+            result={checkedPhoto.result}
+            currency={suggestionCurrency}
+            paperTotal={paperTotal}
+            onChange={editLines}
+            defaultOpen={correcting}
+            stock={
+              stockLines
+                ? {
+                    products: stockProducts ?? [],
+                    choices: currentStockChoices,
+                    onChoose: (n, productId) =>
+                      setStockChoices({
+                        documentId: checkedPhoto.documentId,
+                        choices: { ...currentStockChoices, [n]: productId },
+                      }),
+                  }
+                : undefined
             }
           />
         )}
@@ -1754,15 +1769,6 @@ export function OperationForm({
                     onChange={(e) => setPaidNowValue(e.target.value)}
                   />
                 </label>
-              )}
-              {checkedPhoto?.result && (checkedPhoto.result.lines.length > 0 || correcting) && (
-                <RecognizedLines
-                  result={checkedPhoto.result}
-                  currency={suggestionCurrency}
-                  paperTotal={paperTotal}
-                  onChange={editLines}
-                  defaultOpen={correcting}
-                />
               )}
             </div>
           </details>
@@ -1832,7 +1838,14 @@ export function OperationForm({
             )}
             <div className="sale-bar-total">
               <span className="muted">{kind === "sale" ? "Продажа" : "Товар от поставщика"}</span>
-              <strong>{enteredAmount > 0 ? money(enteredAmount.toFixed(2), docCurrency) : "-"}</strong>
+              {enteredAmount > 0 ? (
+                <strong>{money(enteredAmount.toFixed(2), docCurrency)}</strong>
+              ) : (
+                // Суммы нет — не прочерк, а что сделать: выбрать из двух итогов или ввести.
+                <span className="sale-bar-hint">
+                  {amountSuggestions.length ? "Выберите сумму выше" : "Введите сумму"}
+                </span>
+              )}
               {barDebtAfter != null && (
                 <small className="muted">
                   {kind === "purchase" ? "Мой долг станет" : "Долг станет"} {money(barDebtAfter.toFixed(2), debtCurrency)}

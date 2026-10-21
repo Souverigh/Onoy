@@ -19,152 +19,130 @@ function safeQuantity(value: string): string {
   }
 }
 
-/**
- * Продажа по фото: какие строки накладной спишутся со склада (просьба
- * пользователя 15.10.2026). Точное название — само; похожее — «Это „…“?»;
- * «Другой товар» — поиск по складу или «Не списывать со склада».
- */
-export function SaleStockLines({
-  lines,
-  products,
-  choices,
-  onChoose,
-}: {
-  lines: InvoiceLine[];
+/** Склад для продажи по фото: товары, выбор продавца по строкам и смена выбора. */
+export type StockMatching = {
   products: StockProduct[];
   choices: StockChoices;
   onChoose: (n: number, productId: string | null) => void;
-}) {
-  const [picking, setPicking] = useState<number | null>(null);
+};
+
+/** Что спишется по строке: точное совпадение, «Это „…“?» или ничего. */
+export function stockRow(line: InvoiceLine, stock: StockMatching) {
+  const product = chosenProduct(line, stock.products, stock.choices);
+  const suggestion = !product && !(line.n in stock.choices) ? suggestProduct(line.name_raw, stock.products) : null;
+  return { product, suggestion };
+}
+
+/** Сводка для заголовка списка: сколько строк спишем и сколько спросить. */
+export function stockSummary(lines: InvoiceLine[], stock: StockMatching) {
+  const rows = lines.map((line) => stockRow(line, stock));
+  return { writtenOff: rows.filter((r) => r.product).length, asking: rows.filter((r) => r.suggestion).length };
+}
+
+/**
+ * Склад у одной строки накладной (продажа по фото, просьба пользователя
+ * 15.10.2026; в одном списке со строками — 21.10.2026): точное название —
+ * само; похожее — «Это „…“?»; «Другой товар» — поиск по складу или
+ * «Не списывать со склада».
+ */
+export function StockLineStatus({ line, stock }: { line: InvoiceLine; stock: StockMatching }) {
+  const [picking, setPicking] = useState(false);
   const [query, setQuery] = useState("");
+  const { product, suggestion } = stockRow(line, stock);
+  const short = product && line.qty.trim() !== "" && decimalLessThan(product.stock, safeNumber(line.qty));
 
-  const rows = lines.map((line) => {
-    const product = chosenProduct(line, products, choices);
-    const suggestion = !product && !(line.n in choices) ? suggestProduct(line.name_raw, products) : null;
-    return { line, product, suggestion };
-  });
-  const writtenOff = rows.filter((r) => r.product).length;
-  const asking = rows.filter((r) => r.suggestion).length;
-
-  function choose(n: number, productId: string | null) {
-    onChoose(n, productId);
-    setPicking(null);
+  function choose(productId: string | null) {
+    stock.onChoose(line.n, productId);
+    setPicking(false);
     setQuery("");
   }
 
   return (
-    <details className="recognized-lines sale-stock-lines" open={asking > 0 || undefined}>
-      <summary>
-        Склад · спишем {writtenOff} из {lines.length}
-        {asking > 0 && <span className="sale-stock-asking"> · проверьте {asking}</span>}
-        {/* Нажатие на «!» не должно сворачивать блок. */}
-        <span className="sale-stock-tip" onClick={(e) => e.preventDefault()}>
-          <InfoTip>
-            Строки с фото, которые совпали с товаром на складе, спишем с остатка. Похожий товар спишем только после
-            «Да» - название с фото запомним, в следующий раз узнаем сами. «Не списывать» - строка останется в
-            накладной и долге клиента, склад не изменится.
-          </InfoTip>
-        </span>
-      </summary>
-      <ol>
-        {rows.map(({ line, product, suggestion }) => {
-          const short = product && line.qty.trim() !== "" && decimalLessThan(product.stock, safeNumber(line.qty));
-          return (
-            <li key={line.n} className={suggestion ? "line-doubt" : undefined}>
-              <div className="sale-stock-line">
-                <span className="recognized-line-name">{line.name_raw || "Без названия"}</span>
-                <span className="recognized-line-calc">
-                  {safeQuantity(line.qty)} {line.unit}
-                </span>
-                {product ? (
-                  <p className="sale-stock-status">
-                    <span className="sale-stock-ok label-with-tip">
-                      ✓ Совпало
-                      <InfoTip>
-                        Спишем со склада: {product.name}. На складе {short ? "только " : ""}
-                        {safeQuantity(product.stock)} {product.unit}
-                        {short ? " - после продажи остаток уйдёт в минус." : "."}
-                      </InfoTip>
-                    </span>
-                    <button type="button" className="text-button" onClick={() => setPicking(line.n)}>
-                      Другой товар
-                    </button>
-                  </p>
-                ) : suggestion ? (
-                  <p className="sale-stock-status">
-                    <span>Это «{suggestion.name}»?</span>
-                    <span className="sale-stock-actions">
-                      <button type="button" className="button" onClick={() => choose(line.n, suggestion.id)}>
-                        Да
-                      </button>
-                      <button type="button" className="text-button" onClick={() => setPicking(line.n)}>
-                        Другой товар
-                      </button>
-                    </span>
-                  </p>
-                ) : (
-                  <p className="sale-stock-status">
-                    <span className="muted">Не списываем со склада</span>
-                    <button type="button" className="text-button" onClick={() => setPicking(line.n)}>
-                      Выбрать товар
-                    </button>
-                  </p>
-                )}
-              </div>
-              {picking === line.n && (
-                <div className="sale-stock-picker">
-                  <input
-                    type="search"
-                    enterKeyHint="search"
-                    autoComplete="off"
-                    autoFocus
-                    aria-label="Найти товар на складе"
-                    placeholder="Найти: название или код"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      // Enter выбирает первый найденный, а не отправляет продажу.
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        const first = searchProducts(query.trim() || line.name_raw, products, 1)[0];
-                        if (first) choose(line.n, first.id);
-                      }
-                    }}
-                  />
-                  <ul className="product-results">
-                    {searchProducts(query.trim() || line.name_raw, products, 6).map((p) => (
-                      <li key={p.id}>
-                        <button type="button" onClick={() => choose(line.n, p.id)}>
-                          <span className="product-result-name">{p.name}</span>
-                          <small className="muted">
-                            {p.sku ? `${p.sku} · ` : ""}есть {safeQuantity(p.stock)} {p.unit}
-                          </small>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="sale-stock-actions">
-                    <button type="button" className="text-button" onClick={() => choose(line.n, null)}>
-                      Не списывать со склада
-                    </button>
-                    <button
-                      type="button"
-                      className="text-button"
-                      onClick={() => {
-                        setPicking(null);
-                        setQuery("");
-                      }}
-                    >
-                      Закрыть
-                    </button>
-                  </div>
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-    </details>
+    <div className="stock-line">
+      {product ? (
+        <p className="sale-stock-status">
+          <span className="sale-stock-ok label-with-tip">
+            ✓ Со склада{short ? " - уйдёт в минус" : ""}
+            <InfoTip>
+              Спишем со склада: {product.name}. На складе {short ? "только " : ""}
+              {safeQuantity(product.stock)} {product.unit}
+              {short ? " - после продажи остаток уйдёт в минус." : "."}
+            </InfoTip>
+          </span>
+          <button type="button" className="text-button" onClick={() => setPicking(true)}>
+            Другой товар
+          </button>
+        </p>
+      ) : suggestion ? (
+        <p className="sale-stock-status sale-stock-doubt">
+          <span>Склад: это «{suggestion.name}»?</span>
+          <span className="sale-stock-actions">
+            <button type="button" className="button" onClick={() => choose(suggestion.id)}>
+              Да
+            </button>
+            <button type="button" className="text-button" onClick={() => setPicking(true)}>
+              Другой
+            </button>
+          </span>
+        </p>
+      ) : (
+        <p className="sale-stock-status">
+          <span className="muted">Не списываем со склада</span>
+          <button type="button" className="text-button" onClick={() => setPicking(true)}>
+            Выбрать товар
+          </button>
+        </p>
+      )}
+      {picking && (
+        <div className="sale-stock-picker">
+          <input
+            type="search"
+            enterKeyHint="search"
+            autoComplete="off"
+            autoFocus
+            aria-label="Найти товар на складе"
+            placeholder="Найти: название или код"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter выбирает первый найденный, а не отправляет продажу.
+              if (e.key === "Enter") {
+                e.preventDefault();
+                const first = searchProducts(query.trim() || line.name_raw, stock.products, 1)[0];
+                if (first) choose(first.id);
+              }
+            }}
+          />
+          <ul className="product-results">
+            {searchProducts(query.trim() || line.name_raw, stock.products, 6).map((p) => (
+              <li key={p.id}>
+                <button type="button" onClick={() => choose(p.id)}>
+                  <span className="product-result-name">{p.name}</span>
+                  <small className="muted">
+                    {p.sku ? `${p.sku} · ` : ""}есть {safeQuantity(p.stock)} {p.unit}
+                  </small>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="sale-stock-actions">
+            <button type="button" className="text-button" onClick={() => choose(null)}>
+              Не списывать со склада
+            </button>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => {
+                setPicking(false);
+                setQuery("");
+              }}
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
