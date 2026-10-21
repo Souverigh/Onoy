@@ -117,6 +117,7 @@ export function SaleItemsForm({
   // Дата записи: пусто — сегодня; «забыл записать вчера» — другой день.
   const [recordDate, setRecordDate] = useState(draft?.data.recordDate ?? "");
   const [note, setNote] = useState(draft?.data.note ?? "");
+  const [noteOpen, setNoteOpen] = useState(false);
   const [rateValue, setRateValue] = useState(draft?.data.rate ?? "");
   const [localError, setLocalError] = useState<string | null>(null);
   // Новый товар прямо отсюда, если поиск ничего не нашёл.
@@ -169,6 +170,9 @@ export function SaleItemsForm({
     // priceOf / priceCurrencyOf зависят только от kind и валюты магазина.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lineCurrency]);
+  // Долг после записи — в панели: «Долг станет 69 458 сом».
+  const debtAfter =
+    customer?.balance != null && debt > 0 ? Number(customer.balance) + (paidNow && !purchase ? 0 : debt) : null;
   const overLimit = customer && !purchase ? creditLimitExceeded(customer.balance ?? 0, customer.credit_limit, debt, paidNow) : null;
 
   // Черновик: всё введённое сохраняется в базе само (через секунду после
@@ -253,8 +257,6 @@ export function SaleItemsForm({
   const trimmed = query.trim();
   const inCart = new Set(lines.map((l) => l.product.id));
   const results = trimmed ? searchProducts(trimmed, products, 8) : [];
-  // Пять частых товаров — над таблицей.
-  const popular = searchProducts("", products, 5);
   // Подсказки строки ввода: выделенная (стрелки), открыты — пока в поиске есть текст.
   const [active, setActive] = useState(0);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -487,24 +489,10 @@ export function SaleItemsForm({
       />
       </div>
 
-      {/* Накладная таблицей, как в 1С (просьба пользователя 17.10.2026): сверху
-          частые товары, последняя строка — поиск. Название → Enter → цена
-          подставилась, курсор в «Кол-во» → Enter → снова поиск новой строки. */}
+      {/* Накладная таблицей, как в 1С (просьба пользователя 17.10.2026): последняя
+          строка — поиск. Название → Enter → цена подставилась, курсор в «Кол-во» →
+          Enter → снова поиск новой строки. Частые товары убраны (21.10.2026). */}
       <div className="sale-sheet">
-        {popular.length > 0 && (
-          <div className="sale-sheet-popular">
-            <span className="muted sale-sheet-popular-title">Частые товары - нажмите, чтобы добавить</span>
-            <ul className="product-results product-chips">
-              {popular.map((p) => (
-                <li key={p.id}>
-                  <button type="button" title={p.name} className={inCart.has(p.id) ? "in-cart" : ""} onClick={() => add(p)}>
-                    <span className="product-result-name">{p.name}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
         <div className="sale-sheet-table">
           <div className="sale-sheet-row sale-sheet-head" aria-hidden="true">
             <span>№</span>
@@ -731,10 +719,6 @@ export function SaleItemsForm({
             </div>
           </div>
         )}
-        <div className="sale-total">
-          <span>Итого{lines.length ? ` · ${lines.length} ${lines.length === 1 ? "товар" : lines.length < 5 ? "товара" : "товаров"}` : ""}</span>
-          <strong>{money(total.toFixed(2), lineCurrency)}</strong>
-        </div>
       </div>
 
       <div className="sale-sheet-footer">
@@ -770,21 +754,15 @@ export function SaleItemsForm({
           )}
         </div>
       )}
-      {!purchase && (
-      <label className="cash-toggle">
-        <input
-          type="checkbox"
-          name="paid_immediately"
-          value="true"
-          checked={paidNow}
-          onChange={(e) => setPaidNow(e.target.checked)}
-        />
-        Клиент оплатил наличными
-      </label>
+      {/* Комментарий нужен редко — свёрнут ссылкой, пока его не открыли. */}
+      {noteOpen || note ? (
+        <NoteField value={note} onChange={setNote} />
+      ) : (
+        <button type="button" className="text-button note-toggle" onClick={() => setNoteOpen(true)}>
+          + Комментарий
+        </button>
       )}
-      <NoteField value={note} onChange={setNote} />
       </div>
-      <div className="sale-sheet-submit">
       {overLimit && (
         <p className="form-error limit-warning" role="alert">
           Долг станет {money(overLimit.debtAfter, debtCurrency)} - больше лимита {money(overLimit.limit, debtCurrency)}. Продать
@@ -796,12 +774,42 @@ export function SaleItemsForm({
           {errorText}
         </p>
       )}
-      <div className="simple-operation-actions">
-        <Submit pending={saving} disabled={!lines.length}>
-          {lines.length ? `Записать ${purchase ? "товар" : "продажу"} · ${money(total.toFixed(2), lineCurrency)}` : "Добавьте товары"}
-        </Submit>
       </div>
-      {/* Пояснения — в самом низу, под кнопкой записи. */}
+
+      {/* Панель-корзина (21.10.2026): итог и «Записать» прилипают к низу экрана,
+          пока в накладной есть товары; продажа — «В долг / Наличными» здесь же. */}
+      {lines.length > 0 && (
+        <div className="sale-bar">
+          {!purchase && (
+            <div className="sale-bar-pay">
+              {paidNow && <input type="hidden" name="paid_immediately" value="true" />}
+              <span className="method-pills" role="group" aria-label="Как платит клиент">
+                <button type="button" className={paidNow ? "" : "active"} aria-pressed={!paidNow} onClick={() => setPaidNow(false)}>
+                  В долг
+                </button>
+                <button type="button" className={paidNow ? "active" : ""} aria-pressed={paidNow} onClick={() => setPaidNow(true)}>
+                  Наличными
+                </button>
+              </span>
+            </div>
+          )}
+          <div className="sale-bar-total">
+            <span className="muted">
+              {lines.length} {lines.length === 1 ? "товар" : lines.length < 5 ? "товара" : "товаров"}
+            </span>
+            <strong>{money(total.toFixed(2), lineCurrency)}</strong>
+            {debtAfter != null && (
+              <small className="muted">
+                {purchase ? "Мой долг станет" : "Долг станет"} {money(debtAfter.toFixed(2), debtCurrency)}
+              </small>
+            )}
+          </div>
+          <Submit pending={saving}>
+            <span className="sale-bar-long">{purchase ? "Записать товар" : "Записать продажу"}</span>
+            <span className="sale-bar-short">Записать</span>
+          </Submit>
+        </div>
+      )}
       {draftStatus && (
         <small className={`draft-status${draftStatus === "saved" ? " draft-status-saved" : " muted"}`} role="status">
           {draftStatus === "saving"
@@ -811,8 +819,6 @@ export function SaleItemsForm({
               : "Черновик не сохранился - проверьте интернет. Введённое на этом экране не пропало."}
         </small>
       )}
-      </div>
-      </div>
     </form>
   );
 }

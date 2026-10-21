@@ -8769,3 +8769,164 @@ tr.row-link:has(a[data-pending]) {
     grid-template-columns: minmax(280px, 2fr) minmax(0, 3fr);
   }
 }
+
+/* ===== Товары со склада (21.10.2026): панель-корзина внизу ===== */
+/* Итог, «В долг / Наличными» и «Записать» прилипают к низу экрана, пока
+   продавец листает строки; на телефоне — над нижним меню. */
+.sale-bar {
+  position: sticky;
+  bottom: 12px;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 8px;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 28px rgba(20, 30, 25, 0.16);
+}
+.sale-bar-total {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-left: auto;
+  text-align: right;
+  min-width: 0;
+}
+.sale-bar-total > span {
+  font-size: 13px;
+}
+.sale-bar-total strong {
+  font-size: 22px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.sale-bar-total small {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.sale-bar .button.primary {
+  flex: none;
+  width: auto;
+  min-height: 52px;
+  padding: 0 24px;
+  font-size: 16px;
+}
+.sale-bar-pay .method-pills button {
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 15px;
+}
+.note-toggle {
+  align-self: flex-start;
+  padding-left: 0;
+  color: var(--green);
+  font-weight: 600;
+}
+/* Строка поиска товара — главное поле: сплошная рамка, лупа слева. */
+.sale-sheet-search input {
+  min-height: 46px;
+  padding-left: 40px;
+  border-style: solid;
+  border-color: #cfd8d1;
+  background:
+    no-repeat 12px center / 18px
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2373807e' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E"),
+    #fff;
+}
+.sale-sheet-search input:focus {
+  border-color: var(--green);
+}
+@media (max-width: 900px) {
+  /* Клиент и дата — одной строкой: дату меняют редко, она компактной кнопкой справа. */
+  .sale-sheet-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 10px;
+    align-items: end;
+    max-width: none;
+  }
+  .sale-sheet-top > * {
+    grid-column: 1 / -1;
+  }
+  .sale-sheet-top > .party-picker {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .sale-sheet-top > .date-picker-field {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .sale-sheet-top > .date-picker-field .date-picker-field-button {
+    min-height: 48px;
+    padding: 8px 12px;
+    font-size: 15px;
+  }
+}
+@media (max-width: 560px) {
+  /* Телефон: панель над нижним меню; «В долг / Наличными» — строкой сверху. */
+  .sale-bar {
+    bottom: calc(var(--bottom-nav) + 8px + env(safe-area-inset-bottom));
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    padding: 10px 10px 10px 14px;
+  }
+  .sale-bar-pay {
+    width: 100%;
+  }
+  .sale-bar-pay .method-pills {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+  .sale-bar-total {
+    margin-left: 0;
+    text-align: left;
+  }
+  .sale-bar-total strong {
+    font-size: 19px;
+  }
+  .sale-bar .button.primary {
+    margin-left: auto;
+    min-height: 48px;
+    padding: 0 18px;
+  }
+}
+.sale-bar-short {
+  display: none;
+}
+@media (max-width: 900px) {
+  .sale-sheet-top > .date-picker-field .date-picker-label {
+    display: none;
+  }
+}
+@media (max-width: 560px) {
+  .sale-bar-long {
+    display: none;
+  }
+  .sale-bar-short {
+    display: inline;
+  }
+  /* Форма товаров на телефоне — меньше пустых полей по краям. */
+  .wide-operation-panel:has(.sale-sheet-form) {
+    padding: 16px 12px;
+  }
+}
+@media (max-width: 900px) {
+  /* Поле клиента без нижнего отступа подписи — кнопка даты стоит вровень с ним. */
+  .sale-sheet-top > .party-picker label {
+    margin-bottom: 0;
+  }
+}
+@media (max-width: 560px) {
+  /* Узкий телефон: строке товара нужно ~14px — меньше поля по бокам и крестик уже. */
+  .sale-sheet-line {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .sale-sheet .sale-sheet-line .sale-line-remove {
+    width: 30px;
+  }
+}
