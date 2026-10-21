@@ -8930,3 +8930,25 @@ tr.row-link:has(a[data-pending]) {
     width: 30px;
   }
 }
+
+/* Больше воздуха вокруг панели-корзины: «+ Комментарий», панель и
+   «Черновик сохранён» не липнут друг к другу. */
+.sale-sheet-form .note-toggle {
+  margin: 4px 0 8px;
+}
+.sale-bar {
+  margin-top: 16px;
+}
+.sale-sheet-form > .draft-status {
+  margin-top: 14px;
+  text-align: center;
+}
+@media (max-width: 560px) {
+  .sale-bar {
+    gap: 14px 12px;
+    padding: 14px;
+  }
+  .sale-bar-total {
+    gap: 3px;
+  }
+}
