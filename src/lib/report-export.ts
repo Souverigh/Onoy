@@ -8,6 +8,8 @@ import { sellerCustomerDebts, sellerDetail, sellersDebtTotals, sellersOverview }
 import { memberLabels } from "./members";
 import { ruDate } from "./ru-date";
 import { money as formatMoney } from "./format";
+import { dayNet, type DayMoney, type DaySummary } from "./day-summary";
+import { expenseCategoryLabel } from "./expenses";
 import { CURRENCY_SIGN, type Currency } from "./currency";
 import { debtTotalsByCurrency, foreignBlocks } from "./debt-totals";
 
@@ -210,6 +212,68 @@ export async function sellersReportDoc(
       },
     ],
     fileBase: `depter-prodazhi-${start === end ? start : `${start}_${end}`}`,
+  };
+}
+
+/** Итог дня — для Excel (PDF дня — свой, lib/pdf/day.tsx). Цифры — из того же снимка или расчёта, что на экране. */
+export function dayReportDoc(shopName: string, summary: DaySummary, closed: boolean): ReportDoc {
+  const cur = (summary.currency ?? "KGS") as Currency;
+  const net = dayNet(summary);
+  const line = (label: string, value: number, currency: Currency = cur): ReportLine => ({ label, value, money: true, currency });
+  const moneyLines = (m: DayMoney, c: Currency, prefix = ""): ReportLine[] => [
+    line(`${prefix}Продано за день`, m.sold.total, c),
+    line(`${prefix}  в долг`, m.sold.credit, c),
+    line(`${prefix}  за наличные`, m.sold.cash, c),
+    line(`${prefix}Собрано денег`, m.collected.total, c),
+    line(`${prefix}  наличными`, m.collected.cash, c),
+    line(`${prefix}  переводом`, m.collected.transfer, c),
+    line(`${prefix}Долг клиентов утром`, m.receivable.morning, c),
+    line(`${prefix}Долг клиентов вечером`, m.receivable.evening, c),
+    line(`${prefix}Товар от поставщиков`, m.suppliers.purchased, c),
+    line(`${prefix}Оплачено поставщикам`, m.suppliers.paid, c),
+    line(`${prefix}Мой долг поставщикам на конец дня`, m.suppliers.evening, c),
+  ];
+  const summaryLines: ReportLine[] = [
+    { label: "Продаж", value: summary.sold.count },
+    ...moneyLines(summary, cur),
+    line("Расходы за день", net.expenses),
+    ...(summary.drawer ? [line("Утром в кассе", summary.drawer.opening)] : []),
+    line("Наличными пришло", net.income),
+    line("Наличными поставщикам", net.paid),
+    line("В кассе должно быть", summary.drawer?.expected ?? net.left),
+    ...(summary.counted != null ? [line("В кассе по факту", summary.counted)] : []),
+    ...(summary.drawer?.carried != null ? [line("Осталось в кассе на завтра", summary.drawer.carried)] : []),
+    ...(summary.foreign ?? []).flatMap((f) =>
+      moneyLines(f, f.currency as Currency, `В ${CURRENCY_SIGN[f.currency as Currency] ?? f.currency}: `).filter((l) => l.value),
+    ),
+  ];
+  const parties = (title: string, rows: { name: string; amount: number }[]): ReportTable => ({
+    title,
+    columns: [text("Клиент"), money("Сумма")],
+    rows: rows.map((r) => [r.name, r.amount]),
+  });
+  const tables: ReportTable[] = [
+    parties("Кому продал в долг", summary.creditByCustomer),
+    parties("Кто оплатил", summary.paidByCustomer),
+    {
+      title: "Расходы",
+      columns: [text("Статья"), money("Сумма")],
+      rows: (summary.expenses?.byCategory ?? []).map((e) => [expenseCategoryLabel(e.category), e.amount]),
+    },
+    {
+      title: "По продавцам",
+      columns: [text("Кто", 24), count("Продаж"), money("Продано"), money("Собрано")],
+      rows: (summary.bySeller ?? []).map((r) => [r.name, r.count, r.sold, r.collected]),
+    },
+  ].filter((t) => t.rows.length > 0);
+  return {
+    shopName,
+    title: closed ? "Итог дня" : "Итог дня (день не закрыт)",
+    periodText: ruDate(summary.date),
+    currency: cur,
+    summary: summaryLines,
+    tables,
+    fileBase: `depter-itog-dnya-${summary.date}`,
   };
 }
 

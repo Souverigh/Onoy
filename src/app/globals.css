@@ -8301,3 +8301,58 @@ tr.row-link:has(a[data-pending]) {
   font-size: 12px;
   white-space: nowrap;
 }
+
+/* Итог дня: между стрелками — кнопка «📅 Сегодня» / «📅 20.10.2026»,
+   высотой со стрелки; подпись поля не нужна. */
+.day-nav .date-picker-field {
+  flex-direction: row;
+  align-items: center;
+}
+.day-nav .date-picker-field .date-picker-label {
+  display: none;
+}
+.day-nav .date-picker-field-button {
+  min-height: 44px;
+  padding: 8px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.day-nav .date-picker-field-button svg {
+  width: 20px;
+  height: 20px;
+}
+/* Стрелки не сжимаются — сжимается кнопка с датой. */
+.day-nav > .day-nav-arrow,
+.day-nav > .download-menu {
+  flex: none;
+}
+@media (max-width: 560px) {
+  .day-heading .day-nav {
+    gap: 8px;
+  }
+  .day-heading .day-nav > .date-picker {
+    min-width: 0;
+  }
+  .day-nav .date-picker-field-button {
+    min-width: 0;
+    padding: 8px 10px;
+    gap: 6px;
+    font-size: 14px;
+  }
+  .day-nav .date-picker-field-button strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+@media (max-width: 400px) {
+  .day-heading .day-nav > .day-nav-arrow,
+  .day-heading .day-nav .download-toggle {
+    width: 40px;
+    height: 40px;
+  }
+  .day-nav .date-picker-field-button {
+    min-height: 40px;
+    padding: 6px 8px;
+  }
+}

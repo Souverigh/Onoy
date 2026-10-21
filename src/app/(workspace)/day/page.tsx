@@ -23,6 +23,7 @@ import { ConfirmButton } from "@/components/confirm-button";
 import { DayNav } from "@/components/day-nav";
 import { InfoTip } from "@/components/info-tip";
 import { ReportTabs } from "@/components/report-tabs";
+import { DownloadMenu } from "@/components/download-menu";
 import { expenseCategoryLabel } from "@/lib/expenses";
 
 const HISTORY_DAYS = 14;
@@ -537,7 +538,13 @@ export default async function DayClose({
           Итог дня
           <InfoTip>Вечерняя сверка: сколько продали, сколько денег пришло и сколько наличных должно быть в кассе.</InfoTip>
         </h1>
-        <DayNav date={date} today={today} prev={shift(-1)} next={shift(1)} />
+        <DayNav
+          date={date}
+          today={today}
+          prev={shift(-1)}
+          next={shift(1)}
+          extra={<DownloadMenu href={isToday ? "/day/export" : `/day/export?date=${date}`} pdfHref={pdfHref} />}
+        />
       </div>
       <p className="muted day-date">{dateLabel}</p>
       {closed && (

@@ -66,6 +66,32 @@ export function Shell({
   const [menuOpen, setMenuOpen] = useState(false);
   // Переход по ссылке или Esc закрывают меню.
   useEffect(() => setMenuOpen(false), [path]);
+  // Выпадающие меню на <details> («Скачать», «⋯ Ещё»): нажатие мимо меню,
+  // выбор пункта или Esc — закрыть. Сами <details> так не умеют.
+  useEffect(() => {
+    const closeAll = (keep?: Node | null) =>
+      document.querySelectorAll<HTMLDetailsElement>("details.more-menu[open]").forEach((menu) => {
+        if (!keep || !menu.contains(keep)) menu.open = false;
+      });
+    // Нажатие мимо меню — закрыть; внутри меню — оставить открытым.
+    const onPointer = (e: PointerEvent) => closeAll(e.target as Node | null);
+    // Выбрали пункт — закрыть уже после клика, чтобы переход или скачивание успели начаться.
+    const onClick = (e: MouseEvent) => {
+      if ((e.target as Element | null)?.closest?.("details.more-menu .more-menu-list a")) closeAll();
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeAll();
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("click", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("click", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, []);
+  useEffect(() => {
+    document.querySelectorAll<HTMLDetailsElement>("details.more-menu[open]").forEach((menu) => (menu.open = false));
+  }, [path]);
   useEffect(() => {
     if (!menuOpen) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);

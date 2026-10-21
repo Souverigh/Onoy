@@ -55,8 +55,8 @@ export default async function Sellers({
   };
   const title = day ? fmt(day, { day: "numeric", month: "long", year: "numeric" }) : fmt(p.start, { month: "long", year: "numeric" }).replace(/ г\.$/, "");
 
-  // Период датами: «01.10.2026 – 21.10.2026» (один день — одной датой).
-  const periodText = start === end ? ruDate(start) : `${ruDate(start)} – ${ruDate(end)}`;
+  // Период на кнопке: «01.10 – 21.10» (месяц и год — строкой ниже), один день — «15.10.2026».
+  const periodText = start === end ? ruDate(start) : `${ruDate(start).slice(0, 5)} – ${ruDate(end).slice(0, 5)}`;
   const nav = (
     <div className="day-nav">
       {day ? (
@@ -68,8 +68,7 @@ export default async function Sellers({
           ‹
         </Link>
       )}
-      <span className="day-nav-period">{periodText}</span>
-      <PeriodDayPicker value={day ?? ""} base={query({ offset: 0 })} />
+      <PeriodDayPicker value={day ?? ""} base={query({ offset: 0 })} periodText={periodText} />
       {!day &&
         (offset < 0 ? (
           <Link className="day-nav-arrow" href={query({ offset: offset + 1 })} aria-label="Следующий месяц">

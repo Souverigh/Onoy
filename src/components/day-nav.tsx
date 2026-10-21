@@ -6,8 +6,20 @@ import { DatePicker } from "./date-picker";
 
 const dayHref = (day: string, today: string) => (day === today ? "/day" : `/day?date=${day}`);
 
-/** Итог дня: ‹ день › и календарь по иконке — вместо отдельного поля даты. */
-export function DayNav({ date, today, prev, next }: { date: string; today: string; prev: string; next: string }) {
+/** Итог дня: ‹ [📅 дата] › — кнопка с датой открывает календарь; `extra` — справа («Скачать»). */
+export function DayNav({
+  date,
+  today,
+  prev,
+  next,
+  extra,
+}: {
+  date: string;
+  today: string;
+  prev: string;
+  next: string;
+  extra?: React.ReactNode;
+}) {
   const router = useRouter();
   return (
     <div className="day-nav">
@@ -15,8 +27,11 @@ export function DayNav({ date, today, prev, next }: { date: string; today: strin
         ‹
       </Link>
       <DatePicker
+        variant="field"
         label="День"
+        // Сегодня — словом «Сегодня», другой день — датой «20.10.2026».
         value={date === today ? "" : date}
+        emptyLabel="Сегодня"
         maxDaysBack={3650}
         onChange={(day) => router.push(day ? dayHref(day, today) : "/day")}
       />
@@ -29,6 +44,7 @@ export function DayNav({ date, today, prev, next }: { date: string; today: strin
           ›
         </span>
       )}
+      {extra}
     </div>
   );
 }
@@ -37,13 +53,15 @@ export function DayNav({ date, today, prev, next }: { date: string; today: strin
  * Календарь в отчёте за период (продажи продавцов): выбрал день — отчёт за
  * этот день (?date=), «Сегодня» — за сегодня. `base` — адрес без даты.
  */
-export function PeriodDayPicker({ value, base }: { value: string; base: string }) {
+export function PeriodDayPicker({ value, base, periodText }: { value: string; base: string; periodText: string }) {
   const router = useRouter();
   return (
+    // Как в итоге дня: кнопка «📅 01.10.2026 – 21.10.2026» (или выбранный день).
     <DatePicker
+      variant="field"
       label="День"
       value={value}
-      emptyLabel="Выбрать день"
+      emptyLabel={periodText}
       maxDaysBack={3650}
       onChange={(day) => router.push(day ? `${base}${base.includes("?") ? "&" : "?"}date=${day}` : base)}
     />
