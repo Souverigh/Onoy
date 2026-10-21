@@ -18,6 +18,8 @@ export type SellerOverviewRow = {
   count: number;
   collected: number;
   customers: number;
+  /** Продажи и оплаты в другой валюте (клиенты в $, ₽) — отдельно, не в общих суммах. */
+  foreign: { currency: Currency; sold: number; collected: number }[];
 };
 
 export type SellerSale = {
@@ -119,27 +121,44 @@ export async function sellersOverview(
         count: 0,
         collected: 0,
         customers: 0,
+        foreign: [],
         customerIds: new Set(),
       });
     }
     return rows.get(key)!;
   };
   for (const id of members.keys()) row(id);
+  // Другая валюта — своей строкой у продавца, без пересчёта в сомы.
+  const other = (r: SellerOverviewRow, currency: Currency) => {
+    let f = r.foreign.find((x) => x.currency === currency);
+    if (!f) r.foreign.push((f = { currency, sold: 0, collected: 0 }));
+    return f;
+  };
   for (const s of sales) {
-    if (recordCurrency(s, foreign, shopCurrency) !== shopCurrency) continue;
+    const cur = recordCurrency(s, foreign, shopCurrency);
+    if (cur !== shopCurrency) {
+      const f = other(row(s.created_by), cur);
+      f.sold = round(f.sold + Number(s.total));
+      continue;
+    }
     const r = row(s.created_by);
     r.sold = round(r.sold + Number(s.total));
     r.count += 1;
     if (s.customer_id) r.customerIds.add(s.customer_id);
   }
   for (const p of payments) {
-    if (recordCurrency(p, foreign, shopCurrency) !== shopCurrency) continue;
+    const cur = recordCurrency(p, foreign, shopCurrency);
+    if (cur !== shopCurrency) {
+      const f = other(row(p.created_by), cur);
+      f.collected = round(f.collected + Number(p.amount));
+      continue;
+    }
     const r = row(p.created_by);
     r.collected = round(r.collected + Number(p.amount));
   }
   return [...rows.values()]
     // Записи без автора — только если они есть в периоде.
-    .filter((r) => r.id || r.count || r.collected)
+    .filter((r) => r.id || r.count || r.collected || r.foreign.length)
     .map(({ customerIds, ...r }) => ({ ...r, customers: customerIds.size }))
     .sort((a, b) => b.sold - a.sold || a.name.localeCompare(b.name, "ru"));
 }

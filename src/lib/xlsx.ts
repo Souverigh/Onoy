@@ -5,7 +5,8 @@
  * закреплена, с автофильтром. Этого хватает для выгрузки таблиц магазина.
  */
 export type Cell = string | number | Date | null | undefined;
-export type Column = { header: string; width?: number; kind?: "text" | "money" | "date" | "number" };
+/** `date` — дата и время (24 часа); `day` — только дата, без времени (отчёт по дням). */
+export type Column = { header: string; width?: number; kind?: "text" | "money" | "date" | "day" | "number" };
 export type Sheet = { name: string; columns: Column[]; rows: Cell[][] };
 
 // --- ZIP (метод STORE) -------------------------------------------------------
@@ -97,23 +98,28 @@ export function excelDate(date: Date): number {
   return (date.getTime() + 6 * 3600000) / 86400000 + 25569;
 }
 
-// Стили: 0 — обычный, 1 — шапка (жирный), 2 — сумма, 3 — дата и время.
+// Стили: 0 — обычный, 1 — шапка (жирный), 2 — сумма, 3 — дата и время, 4 — только дата.
 const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0.00"/><numFmt numFmtId="165" formatCode="dd.mm.yyyy hh:mm"/></numFmts>
+<numFmts count="3"><numFmt numFmtId="164" formatCode="#,##0.00"/><numFmt numFmtId="165" formatCode="dd.mm.yyyy hh:mm"/><numFmt numFmtId="166" formatCode="dd.mm.yyyy"/></numFmts>
 <fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>
 <fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>
 <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>
+<cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
 
 function cellXml(ref: string, value: Cell, kind: Column["kind"], header = false): string {
   if (value === null || value === undefined || value === "") return "";
   if (header) return `<c r="${ref}" t="inlineStr" s="1"><is><t>${escapeXml(String(value))}</t></is></c>`;
-  if (value instanceof Date)
-    return Number.isNaN(value.getTime()) ? "" : `<c r="${ref}" s="3"><v>${excelDate(value)}</v></c>`;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return "";
+    // День без времени — целое число: в строке формул нет «12:00:00 PM».
+    return kind === "day"
+      ? `<c r="${ref}" s="4"><v>${Math.floor(excelDate(value))}</v></c>`
+      : `<c r="${ref}" s="3"><v>${excelDate(value)}</v></c>`;
+  }
   if (typeof value === "number")
     return Number.isFinite(value) ? `<c r="${ref}"${kind === "money" ? ' s="2"' : ""}><v>${value}</v></c>` : "";
   return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(value)}</t></is></c>`;

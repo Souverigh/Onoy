@@ -7,14 +7,16 @@ import { periodProfit } from "./profit";
 import { sellerCustomerDebts, sellerDetail, sellersDebtTotals, sellersOverview } from "./seller-sales";
 import { memberLabels } from "./members";
 import { ruDate } from "./ru-date";
-import type { Currency } from "./currency";
+import { money as formatMoney } from "./format";
+import { CURRENCY_SIGN, type Currency } from "./currency";
+import { debtTotalsByCurrency, foreignBlocks } from "./debt-totals";
 
 /**
  * Отчёт для скачивания (просьба пользователя 21.10.2026): одни и те же данные
  * уходят и в Excel (итоги — первым листом, таблицы — своими листами), и в PDF
  * (всё на одном документе). Цифры — те же, что на экране отчёта.
  */
-export type ReportLine = { label: string; value: number; money?: boolean };
+export type ReportLine = { label: string; value: number; money?: boolean; currency?: Currency };
 export type ReportTable = { title: string; columns: Column[]; rows: Cell[][] };
 export type ReportDoc = {
   shopName: string;
@@ -28,11 +30,13 @@ export type ReportDoc = {
   fileBase: string;
 };
 
+const fmtMoney = (value: number, currency: Currency) => formatMoney(value.toFixed(2), currency);
 const periodText = (start: string, end: string) => (start === end ? ruDate(start) : `${ruDate(start)} – ${ruDate(end)}`);
 const money = (header: string, width = 16): Column => ({ header, width, kind: "money" });
 const count = (header: string, width = 10): Column => ({ header, width, kind: "number" });
 const text = (header: string, width = 30): Column => ({ header, width });
 const date = (header = "Дата"): Column => ({ header, width: 14, kind: "date" });
+const day = (header = "Дата"): Column => ({ header, width: 12, kind: "day" });
 const asDate = (day: string) => new Date(`${day}T12:00:00+06:00`);
 
 /** Отчёт за месяц или неделю — как на вкладке «Месяц». */
@@ -46,11 +50,12 @@ export async function monthReportDoc(
   today: string,
 ): Promise<ReportDoc> {
   const p = period(kind, today, offset);
-  const [report, sellers, owed, profit] = await Promise.all([
+  const [report, sellers, owed, profit, debts] = await Promise.all([
     periodReport(db, organizationId, p),
     sellersOverview(db, organizationId, p.start, p.through, shopCurrency),
     sellersDebtTotals(db, organizationId, shopCurrency).catch(() => new Map<string, number>()),
     periodProfit(db, organizationId, shopCurrency, p.start, p.through).catch(() => null),
+    debtTotalsByCurrency(db, organizationId, shopCurrency).catch(() => []),
   ]);
   const c = report.current;
   const summary: ReportLine[] = [
@@ -63,12 +68,17 @@ export async function monthReportDoc(
     { label: "Оплачено поставщикам", value: c.paidSuppliers, money: true },
     { label: "Расходы", value: c.expenses, money: true },
     ...(profit ? [{ label: "Прибыль", value: profit.profit, money: true }] : []),
+    // Другие валюты — своими строками, как блоки «В $» на экране.
+    ...foreignBlocks(report.foreign, debts, report.currency).flatMap((b) =>
+      b.lines.map((l) => ({ label: `В ${CURRENCY_SIGN[b.currency]}: ${l.label.toLowerCase()}`, value: l.value, money: true, currency: b.currency })),
+    ),
   ];
   const tables: ReportTable[] = [
     {
       title: "По дням",
-      columns: [date(), money("Продано"), money("Собрано")],
-      rows: report.days.map((d) => [asDate(d.date), d.sold, d.collected]),
+      columns: [day(), money("Продано"), money("Собрано")],
+      // Только наступившие дни: будущие дни месяца — не нули, их просто нет.
+      rows: report.days.filter((d) => d.date <= p.through).map((d) => [asDate(d.date), d.sold, d.collected]),
     },
   ];
   if (profit?.topProducts.length)
@@ -109,8 +119,30 @@ function sellersTable(
 ): ReportTable {
   return {
     title: "По продавцам",
-    columns: [text("Кто", 24), count("Продаж"), count("Клиентов"), money("Продано"), money("Собрано"), money("Должны клиенты")],
-    rows: rows.map((r) => [r.name, r.count, r.customers, r.sold, r.collected, r.id ? (owed.get(r.id) ?? 0) : null]),
+    columns: [
+      text("Кто", 24),
+      count("Продаж"),
+      count("Клиентов"),
+      money("Продано"),
+      money("Собрано"),
+      money("Должны клиенты"),
+      ...(rows.some((r) => r.foreign.length) ? [text("В другой валюте", 26)] : []),
+    ],
+    rows: rows.map((r) => [
+      r.name,
+      r.count,
+      r.customers,
+      r.sold,
+      r.collected,
+      r.id ? (owed.get(r.id) ?? 0) : null,
+      ...(rows.some((x) => x.foreign.length)
+        ? [
+            r.foreign
+              .map((f) => `продано ${fmtMoney(f.sold, f.currency)}${f.collected ? `, собрано ${fmtMoney(f.collected, f.currency)}` : ""}`)
+              .join("; "),
+          ]
+        : []),
+    ]),
   };
 }
 
@@ -157,11 +189,13 @@ export async function sellersReportDoc(
       { label: "Продаж", value: detail.count },
       { label: "Собрано", value: detail.collected, money: true },
       { label: "Должны его клиенты сейчас", value: debts.total, money: true },
+      ...detail.foreign.map((f) => ({ label: `В ${CURRENCY_SIGN[f.currency]}: продано`, value: f.sold, money: true, currency: f.currency })),
+      ...debts.foreign.map((f) => ({ label: `В ${CURRENCY_SIGN[f.currency]}: должны клиенты`, value: f.total, money: true, currency: f.currency })),
     ],
     tables: [
       {
         title: "По дням",
-        columns: [date(), count("Продаж"), count("Клиентов"), money("Продано")],
+        columns: [day(), count("Продаж"), count("Клиентов"), money("Продано")],
         rows: detail.days.map((d) => [asDate(d.date), d.count, d.customers, d.sold]),
       },
       {
@@ -171,7 +205,7 @@ export async function sellersReportDoc(
       },
       {
         title: "Все продажи",
-        columns: [date(), text("Клиент"), money("Сумма"), text("Валюта", 8), text("Оплата", 12)],
+        columns: [{ ...date(), width: 17 }, text("Клиент"), money("Сумма"), text("Валюта", 8), text("Оплата", 12)],
         rows: detail.sales.map((s) => [new Date(s.date), s.customerName, s.total, s.currency, s.paid ? "Наличными" : "В долг"]),
       },
     ],
@@ -184,8 +218,8 @@ export function reportXlsx(doc: ReportDoc) {
   return buildXlsx([
     {
       name: "Итоги",
-      columns: [text(`${doc.title} · ${doc.periodText}`, 34), money(`Сумма, ${doc.currency}`, 18)],
-      rows: doc.summary.map((l) => [l.label.trim(), l.value]),
+      columns: [text(`${doc.title} · ${doc.periodText}`, 40), money("Сумма", 18), text("Валюта", 8)],
+      rows: doc.summary.map((l) => [l.label.trim(), l.value, l.money ? (l.currency ?? doc.currency) : ""]),
     },
     ...doc.tables.map((t) => ({ name: t.title, columns: t.columns, rows: t.rows })),
   ]);

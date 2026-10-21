@@ -23,10 +23,21 @@ const styles = StyleSheet.create({
 const dateText = (d: Date) =>
   new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
 
+const dateTimeText = (d: Date) =>
+  new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Asia/Bishkek",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(d);
+
 /** Ячейка таблицы для PDF: деньги — с валютой, даты — «21.10.2026». */
 function cellText(value: Cell, kind: string | undefined, currency: string) {
   if (value == null || value === "") return "-";
-  if (value instanceof Date) return dateText(value);
+  if (value instanceof Date) return kind === "date" ? dateTimeText(value) : dateText(value);
   if (typeof value === "number") return kind === "money" ? money(value.toFixed(2), currency) : quantity(String(value));
   return value;
 }
@@ -47,7 +58,7 @@ function ReportDocument({ doc }: { doc: ReportDoc }) {
             <View style={styles.row} key={i} wrap={false}>
               <Text style={sub ? styles.sub : styles.strong}>{line.label.trim()}</Text>
               <Text style={sub ? styles.sub : styles.strong}>
-                {line.money ? money(line.value.toFixed(2), doc.currency) : quantity(String(line.value))}
+                {line.money ? money(line.value.toFixed(2), line.currency ?? doc.currency) : quantity(String(line.value))}
               </Text>
             </View>
           );
@@ -68,7 +79,7 @@ function ReportDocument({ doc }: { doc: ReportDoc }) {
                   {t.columns.map((c, i) => (
                     <Text
                       key={i}
-                      style={[styles.th, styles.cell, { width: width(c.width), textAlign: c.kind && c.kind !== "text" && c.kind !== "date" ? "right" : "left" }]}
+                      style={[styles.th, styles.cell, { width: width(c.width), textAlign: c.kind && c.kind !== "text" && c.kind !== "date" && c.kind !== "day" ? "right" : "left" }]}
                     >
                       {c.header}
                     </Text>
@@ -79,7 +90,7 @@ function ReportDocument({ doc }: { doc: ReportDoc }) {
                     {t.columns.map((c, i) => (
                       <Text
                         key={i}
-                        style={[styles.cell, { width: width(c.width), textAlign: c.kind && c.kind !== "text" && c.kind !== "date" ? "right" : "left" }]}
+                        style={[styles.cell, { width: width(c.width), textAlign: c.kind && c.kind !== "text" && c.kind !== "date" && c.kind !== "day" ? "right" : "left" }]}
                       >
                         {cellText(row[i], c.kind, doc.currency)}
                       </Text>

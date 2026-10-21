@@ -51,3 +51,14 @@ test("excelDate converts to Bishkek wall time", () => {
   // 27.09.2026 14:35 по Бишкеку = 46292 + 14:35/24ч
   assert.equal(Math.round(excelDate(new Date("2026-09-27T08:35:00Z")) * 1440), 46292 * 1440 + 14 * 60 + 35);
 });
+
+test("buildXlsx: day columns are whole dates without time", async () => {
+  const { buildXlsx: build } = await import("../src/lib/xlsx.ts");
+  const bytes = build([
+    { name: "Дни", columns: [{ header: "Дата", kind: "day" }], rows: [[new Date("2026-10-17T12:00:00+06:00")]] },
+  ]);
+  const text = new TextDecoder("latin1").decode(bytes);
+  // 17.10.2026 → серийный номер 46312, без дробной части (времени).
+  assert.match(text, /<c r="A2" s="4"><v>46312<\/v><\/c>/);
+  assert.match(text, /formatCode="dd\.mm\.yyyy"/);
+});

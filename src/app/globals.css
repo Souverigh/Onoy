@@ -8295,3 +8295,9 @@ tr.row-link:has(a[data-pending]) {
   font-weight: 400;
   font-size: 12px;
 }
+/* Сумма в другой валюте под основной в таблице продавцов. */
+.foreign-sum {
+  display: block;
+  font-size: 12px;
+  white-space: nowrap;
+}

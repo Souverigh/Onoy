@@ -11,7 +11,9 @@ import { DayColumns } from "@/components/day-columns";
 import { InfoTip } from "@/components/info-tip";
 import { ReportTabs } from "@/components/report-tabs";
 import { DownloadMenu } from "@/components/download-menu";
+import { ForeignSums } from "@/components/foreign-sums";
 import { CURRENCY_SIGN } from "@/lib/currency";
+import { debtTotalsByCurrency, foreignBlocks } from "@/lib/debt-totals";
 
 const fmt = (date: string, options: Intl.DateTimeFormatOptions) =>
   new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", ...options }).format(
@@ -59,7 +61,7 @@ export default async function Reports({
   const today = bishkekDate();
   const p = period(kind, today, offset);
   const { db, organizationId, currency: shopCurrency } = await requireOwner();
-  const [report, sellers, owed, profit] = await Promise.all([
+  const [report, sellers, owed, profit, debts] = await Promise.all([
     periodReport(db, organizationId, p),
     sellersOverview(db, organizationId, p.start, p.through, shopCurrency),
     sellersDebtTotals(db, organizationId, shopCurrency).catch(() => new Map<string, number>()),
@@ -68,6 +70,8 @@ export default async function Reports({
       console.error("Reports: profit failed", error);
       return null;
     }),
+    // Долги в других валютах на сейчас — для блоков «В $», «В ₽».
+    debtTotalsByCurrency(db, organizationId, shopCurrency).catch(() => []),
   ]);
 
   const title =
@@ -82,9 +86,7 @@ export default async function Reports({
   const href = (k: PeriodKind, o: number) => `/reports?period=${k}${o ? `&offset=${o}` : ""}`;
   const { current, previous } = report;
   const cur = report.currency;
-  const foreign = report.foreign.filter(
-    (f) => f.current.sold || f.current.collected || f.current.purchased || f.current.paidSuppliers,
-  );
+  const foreign = foreignBlocks(report.foreign, debts, report.currency);
 
   return (
     <>
@@ -340,17 +342,15 @@ export default async function Reports({
 
       {foreign.map((f) => {
         const sign = CURRENCY_SIGN[f.currency];
-        const lines = [
-          { label: "Продано", value: f.current.sold },
-          { label: "Собрано", value: f.current.collected },
-          { label: "Товар от поставщиков", value: f.current.purchased },
-          { label: "Оплачено поставщикам", value: f.current.paidSuppliers },
-        ].filter((line) => line.value);
+        const lines = f.lines;
         return (
           <section key={f.currency} className="panel day-debts">
             <h2 className="day-foreign-title label-with-tip">
               В {sign}
-              <InfoTip>Записи в {sign} считаются отдельно и не складываются с основными суммами.</InfoTip>
+              <InfoTip>
+                Записи в {sign} считаются отдельно и не складываются с основными суммами. Долги - на сейчас, а не за
+                период.
+              </InfoTip>
             </h2>
             {lines.map((line) => (
               <div className="day-line" key={line.label}>
@@ -436,8 +436,14 @@ export default async function Reports({
                     </td>
                     <td>{s.count}</td>
                     <td>{s.customers}</td>
-                    <td>{money(s.sold, cur)}</td>
-                    <td>{money(s.collected, cur)}</td>
+                    <td>
+                      {money(s.sold, cur)}
+                      <ForeignSums items={s.foreign} pick="sold" />
+                    </td>
+                    <td>
+                      {money(s.collected, cur)}
+                      <ForeignSums items={s.foreign} pick="collected" />
+                    </td>
                     <td>{s.id ? <Link href={`/sellers?id=${s.id}#debts`}>{money(owed.get(s.id) ?? 0, cur)}</Link> : "-"}</td>
                   </tr>
                 ))}

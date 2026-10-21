@@ -94,7 +94,7 @@ export async function exportSheets(
         { header: "Долг (минус - аванс)", width: 22, kind: "money" },
         { header: "Валюта", width: 10 },
         { header: "Лимит долга", width: 18, kind: "money" },
-        { header: "Обещал оплатить до", width: 20, kind: "date" },
+        { header: "Обещал оплатить до", width: 20, kind: "day" },
         { header: "Заметка", width: 40 },
         { header: "Добавлен", width: 18, kind: "date" },
       ],
@@ -221,7 +221,7 @@ export async function exportSheets(
     sheets.push({
       name: EXPORT_TABLES.expenses,
       columns: [
-        { header: "Дата", width: 14, kind: "date" },
+        { header: "Дата", width: 14, kind: "day" },
         { header: "Категория", width: 24 },
         { header: "Комментарий", width: 40 },
         { header: "Сумма", width: 16, kind: "money" },

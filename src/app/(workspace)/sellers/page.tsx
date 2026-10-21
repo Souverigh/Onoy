@@ -8,6 +8,8 @@ import { sellerCustomerDebts, sellerDetail, sellersDebtTotals, sellersOverview }
 import { InfoTip } from "@/components/info-tip";
 import { PeriodDayPicker } from "@/components/day-nav";
 import { DownloadMenu } from "@/components/download-menu";
+import { ForeignSums } from "@/components/foreign-sums";
+import { CURRENCY_SIGN } from "@/lib/currency";
 import { ruDate } from "@/lib/ru-date";
 import { ReportTabs } from "@/components/report-tabs";
 
@@ -125,8 +127,14 @@ export default async function Sellers({
                     </td>
                     <td>{r.count}</td>
                     <td>{r.customers}</td>
-                    <td>{money(r.sold, cur)}</td>
-                    <td>{money(r.collected, cur)}</td>
+                    <td>
+                      {money(r.sold, cur)}
+                      <ForeignSums items={r.foreign} pick="sold" />
+                    </td>
+                    <td>
+                      {money(r.collected, cur)}
+                      <ForeignSums items={r.foreign} pick="collected" />
+                    </td>
                     <td>
                       {r.id ? <Link href={`${query({ id: r.id, offset, date: day })}#debts`}>{debtMoney(owed.get(r.id) ?? 0, cur)}</Link> : "-"}
                     </td>
@@ -184,9 +192,16 @@ export default async function Sellers({
         </article>
       </section>
       {detail.foreign.map((f) => (
-        <p key={f.currency} className="muted">
-          Продажи в другой валюте: {money(f.sold, f.currency)} ({f.count})
-        </p>
+        <section key={f.currency} className="panel day-debts">
+          <h2 className="day-foreign-title label-with-tip">
+            В {CURRENCY_SIGN[f.currency]}
+            <InfoTip>Продажи клиентам в {CURRENCY_SIGN[f.currency]} считаются отдельно и не складываются с основными суммами.</InfoTip>
+          </h2>
+          <div className="day-line">
+            <span>Продано ({f.count})</span>
+            <strong>{money(f.sold, f.currency)}</strong>
+          </div>
+        </section>
       ))}
 
       {!detail.count && !detail.foreign.length ? (
