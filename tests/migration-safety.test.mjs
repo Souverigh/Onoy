@@ -68,3 +68,17 @@ test("safety check catches destructive statements", () => {
   for (const s of ok)
     assert.ok(statements(s).every((x) => !rules.some(([, re]) => re.test(x))), s);
 });
+
+// Проверка перед выкладкой (scripts/check-migrations.mjs) сверяет номер базы с
+// последней миграцией — значит, каждая новая миграция ставит свой номер.
+test("the newest migration sets app_schema_version() to its own number", async () => {
+  const { latestMigration, declaredVersion } = await import("../scripts/migration-version.mjs");
+  const latest = latestMigration();
+  assert.equal(
+    declaredVersion(latest.sql),
+    latest.version,
+    `В конец ${latest.file} добавьте (номер — из имени файла):\n` +
+      `create or replace function public.app_schema_version() returns text\n` +
+      `language sql immutable set search_path='' as $$ select '${latest.version}' $$;`,
+  );
+});

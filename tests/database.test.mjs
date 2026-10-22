@@ -3258,3 +3258,9 @@ test("cash moves: only the owner takes or puts cash, once per key, reversible, o
   await assert.rejects(db.query("select commit_cash_move($1,'out','1',null,$2)", [orgA, k(6)]), /owner_only/);
   await owner();
 });
+
+test("app_schema_version() returns the newest migration number for the pre-deploy check", async () => {
+  const { latestMigration } = await import("../scripts/migration-version.mjs");
+  await owner();
+  assert.equal((await db.query("select public.app_schema_version() as v")).rows[0].v, latestMigration().version);
+});
