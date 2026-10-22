@@ -189,7 +189,8 @@ export async function computeDaySummary(
     await Promise.all([
       db
         .from("sales")
-        .select("customer_id,total,paid_immediately,created_by,original_amount,original_currency")
+        // Чья продажа — кто продал (maker_id), а не кто записал исправление.
+        .select("customer_id,total,paid_immediately,created_by:maker_id,original_amount,original_currency")
         .eq("organization_id", organizationId)
         .eq("status", "posted")
         .is("reversed_at", null)

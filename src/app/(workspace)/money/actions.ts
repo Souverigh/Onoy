@@ -31,6 +31,7 @@ import { isCurrency, rateInput, type Currency } from "@/lib/currency";
 import { partPaymentOf } from "@/lib/part-payment";
 import { redoTarget } from "@/lib/redo";
 import { noteInput, saveRecordNote } from "@/lib/record-note";
+import { saveRecordMaker } from "@/lib/record-maker";
 
 type Operation = "purchase" | "sale" | "payment";
 const uuidPattern =
@@ -313,6 +314,7 @@ async function commitOperationOrRedirect(
     }
   }
   await saveRecordNote(db, organizationId, operation, result.data as string, noteInput(form.get("note")));
+  if (operation !== "payment") await saveRecordMaker(db, organizationId, operation, result.data as string, form);
   // Оплата части прихода — отдельная запись оплаты поставщику. Приход уже
   // записан: если оплата не прошла, говорим об этом, а не теряем приход.
   let part = "";

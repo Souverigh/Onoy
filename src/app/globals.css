@@ -9333,3 +9333,32 @@ tr.row-link:has(a[data-pending]) {
     width: 100%;
   }
 }
+
+/* ===== Исправление: за кем останется запись (22.10.2026) ===== */
+/* «Продавец: [Айбек ▾] !» — пилюлей под клиентом. */
+.maker-field {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -6px 0 18px;
+  font-size: 14px;
+}
+.maker-field-label {
+  color: var(--muted);
+}
+.maker-field strong {
+  font-weight: 600;
+}
+.maker-field-select {
+  width: auto;
+  min-height: 34px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  /* 16px — телефон не увеличивает страницу при выборе. */
+  font-size: 16px;
+  font-weight: 600;
+}
+.sale-sheet-top > .maker-field {
+  margin-top: -8px;
+}

@@ -152,6 +152,7 @@ function saleDraft(db: Db, organizationId: string, sale: SaleForDraft, shopCurre
     rate: sale.original_currency && sale.fx_rate ? asInput(sale.fx_rate) : "",
     // Строки продажи со склада — в валюте магазина (в другой валюте — её исходная).
     currency: sale.original_currency ?? shopCurrency,
+    from: sale.id,
   });
 }
 
@@ -165,6 +166,7 @@ function purchaseDraft(db: Db, organizationId: string, purchase: PurchaseForDraf
     rate: purchase.original_currency && purchase.fx_rate ? asInput(purchase.fx_rate) : "",
     // Цены прихода — в исходной валюте (выбранной в форме), иначе в валюте поставщика.
     currency: purchase.original_currency ?? purchase.suppliers?.currency ?? shopCurrency,
+    from: purchase.id,
   });
 }
 

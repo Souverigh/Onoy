@@ -40,7 +40,7 @@ export default async function PurchasePage({
   const recordResult = await db
     .from("purchases")
     .select(
-      "id,total,occurred_at,created_at,status,is_opening,reversed_at,reversal_comment,document_id,created_by,original_amount,original_currency,fx_rate,note,supplier_id,suppliers(name,phone,currency)",
+      "id,total,occurred_at,created_at,status,is_opening,reversed_at,reversal_comment,document_id,created_by,made_by,original_amount,original_currency,fx_rate,note,supplier_id,suppliers(name,phone,currency)",
     )
     .eq("organization_id", organizationId)
     .eq("id", id)
@@ -56,6 +56,7 @@ export default async function PurchasePage({
     reversal_comment: string | null;
     document_id: string | null;
     created_by: string | null;
+    made_by: string | null;
     original_amount: string | null;
     original_currency: string | null;
     fx_rate: string | null;
@@ -83,7 +84,14 @@ export default async function PurchasePage({
   const lineCurrency = record.original_currency ?? debtCurrency;
   const supplierName = record.suppliers?.name ?? "Поставщик";
   const supplierHref = `/suppliers/${record.supplier_id}`;
-  const author = record.created_by ? members.get(record.created_by)?.name : undefined;
+  const nameOf = (id: string) => members.get(id)?.name ?? "бывший сотрудник";
+  // Исправил владелец за сотрудника: «Айбек · исправил Владелец».
+  const author =
+    record.made_by && record.made_by !== record.created_by
+      ? `${nameOf(record.made_by)} · исправил ${record.created_by ? nameOf(record.created_by) : "владелец"}`
+      : record.created_by
+        ? members.get(record.created_by)?.name
+        : undefined;
   const original = originalAmountText(record);
   const canCorrect =
     !record.reversed_at &&

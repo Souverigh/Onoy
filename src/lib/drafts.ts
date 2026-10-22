@@ -18,11 +18,17 @@ export type DraftData = {
   currency: string;
   /** Комментарий к записи. */
   note?: string;
+  /** «Исправить» / «Открыть заново»: отменённая запись — продавец берётся из неё. */
+  from?: string;
+  /** Продавец, выбранный владельцем при исправлении; пусто — как в отменённой. */
+  madeBy?: string;
 };
 
 export type Draft = { id: string; kind: DraftKind; data: DraftData; updated_at: string };
 
 const text = (value: unknown, max = 200) => (typeof value === "string" ? value.slice(0, max) : "");
+const uuid = (value: unknown) =>
+  typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) ? value : undefined;
 
 /** Что пришло из базы или от формы — в известную форму; мусор отбрасываем. */
 export function draftData(raw: unknown): DraftData {
@@ -43,5 +49,7 @@ export function draftData(raw: unknown): DraftData {
     total: text(d.total, 30),
     currency: text(d.currency, 3),
     note: text(d.note, 500),
+    from: uuid(d.from),
+    madeBy: uuid(d.madeBy),
   };
 }

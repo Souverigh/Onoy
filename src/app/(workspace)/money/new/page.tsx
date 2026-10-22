@@ -8,6 +8,8 @@ import { SaleItemsForm } from "@/components/sale-items-form";
 import type { StockProduct } from "@/lib/match";
 import type { QuickProduct } from "../../stock/actions";
 import { getContext } from "@/lib/context";
+import { memberLabels } from "@/lib/members";
+import type { Maker } from "@/components/maker-field";
 import { officialRates } from "@/lib/fx";
 import { isCurrency } from "@/lib/currency";
 import { documentPages, signedPhotoUrl } from "@/lib/storage";
@@ -49,7 +51,7 @@ export default async function NewOperation({
   if (!["purchase", "sale", "payment"].includes(params.type ?? ""))
     notFound();
   const kind = params.type as Operation;
-  const { db, organizationId, currency: shopCurrency } = await getContext();
+  const { db, organizationId, currency: shopCurrency, isOwner } = await getContext();
   // «Клиент принёс деньги» / «Я заплатил поставщику» (задача 17).
   const fixedDirection =
     kind === "payment" && (params.direction === "incoming" || params.direction === "outgoing")
@@ -233,6 +235,33 @@ export default async function NewOperation({
       correction = { result, choices };
     }
   }
+  // «Исправить» / «Открыть заново»: запись останется за продавцом отменённой,
+  // а не за тем, кто её сейчас записывает (просьба пользователя 22.10.2026).
+  const fromId =
+    itemsKind && draft?.data.from
+      ? draft.data.from
+      : itemsKind && params.fix === "1" && existingDocument && params.from && /^[a-f0-9-]{36}$/i.test(params.from)
+        ? params.from
+        : undefined;
+  let maker: Maker | undefined;
+  if (fromId) {
+    const [old, members] = await Promise.all([
+      db
+        .from(kind === "sale" ? "sales" : "purchases")
+        .select("maker_id")
+        .eq("organization_id", organizationId)
+        .eq("id", fromId)
+        .maybeSingle(),
+      memberLabels(db, organizationId),
+    ]);
+    if (old.data)
+      maker = {
+        from: fromId,
+        defaultId: (old.data as { maker_id: string | null }).maker_id,
+        options: [...members].map(([id, m]) => ({ id, name: m.name })),
+        canChange: isOwner,
+      };
+  }
   // Из карточки клиента/поставщика: берём, только если он из подходящего списка.
   const initialParty = [...(kind === "purchase" ? [] : customers), ...(kind === "sale" ? [] : suppliers)].some(
     (p) => p.id === params.party,
@@ -345,6 +374,7 @@ export default async function NewOperation({
             idempotencyKey={randomUUID()}
             initialParty={initialParty}
             draft={draft}
+            maker={maker}
           />
         </section>
       ) : (
@@ -375,6 +405,7 @@ export default async function NewOperation({
             initialDate={itemsKind && params.day && /^\d{4}-\d{2}-\d{2}$/.test(params.day) ? params.day : undefined}
             correcting={params.fix === "1"}
             correction={correction}
+            maker={maker}
             initialPaidNow={
               kind === "purchase" && params.fix === "1" && params.paid && /^\d{1,14}(\.\d{1,2})?$/.test(params.paid)
                 ? params.paid.replace(".", ",")

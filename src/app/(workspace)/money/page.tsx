@@ -57,6 +57,8 @@ export default async function Money({
   const by = isOwner && params.by && /^[0-9a-f-]{36}$/i.test(params.by) ? params.by : null;
   const limit = by ? 30 : 8;
   const author = by ? { created_by: by } : {};
+  // Продажи и приход — чья запись (maker_id): исправление владельцем остаётся за продавцом.
+  const maker = by ? { maker_id: by } : {};
   // «Недавно внесённые» (по умолчанию): запись задним числом — всё равно сверху.
   // «По дате операции» — по дате, на которую запись сделана.
   const byDate = params.order === "date";
@@ -83,18 +85,18 @@ export default async function Money({
         .limit(8),
       db
         .from("purchases")
-        .select("id,supplier_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id,created_by,created_at,suppliers(name,currency)")
+        .select("id,supplier_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id,created_by:maker_id,created_at,suppliers(name,currency)")
         .eq("organization_id", organizationId)
         .eq("status", "posted")
-        .match(author)
+        .match(maker)
         .order(orderColumn, { ascending: false })
         .limit(limit),
       db
         .from("sales")
-        .select("id,customer_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id,created_by,created_at,customers(name,currency)")
+        .select("id,customer_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id,created_by:maker_id,created_at,customers(name,currency)")
         .eq("organization_id", organizationId)
         .eq("status", "posted")
-        .match(author)
+        .match(maker)
         .order(orderColumn, { ascending: false })
         .limit(limit),
       db

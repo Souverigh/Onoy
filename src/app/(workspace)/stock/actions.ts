@@ -8,6 +8,7 @@ import { isCurrency, rateInput, type Currency } from "@/lib/currency";
 import { bishkekDate } from "@/lib/day-summary";
 import { recordDateTime } from "@/lib/record-date";
 import { noteInput, saveRecordNote } from "@/lib/record-note";
+import { saveRecordMaker } from "@/lib/record-maker";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -291,6 +292,7 @@ export async function commitSaleItems(previous: SaleItemsState, form: FormData):
     }
     saleId = result.data as string;
     await saveRecordNote(db, organizationId, "sale", saleId, noteInput(form.get("note")));
+    await saveRecordMaker(db, organizationId, "sale", saleId, form);
     await dropDraft(form);
   } catch (error) {
     unstable_rethrow(error);
@@ -392,6 +394,7 @@ export async function commitPurchaseItems(previous: SaleItemsState, form: FormDa
     }
     purchaseId = result.data as string;
     await saveRecordNote(db, organizationId, "purchase", purchaseId, noteInput(form.get("note")));
+    await saveRecordMaker(db, organizationId, "purchase", purchaseId, form);
     await dropDraft(form);
   } catch (error) {
     unstable_rethrow(error);

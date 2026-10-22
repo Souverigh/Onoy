@@ -34,6 +34,7 @@ import { RecognizedLines, linesTotal } from "./recognized-lines";
 import { lineProductsValue } from "./sale-stock-lines";
 import { LeaveGuard } from "./leave-guard";
 import { NoteField } from "./note-field";
+import { MakerField, type Maker } from "./maker-field";
 import { money, quantity } from "@/lib/format";
 import { bestMatches, linesWithStockPrices, type StockChoices, type StockPrices, type StockProduct } from "@/lib/match";
 import {
@@ -115,6 +116,7 @@ export function OperationForm({
   correction,
   initialPaidNow,
   stockProducts,
+  maker,
 }: {
   kind: Operation;
   idempotencyKey: string;
@@ -144,6 +146,8 @@ export function OperationForm({
   initialPaidNow?: string;
   /** Продажа: товары склада — строки с фото списываются с них (просьба пользователя 15.10.2026). */
   stockProducts?: StockProduct[];
+  /** «Исправить» / «Открыть заново»: за кем останется запись. */
+  maker?: Maker;
 }) {
   // Ключ от двойной записи — один на всю жизнь формы: перерисовка страницы
   // (после «+ Новый клиент» и т.п.) присылает новый, но повтор после сбоя
@@ -199,6 +203,8 @@ export function OperationForm({
   // Комментарий к продаже или приходу (необязательно).
   const [note, setNote] = useState("");
   const [noteOpen, setNoteOpen] = useState(false);
+  // Продавец, выбранный владельцем при исправлении; пусто — как в отменённой записи.
+  const [madeBy, setMadeBy] = useState("");
   const allCustomers = [...customers, ...contactCustomers.filter((c) => !customers.some((x) => x.id === c.id))];
   const allSuppliers = [...suppliers, ...addedSuppliers.filter((c) => !suppliers.some((x) => x.id === c.id))];
   const [checkedPhoto, setCheckedPhoto] = useState<CheckedPhoto | null>(null);
@@ -1109,6 +1115,9 @@ export function OperationForm({
             {partySection}
             {recordDatePicker}
           </div>
+        )}
+        {(kind === "sale" || kind === "purchase") && maker && (
+          <MakerField kind={kind} maker={maker} value={madeBy} onChange={setMadeBy} />
         )}
         {!prefill && receiptDocumentId && <input type="hidden" name="document_id" value={receiptDocumentId} />}
         {kind !== "payment" && (

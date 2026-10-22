@@ -34,9 +34,10 @@ export type JournalData = {
 export const JOURNAL_PAGE = 50;
 const TOTALS_LIMIT = 10000;
 
+// «Кто внёс» — чья запись (maker_id): исправление владельцем остаётся за продавцом.
 const SELECT = {
-  sale: "id,total,occurred_at,reversed_at,reversal_comment,document_id,paid_immediately,created_by,party_id:customer_id,party:customers(name,currency)",
-  purchase: "id,total,occurred_at,reversed_at,reversal_comment,document_id,created_by,party_id:supplier_id,party:suppliers(name,currency)",
+  sale: "id,total,occurred_at,reversed_at,reversal_comment,document_id,paid_immediately,created_by:maker_id,party_id:customer_id,party:customers(name,currency)",
+  purchase: "id,total,occurred_at,reversed_at,reversal_comment,document_id,created_by:maker_id,party_id:supplier_id,party:suppliers(name,currency)",
 };
 const TOTALS_SELECT = {
   sale: "total,reversed_at,paid_immediately,party:customers(currency)",
@@ -85,7 +86,7 @@ export async function journalData(
     if (gte) q = q.gte("occurred_at", gte);
     if (lt) q = q.lt("occurred_at", lt);
     if (partyIds) q = q.in(partyColumn, partyIds);
-    if (f.by) q = q.eq("created_by", f.by);
+    if (f.by) q = q.eq("maker_id", f.by);
     if (f.status === "reversed") q = q.not("reversed_at", "is", null);
     else if (f.status === "active") q = q.is("reversed_at", null);
     else if (f.status === "debt" && sale) q = q.is("reversed_at", null).eq("paid_immediately", false);

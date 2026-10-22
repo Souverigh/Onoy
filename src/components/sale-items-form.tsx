@@ -18,6 +18,7 @@ import { PartyPicker } from "./party-picker";
 import { NewCustomerInline } from "./new-customer-inline";
 import { DatePicker } from "./date-picker";
 import { NoteField } from "./note-field";
+import { MakerField, type Maker } from "./maker-field";
 import { money, quantity } from "@/lib/format";
 import { searchProducts } from "@/lib/match";
 import { PRODUCT_UNITS, STOCK_ERROR_TEXT, stockNumber } from "@/lib/stock";
@@ -74,6 +75,7 @@ export function SaleItemsForm({
   idempotencyKey,
   initialParty,
   draft,
+  maker,
 }: {
   kind?: "sale" | "purchase";
   /** Клиенты для продажи, поставщики для прихода. */
@@ -85,6 +87,8 @@ export function SaleItemsForm({
   initialParty?: string;
   /** Продолжить черновик: форма открывается с тем, что было введено. */
   draft?: Draft;
+  /** «Исправить» / «Открыть заново»: за кем останется запись. */
+  maker?: Maker;
 }) {
   // Ключ от двойной записи — один на всю жизнь формы: перерисовка страницы
   // (после «+ Новый клиент» и т.п.) присылает новый, но повтор после сбоя
@@ -118,6 +122,8 @@ export function SaleItemsForm({
   const [recordDate, setRecordDate] = useState(draft?.data.recordDate ?? "");
   const [note, setNote] = useState(draft?.data.note ?? "");
   const [noteOpen, setNoteOpen] = useState(false);
+  // Продавец, выбранный владельцем при исправлении; пусто — как в отменённой записи.
+  const [madeBy, setMadeBy] = useState(draft?.data.madeBy ?? "");
   const [rateValue, setRateValue] = useState(draft?.data.rate ?? "");
   const [localError, setLocalError] = useState<string | null>(null);
   // Новый товар прямо отсюда, если поиск ничего не нашёл.
@@ -199,6 +205,8 @@ export function SaleItemsForm({
     total: total.toFixed(2),
     currency: lineCurrency,
     note,
+    from: draft?.data.from,
+    madeBy: madeBy || undefined,
   };
   const draftJson = JSON.stringify(draftSnapshot);
   const draftLatest = useRef({ json: draftJson, data: draftSnapshot });
@@ -489,6 +497,7 @@ export function SaleItemsForm({
         />
       )}
       {contactNote && <small className="muted contact-note">{contactNote}</small>}
+      {maker && <MakerField kind={kind} maker={maker} value={madeBy} onChange={setMadeBy} />}
       {/* Дата — наверху и заметно (просьба пользователя 17.10.2026). */}
       <DatePicker
         variant="field"

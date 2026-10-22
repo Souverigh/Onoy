@@ -6,7 +6,7 @@ import { foreignParties, recordCurrency } from "./party-currency";
 import type { Currency } from "./currency";
 
 /**
- * Продажи по продавцам (автор записи — sales.created_by) за период: владелец
+ * Продажи по продавцам (чья продажа — sales.maker_id: кто продал, иначе кто записал) за период: владелец
  * смотрит каждого продавца, продавец — только себя. Суммы — в валюте
  * магазина; продажи клиентам в другой валюте — отдельной строкой `foreign`.
  */
@@ -65,7 +65,7 @@ async function load(db: SupabaseClient, organizationId: string, start: string, e
   const to = dayBounds(end).end;
   let sales = db
     .from("sales")
-    .select("id,customer_id,total,paid_immediately,created_by,occurred_at")
+    .select("id,customer_id,total,paid_immediately,created_by:maker_id,occurred_at")
     .eq("organization_id", organizationId)
     .eq("status", "posted")
     .is("reversed_at", null)
@@ -87,7 +87,7 @@ async function load(db: SupabaseClient, organizationId: string, start: string, e
     .lt("occurred_at", to)
     .range(0, 9999);
   if (sellerId) {
-    sales = sales.eq("created_by", sellerId);
+    sales = sales.eq("maker_id", sellerId);
     payments = payments.eq("created_by", sellerId);
   }
   const [s, p] = await Promise.all([sales, payments]);
@@ -275,7 +275,7 @@ export async function sellerCustomerDebts(
     .from("sales")
     .select("customer_id")
     .eq("organization_id", organizationId)
-    .eq("created_by", sellerId)
+    .eq("maker_id", sellerId)
     .eq("status", "posted")
     .is("reversed_at", null)
     .range(0, 9999);
@@ -317,11 +317,11 @@ export async function sellersDebtTotals(
   const [sold, balances] = await Promise.all([
     db
       .from("sales")
-      .select("customer_id,created_by")
+      .select("customer_id,created_by:maker_id")
       .eq("organization_id", organizationId)
       .eq("status", "posted")
       .is("reversed_at", null)
-      .not("created_by", "is", null)
+      .not("maker_id", "is", null)
       .range(0, 49999),
     db
       .from("customer_balances")

@@ -106,7 +106,7 @@ export default async function EntryPage({
       ? start(
           db
             .from(kind === "customers" ? "sales" : "purchases")
-            .select("id,total,occurred_at,reversed_at,reversal_comment,document_id,is_opening,created_by,reversed_by,original_amount,original_currency,fx_rate,note")
+            .select("id,total,occurred_at,reversed_at,reversal_comment,document_id,is_opening,created_by,made_by,reversed_by,original_amount,original_currency,fx_rate,note")
             .eq("organization_id", organizationId)
             .eq(partyColumn, id)
             .eq("status", "posted")
@@ -217,6 +217,8 @@ export default async function EntryPage({
     original: string | null;
     /** Кто внёс и кто отменил (журнал для владельца). */
     createdBy: string | null;
+    /** Продажа/приход взамен отменённой: кто продал, если записал другой (исправил владелец). */
+    madeBy?: string | null;
     reversedBy: string | null;
     /** Товары продажи со склада (sale_items) — первые названия и сколько всего. */
     items?: { names: string[]; count: number } | null;
@@ -308,6 +310,7 @@ export default async function EntryPage({
         pending: false,
         opening: Boolean(r.is_opening),
         createdBy: r.created_by,
+        madeBy: r.made_by,
         reversedBy: r.reversed_by,
         items: itemsBySale.get(r.id) ?? null,
         notebookPhotos: invoicePhotos.get(r.id),
@@ -672,7 +675,12 @@ export default async function EntryPage({
                           : null;
                     const extraPhoto = row.kind === "sale" && !row.opening && row.documentId && !row.items;
                     const notebookPhotos = row.notebookPhotos ?? [];
-                    const author = showAuthors ? who(row.createdBy) : null;
+                    // Исправил владелец за продавца: «Айбек · исправил Владелец».
+                    const author = !showAuthors
+                      ? null
+                      : row.madeBy && row.madeBy !== row.createdBy
+                        ? `${who(row.madeBy)} · исправил ${who(row.createdBy) ?? "владелец"}`
+                        : who(row.createdBy);
                     const reverser = showAuthors && row.reversed ? who(row.reversedBy) : null;
                     const status = row.reversed
                       ? { text: "отменена", className: "reversed" }
