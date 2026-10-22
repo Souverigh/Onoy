@@ -1313,8 +1313,13 @@ export function OperationForm({
             }}
           >
             <span className="invoice-dropzone-title">
-              Чек или скриншот перевода (необязательно)
-              {!receiptFile && <InfoTip>Сумму, дату, номер перевода и клиента заполним с чека.</InfoTip>}
+              Чек
+              {!receiptFile && (
+                <InfoTip>
+                  Необязательно. Фото чека или скриншот перевода - сумму, дату, номер перевода и клиента заполним с
+                  него.
+                </InfoTip>
+              )}
             </span>
             {receiptFile ? (
               <div className="receipt-picked">
@@ -1669,7 +1674,7 @@ export function OperationForm({
         )}
         {/* Комментарий — сразу под «Наличные / Перевод» (просьба пользователя 22.10.2026). */}
         {kind === "payment" && (
-          <NoteField value={note} onChange={setNote} placeholder="Например: передал сын, за прошлую неделю" />
+          <NoteField value={note} onChange={setNote} placeholder="За прошлый заказ" />
         )}
         {overLimit && (
           <p className="form-error limit-warning" role="alert">
