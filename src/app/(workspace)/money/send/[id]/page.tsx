@@ -175,7 +175,7 @@ export default async function SendSalePage({
         {/* Отменённая продажа — обратно (товарами — черновиком, по фото — формой
             по фото); сама остаётся отменённой. */}
         {sale.reversed_at && hasLines && !sale.is_opening && (
-          <form action={restoreAsDraft} className="simple-operation-actions">
+          <form action={restoreAsDraft} className="sale-done-restore">
             <input type="hidden" name="id" value={sale.id} />
             <input type="hidden" name="kind" value="sale" />
             <button className="button primary">Открыть как черновик</button>
@@ -184,7 +184,8 @@ export default async function SendSalePage({
       </section>
 
       {/* Слева — накладная и отправка, справа — товары продажи (если это не одна сумма). */}
-      <div className={hasLines ? "send-columns" : undefined}>
+      {/* Отменённая — без панели отправки: товары во всю ширину. */}
+      <div className={hasLines && !sale.reversed_at ? "send-columns" : undefined}>
       {!sale.reversed_at && (
         <section className="panel send-invoice-panel">
           {imageUrl ? (

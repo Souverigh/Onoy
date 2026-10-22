@@ -7156,6 +7156,9 @@ tr.row-link:has(a[data-pending]) {
 .send-columns .send-invoice-panel {
   max-width: none;
 }
+.sale-done-restore .button {
+  width: 100%;
+}
 @media (min-width: 1000px) {
   .send-columns {
     grid-template-columns: minmax(0, 640px) minmax(0, 1fr);
@@ -7185,6 +7188,16 @@ tr.row-link:has(a[data-pending]) {
   }
   .sale-done .record-result-main {
     font-size: 24px;
+  }
+  /* «Открыть как черновик» у отменённой — справа, обычной кнопкой. */
+  .sale-done > .sale-done-restore {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+  .sale-done-restore .button {
+    width: auto;
+    padding: 0 22px;
   }
   .sale-done-note {
     overflow-wrap: anywhere;
