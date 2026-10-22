@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-/** Длина комментария к продаже или приходу — как ограничение в базе (record_note.sql). */
+/** Длина комментария к продаже, приходу или оплате — как ограничение в базе (record_note.sql). */
 export const NOTE_MAX = 500;
 
 /** Комментарий из формы: без лишних пробелов по краям, не длиннее NOTE_MAX. */
@@ -9,13 +9,13 @@ export function noteInput(raw: FormDataEntryValue | null): string {
 }
 
 /**
- * Комментарий к только что записанной продаже или приходу. Запись уже в базе:
+ * Комментарий к только что записанной продаже, приходу или оплате. Запись уже в базе:
  * если комментарий не сохранился, запись не теряем — только пишем в лог.
  */
 export async function saveRecordNote(
   db: SupabaseClient,
   organizationId: string,
-  kind: "sale" | "purchase",
+  kind: "sale" | "purchase" | "payment",
   id: string,
   note: string,
 ) {

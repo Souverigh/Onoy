@@ -9307,3 +9307,29 @@ tr.row-link:has(a[data-pending]) {
 .photo-operation-form .sale-bar-total small {
   white-space: normal;
 }
+
+/* ===== Оплата (22.10.2026): как продажа и приход по фото ===== */
+/* Клиент первым полем, «Наличные / Перевод» и комментарий под ним,
+   внизу — панель с суммой, долгом после и «Подтвердить». */
+.simple-operation-form > .payment-method-row {
+  margin: 4px 0 12px;
+}
+.simple-operation-form > .note-field {
+  margin-bottom: 18px;
+}
+.payment-bar .sale-bar-total {
+  flex: 1;
+  margin-left: 0;
+  text-align: left;
+}
+.payment-bar .sale-bar-total small {
+  white-space: normal;
+}
+@media (max-width: 560px) {
+  /* Телефон: подпись строкой сверху, «Наличные / Перевод» — во всю ширину. */
+  .payment-method-row .method-pills {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+}

@@ -312,8 +312,7 @@ async function commitOperationOrRedirect(
       );
     }
   }
-  if (operation !== "payment")
-    await saveRecordNote(db, organizationId, operation, result.data as string, noteInput(form.get("note")));
+  await saveRecordNote(db, organizationId, operation, result.data as string, noteInput(form.get("note")));
   // Оплата части прихода — отдельная запись оплаты поставщику. Приход уже
   // записан: если оплата не прошла, говорим об этом, а не теряем приход.
   let part = "";

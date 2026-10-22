@@ -34,7 +34,7 @@ import { RecognizedLines, linesTotal } from "./recognized-lines";
 import { lineProductsValue } from "./sale-stock-lines";
 import { LeaveGuard } from "./leave-guard";
 import { NoteField } from "./note-field";
-import { debtMoney, money, quantity } from "@/lib/format";
+import { money, quantity } from "@/lib/format";
 import { bestMatches, linesWithStockPrices, type StockChoices, type StockPrices, type StockProduct } from "@/lib/match";
 import {
   CURRENCIES,
@@ -1246,6 +1246,53 @@ export function OperationForm({
         )}
           </div>
         )}
+        {kind === "payment" && !fixedDirection && (
+          <fieldset className="payment-direction">
+            <legend>Кому передали деньги?</legend>
+            <label>
+              <input
+                type="radio"
+                name="direction"
+                value="incoming"
+                checked={direction === "incoming"}
+                disabled={!hasCustomers}
+                onChange={() => setDirection("incoming")}
+              />
+              Получили от клиента
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="direction"
+                value="outgoing"
+                checked={direction === "outgoing"}
+                disabled={suppliers.length === 0}
+                onChange={() => setDirection("outgoing")}
+              />
+              Заплатили поставщику
+            </label>
+          </fieldset>
+        )}
+        {receiptSuggestions.length > 0 && (
+          <div className="party-suggestions">
+            <span className="muted">По чеку похоже, это:</span>
+            <div className="party-suggestions-list">
+              {receiptSuggestions.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`party-suggestion${selectedParty === s.id ? " active" : ""}`}
+                  onClick={() => setSelectedParty(s.id)}
+                >
+                  {s.name}
+                  {s.balance != null ? ` · ${money(s.balance, partyCurrency(s, shopCurrency))}` : ""}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Клиент или поставщик — первым полем, как в продаже и приходе. */}
+        {kind === "payment" && <div className="party-date">{partySection}</div>}
         {kind === "payment" && !prefill && (
           <div
             className={`photo-field receipt-field${receiptDragging ? " dragging" : ""}`}
@@ -1320,52 +1367,6 @@ export function OperationForm({
             )}
           </div>
         )}
-        {kind === "payment" && !fixedDirection && (
-          <fieldset className="payment-direction">
-            <legend>Кому передали деньги?</legend>
-            <label>
-              <input
-                type="radio"
-                name="direction"
-                value="incoming"
-                checked={direction === "incoming"}
-                disabled={!hasCustomers}
-                onChange={() => setDirection("incoming")}
-              />
-              Получили от клиента
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="direction"
-                value="outgoing"
-                checked={direction === "outgoing"}
-                disabled={suppliers.length === 0}
-                onChange={() => setDirection("outgoing")}
-              />
-              Заплатили поставщику
-            </label>
-          </fieldset>
-        )}
-        {receiptSuggestions.length > 0 && (
-          <div className="party-suggestions">
-            <span className="muted">По чеку похоже, это:</span>
-            <div className="party-suggestions-list">
-              {receiptSuggestions.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className={`party-suggestion${selectedParty === s.id ? " active" : ""}`}
-                  onClick={() => setSelectedParty(s.id)}
-                >
-                  {s.name}
-                  {s.balance != null ? ` · ${money(s.balance, partyCurrency(s, shopCurrency))}` : ""}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        {kind === "payment" && partySection}
         {invoiceName && (
           <div className="party-suggestions">
             <span className="muted">
@@ -1644,7 +1645,7 @@ export function OperationForm({
             </button>
           ))}
         {kind === "payment" && (
-          <div className="method-row" role="group" aria-label="Наличные или перевод">
+          <div className="method-row payment-method-row" role="group" aria-label="Наличные или перевод">
             <span>{direction === "incoming" ? "Как принесли деньги?" : "Как заплатили?"}</span>
             <span className="method-pills">
               <button
@@ -1666,18 +1667,9 @@ export function OperationForm({
             </span>
           </div>
         )}
-        {kind === "payment" && debtAfter != null && partyBalance != null && (
-          <p className="debt-preview">
-            {kind === "payment" && direction === "outgoing" ? "Мой долг" : "Долг"}{" "}
-            {debtMoney(partyBalance.toFixed(2), debtCurrency)} →{" "}
-            {debtAfter < -0.005 ? (
-              <strong>{kind === "payment" ? `переплата ${money((-debtAfter).toFixed(2), debtCurrency)}` : debtMoney(debtAfter.toFixed(2), debtCurrency)}</strong>
-            ) : (
-              <>
-                станет <strong>{money(Math.max(debtAfter, 0).toFixed(2), debtCurrency)}</strong>
-              </>
-            )}
-          </p>
+        {/* Комментарий — сразу под «Наличные / Перевод» (просьба пользователя 22.10.2026). */}
+        {kind === "payment" && (
+          <NoteField value={note} onChange={setNote} placeholder="Например: передал сын, за прошлую неделю" />
         )}
         {overLimit && (
           <p className="form-error limit-warning" role="alert">
@@ -1790,9 +1782,33 @@ export function OperationForm({
           </p>
         )}
         {kind === "payment" ? (
-          <div className="simple-operation-actions">
+          // Панель внизу, как у продажи и прихода: сумма, каким станет долг и
+          // «Подтвердить» — прилипает к низу экрана.
+          <div className="sale-bar payment-bar">
+            <div className="sale-bar-total">
+              <span className="muted">{direction === "incoming" ? "Клиент принёс" : "Оплата поставщику"}</span>
+              {enteredAmount > 0 ? (
+                <strong>{money(enteredAmount.toFixed(2), docCurrency)}</strong>
+              ) : (
+                <span className="sale-bar-hint">Введите сумму</span>
+              )}
+              {debtAfter != null && (
+                <small className="muted">
+                  {debtAfter < -0.005
+                    ? `Переплата ${money((-debtAfter).toFixed(2), debtCurrency)}`
+                    : `${direction === "outgoing" ? "Мой долг станет" : "Долг станет"} ${money(Math.max(debtAfter, 0).toFixed(2), debtCurrency)}`}
+                </small>
+              )}
+            </div>
             <Submit pending={saving} disabled={checking || checkingReceipt || switching}>
-              {checking ? "Проверяем фото…" : checkingReceipt ? "Читаем чек…" : confirmLabel}
+              {checkingReceipt ? (
+                "Читаем чек…"
+              ) : (
+                <>
+                  <span className="sale-bar-long">{confirmLabel}</span>
+                  <span className="sale-bar-short">Записать</span>
+                </>
+              )}
             </Submit>
           </div>
         ) : (
