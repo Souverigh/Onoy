@@ -9,7 +9,7 @@ import { SendInvoice } from "@/components/send-invoice";
 import { UndoForm } from "@/components/undo-form";
 import { Icon } from "@/components/icon";
 import { ensureShareToken, waPhone } from "@/lib/share";
-import { correctSale } from "@/app/(workspace)/drafts/actions";
+import { correctSale, restoreAsDraft } from "@/app/(workspace)/drafts/actions";
 import { ConfirmButton } from "@/components/confirm-button";
 import { hasActiveReturn } from "@/lib/sale-returns";
 
@@ -167,6 +167,20 @@ export default async function SendSalePage({
         {duplicate && <p className="notice">Это фото уже приложено к другой записи - проверьте, не задвоилось ли.</p>}
         {undo === "expired" && <p className="form-error">Прошло больше 2 минут - отменить может владелец с причиной.</p>}
         {sale.reversed_at && <p className="form-error">Эта продажа отменена - отправлять её клиенту не нужно.</p>}
+        {error === "restore" && (
+          <p className="form-error" role="alert">
+            Не удалось открыть продажу черновиком - возможно, какой-то товар удалён со склада. Обновите страницу и попробуйте снова.
+          </p>
+        )}
+        {/* Отменённая продажа — обратно (товарами — черновиком, по фото — формой
+            по фото); сама остаётся отменённой. */}
+        {sale.reversed_at && hasLines && !sale.is_opening && (
+          <form action={restoreAsDraft} className="simple-operation-actions">
+            <input type="hidden" name="id" value={sale.id} />
+            <input type="hidden" name="kind" value="sale" />
+            <button className="button primary">Открыть как черновик</button>
+          </form>
+        )}
       </section>
 
       {/* Слева — накладная и отправка, справа — товары продажи (если это не одна сумма). */}

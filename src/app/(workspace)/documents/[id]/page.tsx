@@ -15,10 +15,11 @@ import { STOCK_ERROR_TEXT, normalizeUnit } from "@/lib/stock";
 import { TOLERANCE } from "@/lib/adre/reconcile";
 import { firstPaymentHref } from "@/lib/duplicates";
 import { partyCurrency } from "@/lib/currency";
-import { correctPurchase, correctSale } from "@/app/(workspace)/drafts/actions";
+import { correctPurchase, correctSale, restoreAsDraft } from "@/app/(workspace)/drafts/actions";
 import { ConfirmButton } from "@/components/confirm-button";
 
 const FIX_ERROR: Record<string, string> = {
+  restore: "Не удалось открыть запись заново - она осталась как была. Обновите страницу и попробуйте снова.",
   fix: "Не удалось исправить запись - она осталась как была. Обновите страницу и попробуйте снова.",
   fix_owner: "Исправить запись через 2 минуты после записи может только владелец.",
   fix_return: "По этой продаже уже был возврат товара - сначала отмените возврат, потом исправляйте продажу.",
@@ -608,6 +609,16 @@ export default async function DocumentDetail({
                 <Link className="text-button" href="/claims">
                   Рассмотреть в «Заявках»
                 </Link>
+              )}
+              {/* Отменённая запись — обратно: копия фото и строки в новой форме;
+                  сама запись остаётся отменённой. */}
+              {record?.reversed && (
+                <form action={restoreAsDraft}>
+                  <input type="hidden" name="id" value={record.id} />
+                  <input type="hidden" name="kind" value={record.kind} />
+                  <input type="hidden" name="back" value={`/documents/${doc.id}`} />
+                  <button className="button primary">Открыть заново</button>
+                </form>
               )}
               {/* «Исправить»: запись отменяется, всё из неё (фото, строки, сумма, дата)
                   открывается в новой форме — исправить и записать заново. */}

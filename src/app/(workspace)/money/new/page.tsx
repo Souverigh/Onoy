@@ -37,6 +37,7 @@ export default async function NewOperation({
     redo?: string;
     draft?: string;
     fixed?: string;
+    restored?: string;
     fix?: string;
     day?: string;
     from?: string;
@@ -284,6 +285,13 @@ export default async function NewOperation({
           {kind === "purchase" && params.part && /^\d+(\.\d{1,2})?$/.test(params.part) && (
             <> Оплата поставщику {params.part} тоже отменена - после записи внесите её через «Я заплатил поставщику».</>
           )}
+        </p>
+      )}
+      {params.restored === "1" && (draft || existingDocument) && (
+        <p className="notice success" role="status">
+          {kind === "sale" ? "Отменённая продажа открыта снова" : "Отменённый приход открыт снова"} - те же{" "}
+          {kind === "sale" ? "клиент" : "поставщик"}, {existingDocument ? "фото, строки" : "товары"}, цены и дата. Проверьте и
+          запишите: появится новая запись, отменённая останется в истории.
         </p>
       )}
       {draftParam && !draft && (

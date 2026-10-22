@@ -6,11 +6,13 @@ import { memberLabels } from "@/lib/members";
 import { waPhone } from "@/lib/share";
 import { SendInvoice } from "@/components/send-invoice";
 import { ConfirmButton } from "@/components/confirm-button";
-import { correctPurchase } from "@/app/(workspace)/drafts/actions";
+import { correctPurchase, restoreAsDraft } from "@/app/(workspace)/drafts/actions";
 
 const FIX_ERROR: Record<string, string> = {
   fix: "Не удалось исправить приход - он остался как был. Обновите страницу и попробуйте снова.",
   fix_owner: "Исправить приход через 2 минуты после записи может только владелец.",
+  restore:
+    "Не удалось открыть приход черновиком - возможно, какой-то товар удалён со склада. Обновите страницу и попробуйте снова.",
 };
 
 type Item = { id: string; name_snapshot: string; qty: string; price: string; line_total: string; unit: string | null; product_id: string };
@@ -89,6 +91,7 @@ export default async function PurchasePage({
     items.length > 0 &&
     (isOwner || (record.created_by === user.id && Date.now() - Date.parse(record.created_at) < 2 * 60 * 1000));
   const hasInvoice = !record.is_opening && !record.reversed_at && items.length > 0;
+  const canRestore = Boolean(record.reversed_at) && !record.is_opening && items.length > 0;
   const pdfUrl = `/purchases/${record.id}/pdf`;
   const shortDate = new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Asia/Bishkek" }).format(
     new Date(record.occurred_at),
@@ -131,6 +134,14 @@ export default async function PurchasePage({
             <Link className="button" href={`/money/reverse/purchase/${record.id}`}>
               Отменить
             </Link>
+          )}
+          {/* Отменённый приход — обратно черновиком; сам он остаётся отменённым. */}
+          {canRestore && (
+            <form action={restoreAsDraft}>
+              <input type="hidden" name="id" value={record.id} />
+              <input type="hidden" name="kind" value="purchase" />
+              <button className="button primary">Открыть как черновик</button>
+            </form>
           )}
         </div>
       </div>

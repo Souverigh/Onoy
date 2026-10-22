@@ -18,13 +18,15 @@ export function correctionHref(
   documentId: string,
   /** Приход: «Сразу оплатили поставщику», отменённая вместе с ним. */
   paid?: string | number | null,
+  /** Отменённая раньше запись открыта снова («Открыть заново»), а не исправляется. */
+  restored = false,
 ) {
   const params = new URLSearchParams({
     type: kind,
     party: old.party_id,
     amount: String(Number(old.original_amount ?? old.total)),
     documentId,
-    redo: "1",
+    ...(restored ? { restored: "1" } : { redo: "1" }),
     fix: "1",
     from: old.id,
   });

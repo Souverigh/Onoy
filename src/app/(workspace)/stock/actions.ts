@@ -338,8 +338,8 @@ export async function receivePurchase(form: FormData) {
 
 /**
  * Приход товарами без фото: поставщик, строки «товар — количество — цена
- * закупки» в валюте поставщика. Долг поставщику на сумму строк, остаток и
- * закупочная цена (в той же валюте) — сразу.
+ * закупки» в выбранной валюте. Долг поставщику на сумму строк (в другой
+ * валюте — по курсу), остаток и закупочная цена (в валюте строк) — сразу.
  * Успех — экран результата прихода; ошибка возвращается в форму.
  */
 export async function commitPurchaseItems(previous: SaleItemsState, form: FormData): Promise<SaleItemsState> {
@@ -368,19 +368,27 @@ export async function commitPurchaseItems(previous: SaleItemsState, form: FormDa
     }
     const occurredAt = recordDateTime(text(form, "record_date"), bishkekDate());
     if (occurredAt === "invalid") return { error: "date", attempt };
+    // Валюта цен выбрана в форме (по умолчанию — поставщика); не валюта
+    // поставщика — долг по курсу (миграция purchase_items_line_currency.sql).
+    const lineCurrency = text(form, "line_currency");
+    if (!isCurrency(lineCurrency)) return { error: "save", attempt };
+    const rawRate = text(form, "fx_rate");
+    const rate = rawRate ? rateInput(rawRate) : null;
+    if (rawRate && !rate) return { error: "rate", attempt };
     const { db, organizationId } = await getContext();
-    // Цены строк — в валюте поставщика, курс не нужен (миграция
-    // purchase_items_party_currency.sql).
     const result = await db.rpc("commit_purchase_items", {
       p_org: organizationId,
       p_supplier: supplier,
       p_lines: clean,
       p_idempotency_key: key,
+      p_fx_rate: rate,
+      p_line_currency: lineCurrency,
       ...(occurredAt ? { p_occurred_at: occurredAt } : {}),
     });
     if (result.error || !result.data) {
       console.error("commitPurchaseItems: RPC failed", { message: result.error?.message, lines: clean.length });
-      return { error: failureCode(result.error?.message), attempt };
+      const code = failureCode(result.error?.message);
+      return { error: code === "invalid_currency" ? "rate" : code, attempt };
     }
     purchaseId = result.data as string;
     await saveRecordNote(db, organizationId, "purchase", purchaseId, noteInput(form.get("note")));

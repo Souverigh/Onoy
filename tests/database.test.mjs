@@ -2497,6 +2497,29 @@ test("auto stock: a checked purchase invoice goes to stock by itself; purchase l
     Object.values((await db.query("select purchase_price,purchase_currency from products where id=$1", [socket])).rows[0]),
     ["110.00", null],
   );
+  // Валюта цен выбрана в форме: у поставщика в сомах цены в $ — долг по курсу,
+  // закупка товара — в $; без курса — отказ.
+  const withCurrency =
+    "select commit_purchase_items(p_org=>$1,p_supplier=>$2,p_lines=>$3,p_idempotency_key=>$4,p_fx_rate=>$5,p_line_currency=>$6) as id";
+  const usdLines = JSON.stringify([{ product: socket, qty: "4", price: "1.25" }]);
+  await assert.rejects(db.query(withCurrency, [orgA, supplier, usdLines, k(14), null, "USD"]), /invalid_currency/);
+  await assert.rejects(db.query(withCurrency, [orgA, supplier, usdLines, k(14), null, "EUR"]), /invalid_currency/);
+  const inUsd = (await db.query(withCurrency, [orgA, supplier, usdLines, k(14), "87.8", "USD"])).rows[0].id;
+  assert.deepEqual(
+    (await db.query("select total,original_amount,original_currency,fx_rate::numeric::float as fx from purchases where id=$1", [inUsd])).rows.map(Object.values)[0],
+    ["439.00", "5.00", "USD", 87.8],
+  );
+  assert.deepEqual(
+    Object.values((await db.query("select purchase_price,purchase_currency from products where id=$1", [socket])).rows[0]),
+    ["1.25", "USD"],
+  );
+  assert.equal((await db.query(withCurrency, [orgA, supplier, usdLines, k(14), "87.8", "USD"])).rows[0].id, inUsd);
+  // Валюта цен = валюта поставщика — курс не нужен, долг на сумму строк.
+  const sameCurrency = (await db.query(withCurrency, [orgA, usd, usdLines, k(15), null, "USD"])).rows[0].id;
+  assert.deepEqual(
+    Object.values((await db.query("select total,original_amount,original_currency from purchases where id=$1", [sameCurrency])).rows[0]),
+    ["5.00", null, null],
+  );
 
   await user(b);
   await assert.rejects(db.query("select commit_purchase_items($1,$2,$3,$4)", [orgA, supplier, lines, k(8)]), /not_a_member/);
@@ -3111,6 +3134,23 @@ test("correct_sale: photo copied with all pages and the sale reversed in one ste
   await owner();
   assert.equal((await db.query("select count(*)::int as n from documents where file_hash='fix-1'")).rows[0].n, 2);
 
+  // Отменённую продажу по фото — обратно: новая копия фото со всеми страницами,
+  // продажа остаётся отменённой, долг не меняется. Чужой магазин — отказ.
+  await user(b);
+  await assert.rejects(db.query("select restore_reversed_document($1,'sale',$2)", [orgA, sale]), /not_a_member/);
+  await user(a);
+  await assert.rejects(db.query("select restore_reversed_document($1,'purchase',$2)", [orgA, sale]), /invalid_record/);
+  const restored = (await db.query("select restore_reversed_document($1,'sale',$2) as id", [orgA, sale])).rows[0].id;
+  await owner();
+  assert.deepEqual((await db.query("select kind,status,file_hash from documents where id=$1", [restored])).rows[0], {
+    kind: "sale",
+    status: "uploaded",
+    file_hash: "fix-1",
+  });
+  assert.equal((await db.query("select count(*)::int as n from document_pages where document_id=$1", [restored])).rows[0].n, 2);
+  assert.equal((await db.query("select reversed_at is not null as r from sales where id=$1", [sale])).rows[0].r, true);
+  assert.equal(await balance(buyer), "0.00");
+
   // С возвратом товара — отказ: продажа остаётся, копии нет.
   const breaker = (
     await db.query("select id from products where organization_id=$1 and name='Автомат 16А возврат'", [orgA])
@@ -3122,6 +3162,8 @@ test("correct_sale: photo copied with all pages and the sale reversed in one ste
   const item = (await db.query("select id from sale_items where sale_id=$1", [sale2])).rows[0].id;
   await db.query("select commit_return($1,$2,$3,'Вернул 1',$4)", [orgA, buyer, JSON.stringify([{ sale_item: item, qty: "1" }]), k(3)]);
   await assert.rejects(db.query("select correct_sale($1,$2)", [orgA, sale2]), /has_returns/);
+  // Не отменённая — обратно нечего.
+  await assert.rejects(db.query("select restore_reversed_document($1,'sale',$2)", [orgA, sale2]), /invalid_record/);
   assert.equal((await db.query("select reversed_at from sales where id=$1", [sale2])).rows[0].reversed_at, null);
   // Без фото — отмена без копии.
   const sale3 = (

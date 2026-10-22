@@ -21,7 +21,7 @@ import { NoteField } from "./note-field";
 import { money, quantity } from "@/lib/format";
 import { searchProducts } from "@/lib/match";
 import { PRODUCT_UNITS, STOCK_ERROR_TEXT, stockNumber } from "@/lib/stock";
-import { CURRENCY_SIGN, convertAmount, formatRate, isCurrency, partyCurrency, ratePair, rateInput, type Currency } from "@/lib/currency";
+import { CURRENCIES, CURRENCY_SIGN, convertAmount, formatRate, isCurrency, partyCurrency, ratePair, rateInput, type Currency } from "@/lib/currency";
 import { creditLimitExceeded } from "@/lib/credit-limit";
 import type { RateQuotes } from "./operation-form";
 
@@ -142,25 +142,35 @@ export function SaleItemsForm({
 
   const customer = allCustomers.find((c) => c.id === party);
   const debtCurrency = partyCurrency(customer, shopCurrency);
-  const foreign = debtCurrency !== shopCurrency;
-  // Приход — цены в валюте поставщика (у долларового — в $), долг без
-  // курса. Продажа — цены в валюте магазина, долг клиента в другой валюте —
-  // по курсу.
-  const lineCurrency = purchase ? debtCurrency : shopCurrency;
-  const needsRate = foreign && !purchase;
+  // Приход — валюта цен на выбор (просьба пользователя 21.10.2026): накладная
+  // поставщика бывает в $. По умолчанию — валюта поставщика (у обычного —
+  // магазина); выбрали другого поставщика — валюта ставится его. Продажа —
+  // цены в валюте магазина. Долг в другой валюте, чем цены, — по курсу.
+  const [purchaseCurrency, setPurchaseCurrency] = useState<Currency>(() =>
+    purchase && isCurrency(draft?.data.currency) ? draft.data.currency : debtCurrency,
+  );
+  const shownParty = useRef(debtCurrency);
+  useEffect(() => {
+    if (shownParty.current === debtCurrency) return;
+    shownParty.current = debtCurrency;
+    setPurchaseCurrency(debtCurrency);
+  }, [debtCurrency]);
+  const lineCurrency = purchase ? purchaseCurrency : shopCurrency;
+  const needsRate = debtCurrency !== lineCurrency;
   const priceFits = (p: QuickProduct) => priceCurrencyOf(p) === lineCurrency;
-  const [strong, weak] = ratePair(shopCurrency, debtCurrency);
+  const [strong, weak] = ratePair(lineCurrency, debtCurrency);
   const quote = needsRate ? rates[`${strong}/${weak}`] : undefined;
   const rate = needsRate ? rateInput(rateValue || (quote ? String(quote.rate) : "")) : null;
   const total = Math.round(lines.reduce((s, l) => s + lineSum(l.qty, l.price), 0) * 100) / 100;
-  const debt = needsRate ? (rate ? convertAmount(total, shopCurrency, debtCurrency, Number(rate)) : 0) : total;
+  const debt = needsRate ? (rate ? convertAmount(total, lineCurrency, debtCurrency, Number(rate)) : 0) : total;
 
-  // Сменили поставщика на другую валюту — цены строк были в старой: ставим
-  // прошлую закупку в новой валюте или пусто.
+  // Сменили валюту цен — цены строк были в старой: ставим прошлую закупку в
+  // новой валюте или пусто; введённый курс был для другой пары.
   const shownCurrency = useRef(lineCurrency);
   useEffect(() => {
     if (shownCurrency.current === lineCurrency) return;
     shownCurrency.current = lineCurrency;
+    setRateValue("");
     setLines((all) =>
       all.map((l) => ({
         ...l,
@@ -392,6 +402,7 @@ export function SaleItemsForm({
     <form onSubmit={submit} className="simple-operation-form sale-items-form sale-sheet-form">
       <input type="hidden" name="idempotency_key" value={idempotencyKeyPinned} />
       {recordDate && <input type="hidden" name="record_date" value={recordDate} />}
+      {purchase && <input type="hidden" name="line_currency" value={lineCurrency} />}
       <div className="sale-sheet-top">
       <PartyPicker
         label={purchase ? "Поставщик" : "Клиент"}
@@ -487,6 +498,24 @@ export function SaleItemsForm({
           if (localError === "date") setLocalError(null);
         }}
       />
+      {purchase && (
+        <div className="currency-field">
+          <span className="currency-field-label">Валюта цен</span>
+          <span className="method-pills" role="group" aria-label="Валюта цен закупки">
+            {CURRENCIES.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={c === lineCurrency ? "active" : ""}
+                aria-pressed={c === lineCurrency}
+                onClick={() => setPurchaseCurrency(c)}
+              >
+                {CURRENCY_SIGN[c]}
+              </button>
+            ))}
+          </span>
+        </div>
+      )}
       </div>
 
       {/* Накладная таблицей, как в 1С (просьба пользователя 17.10.2026): последняя
@@ -723,11 +752,6 @@ export function SaleItemsForm({
 
       <div className="sale-sheet-footer">
       <div className="sale-sheet-options">
-      {purchase && foreign && (
-        <p className="muted">
-          Цены - в {CURRENCY_SIGN[debtCurrency]}, как у поставщика: долг ему ведётся в {CURRENCY_SIGN[debtCurrency]}, без курса.
-        </p>
-      )}
       {needsRate && (
         <div className="fx-field">
           <label>

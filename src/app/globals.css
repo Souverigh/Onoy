@@ -7550,11 +7550,26 @@ tr.row-link:has(a[data-pending]) {
 .sale-sheet-top > .date-picker-field {
   margin-bottom: 18px;
 }
+/* Приход: валюта цен закупки (21.10.2026) — рядом с датой. */
+.currency-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+.currency-field-label {
+  font-size: 14px;
+  color: var(--muted);
+}
+.currency-field .method-pills button {
+  min-height: 42px;
+}
 @media (min-width: 900px) {
   /* Клиент и дата — в одну строку. */
   .sale-sheet-top {
     display: grid;
-    grid-template-columns: minmax(0, 480px) 260px;
+    grid-template-columns: minmax(0, 480px) 260px auto;
     column-gap: 24px;
     max-width: none;
     align-items: start;
@@ -7564,6 +7579,10 @@ tr.row-link:has(a[data-pending]) {
   }
   .sale-sheet-top > .date-picker-field {
     grid-column: 2;
+    grid-row: 1;
+  }
+  .sale-sheet-top > .currency-field {
+    grid-column: 3;
     grid-row: 1;
   }
 }
@@ -7973,7 +7992,8 @@ tr.row-link:has(a[data-pending]) {
 
 /* Клиент и дата наверху формы — подписи и поля на одной линии. */
 .sale-sheet-top .party-picker-label,
-.sale-sheet-top .date-picker-label {
+.sale-sheet-top .date-picker-label,
+.sale-sheet-top .currency-field-label {
   margin: 0;
   font-size: 15px;
   font-weight: 500;
