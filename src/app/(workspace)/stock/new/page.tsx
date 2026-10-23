@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getContext } from "@/lib/context";
 import { ProductForm } from "@/components/product-form";
 import { STOCK_ERROR_TEXT } from "@/lib/stock";
+import { loadCategories } from "@/lib/category-data";
 
 export default async function NewProductPage({
   searchParams,
@@ -11,6 +12,7 @@ export default async function NewProductPage({
   const { error, added } = await searchParams;
   const { db, organizationId, currency } = await getContext();
   // «Добавить и ещё один»: показываем, что прошлый сохранился.
+  const { categories, hints } = await loadCategories(db, organizationId);
   const last =
     added && /^[a-f0-9-]{36}$/i.test(added)
       ? (await db.from("products").select("id,name").eq("organization_id", organizationId).eq("id", added).maybeSingle()).data
@@ -38,7 +40,7 @@ export default async function NewProductPage({
       )}
       <section className="panel">
         {/* key — форма пустая после «Добавить и ещё один». */}
-        <ProductForm key={added ?? "new"} currency={currency} />
+        <ProductForm key={added ?? "new"} currency={currency} categories={categories} hints={hints} />
       </section>
     </>
   );

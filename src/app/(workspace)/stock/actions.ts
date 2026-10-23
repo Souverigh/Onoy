@@ -97,6 +97,31 @@ export async function saveProduct(form: FormData) {
     console.error("saveProduct failed", { message: result.error?.message });
     back(failureCode(result.error?.message));
   }
+  // Категория — отдельным шагом: товар уже сохранён, ошибка категории его не теряет.
+  if (form.get("category_field") === "1") {
+    const saved = String(result.data);
+    const again = (error: string) => redirect(`/stock/${saved}?error=${error}`);
+    let category: string | null = text(form, "category_id") || null;
+    if (category === "__new") {
+      const parent = text(form, "new_category_parent");
+      const created = await db.rpc("save_product_category", {
+        p_org: organizationId,
+        p_id: null,
+        p_name: text(form, "new_category").slice(0, 60),
+        p_parent: uuidPattern.test(parent) ? parent : null,
+      });
+      if (created.error) again(created.error.message.includes("category_taken") ? "category_taken" : "invalid_category");
+      category = String(created.data);
+    }
+    if (category !== null && !uuidPattern.test(category)) again("invalid_category");
+    if (category !== null || id) {
+      const set = await db.rpc("set_products_category", { p_org: organizationId, p_products: [saved], p_category: category });
+      if (set.error) {
+        console.error("saveProduct category failed", { message: set.error.message });
+        again("invalid_category");
+      }
+    }
+  }
   // Цена, название, архив — в каталоге клиентов тоже.
   await refreshCatalog(db, organizationId);
   revalidatePath("/", "layout");
@@ -204,9 +229,18 @@ export type ImportPayload = {
   purchase_price: string | null;
   purchase_currency: Currency | null;
   stock: string | null;
+  category?: string | null;
+  subcategory?: string | null;
 };
 export type ImportResult =
-  | { created: number; updated: number; errors: { row: number; error: string }[] }
+  | {
+      created: number;
+      updated: number;
+      errors: { row: number; error: string }[];
+      /** У скольких товаров категория из файла; categoryError — товары есть, категории не встали. */
+      categorized?: number;
+      categoryError?: boolean;
+    }
   | { error: string };
 
 /** Прайс частями по 500 строк — номера строк в ошибках сквозные. */
@@ -237,9 +271,27 @@ export async function importProducts(rows: ImportPayload[]): Promise<ImportResul
       updated += data.updated;
       errors.push(...data.errors.map((e) => ({ row: e.row + start, error: e.error })));
     }
+    // Категории — после товаров: товар ищется по коду или названию, как при импорте.
+    let categorized = 0;
+    let categoryError = false;
+    const withCategory = rows
+      .filter((r) => r.category && String(r.category).trim())
+      .map((r) => ({
+        sku: r.sku ? String(r.sku).slice(0, 80) : null,
+        name: String(r.name ?? "").slice(0, 160),
+        category: String(r.category).slice(0, 60),
+        subcategory: r.subcategory ? String(r.subcategory).slice(0, 60) : null,
+      }));
+    for (let start = 0; start < withCategory.length && !categoryError; start += 500) {
+      const result = await db.rpc("set_import_categories", { p_org: organizationId, p_rows: withCategory.slice(start, start + 500) });
+      if (result.error) {
+        console.error("importProducts categories failed", { message: result.error.message, start });
+        categoryError = true;
+      } else categorized += Number(result.data) || 0;
+    }
     await refreshCatalog(db, organizationId);
     revalidatePath("/", "layout");
-    return { created, updated, errors };
+    return { created, updated, errors, categorized, categoryError };
   } catch (error) {
     unstable_rethrow(error);
     console.error("importProducts: unexpected failure", error);

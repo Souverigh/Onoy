@@ -18,7 +18,17 @@ import {
   type ImportRow,
 } from "@/lib/stock";
 
-const FIELDS: ImportField[] = ["name", "sku", "unit", "sale_price", "purchase_price", "purchase_currency", "stock"];
+const FIELDS: ImportField[] = [
+  "name",
+  "sku",
+  "unit",
+  "sale_price",
+  "purchase_price",
+  "purchase_currency",
+  "stock",
+  "category",
+  "subcategory",
+];
 const MAX_ROWS = 2000;
 
 /** Буква колонки как в Excel: 0 → A, 26 → AA. */
@@ -98,6 +108,8 @@ export function StockImport({ shopCurrency }: { shopCurrency: Currency }) {
             purchase_price: r.purchase_price,
             purchase_currency: r.purchase_currency,
             stock: r.stock,
+            category: r.category,
+            subcategory: r.subcategory,
           })),
         ),
       );
@@ -114,7 +126,13 @@ export function StockImport({ shopCurrency }: { shopCurrency: Currency }) {
       <div className="stock-import-result">
         <p className="notice success" role="status">
           Готово: новых товаров - {result.created}, обновлено - {result.updated}.
+          {result.categorized ? ` Категория поставлена у ${result.categorized}.` : ""}
         </p>
+        {result.categoryError && (
+          <p className="form-error" role="alert">
+            Товары загружены, но категории поставить не удалось. Загрузите файл ещё раз - товары не задвоятся.
+          </p>
+        )}
         {result.errors.length > 0 && (
           <div className="photo-check-mismatch" role="status">
             Не загрузили строк: {result.errors.length}.
@@ -310,7 +328,8 @@ export function StockImport({ shopCurrency }: { shopCurrency: Currency }) {
             </button>
           </div>
           <p className="operation-hint">
-            Товар с тем же кодом или названием обновится (цена, единица), остаток станет как в файле. Новые - добавятся.
+            Товар с тем же кодом или названием обновится (цена, единица, категория), остаток станет как в файле. Новые -
+            добавятся. Категории из файла, которых ещё нет, создадутся.
             Повторная загрузка того же файла ничего не задвоит.
           </p>
         </>

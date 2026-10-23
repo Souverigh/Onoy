@@ -71,7 +71,13 @@ export default async function CatalogPage({ params }: { params: Promise<{ token:
         shopName={catalog.shop_name}
         shopPhone={phone}
         currency={catalog.currency}
-        products={catalog.products.map((p) => ({ ...p, photo: productPhotoUrl(p.photo), thumb: productThumbUrl(p.photo) }))}
+        products={catalog.products.map((p) => ({
+          ...p,
+          photo: productPhotoUrl(p.photo),
+          thumb: productThumbUrl(p.photo),
+          category: p.category ?? null,
+        }))}
+        categories={(catalog.categories ?? []).map((c) => ({ id: c.id, name: c.name, parent_id: c.parent }))}
       />
     </main>
   );

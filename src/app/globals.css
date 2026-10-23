@@ -10037,23 +10037,6 @@ form label.catalog-products-filter {
   margin: 0;
 }
 
-/* Фото товара: «Сфотографировать» — только на телефоне/планшете (там есть
-   камера); на компьютере — одна кнопка «Выбрать фото». */
-.product-photo-gallery-desktop {
-  display: none;
-}
-@media (hover: hover) and (pointer: fine) {
-  .product-photo-camera {
-    display: none;
-  }
-  .product-photo-gallery-touch {
-    display: none;
-  }
-  .product-photo-gallery-desktop {
-    display: inline;
-  }
-}
-
 /* Склад на телефоне: «Каталог для клиентов» строкой под заголовком (кнопки
    шапки там скрыты); на компьютере каталог — кнопкой в шапке. */
 .stock-catalog-mobile {
@@ -10091,13 +10074,12 @@ form label.catalog-products-filter {
   }
 }
 
-/* «+ Фото» прямо в списке каталога: на компьютере — выбор файла, на
-   телефоне — под товаром «Камера / Галерея». */
+/* «+ Фото» прямо в списке каталога: выбор файла (на телефоне — камера или
+   галерея, решает система). */
 .catalog-products-list li {
   flex-wrap: wrap;
 }
-form label.catalog-products-edit,
-button.catalog-products-edit {
+form label.catalog-products-edit {
   display: inline-flex;
   flex-direction: row;
   align-items: center;
@@ -10115,47 +10097,18 @@ button.catalog-products-edit {
   color: var(--muted);
   font-weight: 400;
 }
-/* Одна кнопка на устройство: компьютер — выбор файла (label), телефон —
-   «Камера / Галерея» (button). Селекторы сильнее, чем общий
-   button.catalog-products-edit, иначе видны обе. Кнопка — справа, не на всю
-   ширину строки (как label с галочкой). */
+/* Кнопка — справа, не на всю ширину строки (как label с галочкой). */
 .catalog-products-list li > label.catalog-products-edit {
   flex: none;
   margin-left: auto;
 }
-.catalog-products-list button.catalog-photo-touch {
-  display: none;
-}
 @media (hover: none), (pointer: coarse) {
-  .catalog-products-list li > label.catalog-photo-desktop {
-    display: none;
-  }
-  .catalog-products-list button.catalog-photo-touch {
-    display: inline-flex;
+  .catalog-products-list li > label.catalog-products-edit {
     min-height: 32px;
   }
 }
 form label.catalog-products-filter {
   white-space: nowrap;
-}
-.catalog-photo-menu {
-  flex-basis: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 0 10px;
-}
-form .catalog-photo-menu label.button {
-  display: inline-flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  width: auto;
-  min-height: 38px;
-  margin: 0;
-  padding: 0 14px;
-  font-size: 14px;
-  cursor: pointer;
 }
 .catalog-photo-error {
   flex-basis: 100%;
@@ -10361,4 +10314,210 @@ form .catalog-photo-menu label.button {
   .catalog-products-list li {
     gap: 8px;
   }
+}
+
+/* ===== Категории товаров (23.10.2026) ===== */
+/* Подсказка-пилюля: «+ Светильники» — нажали, категория поставлена. */
+.category-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  margin: 0;
+  padding: 2px 10px;
+  border: 1px dashed var(--green-border);
+  border-radius: 999px;
+  background: var(--green-wash);
+  color: var(--green);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.category-chip:hover {
+  background: var(--green-tint);
+}
+.category-chip:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.stock-category-hint {
+  grid-column: 1 / -1;
+}
+/* Склад: «Разложить товары по категориям» — плашкой на любом экране. */
+.stock-catalog-mobile.stock-categories-offer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--green-border);
+  border-radius: var(--radius-lg);
+  background: var(--green-wash);
+  color: var(--ink);
+  text-decoration: none;
+}
+.stock-categories-offer > span:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stock-categories-offer strong,
+.stock-categories-offer > span:last-child {
+  color: var(--green);
+}
+
+/* Помощник на странице категорий. */
+.category-helper {
+  display: grid;
+  gap: 24px;
+}
+.category-helper section {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+.category-helper section > .section-title,
+.category-helper section > ul {
+  justify-self: stretch;
+}
+.category-groups,
+.category-suggestions,
+.category-tree,
+.category-tree-children {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.category-groups li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.category-groups input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  margin: 14px 0 0;
+}
+.category-group-text {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+}
+.category-group-text input {
+  max-width: 360px;
+}
+.category-group-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.category-suggestions li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Дерево категорий: строка — название и число товаров, «Изменить» раскрывается. */
+.category-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.category-inline-form input {
+  flex: 1 1 220px;
+  max-width: 420px;
+}
+.category-inline-form button {
+  width: auto;
+}
+.category-tree > li {
+  border-bottom: 1px solid var(--line);
+}
+.category-tree summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  cursor: pointer;
+}
+.category-tree-children {
+  margin: 0 0 8px 20px;
+  border-left: 2px solid var(--line);
+  padding-left: 12px;
+}
+.category-tree-children summary {
+  min-height: 40px;
+}
+.category-edit {
+  padding: 4px 0 12px;
+}
+.category-edit-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+}
+
+/* Форма товара: подсказка категории под выбором. */
+.category-field {
+  display: grid;
+  gap: 8px;
+}
+.category-field-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+}
+
+/* Каталог клиента: категории кнопками, на телефоне прокручиваются вбок. */
+.category-chips {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.category-chips::-webkit-scrollbar {
+  display: none;
+}
+.category-chips button {
+  flex: none;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--button-border);
+  border-radius: 999px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.category-chips button.active {
+  border-color: var(--green);
+  background: var(--green);
+  color: white;
+}
+.category-chips-sub button {
+  min-height: 32px;
+  font-size: 13px;
+}
+.category-chips-sub button.active {
+  background: var(--green-wash);
+  color: var(--green);
 }

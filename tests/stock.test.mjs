@@ -48,11 +48,32 @@ test("detectColumns + importRows: header found below a title, purchase price not
   assert.equal(rows.length, 3);
   assert.deepEqual(rows[0], {
     line: 4, name: "Кабель ВВГнг 3х2,5", sku: "A-1", unit: "м",
-    sale_price: "85.5", purchase_price: "60", purchase_currency: "KGS", stock: "100", warnings: [],
+    sale_price: "85.5", purchase_price: "60", purchase_currency: "KGS", stock: "100",
+    category: null, subcategory: null, warnings: [],
   });
   assert.deepEqual([rows[1].unit, rows[1].sale_price, rows[1].stock, rows[1].sku], ["мешок", "1200", null, null]);
   assert.deepEqual(rows[2].warnings, ["Единица «ящик» - не знаем, будет «шт»", "Цена продажи: «abc» - не число"]);
   assert.equal(detectColumns([["1", "2"], ["3", "4"]]), null);
+});
+
+test("importRows: category and subcategory columns, or «Освещение / Светильники» in one cell", () => {
+  const table = [
+    ["Наименование", "Группа товаров", "Подгруппа"],
+    ["Светильник CARLA-18", "Освещение", "Светильники"],
+    ["Лампа E27", "Освещение / Лампы", ""],
+    ["Цемент", "", "Без верхней"],
+  ];
+  const found = detectColumns(table);
+  assert.deepEqual(found.columns, { name: 0, category: 1, subcategory: 2 });
+  const rows = importRows(table, found.header, found.columns);
+  assert.deepEqual(
+    rows.map((r) => [r.category, r.subcategory]),
+    [
+      ["Освещение", "Светильники"],
+      ["Освещение", "Лампы"],
+      [null, null],
+    ],
+  );
 });
 
 test("importRows: purchase currency from its column, from the price cell, else the file default", () => {

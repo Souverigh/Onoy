@@ -17,7 +17,9 @@ export type CatalogData = {
   shop_name: string;
   shop_phone: string;
   currency: string;
-  products: { id: string; name: string; unit: string; price: string; photo?: string | null }[];
+  products: { id: string; name: string; unit: string; price: string; photo?: string | null; category?: string | null }[];
+  /** Категории с видимыми товарами (миграция 20261023100000); parent — у подкатегории. */
+  categories?: { id: string; name: string; parent: string | null }[];
 };
 
 /** Каталог по ссылке: из кеша, а в базу — только если кеш пуст или сброшен. */

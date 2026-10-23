@@ -2,6 +2,14 @@ import { shrinkImage } from "./shrink-image";
 import { PRODUCT_PHOTO_MAX_BYTES, PRODUCT_PHOTO_SIDE, PRODUCT_PHOTO_TYPES, PRODUCT_THUMB_SIDE } from "./product-photo";
 import { setProductPhoto, type ProductPhotoResult } from "@/app/(workspace)/stock/photo-actions";
 
+/**
+ * accept для выбора фото товара. Только «image/*» на Android открывает Photo
+ * Picker — там нет камеры. Лишний несуществующий тип заставляет Chrome
+ * показать системный выбор: камера, галерея, файлы. На iPhone и компьютере
+ * ничего не меняет (файлов такого типа нет).
+ */
+export const PRODUCT_PHOTO_ACCEPT = "image/*,android/force-camera-workaround";
+
 /** Тексты ошибок загрузки фото товара — одни и те же в карточке и в списке каталога. */
 export const PRODUCT_PHOTO_ERROR = {
   type: "Этот формат фото не подходит. Сфотографируйте заново или выберите JPG / PNG.",

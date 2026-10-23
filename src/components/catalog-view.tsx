@@ -4,9 +4,22 @@ import { useEffect, useMemo, useState } from "react";
 import { searchProducts } from "@/lib/match";
 import { money } from "@/lib/format";
 import { normalizePhone } from "@/lib/contacts";
+import { categoryTree, categoryWithChildren, type Category } from "@/lib/category";
 
 /** photo — адрес фото товара, thumb — его миниатюры (публичное хранилище) или null. */
-export type CatalogItem = { id: string; name: string; unit: string; price: string; photo: string | null; thumb: string | null };
+export type CatalogItem = {
+  id: string;
+  name: string;
+  unit: string;
+  price: string;
+  photo: string | null;
+  thumb: string | null;
+  /** Категория товара; null — без категории («Другое»). */
+  category: string | null;
+};
+
+/** Отбор «Другое» — товары без категории. */
+const OTHER = "other";
 
 /** Сколько товаров показывать сразу; дальше — «Показать ещё» (телефону тяжело рисовать тысячи строк). */
 const PAGE = 60;
@@ -33,14 +46,19 @@ export function CatalogView({
   shopPhone,
   currency,
   products,
+  categories,
 }: {
   token: string;
   shopName: string;
   shopPhone: string;
   currency: string;
   products: CatalogItem[];
+  categories: Category[];
 }) {
   const [query, setQuery] = useState("");
+  // Категория и подкатегория (просьба пользователя 23.10.2026); null — все товары.
+  const [top, setTop] = useState<string | null>(null);
+  const [sub, setSub] = useState<string | null>(null);
   const [shown, setShown] = useState(PAGE);
   // Мой список: id товара → количество (как ввели, «2,5»).
   const [list, setList] = useState<Record<string, string>>({});
@@ -80,7 +98,21 @@ export function CatalogView({
   }, [storageKey, list, loaded]);
 
   const trimmed = query.trim();
-  const found = useMemo(() => (trimmed ? searchProducts(trimmed, products, 200) : products), [trimmed, products]);
+  const tree = useMemo(() => categoryTree(categories), [categories]);
+  const hasOther = tree.length > 0 && products.some((p) => !p.category);
+  const inCategory = useMemo(() => {
+    if (!top) return products;
+    if (top === OTHER) return products.filter((p) => !p.category);
+    const ids = new Set(sub ? [sub] : categoryWithChildren(categories, top));
+    return products.filter((p) => p.category && ids.has(p.category));
+  }, [top, sub, products, categories]);
+  const found = useMemo(() => (trimmed ? searchProducts(trimmed, inCategory, 200) : inCategory), [trimmed, inCategory]);
+  const children = top && top !== OTHER ? (tree.find((t) => t.category.id === top)?.children ?? []) : [];
+  const pickTop = (id: string | null) => {
+    setTop(id);
+    setSub(null);
+    setShown(PAGE);
+  };
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
   const picked = Object.entries(list)
     .map(([id, qty]) => ({ product: byId.get(id), qty: qtyNumber(qty) }))
@@ -187,11 +219,65 @@ export function CatalogView({
         />
       </div>
 
+      {tree.length > 0 && (
+        <nav className="category-chips" aria-label="Категории">
+          <button type="button" aria-pressed={!top} className={!top ? "active" : undefined} onClick={() => pickTop(null)}>
+            Все
+          </button>
+          {tree.map(({ category }) => (
+            <button
+              key={category.id}
+              type="button"
+              aria-pressed={top === category.id}
+              className={top === category.id ? "active" : undefined}
+              onClick={() => pickTop(category.id)}
+            >
+              {category.name}
+            </button>
+          ))}
+          {hasOther && (
+            <button type="button" aria-pressed={top === OTHER} className={top === OTHER ? "active" : undefined} onClick={() => pickTop(OTHER)}>
+              Другое
+            </button>
+          )}
+        </nav>
+      )}
+      {children.length > 0 && (
+        <nav className="category-chips category-chips-sub" aria-label="Подкатегории">
+          <button type="button" aria-pressed={!sub} className={!sub ? "active" : undefined} onClick={() => setSub(null)}>
+            Все в разделе
+          </button>
+          {children.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              aria-pressed={sub === c.id}
+              className={sub === c.id ? "active" : undefined}
+              onClick={() => {
+                setSub(c.id);
+                setShown(PAGE);
+              }}
+            >
+              {c.name}
+            </button>
+          ))}
+        </nav>
+      )}
+
       {found.length === 0 ? (
         <section className="catalog-empty">
           <p>
-            {trimmed ? `По запросу «${trimmed}» ничего не нашли.` : "В каталоге пока нет товаров."}
+            {trimmed
+              ? `По запросу «${trimmed}» ничего не нашли${top ? " в этой категории" : ""}.`
+              : top
+                ? "В этой категории пока нет товаров."
+                : "В каталоге пока нет товаров."}
           </p>
+          {top && (
+            <button type="button" className="button" onClick={() => pickTop(null)}>
+              Искать во всех товарах
+            </button>
+          )}
           {shopPhone && (
             <a
               className="button"

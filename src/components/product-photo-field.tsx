@@ -1,12 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { PRODUCT_PHOTO_ERROR as ERROR_TEXT, removeProductPhoto, uploadProductPhoto } from "@/lib/product-photo-upload";
+import {
+  PRODUCT_PHOTO_ACCEPT,
+  PRODUCT_PHOTO_ERROR as ERROR_TEXT,
+  removeProductPhoto,
+  uploadProductPhoto,
+} from "@/lib/product-photo-upload";
 import type { ProductPhotoResult } from "@/app/(workspace)/stock/photo-actions";
 
 /**
- * Фото товара для каталога клиентов: «Сфотографировать» (камера) и «Выбрать
- * из галереи». Фото ужимается в браузере и сразу сохраняется.
+ * Фото товара для каталога клиентов: одна кнопка — на телефоне система
+ * предложит камеру или галерею. Фото ужимается в браузере и сразу сохраняется.
  */
 export function ProductPhotoField({ productId, name, initialUrl }: { productId: string; name: string; initialUrl: string | null }) {
   const [url, setUrl] = useState(initialUrl);
@@ -43,39 +48,19 @@ export function ProductPhotoField({ productId, name, initialUrl }: { productId: 
           {busy ? (
             <span className="button disabled">Сохраняем…</span>
           ) : (
-            <>
-              {/* Две кнопки: на Android выбор фото (Photo Picker) не предлагает
-                  камеру — «Сфотографировать» открывает её сразу (capture).
-                  На компьютере камеры нет — эта кнопка скрыта (стили). */}
-              <label className="button primary product-photo-camera">
-                Сфотографировать
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="sr-only"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] ?? null;
-                    e.target.value = "";
-                    void pick(file);
-                  }}
-                />
-              </label>
-              <label className="button">
-                <span className="product-photo-gallery-touch">{url ? "Заменить из галереи" : "Выбрать из галереи"}</span>
-                <span className="product-photo-gallery-desktop">{url ? "Заменить фото" : "Выбрать фото"}</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="sr-only"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] ?? null;
-                    e.target.value = "";
-                    void pick(file);
-                  }}
-                />
-              </label>
-            </>
+            <label className={url ? "button" : "button primary"}>
+              {url ? "Заменить фото" : "Добавить фото"}
+              <input
+                type="file"
+                accept={PRODUCT_PHOTO_ACCEPT}
+                className="sr-only"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  e.target.value = "";
+                  void pick(file);
+                }}
+              />
+            </label>
           )}
           {url && !busy && (
             <button

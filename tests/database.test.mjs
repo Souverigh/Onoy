@@ -32,7 +32,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 26);
+  assert.equal(rows.length, 27);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -3373,7 +3373,7 @@ test("catalog: owner opens a link; anyone with it sees names and sale prices onl
   assert.ok(ids.includes(shown));
   for (const id of [free, hidden, old]) assert.ok(!ids.includes(id));
   // Ничего лишнего: ни остатков, ни закупки, ни кодов.
-  assert.deepEqual(Object.keys(page.products.find((p) => p.id === shown)).sort(), ["id", "name", "photo", "price", "unit"]);
+  assert.deepEqual(Object.keys(page.products.find((p) => p.id === shown)).sort(), ["category", "id", "name", "photo", "price", "unit"]);
   assert.equal(page.products.find((p) => p.id === shown).price, "360.00");
   assert.equal(await catalog("0".repeat(32)), null);
   // Фото товара: путь только своего магазина и товара; в каталоге — путь.
@@ -3519,6 +3519,81 @@ test("cash moves: only the owner takes or puts cash, once per key, reversible, o
   await owner();
 });
 
+test("categories: two levels, members sort products, owner deletes without losing products, Excel and the catalog", async () => {
+  const seller = "44444444-4444-4444-8444-444444444444";
+  await owner();
+  const lamp = (await db.query("insert into products(organization_id,name,sale_price) values ($1,'Кат лампа',10) returning id", [orgA])).rows[0].id;
+  const spot = (await db.query("insert into products(organization_id,name,sale_price) values ($1,'Кат светильник',20) returning id", [orgA])).rows[0].id;
+  const manual = (await db.query("insert into products(organization_id,name,sku,sale_price) values ($1,'Кат ручной','KAT-1',30) returning id", [orgA])).rows[0].id;
+
+  await user(seller);
+  const light = (await db.query("select save_product_category($1,null,'  Освещение ') as id", [orgA])).rows[0].id;
+  const spots = (await db.query("select save_product_category($1,null,'Светильники',$2) as id", [orgA, light])).rows[0].id;
+  // Имя на уровне одно (без учёта регистра); третьего уровня нет.
+  await assert.rejects(db.query("select save_product_category($1,null,'освещение')", [orgA]), /category_taken/);
+  await assert.rejects(db.query("select save_product_category($1,null,'Глубже',$2)", [orgA, spots]), /invalid_category/);
+  await assert.rejects(db.query("select save_product_category($1,null,'   ')", [orgA]), /invalid_category/);
+  assert.equal((await db.query("select set_products_category($1,$2::uuid[],$3) as n", [orgA, [spot], spots])).rows[0].n, 1);
+  assert.equal((await db.query("select set_products_category($1,$2::uuid[],$3) as n", [orgA, [spot], spots])).rows[0].n, 0);
+  assert.equal((await db.query("select set_products_category($1,$2::uuid[],$3) as n", [orgA, [manual], light])).rows[0].n, 1);
+  // Предложенные группы: только товарам без категории.
+  assert.equal(
+    (await db.query("select apply_category_groups($1,$2::jsonb) as n", [orgA, JSON.stringify([{ name: "Лампы", products: [lamp, manual] }])])).rows[0].n,
+    1,
+  );
+  const lamps = (await db.query("select id from product_categories where organization_id=$1 and name='Лампы'", [orgA])).rows[0].id;
+  assert.equal((await db.query("select category_id from products where id=$1", [manual])).rows[0].category_id, light);
+  assert.equal((await db.query("select category_id from product_balances where id=$1", [lamp])).rows[0].category_id, lamps);
+
+  // Чужой магазин — ничего не видит и не меняет.
+  await user(b);
+  assert.equal((await db.query("select count(*)::int as n from product_categories where organization_id=$1", [orgA])).rows[0].n, 0);
+  await assert.rejects(db.query("select set_products_category($1,$2::uuid[],null)", [orgA, [spot]]), /not_a_member/);
+  await assert.rejects(db.query("select set_products_category($1,$2::uuid[],$3)", [orgB, [spot], light]), /not_a_member|invalid_category/);
+
+  // Excel: по коду, подкатегория создаётся; пустая категория ничего не меняет.
+  await user(seller);
+  assert.equal(
+    (
+      await db.query("select set_import_categories($1,$2::jsonb) as n", [
+        orgA,
+        JSON.stringify([
+          { sku: "kat-1", name: "что угодно", category: "освещение", subcategory: "Бра" },
+          { sku: null, name: "Кат лампа", category: "", subcategory: "" },
+          { sku: null, name: "Нет такого", category: "Лампы", subcategory: "" },
+        ]),
+      ])
+    ).rows[0].n,
+    1,
+  );
+  const bra = (await db.query("select id,parent_id from product_categories where organization_id=$1 and name='Бра'", [orgA])).rows[0];
+  assert.equal(bra.parent_id, light);
+  assert.equal((await db.query("select category_id from products where id=$1", [manual])).rows[0].category_id, bra.id);
+  assert.equal((await db.query("select category_id from products where id=$1", [lamp])).rows[0].category_id, lamps);
+
+  // Каталог: категория товара и только категории с видимыми товарами.
+  await user(a);
+  const token = (await db.query("select open_catalog_link($1) as t", [orgA])).rows[0].t;
+  await owner();
+  await db.exec("SET ROLE anon;");
+  const page = (await db.query("select get_catalog($1) as c", [token])).rows[0].c;
+  await owner();
+  assert.equal(page.products.find((p) => p.id === spot).category, spots);
+  const names = page.categories.map((c) => c.name).sort();
+  assert.deepEqual(names, ["Бра", "Лампы", "Освещение", "Светильники"]);
+
+  // Удаляет только владелец; товары подкатегории — в её категорию, категории — без категории.
+  await user(seller);
+  await assert.rejects(db.query("select delete_product_category($1,$2)", [orgA, spots]), /owner_only/);
+  await user(a);
+  assert.equal((await db.query("select delete_product_category($1,$2) as n", [orgA, spots])).rows[0].n, 1);
+  assert.equal((await db.query("select category_id from products where id=$1", [spot])).rows[0].category_id, light);
+  assert.equal((await db.query("select delete_product_category($1,$2) as n", [orgA, light])).rows[0].n, 2);
+  assert.equal((await db.query("select count(*)::int as n from products where id = any($1::uuid[]) and category_id is null", [[spot, manual]])).rows[0].n, 2);
+  assert.equal((await db.query("select count(*)::int as n from product_categories where organization_id=$1", [orgA])).rows[0].n, 1);
+  assert.ok((await db.query("select count(*)::int as n from audit_events where organization_id=$1 and action like 'category.%'", [orgA])).rows[0].n >= 5);
+  await owner();
+});
 test("app_schema_version() returns the newest migration number for the pre-deploy check", async () => {
   const { latestMigration } = await import("../scripts/migration-version.mjs");
   await owner();

@@ -2,18 +2,30 @@ import { NextResponse } from "next/server";
 import { getContext } from "@/lib/context";
 import { buildXlsx, type Cell } from "@/lib/xlsx";
 import { CURRENCY_SIGN, isCurrency } from "@/lib/currency";
+import type { Category } from "@/lib/category";
 
 // Шаблон для импорта на склад. Если товары уже есть — это их выгрузка в том
 // же виде: цены и остатки можно поправить в Excel и загрузить обратно.
 export async function GET() {
   const { db, organizationId, currency } = await getContext();
-  const { data } = await db
-    .from("product_balances")
-    .select("name,sku,unit,sale_price,purchase_price,purchase_currency,stock")
-    .eq("organization_id", organizationId)
-    .is("archived_at", null)
-    .order("name")
-    .range(0, 4999);
+  const [{ data }, categoryResult] = await Promise.all([
+    db
+      .from("product_balances")
+      .select("name,sku,unit,sale_price,purchase_price,purchase_currency,stock,category_id")
+      .eq("organization_id", organizationId)
+      .is("archived_at", null)
+      .order("name")
+      .range(0, 4999),
+    db.from("product_categories").select("id,name,parent_id").eq("organization_id", organizationId).range(0, 999),
+  ]);
+  // Категория и подкатегория — отдельными колонками, как их и загружают обратно.
+  const byId = new Map(((categoryResult.data ?? []) as Category[]).map((c) => [c.id, c]));
+  const categoryCells = (id: string | null): [string, string] => {
+    const c = id ? byId.get(id) : undefined;
+    if (!c) return ["", ""];
+    const parent = c.parent_id ? byId.get(c.parent_id) : undefined;
+    return parent ? [parent.name, c.name] : [c.name, ""];
+  };
   const rows: Cell[][] = (data ?? []).map((p) => [
     p.name,
     p.sku,
@@ -22,11 +34,12 @@ export async function GET() {
     Number(p.purchase_price),
     CURRENCY_SIGN[isCurrency(p.purchase_currency) ? p.purchase_currency : currency],
     Number(p.stock),
+    ...categoryCells(p.category_id),
   ]);
   if (!rows.length)
     rows.push(
-      ["Кабель ВВГнг 3х2,5", "", "м", 85.5, 60, CURRENCY_SIGN[currency], 100],
-      ["Розетка двойная", "R-2", "шт", 150, 1.2, CURRENCY_SIGN.USD, 40],
+      ["Кабель ВВГнг 3х2,5", "", "м", 85.5, 60, CURRENCY_SIGN[currency], 100, "Кабель", ""],
+      ["Розетка двойная", "R-2", "шт", 150, 1.2, CURRENCY_SIGN.USD, 40, "Электрика", "Розетки"],
     );
   const xlsx = buildXlsx([
     {
@@ -39,6 +52,8 @@ export async function GET() {
         { header: "Цена закупки", width: 14, kind: "number" },
         { header: "Валюта закупки", width: 10 },
         { header: "Остаток", width: 12, kind: "number" },
+        { header: "Категория", width: 20 },
+        { header: "Подкатегория", width: 20 },
       ],
       rows,
     },

@@ -6,6 +6,9 @@ import { NavSelect, NavSelects } from "@/components/nav-select";
 import { InfoTip } from "@/components/info-tip";
 import { CURRENCIES } from "@/lib/currency";
 import { stockValue, type StockValueRow } from "@/lib/stock";
+import { loadCategories } from "@/lib/category-data";
+import { categoryGroups, categoryLabel, categoryTree, categoryWithChildren, suggestCategory } from "@/lib/category";
+import { CategoryChip } from "@/components/category-helper";
 
 type Row = {
   id: string;
@@ -18,6 +21,7 @@ type Row = {
   min_stock: string;
   stock: string;
   archived_at: string | null;
+  category_id: string | null;
   sold_count?: number | null;
   last_received_at?: string | null;
 };
@@ -52,9 +56,9 @@ const lineValue = (stock: string, price: string) => (Math.round(Number(stock) * 
 export default async function StockPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; filter?: string; page?: string; archived_one?: string; sort?: string }>;
+  searchParams: Promise<{ q?: string; filter?: string; page?: string; archived_one?: string; sort?: string; category?: string }>;
 }) {
-  const { q = "", filter: rawFilter, page = "1", archived_one, sort: rawSort } = await searchParams;
+  const { q = "", filter: rawFilter, page = "1", archived_one, sort: rawSort, category: rawCategory } = await searchParams;
   const sort: SortKey = SORTS.some(([key]) => key === rawSort) ? (rawSort as SortKey) : "name";
   const filter = rawFilter === "low" || rawFilter === "nocost" || rawFilter === "archive" ? rawFilter : "all";
   // «Мало» и «Без цены закупки» считаются по остатку из вида — фильтруем здесь, без страниц.
@@ -62,6 +66,10 @@ export default async function StockPage({
   const query = q.trim().slice(0, 100);
   const current = Math.max(1, Math.min(1000, parseInt(page) || 1));
   const { db, organizationId, currency, isOwner } = await getContext();
+  // Категории (миграция 20261023100000): отбор, подпись в строке и подсказка.
+  const { categories, products: named, hints } = await loadCategories(db, organizationId);
+  const category =
+    rawCategory === "none" || categories.some((c) => c.id === rawCategory) ? (rawCategory as string) : null;
 
   // Витрина (просьба пользователя 14.10.2026): весь действующий склад —
   // остаток × цена закупки и продажи. Запрос идёт параллельно со списком.
@@ -81,11 +89,13 @@ export default async function StockPage({
     let request = db
       .from(withList ? "product_list" : "product_balances")
       .select(
-        `id,name,sku,unit,sale_price,purchase_price,purchase_currency,min_stock,stock,archived_at,sold_count${withList ? ",last_received_at" : ""}`,
+        `id,name,sku,unit,sale_price,purchase_price,purchase_currency,min_stock,stock,archived_at,category_id,sold_count${withList ? ",last_received_at" : ""}`,
         { count: "exact" },
       )
       .eq("organization_id", organizationId);
     request = filter === "archive" ? request.not("archived_at", "is", null) : request.is("archived_at", null);
+    if (category === "none") request = request.is("category_id", null);
+    else if (category) request = request.in("category_id", categoryWithChildren(categories, category));
     if (query) {
       // Запятые и скобки — синтаксис фильтра or() в PostgREST.
       const like = `%${query.replace(/[\\%_]/g, "\\$&").replace(/[,()]/g, " ")}%`;
@@ -133,20 +143,34 @@ export default async function StockPage({
     if (query) params.set("q", query);
     if (filter !== "all") params.set("filter", filter);
     if (sort !== "name") params.set("sort", sort);
+    if (category) params.set("category", category);
     for (const [key, value] of Object.entries(extra)) params.set(key, String(value));
     const text = params.toString();
     return `/stock${text ? `?${text}` : ""}`;
   };
 
   // Адрес варианта «Показать» / «Сначала»: поиск сохраняем, страницу — с первой.
-  const viewHref = (nextFilter: string, nextSort: SortKey) => {
+  const viewHref = (nextFilter: string, nextSort: SortKey, nextCategory: string | null = category) => {
     const params = new URLSearchParams();
     if (query) params.set("q", query);
     if (nextFilter !== "all") params.set("filter", nextFilter);
     if (nextSort !== "name") params.set("sort", nextSort);
+    if (nextCategory) params.set("category", nextCategory);
     const text = params.toString();
     return `/stock${text ? `?${text}` : ""}`;
   };
+  // Отбор по категории: верхние, под ними подкатегории, «Без категории» и настройка.
+  const categoryOptions = [
+    { label: "Все категории", href: viewHref(filter, sort, null), selected: !category },
+    ...categoryTree(categories).flatMap(({ category: top, children }) => [
+      { label: top.name, href: viewHref(filter, sort, top.id), selected: category === top.id },
+      ...children.map((c) => ({ label: `- ${c.name}`, href: viewHref(filter, sort, c.id), selected: category === c.id })),
+    ]),
+    { label: "Без категории", href: viewHref(filter, sort, "none"), selected: category === "none" },
+    { label: categories.length ? "Изменить категории…" : "Создать категории…", href: "/stock/categories" },
+  ];
+  // Категорий ещё нет, а товары есть — предлагаем разложить (категории подобраны по названиям).
+  const offered = !categories.length && named.length >= 4 ? categoryGroups(named).length : 0;
   return (
     <>
       <div className="page-heading">
@@ -173,6 +197,9 @@ export default async function StockPage({
               Каталог для клиентов
             </Link>
           )}
+          <Link className="button" href="/stock/categories">
+            Категории
+          </Link>
           <Link className="button" href="/stock/import">
             Из Excel
           </Link>
@@ -189,6 +216,15 @@ export default async function StockPage({
         <p className="notice success" role="status">
           Товар убран в архив - в продаже его больше не видно. Вернуть можно из «Архива».
         </p>
+      )}
+      {offered > 0 && (
+        <Link className="stock-catalog-mobile stock-categories-offer" href="/stock/categories">
+          <span>
+            <strong>Разложить товары по категориям</strong>
+            <small className="muted">Подобрали по названиям: {offered} кат. - выберите нужные одним нажатием</small>
+          </span>
+          <span aria-hidden="true">→</span>
+        </Link>
       )}
       {summary && summary.inStock > 0 && (
         <section className="day-tiles stock-tiles" aria-label="Склад в деньгах">
@@ -245,6 +281,7 @@ export default async function StockPage({
         <form className="search" action="/stock">
           {filter !== "all" && <input type="hidden" name="filter" value={filter} />}
           {sort !== "name" && <input type="hidden" name="sort" value={sort} />}
+          {category && <input type="hidden" name="category" value={category} />}
           <label htmlFor="stock-search" className="sr-only">
             Поиск по названию или коду
           </label>
@@ -266,6 +303,7 @@ export default async function StockPage({
               { label: "Архив", href: viewHref("archive", sort), selected: filter === "archive" },
             ]}
           />
+          <NavSelect label="Категория" options={categoryOptions} />
           <NavSelect
             label="Сначала"
             options={SORTS.map(([key, label]) => ({ label, href: viewHref(filter, key), selected: sort === key }))}
@@ -289,7 +327,18 @@ export default async function StockPage({
                     ` · на складе на ${money(lineValue(row.stock, row.purchase_price), row.purchase_currency ?? currency)}`}
                   {sort === "popular" && ` · продаж за 90 дн.: ${row.sold_count ?? 0}`}
                   {sort === "received" && (row.last_received_at ? ` · приход ${shortDate(row.last_received_at)}` : " · приходов не было")}
+                  {row.category_id && categoryLabel(categories, row.category_id) && ` · ${categoryLabel(categories, row.category_id)}`}
                 </span>
+                {!row.category_id && filter !== "archive" && (() => {
+                  // Подсказка по названию: нажали — категория поставлена.
+                  const hint = suggestCategory(row.name, hints);
+                  const label = categoryLabel(categories, hint);
+                  return hint && label ? (
+                    <span className="op-list-meta stock-category-hint">
+                      <CategoryChip productId={row.id} categoryId={hint} label={label} />
+                    </span>
+                  ) : null;
+                })()}
                 {isLow(row) && filter !== "archive" && (
                   <span className="op-list-meta warning stock-low-tag">
                     {decimalLessThan("0", row.stock) ? "мало" : "нет на складе"}
@@ -304,7 +353,7 @@ export default async function StockPage({
               <Icon name="box" />
             </span>
             <h2>
-              {query
+              {query || category
                 ? "Ничего не найдено"
                 : filter === "low"
                   ? "Всего хватает"
@@ -315,8 +364,10 @@ export default async function StockPage({
                     : "Склад пока пуст"}
             </h2>
             <p>
-              {query
-                ? "Попробуйте другое название или код."
+              {query || category
+                ? category
+                  ? "В этой категории товаров нет - выберите другую."
+                  : "Попробуйте другое название или код."
                 : filter === "low"
                   ? "Нет товаров с остатком ниже минимума."
                   : filter === "nocost"
@@ -325,7 +376,7 @@ export default async function StockPage({
                     ? "Сюда попадают товары, которые больше не продаёте."
                     : "Добавьте товары по одному или загрузите прайс из Excel - потом продажу можно оформлять накладной прямо в приложении."}
             </p>
-            {!query && filter === "all" && (
+            {!query && !category && filter === "all" && (
               <div className="simple-operation-actions">
                 <Link className="button primary" href="/stock/import">
                   Загрузить из Excel

@@ -3,6 +3,8 @@ import { QtyStepper } from "./qty-stepper";
 import { saveProduct } from "@/app/(workspace)/stock/actions";
 import { PRODUCT_UNITS } from "@/lib/stock";
 import { CURRENCIES, CURRENCY_SIGN, isCurrency, type Currency } from "@/lib/currency";
+import type { Category } from "@/lib/category";
+import { CategoryField } from "./category-field";
 
 export type ProductEntry = {
   id: string;
@@ -15,6 +17,7 @@ export type ProductEntry = {
   purchase_currency: string | null;
   min_stock: string;
   aliases: string[];
+  category_id?: string | null;
 };
 
 /** «85.50» → «85,5» для поля ввода; ноль — пусто. */
@@ -23,7 +26,18 @@ const field = (value: string | undefined) => {
   return String(Number(value)).replace(".", ",");
 };
 
-export function ProductForm({ product, currency }: { product?: ProductEntry; currency: Currency }) {
+export function ProductForm({
+  product,
+  currency,
+  categories,
+  hints,
+}: {
+  product?: ProductEntry;
+  currency: Currency;
+  /** Категории магазина и подсказки по названию (category.ts). */
+  categories: Category[];
+  hints: Record<string, string>;
+}) {
   const sign = CURRENCY_SIGN[currency];
   return (
     <form action={saveProduct} className="entry-form">
@@ -71,6 +85,7 @@ export function ProductForm({ product, currency }: { product?: ProductEntry; cur
           <small className="muted">Артикул, штрихкод или свой номер - по нему тоже ищется.</small>
         </label>
       </div>
+      <CategoryField categories={categories} hints={hints} initial={product?.category_id ?? null} />
       <details className="more-fields" open={Boolean(product && (Number(product.purchase_price) || Number(product.min_stock) || product.aliases.length))}>
         <summary>
           <span className="more-fields-title">Закупка, минимум, другие названия</span>

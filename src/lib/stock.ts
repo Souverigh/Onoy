@@ -76,7 +76,16 @@ export function stockNumber(raw: unknown, scale: number): string | null {
   return String(rounded);
 }
 
-export type ImportField = "name" | "sku" | "unit" | "sale_price" | "purchase_price" | "purchase_currency" | "stock";
+export type ImportField =
+  | "name"
+  | "sku"
+  | "unit"
+  | "sale_price"
+  | "purchase_price"
+  | "purchase_currency"
+  | "stock"
+  | "category"
+  | "subcategory";
 export type ColumnMap = Partial<Record<ImportField, number>>;
 
 export const IMPORT_FIELD_LABEL: Record<ImportField, string> = {
@@ -87,6 +96,8 @@ export const IMPORT_FIELD_LABEL: Record<ImportField, string> = {
   purchase_price: "Цена закупки",
   purchase_currency: "Валюта закупки",
   stock: "Остаток",
+  category: "Категория",
+  subcategory: "Подкатегория",
 };
 
 /** Валюта цены закупки — как CURRENCIES в currency.ts (здесь без импортов). */
@@ -107,7 +118,10 @@ export function costCurrency(raw: unknown): CostCurrency | null {
 }
 
 // Порядок важен: «валюта закупки» раньше «закупки», «цена закупки» раньше просто «цены».
+// «Подкатегория» раньше «категории»; «Группа товаров» — категория, не название.
 const HEADER_RULES: [ImportField, RegExp][] = [
+  ["subcategory", /подкатег|подгрупп|subcategor/],
+  ["category", /категор|групп|раздел|categor/],
   ["purchase_currency", /валют|currency|^вал\.?$/],
   ["purchase_price", /закуп|себест|входн|приходн/],
   ["sale_price", /цена|розн|продаж|стоимост|price/],
@@ -146,6 +160,9 @@ export type ImportRow = {
   /** Валюта цены закупки; null — цены закупки в строке нет. */
   purchase_currency: CostCurrency | null;
   stock: string | null;
+  /** Категория и подкатегория; пусто — категория товара не меняется. */
+  category: string | null;
+  subcategory: string | null;
   /** Что не так с ячейками — строка всё равно уйдёт, без этих значений. */
   warnings: string[];
 };
@@ -180,6 +197,11 @@ export function importRows(
     const unit = rawUnit ? normalizeUnit(rawUnit) : null;
     if (rawUnit && !unit) warnings.push(`Единица «${rawUnit}» - не знаем, будет «шт»`);
     const purchasePrice = number("purchase_price", 2);
+    // «Освещение / Светильники» в одной ячейке — категория и подкатегория.
+    const rawCategory = cell(row, "category").replace(/\s+/g, " ");
+    const [top, ...rest] = rawCategory.split(/\s*(?:\/|>|\\)\s*/).filter(Boolean);
+    const category = (top ?? "").slice(0, 60) || null;
+    const subcategory = category ? (cell(row, "subcategory").replace(/\s+/g, " ") || rest.join(" ")).slice(0, 60) || null : null;
     const rawCurrency = cell(row, "purchase_currency");
     const ownCurrency = costCurrency(rawCurrency);
     if (rawCurrency && !ownCurrency && purchasePrice !== null)
@@ -194,6 +216,8 @@ export function importRows(
       purchase_currency:
         purchasePrice === null ? null : (ownCurrency ?? costCurrency(cell(row, "purchase_price").replace(/[\d\s.,]/g, "")) ?? currency),
       stock: number("stock", 3),
+      category,
+      subcategory,
       warnings,
     });
   }
@@ -210,6 +234,8 @@ export const STOCK_ERROR_TEXT: Record<string, string> = {
   invalid_qty: "Количество - число не меньше нуля, до 3 знаков после запятой.",
   invalid_name: "Введите название (до 160 символов).",
   invalid_sku: "Код - до 80 символов.",
+  category_taken: "Товар сохранён, но такая категория уже есть - выберите её из списка.",
+  invalid_category: "Товар сохранён, но категорию поставить не удалось - выберите её ещё раз.",
   note_required: "Напишите, почему списываете (брак, бой, недостача…).",
   already_stocked: "Эта накладная уже принята на склад.",
   blocked: "Магазин в режиме «только просмотр» - изменения не сохраняются. Продлите оплату.",

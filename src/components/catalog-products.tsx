@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { searchProducts } from "@/lib/match";
-import { PRODUCT_PHOTO_ERROR, uploadProductPhoto } from "@/lib/product-photo-upload";
+import { PRODUCT_PHOTO_ACCEPT, PRODUCT_PHOTO_ERROR, uploadProductPhoto } from "@/lib/product-photo-upload";
 import { money } from "@/lib/format";
 import { Submit } from "./submit";
 import { saveCatalogProducts } from "@/app/(workspace)/stock/catalog/actions";
@@ -31,8 +31,6 @@ export function CatalogProducts({ products, currency }: { products: CatalogProdu
   const [uploaded, setUploaded] = useState<Record<string, string | null>>({});
   const [uploading, setUploading] = useState<Set<string>>(() => new Set());
   const [photoError, setPhotoError] = useState<{ id: string; text: string } | null>(null);
-  // Телефон: у какого товара открыт выбор «Камера / Галерея».
-  const [menuFor, setMenuFor] = useState<string | null>(null);
   const photoOf = (p: CatalogProductRow) => (p.id in uploaded ? uploaded[p.id] : p.photo);
   const initial = useMemo(() => new Set(products.filter((p) => p.catalog_hidden).map((p) => p.id)), [products]);
   const priced = products.filter((p) => Number(p.sale_price) > 0);
@@ -45,7 +43,6 @@ export function CatalogProducts({ products, currency }: { products: CatalogProdu
 
   /** Фото выбрали — сразу ужать и загрузить; в строке — «…», потом миниатюра. */
   async function upload(id: string, file: File | null) {
-    setMenuFor(null);
     if (!file) return;
     setPhotoError(null);
     setUploading((s) => new Set(s).add(id));
@@ -59,12 +56,11 @@ export function CatalogProducts({ products, currency }: { products: CatalogProdu
     else setUploaded((u) => ({ ...u, [id]: result.thumb ?? result.url }));
   }
 
-  /** Поле выбора файла: camera — сразу камера (на Android выбор фото её не предлагает). */
-  const fileInput = (id: string, camera = false) => (
+  /** Поле выбора фото: на телефоне система сама предложит камеру или галерею. */
+  const fileInput = (id: string) => (
     <input
       type="file"
-      accept="image/*"
-      {...(camera ? { capture: "environment" as const } : {})}
+      accept={PRODUCT_PHOTO_ACCEPT}
       className="sr-only"
       onChange={(e) => {
         const file = e.target.files?.[0] ?? null;
@@ -143,41 +139,16 @@ export function CatalogProducts({ products, currency }: { products: CatalogProdu
                   {noPrice ? "нет цены" : `${money(p.sale_price, currency)} / ${p.unit}`}
                 </span>
               </label>
-              {/* Фото — прямо отсюда: компьютер — выбор файла, телефон — «Камера / Галерея». */}
+              {/* Фото — прямо отсюда: на телефоне система предложит камеру или галерею. */}
               {busy ? (
                 <span className="catalog-products-edit catalog-products-busy" aria-live="polite">
                   Загружаем…
                 </span>
               ) : (
-                <>
-                  <label className="catalog-products-edit catalog-photo-desktop" aria-label={`Фото: ${p.name}`}>
-                    {photo ? "Изменить" : "+ Фото"}
-                    {fileInput(p.id)}
-                  </label>
-                  <button
-                    type="button"
-                    className="catalog-products-edit catalog-photo-touch"
-                    aria-expanded={menuFor === p.id}
-                    onClick={() => setMenuFor((m) => (m === p.id ? null : p.id))}
-                  >
-                    {photo ? "Изменить" : "+ Фото"}
-                  </button>
-                </>
-              )}
-              {menuFor === p.id && !busy && (
-                <div className="catalog-photo-menu">
-                  <label className="button primary">
-                    Камера
-                    {fileInput(p.id, true)}
-                  </label>
-                  <label className="button">
-                    Галерея
-                    {fileInput(p.id)}
-                  </label>
-                  <button type="button" className="text-button" onClick={() => setMenuFor(null)}>
-                    Отмена
-                  </button>
-                </div>
+                <label className="catalog-products-edit" aria-label={`Фото: ${p.name}`}>
+                  {photo ? "Изменить" : "+ Фото"}
+                  {fileInput(p.id)}
+                </label>
               )}
               {photoError?.id === p.id && (
                 <p className="form-error catalog-photo-error" role="alert">
