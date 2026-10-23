@@ -9340,6 +9340,9 @@ tr.row-link:has(a[data-pending]) {
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
+  /* Строкой во всю ширину, слева — как подпись под карточкой клиента. */
+  align-self: stretch;
+  justify-content: flex-start;
   margin: -6px 0 18px;
   font-size: 14px;
 }
@@ -9349,17 +9352,22 @@ tr.row-link:has(a[data-pending]) {
 .maker-field strong {
   font-weight: 600;
 }
+/* Выбор продавца — тихой пилюлей, как кнопка даты, а не полем формы. */
 .maker-field-select {
   width: auto;
+  max-width: 100%;
   min-height: 34px;
-  padding: 4px 12px;
+  padding: 4px 10px;
+  border-color: var(--line);
   border-radius: 999px;
+  background-color: var(--neutral-soft);
   /* 16px — телефон не увеличивает страницу при выборе. */
   font-size: 16px;
   font-weight: 600;
+  text-overflow: ellipsis;
 }
 .sale-sheet-top > .maker-field {
-  margin-top: -8px;
+  margin-top: -6px;
 }
 
 /* «+ Добавить строку» в «Товарах накладной»: кнопка или поиск товара склада. */

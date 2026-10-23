@@ -303,6 +303,26 @@ export default async function NewOperation({
   }
   // Исправление: старая запись действует, пока новую не записали.
   const replacing = Boolean(maker?.replaces);
+  // Её товар ещё списан со склада (продажа) или принят (приход) — в форме
+  // показываем остаток как после замены, без ложного «уйдёт в минус».
+  const stockShift = new Map<string, number>();
+  if (maker?.replaces) {
+    const moves = await db
+      .from("inventory_movements")
+      .select("product_id,qty_delta")
+      .eq("organization_id", organizationId)
+      .eq(kind === "sale" ? "sale_id" : "purchase_id", maker.from);
+    for (const m of (moves.data ?? []) as { product_id: string; qty_delta: string }[])
+      stockShift.set(m.product_id, (stockShift.get(m.product_id) ?? 0) + Number(m.qty_delta));
+  }
+  const afterReplace = <T extends { id: string; stock: string }>(list: T[]): T[] =>
+    stockShift.size
+      ? list.map((p) =>
+          stockShift.has(p.id)
+            ? { ...p, stock: String(Math.round((Number(p.stock) - stockShift.get(p.id)!) * 1000) / 1000) }
+            : p,
+        )
+      : list;
   // Из карточки клиента/поставщика: берём, только если он из подходящего списка.
   const initialParty = [...(kind === "purchase" ? [] : customers), ...(kind === "sale" ? [] : suppliers)].some(
     (p) => p.id === params.party,
@@ -419,7 +439,7 @@ export default async function NewOperation({
             key={draft?.id ?? "new"}
             kind={kind === "purchase" ? "purchase" : "sale"}
             customers={kind === "purchase" ? suppliers : customers}
-            products={products}
+            products={afterReplace(products)}
             shopCurrency={shopCurrency}
             rates={rates}
             idempotencyKey={randomUUID()}
@@ -444,7 +464,7 @@ export default async function NewOperation({
             initialParty={initialParty}
             shopCurrency={shopCurrency}
             rates={rates}
-            stockProducts={itemsKind ? stockProducts : undefined}
+            stockProducts={itemsKind ? afterReplace(stockProducts) : undefined}
             fixedDirection={fixedDirection}
             initialAmount={
               !prefill && params.amount && /^\d{1,14}(\.\d{1,2})?$/.test(params.amount)
