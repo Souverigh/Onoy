@@ -252,8 +252,9 @@ export default async function NewOperation({
         ? params.from
         : undefined;
   let maker: Maker | undefined;
+  let movesData: { product_id: string; qty_delta: string }[] = [];
   if (fromId) {
-    const [old, members] = await Promise.all([
+    const [old, members, moves] = await Promise.all([
       db
         .from(kind === "sale" ? "sales" : "purchases")
         .select(
@@ -265,7 +266,14 @@ export default async function NewOperation({
         .eq("id", fromId)
         .maybeSingle(),
       memberLabels(db, organizationId),
+      // Движения склада заменяемой записи — для остатков «как после замены».
+      db
+        .from("inventory_movements")
+        .select("product_id,qty_delta")
+        .eq("organization_id", organizationId)
+        .eq(kind === "sale" ? "sale_id" : "purchase_id", fromId),
     ]);
+    movesData = (moves.data ?? []) as { product_id: string; qty_delta: string }[];
     const row = old.data as unknown as {
       maker_id: string | null;
       total: string;
@@ -306,15 +314,8 @@ export default async function NewOperation({
   // Её товар ещё списан со склада (продажа) или принят (приход) — в форме
   // показываем остаток как после замены, без ложного «уйдёт в минус».
   const stockShift = new Map<string, number>();
-  if (maker?.replaces) {
-    const moves = await db
-      .from("inventory_movements")
-      .select("product_id,qty_delta")
-      .eq("organization_id", organizationId)
-      .eq(kind === "sale" ? "sale_id" : "purchase_id", maker.from);
-    for (const m of (moves.data ?? []) as { product_id: string; qty_delta: string }[])
-      stockShift.set(m.product_id, (stockShift.get(m.product_id) ?? 0) + Number(m.qty_delta));
-  }
+  if (maker?.replaces)
+    for (const m of movesData) stockShift.set(m.product_id, (stockShift.get(m.product_id) ?? 0) + Number(m.qty_delta));
   const afterReplace = <T extends { id: string; stock: string }>(list: T[]): T[] =>
     stockShift.size
       ? list.map((p) =>

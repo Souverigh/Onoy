@@ -44,6 +44,9 @@ export function CatalogView({
   // Мой список: id товара → количество (как ввели, «2,5»).
   const [list, setList] = useState<Record<string, string>>({});
   const [listOpen, setListOpen] = useState(false);
+  // Список уже прочитан из браузера — до этого не сохраняем (иначе пустой
+  // начальный список затрёт сохранённый).
+  const [loaded, setLoaded] = useState(false);
   const storageKey = `catalog-list-${token}`;
 
   // Список переживает перезагрузку страницы (только в этом браузере).
@@ -55,14 +58,16 @@ export function CatalogView({
     } catch {
       // Нет доступа к хранилищу — список просто не запомнится.
     }
+    setLoaded(true);
   }, [storageKey, products]);
   useEffect(() => {
+    if (!loaded) return;
     try {
       localStorage.setItem(storageKey, JSON.stringify(list));
     } catch {
       // Приватный режим и т.п. — не страшно.
     }
-  }, [storageKey, list]);
+  }, [storageKey, list, loaded]);
 
   const trimmed = query.trim();
   const found = useMemo(() => (trimmed ? searchProducts(trimmed, products, 200) : products), [trimmed, products]);

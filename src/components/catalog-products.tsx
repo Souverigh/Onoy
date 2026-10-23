@@ -33,7 +33,9 @@ export function CatalogProducts({ products, currency }: { products: CatalogProdu
 
   return (
     <form action={saveCatalogProducts} className="catalog-products">
-      <input type="hidden" name="hidden" value={JSON.stringify([...hidden])} />
+      {/* Только изменённые: скрыть и показать — остальные товары база не трогает. */}
+      <input type="hidden" name="hide" value={JSON.stringify([...hidden].filter((id) => !initial.has(id)))} />
+      <input type="hidden" name="show" value={JSON.stringify([...initial].filter((id) => !hidden.has(id)))} />
       <div className="section-title">
         <h2>Товары в каталоге</h2>
         <span className="muted">

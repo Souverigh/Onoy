@@ -3361,9 +3361,11 @@ test("catalog: owner opens a link; anyone with it sees names and sale prices onl
   const token = (await db.query("select open_catalog_link($1) as t", [orgA])).rows[0].t;
   assert.match(token, /^[a-f0-9]{32}$/);
   assert.equal((await db.query("select open_catalog_link($1) as t", [orgA])).rows[0].t, token);
-  await db.query("select set_catalog_hidden($1,$2::uuid[])", [orgA, [hidden]]);
+  await db.query("select set_catalog_visibility($1,$2::uuid[],'{}'::uuid[])", [orgA, [hidden]]);
+  // Скрыть и показать одно и то же — отказ.
+  await assert.rejects(db.query("select set_catalog_visibility($1,$2::uuid[],$2::uuid[])", [orgA, [shown]]), /invalid_catalog/);
   await user(seller);
-  await assert.rejects(db.query("select set_catalog_hidden($1,$2::uuid[])", [orgA, []]), /owner_only/);
+  await assert.rejects(db.query("select set_catalog_visibility($1,'{}'::uuid[],'{}'::uuid[])", [orgA]), /owner_only/);
 
   const page = await catalog(token);
   assert.equal(page.shop_name, "Магазин A");
@@ -3385,11 +3387,88 @@ test("catalog: owner opens a link; anyone with it sees names and sale prices onl
   assert.notEqual(fresh, token);
   assert.equal(await catalog(token), null);
   assert.ok((await catalog(fresh)).products.length > 0);
-  // Вернуть скрытый — пустой список скрытых.
+  // Вернуть скрытый; архивный, скрытый раньше, при этом не трогается.
+  await owner();
+  await db.query("update products set catalog_hidden=true where id=$1", [old]);
   await user(a);
-  await db.query("select set_catalog_hidden($1,$2::uuid[])", [orgA, []]);
+  await db.query("select set_catalog_visibility($1,'{}'::uuid[],$2::uuid[])", [orgA, [hidden]]);
   assert.ok((await catalog(fresh)).products.some((p) => p.id === hidden));
   await owner();
+  assert.equal((await db.query("select catalog_hidden from products where id=$1", [old])).rows[0].catalog_hidden, true);
+  await owner();
+});
+test("review fixes: disabled seller cannot delete, client link hides notes, reopen is not on someone else's name, «Исправить» reuses its photo copy", async () => {
+  const k = (n) => `aaaadddd-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
+  const seller = "44444444-4444-4444-8444-444444444444";
+  const otherSeller = "55555555-5555-4555-8555-555555555555";
+  await owner();
+  const breaker = (await db.query("select id from products where organization_id=$1 and name='Автомат 16А возврат'", [orgA])).rows[0].id;
+  const line = JSON.stringify([{ product: breaker, qty: "1", price: "360" }]);
+
+  // 1. Отключённый сотрудник не удаляет — ни клиента без записей, ни черновик.
+  const empty = (await db.query("insert into customers(organization_id,name) values ($1,'Пустой клиент') returning id", [orgA])).rows[0].id;
+  await user(seller);
+  const draft = (await db.query("select save_record_draft($1,null,'sale','{}'::jsonb) as id", [orgA])).rows[0].id;
+  await user(a);
+  await db.query("select set_member_disabled($1,$2,true)", [orgA, seller]);
+  await user(seller);
+  await assert.rejects(db.query("select delete_party($1,'customers',$2)", [orgA, empty]), /member|not_a/);
+  await assert.rejects(db.query("select delete_record_draft($1,$2)", [orgA, draft]), /member|not_a/);
+  await owner();
+  assert.equal((await db.query("select count(*)::int as n from customers where id=$1", [empty])).rows[0].n, 1);
+  assert.equal((await db.query("select count(*)::int as n from record_drafts where id=$1", [draft])).rows[0].n, 1);
+  await user(a);
+  await db.query("select set_member_disabled($1,$2,false)", [orgA, seller]);
+
+  // 2. По ссылке клиента комментарии к оплатам не видны.
+  await owner();
+  const buyer = (await db.query("insert into customers(organization_id,name) values ($1,'Клиент со ссылкой') returning id", [orgA])).rows[0].id;
+  await db.query(
+    "insert into payments(organization_id,customer_id,direction,amount,status,idempotency_key,created_by,note) values ($1,$2,'incoming',100,'confirmed',$3,$4,'внутреннее: ненадёжный')",
+    [orgA, buyer, k(1), a],
+  );
+  const token = (await db.query("insert into share_links(organization_id,customer_id) values ($1,$2) returning token", [orgA, buyer])).rows[0].token;
+  await db.exec("SET ROLE anon;");
+  const statement = (await db.query("select get_statement_by_token($1) as s", [token])).rows[0].s;
+  await owner();
+  assert.ok(statement.entries.length > 0);
+  assert.ok(statement.entries.every((e) => !("note" in e)));
+
+  // 3. «Открыть заново» чужой отменённой продажи продавцом — за ним самим.
+  await user(seller);
+  const sellers = (await db.query("select commit_sale_items($1,$2,$3,false,$4) as id", [orgA, buyer, line, k(2)])).rows[0].id;
+  await user(a);
+  await db.query("select reverse_sale($1,$2,'Ошибка')", [orgA, sellers]);
+  await user(otherSeller);
+  await assert.rejects(
+    db.query("select commit_sale_items_correction($1,$2,$3,$4,$5,false,$6)", [sellers, seller, orgA, buyer, line, k(3)]),
+    /owner_only/,
+  );
+  const reopened = (
+    await db.query("select commit_sale_items_correction($1,null,$2,$3,$4,false,$5) as id", [sellers, orgA, buyer, line, k(4)])
+  ).rows[0].id;
+  await owner();
+  assert.equal((await db.query("select maker_id from sales where id=$1", [reopened])).rows[0].maker_id, otherSeller);
+
+  // 4. «Исправить» дважды без записи — одна и та же копия фото.
+  const doc = (
+    await db.query(
+      "insert into documents(organization_id,storage_path,file_hash,mime_type,kind,status) values ($1,$2,'rev-1','image/jpeg','sale','digitized') returning id",
+      [orgA, `${orgA}/sale/rev-1.jpg`],
+    )
+  ).rows[0].id;
+  const photoSale = (
+    await db.query(
+      "insert into sales(organization_id,customer_id,total,status,document_id,idempotency_key,created_by) values ($1,$2,50,'posted',$3,$4,$5) returning id",
+      [orgA, buyer, doc, k(5), a],
+    )
+  ).rows[0].id;
+  await user(a);
+  const first = (await db.query("select start_correction($1,'sale',$2) as id", [orgA, photoSale])).rows[0].id;
+  const second = (await db.query("select start_correction($1,'sale',$2) as id", [orgA, photoSale])).rows[0].id;
+  assert.equal(second, first);
+  await owner();
+  assert.equal((await db.query("select count(*)::int as n from documents where file_hash='rev-1'")).rows[0].n, 2);
 });
 test("cash moves: only the owner takes or puts cash, once per key, reversible, other shops see nothing", async () => {
   const k = (n) => `aaaabbbb-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;

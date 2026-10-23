@@ -31,18 +31,28 @@ export async function closeCatalog() {
   redirect(back("closed=1"));
 }
 
-/** Какие товары скрыть из каталога: в форме — список скрытых, остальные видны. */
+/** Список id из поля формы (JSON); мусор отбрасываем. */
+function ids(form: FormData, name: string): string[] {
+  const raw = JSON.parse(String(form.get(name) ?? "[]")) as unknown;
+  if (!Array.isArray(raw)) throw new Error(name);
+  return raw.filter((id): id is string => typeof id === "string" && uuidPattern.test(id)).slice(0, 10000);
+}
+
+/**
+ * Галочки каталога: только изменённые товары — скрыть (hide) и показать
+ * (show). Товары, которых не было на странице (архив, больше 5000), не трогаем.
+ */
 export async function saveCatalogProducts(form: FormData) {
-  let hidden: string[];
+  let hide: string[];
+  let show: string[];
   try {
-    const raw = JSON.parse(String(form.get("hidden") ?? "[]")) as unknown;
-    if (!Array.isArray(raw)) throw new Error("hidden");
-    hidden = raw.filter((id): id is string => typeof id === "string" && uuidPattern.test(id)).slice(0, 10000);
+    hide = ids(form, "hide");
+    show = ids(form, "show").filter((id) => !hide.includes(id));
   } catch {
     redirect(back("error=save"));
   }
   const { db, organizationId } = await requireOwner();
-  const result = await db.rpc("set_catalog_hidden", { p_org: organizationId, p_hidden: hidden });
+  const result = await db.rpc("set_catalog_visibility", { p_org: organizationId, p_hide: hide, p_show: show });
   if (result.error) {
     console.error("saveCatalogProducts failed", { message: result.error.message });
     redirect(back("error=save"));

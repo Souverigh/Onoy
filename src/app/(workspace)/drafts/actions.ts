@@ -226,7 +226,7 @@ export async function correctSale(form: FormData) {
   // Товарами со склада: те же товары черновиком.
   const draftId = await saleDraft(db, organizationId, sale, shopCurrency);
   if (!draftId) redirect(`${back}?error=fix`);
-  revalidatePath("/sales");
+  revalidatePath("/", "layout");
   redirect(`/money/new?type=sale&mode=items&draft=${draftId}&fixed=1`);
 }
 
@@ -287,7 +287,7 @@ export async function correctPurchase(form: FormData) {
   // Товарами на склад: те же товары черновиком.
   const draftId = await purchaseDraft(db, organizationId, purchase, shopCurrency);
   if (!draftId) redirect(`${back}?error=fix`);
-  revalidatePath("/purchases");
+  revalidatePath("/", "layout");
   redirect(`/money/new?type=purchase&mode=items&draft=${draftId}&fixed=1${part ? `&part=${Number(part.amount)}` : ""}`);
 }
 
