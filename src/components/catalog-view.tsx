@@ -45,6 +45,13 @@ export function CatalogView({
   // Мой список: id товара → количество (как ввели, «2,5»).
   const [list, setList] = useState<Record<string, string>>({});
   const [listOpen, setListOpen] = useState(false);
+  // Очищенный список — несколько секунд можно вернуть («Вернуть»).
+  const [cleared, setCleared] = useState<Record<string, string> | null>(null);
+  useEffect(() => {
+    if (!cleared) return;
+    const timer = setTimeout(() => setCleared(null), 6000);
+    return () => clearTimeout(timer);
+  }, [cleared]);
   // Фото товара крупно (нажали на миниатюру).
   const [zoom, setZoom] = useState<CatalogItem | null>(null);
   // Список уже прочитан из браузера — до этого не сохраняем (иначе пустой
@@ -105,8 +112,63 @@ export function CatalogView({
     `Итого: ${price(total)}`,
   ].join("\n");
 
+  /** «Очистить» — весь список сразу; случайно нажали — «Вернуть». */
+  function clearList() {
+    setCleared(list);
+    setList({});
+    setListOpen(false);
+  }
+  const clearButton = (
+    <button type="button" className="text-button catalog-clear" onClick={clearList}>
+      Очистить
+    </button>
+  );
+  const undoClear = cleared && Object.keys(cleared).length > 0 && (
+    <p className="catalog-cleared" role="status">
+      Список очищен ·{" "}
+      <button
+        type="button"
+        className="text-button"
+        onClick={() => {
+          setList(cleared);
+          setCleared(null);
+        }}
+      >
+        Вернуть
+      </button>
+    </p>
+  );
+
+  const pickedList = (
+    <ol className="catalog-picked">
+      {picked.map((x) => (
+        <li key={x.product.id}>
+          <span>
+            {x.product.name}
+            <small className="muted">
+              {" "}
+              · {qtyText(x.qty)} {x.product.unit}
+            </small>
+          </span>
+          <strong>{price(Math.round(x.qty * Number(x.product.price) * 100) / 100)}</strong>
+          <button type="button" className="catalog-bar-remove" aria-label={`Убрать: ${x.product.name}`} onClick={() => setQty(x.product.id, "")}>
+            ×
+          </button>
+        </li>
+      ))}
+    </ol>
+  );
+  const sendButton = shopPhone ? (
+    <a className="button primary catalog-send" href={waHref(shopPhone, message)} target="_blank" rel="noopener noreferrer">
+      Отправить в WhatsApp
+    </a>
+  ) : null;
+
   return (
     <>
+      {/* Компьютер: каталог слева, «Мой список» справа (закреплён); телефон — колонкой. */}
+      <div className="catalog-layout">
+      <div className="catalog-main">
       <div className="catalog-search">
         <label htmlFor="catalog-search" className="sr-only">
           Найти товар
@@ -227,6 +289,33 @@ export function CatalogView({
       )}
 
       <p className="catalog-note muted">Цены могут меняться - точную сумму подтвердит продавец.</p>
+      </div>
+
+      <aside className="catalog-aside" aria-label="Мой список">
+        <div className="catalog-aside-head">
+          <h2>Мой список{picked.length ? ` · ${picked.length}` : ""}</h2>
+          {picked.length > 0 && clearButton}
+        </div>
+        {picked.length ? (
+          <>
+            {pickedList}
+            <div className="catalog-aside-total">
+              <span className="muted">Итого</span>
+              <strong>{price(total)}</strong>
+            </div>
+            {sendButton}
+          </>
+        ) : (
+          <>
+            {undoClear || (
+              <p className="muted">
+                Нажмите «+ В список» у нужных товаров - список с суммой уйдёт магазину одним сообщением в WhatsApp.
+              </p>
+            )}
+          </>
+        )}
+      </aside>
+      </div>
 
       {zoom?.photo && (
         <div className="catalog-zoom" role="dialog" aria-modal="true" aria-label={zoom.name} onClick={() => setZoom(null)}>
@@ -262,30 +351,7 @@ export function CatalogView({
 
       {picked.length > 0 && (
         <div className="catalog-bar">
-          {listOpen && (
-            <div className="catalog-bar-list">
-              <ol>
-                {picked.map((x) => (
-                  <li key={x.product.id}>
-                    <span>
-                      {x.product.name}
-                      <small className="muted">
-                        {" "}
-                        · {qtyText(x.qty)} {x.product.unit}
-                      </small>
-                    </span>
-                    <strong>{price(Math.round(x.qty * Number(x.product.price) * 100) / 100)}</strong>
-                    <button type="button" className="catalog-bar-remove" aria-label={`Убрать: ${x.product.name}`} onClick={() => setQty(x.product.id, "")}>
-                      ×
-                    </button>
-                  </li>
-                ))}
-              </ol>
-              <button type="button" className="text-button" onClick={() => { setList({}); setListOpen(false); }}>
-                Очистить список
-              </button>
-            </div>
-          )}
+          {listOpen && <div className="catalog-bar-list">{pickedList}</div>}
           <div className="catalog-bar-main">
             <button type="button" className="catalog-bar-summary" onClick={() => setListOpen((o) => !o)} aria-expanded={listOpen}>
               <small>
@@ -293,14 +359,13 @@ export function CatalogView({
               </small>
               <strong>{price(total)}</strong>
             </button>
-            {shopPhone && (
-              <a className="button primary catalog-send" href={waHref(shopPhone, message)} target="_blank" rel="noopener noreferrer">
-                Отправить в WhatsApp
-              </a>
-            )}
+            {clearButton}
+            {sendButton}
           </div>
         </div>
       )}
+      {/* Телефон: после «Очистить» панели нет — «Вернуть» на её месте. */}
+      {picked.length === 0 && undoClear && <div className="catalog-bar catalog-bar-undo">{undoClear}</div>}
     </>
   );
 }

@@ -9640,23 +9640,23 @@ tr.row-link:has(a[data-pending]) {
   padding: 10px 14px 6px;
   border-bottom: 1px solid var(--line);
 }
-.catalog-bar-list ol {
+.catalog-picked {
   list-style: none;
   margin: 0 0 6px;
   padding: 0;
 }
-.catalog-bar-list li {
+.catalog-picked li {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 6px 0;
   font-size: 15px;
 }
-.catalog-bar-list li span {
+.catalog-picked li span {
   flex: 1;
   min-width: 0;
 }
-.catalog-bar-list li strong {
+.catalog-picked li strong {
   white-space: nowrap;
 }
 .catalog-bar-remove {
@@ -10115,17 +10115,28 @@ button.catalog-products-edit {
   color: var(--muted);
   font-weight: 400;
 }
-.catalog-photo-touch {
+/* Одна кнопка на устройство: компьютер — выбор файла (label), телефон —
+   «Камера / Галерея» (button). Селекторы сильнее, чем общий
+   button.catalog-products-edit, иначе видны обе. Кнопка — справа, не на всю
+   ширину строки (как label с галочкой). */
+.catalog-products-list li > label.catalog-products-edit {
+  flex: none;
+  margin-left: auto;
+}
+.catalog-products-list button.catalog-photo-touch {
   display: none;
 }
 @media (hover: none), (pointer: coarse) {
-  form label.catalog-photo-desktop {
+  .catalog-products-list li > label.catalog-photo-desktop {
     display: none;
   }
-  button.catalog-photo-touch {
+  .catalog-products-list button.catalog-photo-touch {
     display: inline-flex;
     min-height: 32px;
   }
+}
+form label.catalog-products-filter {
+  white-space: nowrap;
 }
 .catalog-photo-menu {
   flex-basis: 100%;
@@ -10150,4 +10161,204 @@ form .catalog-photo-menu label.button {
   flex-basis: 100%;
   margin: 0 0 8px;
   font-size: 13px;
+}
+
+/* ===== Каталог клиента на компьютере (23.10.2026): как у владельца ===== */
+/* Шире, строки компактные (фото · название · цена · кнопка), «Мой список»
+   закреплён справа вместо панели внизу. Телефон — без изменений. */
+.catalog-aside {
+  display: none;
+}
+@media (min-width: 900px) {
+  .client-page.catalog-page {
+    max-width: 1120px;
+    padding: 28px 24px 48px;
+  }
+  .catalog-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 24px;
+    align-items: start;
+  }
+  .catalog-search {
+    margin: 0 0 10px;
+    padding: 0 0 8px;
+  }
+  .catalog-search input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .catalog-item {
+    gap: 14px;
+    padding: 8px 14px;
+  }
+  .catalog-thumb {
+    width: 44px;
+    height: 44px;
+  }
+  .catalog-thumb-empty {
+    font-size: 17px;
+  }
+  .catalog-item-text {
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+  }
+  .catalog-item-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 15px;
+  }
+  .catalog-item-price {
+    flex: none;
+    width: 170px;
+    font-size: 15px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .catalog-add {
+    min-height: 36px;
+    min-width: 116px;
+    font-size: 14px;
+  }
+  .catalog-qty button {
+    width: 34px;
+    height: 36px;
+    font-size: 18px;
+  }
+  .catalog-qty input {
+    width: 48px;
+    min-height: 36px;
+  }
+  .catalog-bar {
+    display: none;
+  }
+  .catalog-page {
+    padding-bottom: 48px;
+  }
+  .catalog-aside {
+    position: sticky;
+    top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: calc(100vh - 32px);
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: white;
+  }
+  .catalog-aside h2 {
+    margin: 0;
+    font-size: 17px;
+  }
+  .catalog-aside p {
+    margin: 0;
+    font-size: 14px;
+  }
+  .catalog-aside .catalog-picked {
+    flex: 1;
+    min-height: 0;
+    margin: 0;
+    overflow-y: auto;
+  }
+  .catalog-aside-total {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
+  .catalog-aside-total strong {
+    font-size: 22px;
+  }
+  .catalog-aside .catalog-send {
+    width: 100%;
+  }
+  .catalog-aside .text-button {
+    align-self: center;
+    font-size: 14px;
+  }
+}
+
+/* «Очистить» весь «Мой список» и «Список очищен · Вернуть». */
+.catalog-clear {
+  flex: none;
+  padding: 0 4px;
+  color: var(--danger-ink);
+  font-size: 14px;
+}
+.catalog-cleared {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 14px;
+}
+.catalog-cleared .text-button {
+  padding: 0;
+  font-weight: 600;
+}
+.catalog-aside-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+@media (min-width: 900px) {
+  .catalog-aside .catalog-cleared {
+    padding: 0;
+  }
+}
+
+/* «Товары в каталоге» на телефоне (23.10.2026): название не сжимается —
+   строка товара в две строки: [галочка][фото] название · «+ Фото»,
+   под названием мелко — код и цена. Поиск — во всю ширину, кнопки под ним. */
+@media (max-width: 560px) {
+  .catalog-products-tools input {
+    flex-basis: 100%;
+  }
+  .catalog-products-tools {
+    gap: 8px 16px;
+  }
+  .catalog-products-list li > label:not(.catalog-products-edit) {
+    display: grid;
+    grid-template-columns: 20px 32px auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: 10px;
+    row-gap: 2px;
+    align-items: center;
+    padding: 8px 0;
+  }
+  .catalog-products-list li > label > input[type="checkbox"] {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+  .catalog-products-list li > label > .catalog-products-thumb {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+  .catalog-products-list li > label > .catalog-products-name {
+    grid-column: 3 / 5;
+    grid-row: 1;
+    font-size: 14px;
+    line-height: 1.3;
+  }
+  .catalog-products-list li > label > .catalog-products-sku {
+    grid-column: 3;
+    grid-row: 2;
+    width: auto;
+    max-width: 90px;
+    font-size: 12px;
+  }
+  .catalog-products-list li > label > .catalog-products-sku::after {
+    content: " ·";
+  }
+  .catalog-products-list li > label > .catalog-products-price {
+    grid-column: 4;
+    grid-row: 2;
+    font-size: 12px;
+    text-align: left;
+  }
+  .catalog-products-list li {
+    gap: 8px;
+  }
 }
