@@ -9,13 +9,14 @@ import {
   PRODUCT_PHOTO_MAX_BYTES,
   PRODUCT_PHOTO_TYPES,
   productPhotoUrl,
+  productThumbUrl,
   thumbPath,
 } from "@/lib/product-photo";
 import { refreshCatalog } from "@/lib/catalog-cache";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type ProductPhotoResult = { url: string | null } | { error: "type" | "size" | "save" };
+export type ProductPhotoResult = { url: string | null; thumb: string | null } | { error: "type" | "size" | "save" };
 
 /**
  * Фото товара: поставить новое (поле photo) или убрать (remove=1). Фото уже
@@ -67,7 +68,7 @@ export async function setProductPhoto(form: FormData): Promise<ProductPhotoResul
     revalidatePath(`/stock/${productId}`);
     revalidatePath("/stock/catalog");
     await refreshCatalog(db, organizationId);
-    return { url: productPhotoUrl(path) };
+    return { url: productPhotoUrl(path), thumb: productThumbUrl(path) };
   } catch (error) {
     unstable_rethrow(error);
     console.error("setProductPhoto: unexpected failure", error);

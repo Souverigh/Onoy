@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { searchProducts } from "@/lib/match";
+import { PRODUCT_PHOTO_ERROR, uploadProductPhoto } from "@/lib/product-photo-upload";
 import { money } from "@/lib/format";
 import { Submit } from "./submit";
 import { saveCatalogProducts } from "@/app/(workspace)/stock/catalog/actions";
@@ -27,14 +27,52 @@ export function CatalogProducts({ products, currency }: { products: CatalogProdu
   const [query, setQuery] = useState("");
   // «Без фото» — что ещё сфотографировать для каталога.
   const [noPhoto, setNoPhoto] = useState(false);
+  // Фото, загруженные прямо из списка: id → миниатюра (до перезагрузки страницы).
+  const [uploaded, setUploaded] = useState<Record<string, string | null>>({});
+  const [uploading, setUploading] = useState<Set<string>>(() => new Set());
+  const [photoError, setPhotoError] = useState<{ id: string; text: string } | null>(null);
+  // Телефон: у какого товара открыт выбор «Камера / Галерея».
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const photoOf = (p: CatalogProductRow) => (p.id in uploaded ? uploaded[p.id] : p.photo);
   const initial = useMemo(() => new Set(products.filter((p) => p.catalog_hidden).map((p) => p.id)), [products]);
   const priced = products.filter((p) => Number(p.sale_price) > 0);
   const visible = priced.filter((p) => !hidden.has(p.id)).length;
   const trimmed = query.trim();
   const searched = trimmed ? searchProducts(trimmed, products, 300) : products;
-  const rows = noPhoto ? searched.filter((p) => !p.photo) : searched;
-  const withoutPhoto = priced.filter((p) => !p.photo).length;
+  const rows = noPhoto ? searched.filter((p) => !photoOf(p) || p.id in uploaded) : searched;
+  const withoutPhoto = priced.filter((p) => !photoOf(p)).length;
   const changed = hidden.size !== initial.size || [...hidden].some((id) => !initial.has(id));
+
+  /** Фото выбрали — сразу ужать и загрузить; в строке — «…», потом миниатюра. */
+  async function upload(id: string, file: File | null) {
+    setMenuFor(null);
+    if (!file) return;
+    setPhotoError(null);
+    setUploading((s) => new Set(s).add(id));
+    const result = await uploadProductPhoto(id, file);
+    setUploading((s) => {
+      const next = new Set(s);
+      next.delete(id);
+      return next;
+    });
+    if ("error" in result) setPhotoError({ id, text: PRODUCT_PHOTO_ERROR[result.error] });
+    else setUploaded((u) => ({ ...u, [id]: result.thumb ?? result.url }));
+  }
+
+  /** Поле выбора файла: camera — сразу камера (на Android выбор фото её не предлагает). */
+  const fileInput = (id: string, camera = false) => (
+    <input
+      type="file"
+      accept="image/*"
+      {...(camera ? { capture: "environment" as const } : {})}
+      className="sr-only"
+      onChange={(e) => {
+        const file = e.target.files?.[0] ?? null;
+        e.target.value = "";
+        void upload(id, file);
+      }}
+    />
+  );
 
   function toggle(id: string, show: boolean) {
     setHidden((current) => {
@@ -82,6 +120,8 @@ export function CatalogProducts({ products, currency }: { products: CatalogProdu
       <ul className="catalog-products-list">
         {rows.slice(0, 300).map((p) => {
           const noPrice = !(Number(p.sale_price) > 0);
+          const photo = photoOf(p);
+          const busy = uploading.has(p.id);
           return (
             <li key={p.id} className={noPrice ? "muted" : undefined}>
               <label>
@@ -91,9 +131,9 @@ export function CatalogProducts({ products, currency }: { products: CatalogProdu
                   disabled={noPrice}
                   onChange={(e) => toggle(p.id, e.target.checked)}
                 />
-                {p.photo ? (
+                {photo ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img className="catalog-products-thumb" src={p.photo} alt="" loading="lazy" />
+                  <img className="catalog-products-thumb" src={photo} alt="" loading="lazy" />
                 ) : (
                   <span className="catalog-products-thumb catalog-products-thumb-empty" aria-hidden="true" />
                 )}
@@ -103,10 +143,47 @@ export function CatalogProducts({ products, currency }: { products: CatalogProdu
                   {noPrice ? "нет цены" : `${money(p.sale_price, currency)} / ${p.unit}`}
                 </span>
               </label>
-              {/* Фото и цену меняют в карточке товара. */}
-              <Link className="catalog-products-edit" href={`/stock/${p.id}`} aria-label={`Открыть товар: ${p.name}`}>
-                {p.photo ? "Изменить" : "+ Фото"}
-              </Link>
+              {/* Фото — прямо отсюда: компьютер — выбор файла, телефон — «Камера / Галерея». */}
+              {busy ? (
+                <span className="catalog-products-edit catalog-products-busy" aria-live="polite">
+                  Загружаем…
+                </span>
+              ) : (
+                <>
+                  <label className="catalog-products-edit catalog-photo-desktop" aria-label={`Фото: ${p.name}`}>
+                    {photo ? "Изменить" : "+ Фото"}
+                    {fileInput(p.id)}
+                  </label>
+                  <button
+                    type="button"
+                    className="catalog-products-edit catalog-photo-touch"
+                    aria-expanded={menuFor === p.id}
+                    onClick={() => setMenuFor((m) => (m === p.id ? null : p.id))}
+                  >
+                    {photo ? "Изменить" : "+ Фото"}
+                  </button>
+                </>
+              )}
+              {menuFor === p.id && !busy && (
+                <div className="catalog-photo-menu">
+                  <label className="button primary">
+                    Камера
+                    {fileInput(p.id, true)}
+                  </label>
+                  <label className="button">
+                    Галерея
+                    {fileInput(p.id)}
+                  </label>
+                  <button type="button" className="text-button" onClick={() => setMenuFor(null)}>
+                    Отмена
+                  </button>
+                </div>
+              )}
+              {photoError?.id === p.id && (
+                <p className="form-error catalog-photo-error" role="alert">
+                  {photoError.text}
+                </p>
+              )}
             </li>
           );
         })}

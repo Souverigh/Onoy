@@ -10036,3 +10036,118 @@ form label.catalog-products-filter {
   min-height: 0;
   margin: 0;
 }
+
+/* Фото товара: «Сфотографировать» — только на телефоне/планшете (там есть
+   камера); на компьютере — одна кнопка «Выбрать фото». */
+.product-photo-gallery-desktop {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .product-photo-camera {
+    display: none;
+  }
+  .product-photo-gallery-touch {
+    display: none;
+  }
+  .product-photo-gallery-desktop {
+    display: inline;
+  }
+}
+
+/* Склад на телефоне: «Каталог для клиентов» строкой под заголовком (кнопки
+   шапки там скрыты); на компьютере каталог — кнопкой в шапке. */
+.stock-catalog-mobile {
+  display: none;
+}
+@media (max-width: 560px) {
+  .stock-catalog-mobile {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 10px 14px;
+    border: 1px solid var(--green-border);
+    border-radius: var(--radius-lg);
+    background: var(--green-wash);
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .stock-catalog-mobile > span:first-child {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .stock-catalog-mobile strong {
+    color: var(--green);
+    font-size: 15px;
+  }
+  .stock-catalog-mobile small {
+    font-size: 13px;
+  }
+  .stock-catalog-mobile > span:last-child {
+    color: var(--green);
+    font-size: 18px;
+  }
+}
+
+/* «+ Фото» прямо в списке каталога: на компьютере — выбор файла, на
+   телефоне — под товаром «Камера / Галерея». */
+.catalog-products-list li {
+  flex-wrap: wrap;
+}
+form label.catalog-products-edit,
+button.catalog-products-edit {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--green);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.catalog-products-busy {
+  color: var(--muted);
+  font-weight: 400;
+}
+.catalog-photo-touch {
+  display: none;
+}
+@media (hover: none), (pointer: coarse) {
+  form label.catalog-photo-desktop {
+    display: none;
+  }
+  button.catalog-photo-touch {
+    display: inline-flex;
+    min-height: 32px;
+  }
+}
+.catalog-photo-menu {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 10px;
+}
+form .catalog-photo-menu label.button {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-height: 38px;
+  margin: 0;
+  padding: 0 14px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.catalog-photo-error {
+  flex-basis: 100%;
+  margin: 0 0 8px;
+  font-size: 13px;
+}

@@ -156,6 +156,16 @@ export default async function StockPage({
             Товары <span className="count">{total}</span>
           </h1>
           <p className="muted">Остатки, цены и коды. Товар от поставщика прибавляет остаток, продажа - списывает.</p>
+          {/* Телефон: кнопки в шапке скрыты — каталог отдельной строкой. */}
+          {isOwner && (
+            <Link className="stock-catalog-mobile" href="/stock/catalog">
+              <span>
+                <strong>Каталог для клиентов</strong>
+                <small className="muted">Ссылка с ценами и фото для WhatsApp</small>
+              </span>
+              <span aria-hidden="true">→</span>
+            </Link>
+          )}
         </div>
         <div className="heading-actions stock-heading-actions">
           {isOwner && (
