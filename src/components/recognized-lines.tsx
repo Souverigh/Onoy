@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { InvoiceLine, InvoiceResult } from "@/lib/adre/types";
+import { searchProducts, type StockProduct } from "@/lib/match";
 import { money, quantity } from "@/lib/format";
 import { ruDate } from "@/lib/ru-date";
 import { InfoTip } from "./info-tip";
@@ -16,6 +17,12 @@ export function lineWord(n: number): string {
   if (ones >= 2 && ones <= 4) return "строки";
   return "строк";
 }
+
+/**
+ * Товар склада для новой строки: название, единица и цена (продажная или
+ * закупочная — в валюте накладной; иначе пусто, цену введут сами).
+ */
+export type CatalogProduct = StockProduct & { price: string };
 
 const readable = (v: string) => v.trim() !== "" && Number.isFinite(Number(v));
 
@@ -44,8 +51,9 @@ function safe(format: (v: string) => string, value: string | number): string {
 const decimalText = (v: string) => v.replace(/\s+/g, "").replace(",", ".");
 
 /**
- * Товары накладной — что прочитали с фото, до записи. Список прокручивается
- * внутри блока; нажатие на строку открывает её правку. Исправленные строки
+ * Товары накладной — что прочитали с фото, до записи. Список растёт вместе со
+ * страницей (своя прокрутка мешала листать форму колесом мыши, 22.10.2026);
+ * нажатие на строку открывает её правку. Исправленные строки
  * уходят в запись вместо распознанных (onChange). Продажа со складом
  * (`stock`) — у каждой строки сразу и как она спишется со склада: один
  * список вместо двух одинаковых (21.10.2026).
@@ -57,6 +65,7 @@ export function RecognizedLines({
   onChange,
   defaultOpen = false,
   stock,
+  catalog = [],
 }: {
   result: InvoiceResult;
   currency: string;
@@ -64,8 +73,14 @@ export function RecognizedLines({
   onChange: (lines: InvoiceLine[]) => void;
   defaultOpen?: boolean;
   stock?: StockMatching;
+  /** Товары склада — для «+ Добавить строку» поиском, как в «Товарах со склада». */
+  catalog?: CatalogProduct[];
 }) {
   const [editing, setEditing] = useState<number | null>(null);
+  // «+ Добавить строку»: поиск товара открыт; что набрали.
+  const [adding, setAdding] = useState(false);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
   const lines = result.lines;
   const date = result.date ? ruDate(result.date) || result.date : null;
   const head = [
@@ -87,11 +102,35 @@ export function RecognizedLines({
     );
   }
 
-  // Новая строка — сразу в правку; сумма записи пересчитается за строками.
-  function add() {
+  const trimmed = query.trim();
+  const results = trimmed ? searchProducts(trimmed, catalog, 8) : [];
+
+  function closeAdding() {
+    setAdding(false);
+    setQuery("");
+    setActive(0);
+  }
+
+  // Новая строка: товар со склада (название, единица, цена; у продажи — сразу
+  // «Со склада») или своя строка с набранным названием — сразу в правку.
+  // Сумма записи пересчитается за строками.
+  function add(product: CatalogProduct | null) {
     const n = lines.reduce((max, line) => Math.max(max, line.n), 0) + 1;
-    onChange([...lines, { n, name_raw: "", qty: "1", unit: "шт", price: "", sum: "0", confidence: 1 }]);
-    setEditing(n);
+    const price = product && Number(product.price) > 0 ? String(Number(product.price)) : "";
+    const line: InvoiceLine = {
+      n,
+      name_raw: product ? product.name : trimmed,
+      qty: "1",
+      unit: product?.unit || "шт",
+      price,
+      sum: price || "0",
+      confidence: 1,
+    };
+    onChange([...lines, line]);
+    if (product && stock) stock.onChoose(n, product.id);
+    // Без цены — сразу в правку, чтобы ввести её.
+    setEditing(product && price ? null : n);
+    closeAdding();
   }
 
   function remove(n: number) {
@@ -202,9 +241,86 @@ export function RecognizedLines({
           );
         })}
       </ol>
-      <button type="button" className="button recognized-line-add" onClick={add}>
-        + Добавить строку
-      </button>
+      <div className="recognized-line-adder">
+        {adding ? (
+          <span className="sale-sheet-search">
+            <input
+              type="search"
+              enterKeyHint="search"
+              autoComplete="off"
+              autoFocus
+              role="combobox"
+              aria-expanded={Boolean(trimmed)}
+              aria-label="Товар: название или код"
+              placeholder={catalog.length ? "Товар: название или код" : "Название товара"}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                  if (!trimmed) return;
+                  e.preventDefault();
+                  const count = results.length + 1;
+                  setActive((a) => (a + (e.key === "ArrowDown" ? 1 : count - 1)) % count);
+                } else if (e.key === "Enter") {
+                  // Enter добавляет строку, а не отправляет всю форму.
+                  e.preventDefault();
+                  if (!trimmed) return;
+                  add(active < results.length ? results[active] : null);
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  closeAdding();
+                }
+              }}
+              onBlur={() => {
+                if (!trimmed) closeAdding();
+              }}
+            />
+            {trimmed && (
+              <ul className="product-results sale-sheet-dropdown" role="listbox">
+                {results.map((p, i) => (
+                  <li key={p.id} role="option" aria-selected={i === active}>
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      className={i === active ? "active" : ""}
+                      // Не терять фокус поиска до клика.
+                      onMouseDown={(e) => e.preventDefault()}
+                      onMouseEnter={() => setActive(i)}
+                      onClick={() => add(p)}
+                    >
+                      <span className="product-result-name">{p.name}</span>
+                      <small className="muted">
+                        {p.sku ? `${p.sku} · ` : ""}
+                        {Number(p.price) > 0 ? `${safe((v) => money(v, currency), p.price)} · ` : ""}есть{" "}
+                        {safe(quantity, p.stock)} {p.unit}
+                      </small>
+                    </button>
+                  </li>
+                ))}
+                <li role="option" aria-selected={active === results.length}>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    className={`product-new ${active === results.length ? "active" : ""}`}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onMouseEnter={() => setActive(results.length)}
+                    onClick={() => add(null)}
+                  >
+                    + Своя строка «{trimmed}»
+                  </button>
+                </li>
+              </ul>
+            )}
+          </span>
+        ) : (
+          <button type="button" className="button recognized-line-add" onClick={() => setAdding(true)}>
+            + Добавить строку
+          </button>
+        )}
+      </div>
       <p className="muted">
         Сумма строк: {safe((v) => money(v, currency), linesTotal(lines))}
         {paperTotal != null && <> · итог накладной: {money(paperTotal, currency)}</>}. Нажмите на строку, чтобы

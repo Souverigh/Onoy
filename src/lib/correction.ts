@@ -20,13 +20,15 @@ export function correctionHref(
   paid?: string | number | null,
   /** Отменённая раньше запись открыта снова («Открыть заново»), а не исправляется. */
   restored = false,
+  /** Исправление: старая запись ещё действует — заменится при записи новой. */
+  replacing = false,
 ) {
   const params = new URLSearchParams({
     type: kind,
     party: old.party_id,
     amount: String(Number(old.original_amount ?? old.total)),
     documentId,
-    ...(restored ? { restored: "1" } : { redo: "1" }),
+    ...(restored ? { restored: "1" } : replacing ? { replace: "1" } : { redo: "1" }),
     fix: "1",
     from: old.id,
   });

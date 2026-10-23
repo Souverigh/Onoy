@@ -10,7 +10,7 @@ import { correctPurchase, restoreAsDraft } from "@/app/(workspace)/drafts/action
 
 const FIX_ERROR: Record<string, string> = {
   fix: "Не удалось исправить приход - он остался как был. Обновите страницу и попробуйте снова.",
-  fix_owner: "Исправить приход через 2 минуты после записи может только владелец.",
+  fix_owner: "Чужой приход может исправить только владелец.",
   restore:
     "Не удалось открыть приход черновиком - возможно, какой-то товар удалён со склада. Обновите страницу и попробуйте снова.",
 };
@@ -40,7 +40,7 @@ export default async function PurchasePage({
   const recordResult = await db
     .from("purchases")
     .select(
-      "id,total,occurred_at,created_at,status,is_opening,reversed_at,reversal_comment,document_id,created_by,made_by,original_amount,original_currency,fx_rate,note,supplier_id,suppliers(name,phone,currency)",
+      "id,total,occurred_at,created_at,status,is_opening,reversed_at,reversal_comment,document_id,created_by,made_by,maker_id,original_amount,original_currency,fx_rate,note,supplier_id,suppliers(name,phone,currency)",
     )
     .eq("organization_id", organizationId)
     .eq("id", id)
@@ -57,6 +57,7 @@ export default async function PurchasePage({
     document_id: string | null;
     created_by: string | null;
     made_by: string | null;
+    maker_id: string | null;
     original_amount: string | null;
     original_currency: string | null;
     fx_rate: string | null;
@@ -97,7 +98,8 @@ export default async function PurchasePage({
     !record.reversed_at &&
     !record.is_opening &&
     items.length > 0 &&
-    (isOwner || (record.created_by === user.id && Date.now() - Date.parse(record.created_at) < 2 * 60 * 1000));
+    // Владелец — любой, продавец — свой приход в любое время (22.10.2026).
+    (isOwner || record.maker_id === user.id);
   const hasInvoice = !record.is_opening && !record.reversed_at && items.length > 0;
   const canRestore = Boolean(record.reversed_at) && !record.is_opening && items.length > 0;
   const pdfUrl = `/purchases/${record.id}/pdf`;
@@ -130,7 +132,7 @@ export default async function PurchasePage({
                 className="button primary"
                 danger={false}
                 message="Исправить приход?"
-                text="Этот приход отменится (в истории он останется), долг поставщику и склад вернутся. Откроется форма с тем же поставщиком, товарами, ценами и датой - исправьте и запишите заново."
+                text="Откроется форма с тем же поставщиком, товарами, ценами и датой - исправьте и нажмите «Записать»: только тогда этот приход заменится новым (в истории останется отменённым). Не записали - ничего не изменится."
                 confirmLabel="Исправить"
                 cancelLabel="Не надо"
               >

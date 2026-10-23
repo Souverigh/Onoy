@@ -21,7 +21,7 @@ import { ConfirmButton } from "@/components/confirm-button";
 const FIX_ERROR: Record<string, string> = {
   restore: "Не удалось открыть запись заново - она осталась как была. Обновите страницу и попробуйте снова.",
   fix: "Не удалось исправить запись - она осталась как была. Обновите страницу и попробуйте снова.",
-  fix_owner: "Исправить запись через 2 минуты после записи может только владелец.",
+  fix_owner: "Чужую запись может исправить только владелец.",
   fix_return: "По этой продаже уже был возврат товара - сначала отмените возврат, потом исправляйте продажу.",
 };
 
@@ -96,7 +96,7 @@ export default async function DocumentDetail({
 }) {
   const { id } = await params;
   if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
-  const { db, organizationId, organizationName, currency: shopCurrency, isOwner } = await getContext();
+  const { db, organizationId, organizationName, currency: shopCurrency, isOwner, user } = await getContext();
   const params2 = await searchParams;
 
   // Всё, что зависит только от id документа, — одним кругом (раньше до 7–10
@@ -127,13 +127,13 @@ export default async function DocumentDetail({
       db.from("organizations").select("document_names").eq("id", organizationId).maybeSingle(),
       db
         .from("purchases")
-        .select("id,total,supplier_id,original_amount,original_currency,reversed_at,stocked_at,suppliers(id,name,aliases,currency)")
+        .select("id,total,supplier_id,original_amount,original_currency,reversed_at,maker_id,stocked_at,suppliers(id,name,aliases,currency)")
         .eq("organization_id", organizationId)
         .eq("document_id", id)
         .maybeSingle(),
       db
         .from("sales")
-        .select("id,total,customer_id,original_amount,original_currency,reversed_at,customers(id,name,aliases,currency)")
+        .select("id,total,customer_id,original_amount,original_currency,reversed_at,maker_id,customers(id,name,aliases,currency)")
         .eq("organization_id", organizationId)
         .eq("document_id", id)
         .maybeSingle(),
@@ -173,7 +173,7 @@ export default async function DocumentDetail({
   let docCurrency: string = shopCurrency;
   let saleId: string | null = null;
   // Запись, к которой приложен документ, — для блока «Запись» (статус, отмена).
-  let record: { kind: "sale" | "purchase"; id: string; reversed: boolean } | null = null;
+  let record: { kind: "sale" | "purchase"; id: string; reversed: boolean; makerId: string | null } | null = null;
   // Сверка строк — с суммой в валюте накладной, а не с пересчитанной в долг.
   const recordTotal = (row: { total: string | number; original_amount: string | null; original_currency: string | null }) =>
     row.original_amount != null ? Number(row.original_amount) : Number(row.total);
@@ -184,13 +184,14 @@ export default async function DocumentDetail({
     original_amount: string | null;
     original_currency: string | null;
     reversed_at: string | null;
+    maker_id: string | null;
   };
   type PartyRow = { id: string; name: string; aliases: string[] | null; currency: string | null } | null;
   if (doc.kind === "purchase") {
     const row = purchaseResult.data as unknown as (RecordRow & { suppliers: PartyRow }) | null;
     declaredTotal = row ? recordTotal(row) : null;
     if (row) {
-      record = { kind: "purchase", id: row.id, reversed: Boolean(row.reversed_at) };
+      record = { kind: "purchase", id: row.id, reversed: Boolean(row.reversed_at), makerId: row.maker_id };
       const supplier = row.suppliers;
       if (supplier) party = { id: supplier.id, name: supplier.name, aliases: supplier.aliases ?? [], kind: "supplier" };
       docCurrency = row.original_currency ?? supplier?.currency ?? shopCurrency;
@@ -200,7 +201,7 @@ export default async function DocumentDetail({
     declaredTotal = row ? recordTotal(row) : null;
     saleId = row?.id ?? null;
     if (row) {
-      record = { kind: "sale", id: row.id, reversed: Boolean(row.reversed_at) };
+      record = { kind: "sale", id: row.id, reversed: Boolean(row.reversed_at), makerId: row.maker_id };
       const customer = row.customers;
       if (customer) party = { id: customer.id, name: customer.name, aliases: customer.aliases ?? [], kind: "customer" };
       docCurrency = row.original_currency ?? customer?.currency ?? shopCurrency;
@@ -622,7 +623,8 @@ export default async function DocumentDetail({
               )}
               {/* «Исправить»: запись отменяется, всё из неё (фото, строки, сумма, дата)
                   открывается в новой форме — исправить и записать заново. */}
-              {isOwner && record && !record.reversed && (
+              {/* Исправить: владелец — любую, продавец — свою (22.10.2026). */}
+              {record && !record.reversed && (isOwner || record.makerId === user.id) && (
                 <form action={record.kind === "sale" ? correctSale : correctPurchase}>
                   <input type="hidden" name="id" value={record.id} />
                   <input type="hidden" name="back" value={`/documents/${doc.id}`} />
@@ -632,8 +634,8 @@ export default async function DocumentDetail({
                     message={record.kind === "sale" ? "Исправить продажу?" : "Исправить приход?"}
                     text={
                       record.kind === "sale"
-                        ? "Эта продажа отменится (в истории она останется), долг клиента вернётся, списанные со склада товары - тоже. Откроется форма с тем же фото, клиентом, строками, суммой и датой - исправьте что нужно и запишите заново: клиенту уйдёт новая накладная."
-                        : "Этот приход отменится (в истории он останется), долг поставщику и склад вернутся; оплата, внесённая вместе с ним, - тоже. Откроется форма с тем же фото, поставщиком, строками, суммой и датой - исправьте что нужно и запишите заново."
+                        ? "Откроется форма с тем же фото, клиентом, строками, суммой и датой - исправьте что нужно и нажмите «Записать»: только тогда эта продажа заменится новой (в истории останется отменённой), клиенту уйдёт новая накладная. Не записали - ничего не изменится."
+                        : "Откроется форма с тем же фото, поставщиком, строками, суммой и датой - исправьте что нужно и нажмите «Записать»: только тогда этот приход заменится новым (вместе с оплатой, внесённой с ним; в истории останется отменённым). Не записали - ничего не изменится."
                     }
                     confirmLabel="Исправить"
                     cancelLabel="Не надо"

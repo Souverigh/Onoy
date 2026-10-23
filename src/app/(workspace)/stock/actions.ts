@@ -8,7 +8,7 @@ import { isCurrency, rateInput, type Currency } from "@/lib/currency";
 import { bishkekDate } from "@/lib/day-summary";
 import { recordDateTime } from "@/lib/record-date";
 import { noteInput, saveRecordNote } from "@/lib/record-note";
-import { saveRecordMaker } from "@/lib/record-maker";
+import { correctionOf } from "@/lib/record-maker";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -29,9 +29,24 @@ function failureCode(message: string | undefined): string {
     "invalid_currency",
     "idempotency_conflict",
     "invalid_date",
+    "already_corrected",
+    "owner_only",
+    "has_returns",
   ])
     if (text.includes(code))
-      return code === "idempotency_conflict" ? "retry" : code === "invalid_supplier" ? "party" : code === "invalid_date" ? "date" : code;
+      return code === "idempotency_conflict"
+        ? "retry"
+        : code === "invalid_supplier"
+          ? "party"
+          : code === "invalid_date"
+            ? "date"
+            : code === "already_corrected"
+              ? "corrected"
+              : code === "owner_only"
+                ? "fix_owner"
+                : code === "has_returns"
+                  ? "fix_return"
+                  : code;
   if (text.includes("shop_blocked")) return "blocked";
   return "save";
 }
@@ -276,7 +291,10 @@ export async function commitSaleItems(previous: SaleItemsState, form: FormData):
     const occurredAt = recordDateTime(text(form, "record_date"), bishkekDate());
     if (occurredAt === "invalid") return { error: "date", attempt };
     const { db, organizationId } = await getContext();
-    const result = await db.rpc("commit_sale_items", {
+    // Исправление: новая продажа и отмена старой — одной транзакцией в базе.
+    const correction = correctionOf(form);
+    const result = await db.rpc(correction ? "commit_sale_items_correction" : "commit_sale_items", {
+      ...correction,
       p_org: organizationId,
       p_customer: customer,
       p_lines: clean,
@@ -292,7 +310,6 @@ export async function commitSaleItems(previous: SaleItemsState, form: FormData):
     }
     saleId = result.data as string;
     await saveRecordNote(db, organizationId, "sale", saleId, noteInput(form.get("note")));
-    await saveRecordMaker(db, organizationId, "sale", saleId, form);
     await dropDraft(form);
   } catch (error) {
     unstable_rethrow(error);
@@ -378,7 +395,9 @@ export async function commitPurchaseItems(previous: SaleItemsState, form: FormDa
     const rate = rawRate ? rateInput(rawRate) : null;
     if (rawRate && !rate) return { error: "rate", attempt };
     const { db, organizationId } = await getContext();
-    const result = await db.rpc("commit_purchase_items", {
+    const correction = correctionOf(form);
+    const result = await db.rpc(correction ? "commit_purchase_items_correction" : "commit_purchase_items", {
+      ...correction,
       p_org: organizationId,
       p_supplier: supplier,
       p_lines: clean,
@@ -394,7 +413,6 @@ export async function commitPurchaseItems(previous: SaleItemsState, form: FormDa
     }
     purchaseId = result.data as string;
     await saveRecordNote(db, organizationId, "purchase", purchaseId, noteInput(form.get("note")));
-    await saveRecordMaker(db, organizationId, "purchase", purchaseId, form);
     await dropDraft(form);
   } catch (error) {
     unstable_rethrow(error);

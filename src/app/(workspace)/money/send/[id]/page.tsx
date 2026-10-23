@@ -34,7 +34,7 @@ export default async function SendSalePage({
 
   const saleResult = await db
     .from("sales")
-    .select("id,customer_id,total,occurred_at,paid_immediately,reversed_at,is_opening,document_id,status,created_at,created_by,original_amount,original_currency,fx_rate,note")
+    .select("id,customer_id,total,occurred_at,paid_immediately,reversed_at,is_opening,document_id,status,created_at,created_by,maker_id,original_amount,original_currency,fx_rate,note")
     .eq("organization_id", organizationId)
     .eq("id", id)
     .maybeSingle();
@@ -100,7 +100,8 @@ export default async function SendSalePage({
     shownLines.length > 0 &&
     !sale.reversed_at &&
     !sale.is_opening &&
-    (isOwner || (sale.created_by === user.id && Date.now() - Date.parse(sale.created_at) < UNDO_MS));
+    // Владелец — любую, продавец — свою продажу в любое время (22.10.2026).
+    (isOwner || sale.maker_id === user.id);
   // Был возврат товара — сначала отменить его, иначе долг посчитается дважды.
   const returned = mayCorrect ? await hasActiveReturn(db, organizationId, sale.id) : false;
   const canCorrect = mayCorrect && !returned;
@@ -255,7 +256,7 @@ export default async function SendSalePage({
           {(error === "fix" || error === "fix_owner" || error === "fix_return") && (
             <p className="form-error" role="alert">
               {error === "fix_owner"
-                ? "Исправить продажу через 2 минуты после записи может только владелец."
+                ? "Чужую продажу может исправить только владелец."
                 : error === "fix_return"
                   ? "По этой продаже уже был возврат товара - сначала отмените возврат, потом исправляйте продажу."
                   : "Не удалось исправить продажу - она осталась как была. Обновите страницу и попробуйте снова."}
@@ -294,8 +295,8 @@ export default async function SendSalePage({
                 message="Исправить продажу?"
                 text={
                   sale.document_id
-                    ? "Эта продажа отменится (в истории она останется), долг клиента вернётся, списанные со склада товары - тоже. Откроется форма с тем же фото, клиентом и строками накладной - исправьте строки, дату или товары склада и запишите заново: сумма пересчитается, клиенту уйдёт новая накладная."
-                    : "Эта продажа отменится (в истории она останется), долг клиента и склад вернутся. Откроется форма с тем же клиентом и товарами - исправьте и запишите заново."
+                    ? "Откроется форма с тем же фото, клиентом, строками, суммой и датой - исправьте что нужно и нажмите «Записать»: только тогда эта продажа заменится новой (в истории останется отменённой), клиенту уйдёт новая накладная. Не записали - ничего не изменится."
+                    : "Откроется форма с тем же клиентом и товарами - исправьте и нажмите «Записать»: только тогда эта продажа заменится новой (в истории останется отменённой). Не записали - ничего не изменится."
                 }
                 confirmLabel="Исправить"
                 cancelLabel="Не надо"

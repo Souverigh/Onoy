@@ -30,7 +30,7 @@ import { ContactPicker } from "./contact-picker";
 import { PartyPicker, type PickerParty } from "./party-picker";
 import { NewCustomerInline } from "./new-customer-inline";
 import { ConfirmDialog } from "./confirm-dialog";
-import { RecognizedLines, linesTotal } from "./recognized-lines";
+import { RecognizedLines, linesTotal, type CatalogProduct } from "./recognized-lines";
 import { lineProductsValue } from "./sale-stock-lines";
 import { LeaveGuard } from "./leave-guard";
 import { NoteField } from "./note-field";
@@ -144,8 +144,9 @@ export function OperationForm({
   correction?: { result: InvoiceResult; choices: StockChoices };
   /** «Исправить приход»: «Сразу оплатили поставщику» из отменённого прихода. */
   initialPaidNow?: string;
-  /** Продажа: товары склада — строки с фото списываются с них (просьба пользователя 15.10.2026). */
-  stockProducts?: StockProduct[];
+  /** Продажа: товары склада — строки с фото списываются с них (просьба пользователя 15.10.2026).
+   *  Продажа и приход: из них же — «+ Добавить строку» поиском (22.10.2026). */
+  stockProducts?: (StockProduct & { purchase_price?: string | null; purchase_currency?: string | null })[];
   /** «Исправить» / «Открыть заново»: за кем останется запись. */
   maker?: Maker;
 }) {
@@ -317,7 +318,9 @@ export function OperationForm({
     : amountFromInput(amountValue);
   const similarAmount = foreign ? (debtAmount ? debtAmount.toFixed(2) : null) : amountValue || null;
   const selectedRecord = parties.find((p) => p.id === selectedParty);
-  const partyBalance = selectedRecord?.balance != null ? Number(selectedRecord.balance) : null;
+  // Исправление: старая запись ещё в долге и отменится при записи — её долю вычитаем.
+  const replacedDebt = maker?.replaces && maker.replaces.party === selectedParty ? maker.replaces.debt : 0;
+  const partyBalance = selectedRecord?.balance != null ? Number(selectedRecord.balance) - replacedDebt : null;
   // С чеком или номером перевода — перевод, пока продавец не выбрал сам.
   const effectiveMethod = methodChoice ?? (receiptFile || prefill || bankRef.trim() ? "transfer" : "cash");
   // Валюта с накладной (ТЗ §6): предлагаем, молча не подставляем.
@@ -379,7 +382,7 @@ export function OperationForm({
   const saleCustomer = kind === "sale" ? allCustomers.find((c) => c.id === selectedParty) : undefined;
   const overLimit = saleCustomer
     ? creditLimitExceeded(
-        saleCustomer.balance ?? 0,
+        Number(saleCustomer.balance ?? 0) - replacedDebt,
         saleCustomer.credit_limit,
         debtAmount,
         paidNow,
@@ -455,6 +458,12 @@ export function OperationForm({
             ? PHOTO_USED_TEXT
             : error === "photo_upload"
               ? "Не удалось загрузить фото. Попробуйте ещё раз."
+          : error === "corrected"
+            ? "Эту запись уже исправили - проверьте историю. Новая запись не сохранена."
+          : error === "fix_owner"
+            ? "Чужую запись может исправить только владелец. Новая запись не сохранена."
+          : error === "fix_return"
+            ? "По этой продаже был возврат товара - сначала отмените возврат. Новая запись не сохранена."
           : error === "part"
             ? "Оплаченная часть не может быть больше суммы товара."
           : error === "date"
@@ -847,6 +856,12 @@ export function OperationForm({
   // Строки с фото против склада — только продажа и только если на складе что-то есть.
   const stockLines =
     kind === "sale" && stockProducts?.length && checkedPhoto?.result?.lines.length ? checkedPhoto.result.lines : null;
+  // «+ Добавить строку» в «Товарах накладной»: товар склада с ценой в валюте накладной.
+  const catalog: CatalogProduct[] = (stockProducts ?? []).map((p) => {
+    const price = kind === "purchase" ? p.purchase_price : p.sale_price;
+    const priceCurrency = kind === "purchase" ? (p.purchase_currency ?? shopCurrency) : shopCurrency;
+    return { ...p, price: price && priceCurrency === suggestionCurrency ? price : "" };
+  });
   const currentStockChoices =
     stockChoices && stockChoices.documentId === checkedPhoto?.documentId ? stockChoices.choices : {};
 
@@ -1035,7 +1050,12 @@ export function OperationForm({
     <>
       <LeaveGuard
         active={(hasPhoto || Boolean(receiptFile)) && !saving && !pendingConfirm}
-        {...(correcting
+        {...(correcting && maker?.replaces
+          ? {
+              title: "Исправление не записано. Уйти?",
+              text: `Прошлая ${kind === "purchase" ? "запись" : "продажа"} останется как была - ничего не изменится.`,
+            }
+          : correcting
           ? {
               title: "Исправление не записано. Уйти?",
               text: `Старая запись уже отменена и в долгах не считается. Вернуться к исправлению можно из списка «${
@@ -1165,9 +1185,12 @@ export function OperationForm({
             {useExisting && existingDocument && pages.length === 0 && (
               <ol className="page-thumbs">
                 {existingDocument.pages.map((page, i) => (
-                  <li key={i} className="page-thumb">
+                  <li key={i} className={`page-thumb${page.mimeType === "application/pdf" && page.url ? " is-pdf" : ""}`}>
                     {page.mimeType === "application/pdf" || !page.url ? (
-                      <span className="page-thumb-pdf">{page.url ? "PDF" : "Фото"}</span>
+                      <>
+                        <span className="page-thumb-pdf">{page.url ? "PDF" : "Фото"}</span>
+                        {page.url && <PdfView url={page.url} />}
+                      </>
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={page.url} alt={`Страница ${i + 1}`} />
@@ -1180,12 +1203,15 @@ export function OperationForm({
             {pages.length > 0 && (
               <ol className="page-thumbs">
                 {pages.map((file, i) => (
-                  <li key={`${i}-${file.name}-${file.lastModified}`} className="page-thumb">
+                  <li key={`${i}-${file.name}-${file.lastModified}`} className={`page-thumb${isPdf(file) ? " is-pdf" : ""}`}>
                     {isPdf(file) ? (
-                      <span className="page-thumb-pdf" title={file.name}>
-                        PDF
-                        <small>{file.name}</small>
-                      </span>
+                      <>
+                        <span className="page-thumb-pdf" title={file.name}>
+                          PDF
+                          <small>{file.name}</small>
+                        </span>
+                        {previews[i] && <PdfView url={previews[i]} />}
+                      </>
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
                       previews[i] && <img src={previews[i]} alt={`Страница ${i + 1}`} />
@@ -1596,11 +1622,12 @@ export function OperationForm({
                 будет неполной.
               </p>
             )}
-            {similar.length > 0 && (
+            {/* Исправляемая запись — не «похожая»: она и заменится. */}
+            {similar.filter((r) => r.id !== maker?.from).length > 0 && (
               <div className="photo-check-mismatch" role="status">
                 Похоже, такая запись уже есть:
                 <ul>
-                  {similar.map((record) => (
+                  {similar.filter((r) => r.id !== maker?.from).map((record) => (
                     <li key={record.id}>
                       {new Date(record.occurredAt).toLocaleDateString("ru-RU", {
                         day: "2-digit",
@@ -1626,7 +1653,8 @@ export function OperationForm({
                 Если это новая запись - просто подтвердите.
               </div>
             )}
-            {checkedPhoto?.duplicate && (
+            {/* Копия фото исправляемой записи — не дубликат: та запись заменится. */}
+            {checkedPhoto?.duplicate && !(maker?.replaces && useExisting) && (
               <div className="duplicate-warning" role="alert">
                 <strong>Дубликат</strong>
                 <p>Это фото уже приложено к другой записи - сохранится как дубликат. Проверьте, не задвоилось ли.</p>
@@ -1729,6 +1757,7 @@ export function OperationForm({
             paperTotal={paperTotal}
             onChange={editLines}
             defaultOpen={correcting}
+            catalog={catalog}
             stock={
               stockLines
                 ? {
@@ -1926,4 +1955,13 @@ export function OperationForm({
       </form>
     </>
   );
+}
+
+/**
+ * PDF накладной на компьютере — встроенным просмотром браузера, как на
+ * странице документа: все страницы прокруткой, увеличение, скачать (просьба
+ * пользователя 22.10.2026). На телефоне — значок «PDF» (стили).
+ */
+function PdfView({ url }: { url: string }) {
+  return <iframe src={url} title="PDF накладной" className="page-thumb-pdf-view" />;
 }

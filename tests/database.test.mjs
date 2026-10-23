@@ -3082,10 +3082,18 @@ test("record drafts: only the author sees and edits them, other shops get nothin
   assert.equal((await db.query("select count(*)::int as n from sales")).rows[0].n, sold);
   await owner();
 });
-test("correct_sale: photo copied with all pages and the sale reversed in one step; returns, strangers and other shops refused", async () => {
+test("correction: «Исправить» changes nothing until the new sale is written; then the old one is replaced in the same step", async () => {
   const k = (n) => `aaaa8888-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
+  const seller = "44444444-4444-4444-8444-444444444444";
+  const otherSeller = "55555555-5555-4555-8555-555555555555";
+  const stranger = "66666666-6666-4666-8666-666666666666";
   const balance = async (id) => (await db.query("select balance from customer_balances where id=$1", [id])).rows[0].balance;
   await owner();
+  await db.query("insert into auth.users values ($1),($2),($3) on conflict do nothing", [seller, otherSeller, stranger]);
+  await db.query(
+    "insert into organization_members(organization_id,user_id,role) values ($1,$2,'staff'),($1,$3,'staff') on conflict do nothing",
+    [orgA, seller, otherSeller],
+  );
   const buyer = (await db.query("insert into customers(organization_id,name) values ($1,'Исправление Айбек') returning id", [orgA])).rows[0].id;
   const doc = (
     await db.query(
@@ -3098,82 +3106,134 @@ test("correct_sale: photo copied with all pages and the sale reversed in one ste
     [orgA, doc, `${orgA}/sale/fix-2.jpg`, `${orgA}/sale/fix-3.jpg`],
   );
   await db.query("insert into document_lines(organization_id,document_id,n,name_raw,qty,unit,price) values ($1,$2,1,'Carla 18',5,'шт',20)", [orgA, doc]);
+  // Продажа продавца.
   const sale = (
     await db.query(
-      "insert into sales(organization_id,customer_id,total,status,document_id,idempotency_key) values ($1,$2,100,'posted',$3,$4) returning id",
-      [orgA, buyer, doc, k(1)],
+      "insert into sales(organization_id,customer_id,total,status,document_id,idempotency_key,created_by) values ($1,$2,100,'posted',$3,$4,$5) returning id",
+      [orgA, buyer, doc, k(1), seller],
     )
   ).rows[0].id;
   assert.equal(await balance(buyer), "100.00");
 
-  // Чужой магазин — отказ, ничего не меняется.
-  await user(b);
-  await assert.rejects(db.query("select correct_sale($1,$2)", [orgA, sale]), /not_a_member/);
+  // Старых «отменить отдельно от записи» больше нет.
+  await user(seller);
+  await assert.rejects(db.query("select correct_sale($1,$2)", [orgA, sale]), /does not exist/);
+  // Не из магазина и чужой продавец — отказ.
+  await user(stranger);
+  await assert.rejects(db.query("select start_correction($1,'sale',$2)", [orgA, sale]), /access_denied/);
+  await user(otherSeller);
+  await assert.rejects(db.query("select start_correction($1,'sale',$2)", [orgA, sale]), /owner_only/);
 
-  await user(a);
-  const copy = (await db.query("select correct_sale($1,$2) as id", [orgA, sale])).rows[0].id;
+  // «Исправить» своей продажи: копия фото со всеми страницами, продажа — как была.
+  await user(seller);
+  const copy = (await db.query("select start_correction($1,'sale',$2) as id", [orgA, sale])).rows[0].id;
   assert.notEqual(copy, doc);
   await owner();
-  const fresh = (await db.query("select kind,status,file_hash from documents where id=$1", [copy])).rows[0];
-  assert.deepEqual(fresh, { kind: "sale", status: "uploaded", file_hash: "fix-1" });
-  // Все страницы — в новом документе, строки — нет (их запишет новая продажа); старый документ цел.
-  assert.deepEqual(
-    (await db.query("select page_no,file_hash from document_pages where document_id=$1 order by page_no", [copy])).rows,
-    [{ page_no: 2, file_hash: "fix-2" }, { page_no: 3, file_hash: "fix-3" }],
-  );
-  assert.equal((await db.query("select count(*)::int as n from document_lines where document_id=$1", [copy])).rows[0].n, 0);
-  assert.equal((await db.query("select count(*)::int as n from document_lines where document_id=$1", [doc])).rows[0].n, 1);
-  assert.equal((await db.query("select count(*)::int as n from document_pages where document_id=$1", [doc])).rows[0].n, 2);
-  // Продажа отменена, в истории осталась; долг вернулся.
-  const reversed = (await db.query("select reversed_at is not null as r, reversal_comment from sales where id=$1", [sale])).rows[0];
-  assert.deepEqual(reversed, { r: true, reversal_comment: "Исправление: продажа записывается заново" });
-  assert.equal(await balance(buyer), "0.00");
-  // Повтор — уже отменена; новых копий нет.
-  await user(a);
-  await assert.rejects(db.query("select correct_sale($1,$2)", [orgA, sale]), /invalid_sale/);
-  await owner();
-  assert.equal((await db.query("select count(*)::int as n from documents where file_hash='fix-1'")).rows[0].n, 2);
-
-  // Отменённую продажу по фото — обратно: новая копия фото со всеми страницами,
-  // продажа остаётся отменённой, долг не меняется. Чужой магазин — отказ.
-  await user(b);
-  await assert.rejects(db.query("select restore_reversed_document($1,'sale',$2)", [orgA, sale]), /not_a_member/);
-  await user(a);
-  await assert.rejects(db.query("select restore_reversed_document($1,'purchase',$2)", [orgA, sale]), /invalid_record/);
-  const restored = (await db.query("select restore_reversed_document($1,'sale',$2) as id", [orgA, sale])).rows[0].id;
-  await owner();
-  assert.deepEqual((await db.query("select kind,status,file_hash from documents where id=$1", [restored])).rows[0], {
+  assert.deepEqual((await db.query("select kind,status,file_hash from documents where id=$1", [copy])).rows[0], {
     kind: "sale",
     status: "uploaded",
     file_hash: "fix-1",
   });
-  assert.equal((await db.query("select count(*)::int as n from document_pages where document_id=$1", [restored])).rows[0].n, 2);
-  assert.equal((await db.query("select reversed_at is not null as r from sales where id=$1", [sale])).rows[0].r, true);
-  assert.equal(await balance(buyer), "0.00");
+  assert.deepEqual(
+    (await db.query("select page_no,file_hash from document_pages where document_id=$1 order by page_no", [copy])).rows,
+    [{ page_no: 2, file_hash: "fix-2" }, { page_no: 3, file_hash: "fix-3" }],
+  );
+  assert.equal((await db.query("select count(*)::int as n from document_lines where document_id=$1", [doc])).rows[0].n, 1);
+  // Бросили исправление — ничего не изменилось.
+  assert.equal((await db.query("select reversed_at from sales where id=$1", [sale])).rows[0].reversed_at, null);
+  assert.equal(await balance(buyer), "100.00");
 
-  // С возвратом товара — отказ: продажа остаётся, копии нет.
+  // Записали: новая продажа и отмена старой — одним шагом; продавец — тот же.
+  await user(seller);
+  const fixed = (
+    await db.query("select commit_sale_correction($1,null,$2,$3,'80',false,$4,$5) as id", [sale, orgA, buyer, k(5), copy])
+  ).rows[0].id;
+  await owner();
+  assert.deepEqual((await db.query("select reversed_at is not null as r, reversal_comment from sales where id=$1", [sale])).rows[0], {
+    r: true,
+    reversal_comment: "Исправление: заменена новой продажей",
+  });
+  assert.deepEqual((await db.query("select corrected_from, made_by, maker_id from sales where id=$1", [fixed])).rows[0], {
+    corrected_from: sale,
+    made_by: seller,
+    maker_id: seller,
+  });
+  assert.equal(await balance(buyer), "80.00");
+  // Повтор после сбоя связи — та же запись, ничего не задвоилось.
+  await user(seller);
+  assert.equal(
+    (await db.query("select commit_sale_correction($1,null,$2,$3,'80',false,$4,$5) as id", [sale, orgA, buyer, k(5), copy])).rows[0].id,
+    fixed,
+  );
+  // Вторая замена той же продажи — отказ, новая запись не появилась.
+  await assert.rejects(
+    db.query("select commit_sale_correction($1,null,$2,$3,'70',false,$4)", [sale, orgA, buyer, k(6)]),
+    /already_corrected/,
+  );
+  await owner();
+  assert.equal((await db.query("select count(*)::int as n from sales where idempotency_key=$1", [k(6)])).rows[0].n, 0);
+  assert.equal(await balance(buyer), "80.00");
+
+  // Чужой продавец не может заменить продажу через запись — и ничего не пишется.
+  await user(otherSeller);
+  await assert.rejects(
+    db.query("select commit_sale_correction($1,null,$2,$3,'10',false,$4)", [fixed, orgA, buyer, k(7)]),
+    /owner_only/,
+  );
+  await owner();
+  assert.equal((await db.query("select count(*)::int as n from sales where idempotency_key=$1", [k(7)])).rows[0].n, 0);
+  assert.equal((await db.query("select reversed_at from sales where id=$1", [fixed])).rows[0].reversed_at, null);
+
+  // Владелец исправляет продажу продавца: она остаётся за продавцом; выбрать
+  // другого может только владелец, продавец — нет.
   const breaker = (
     await db.query("select id from products where organization_id=$1 and name='Автомат 16А возврат'", [orgA])
   ).rows[0].id;
+  await user(seller);
+  const sale3 = (
+    await db.query("select commit_sale_items($1,$2,$3,false,$4) as id", [orgA, buyer, JSON.stringify([{ product: breaker, qty: "1", price: "360" }]), k(8)])
+  ).rows[0].id;
+  assert.equal((await db.query("select start_correction($1,'sale',$2) as id", [orgA, sale3])).rows[0].id, null);
+  await assert.rejects(
+    db.query("select commit_sale_items_correction($1,$2,$3,$4,$5,false,$6)", [sale3, otherSeller, orgA, buyer, JSON.stringify([{ product: breaker, qty: "1", price: "300" }]), k(9)]),
+    /owner_only/,
+  );
+  await user(a);
+  const byOwner = (
+    await db.query("select commit_sale_items_correction($1,null,$2,$3,$4,false,$5) as id", [sale3, orgA, buyer, JSON.stringify([{ product: breaker, qty: "1", price: "300" }]), k(10)])
+  ).rows[0].id;
+  await owner();
+  assert.deepEqual((await db.query("select created_by, maker_id from sales where id=$1", [byOwner])).rows[0], { created_by: a, maker_id: seller });
+  assert.notEqual((await db.query("select reversed_at from sales where id=$1", [sale3])).rows[0].reversed_at, null);
+
+  // С возвратом товара — отказ и при «Исправить», и при записи.
   await user(a);
   const sale2 = (
     await db.query("select commit_sale_items($1,$2,$3,false,$4) as id", [orgA, buyer, JSON.stringify([{ product: breaker, qty: "2", price: "360" }]), k(2)])
   ).rows[0].id;
   const item = (await db.query("select id from sale_items where sale_id=$1", [sale2])).rows[0].id;
   await db.query("select commit_return($1,$2,$3,'Вернул 1',$4)", [orgA, buyer, JSON.stringify([{ sale_item: item, qty: "1" }]), k(3)]);
-  await assert.rejects(db.query("select correct_sale($1,$2)", [orgA, sale2]), /has_returns/);
-  // Не отменённая — обратно нечего.
-  await assert.rejects(db.query("select restore_reversed_document($1,'sale',$2)", [orgA, sale2]), /invalid_record/);
+  await assert.rejects(db.query("select start_correction($1,'sale',$2)", [orgA, sale2]), /has_returns/);
+  await assert.rejects(
+    db.query("select commit_sale_correction($1,null,$2,$3,'1',false,$4)", [sale2, orgA, buyer, k(11)]),
+    /has_returns/,
+  );
   assert.equal((await db.query("select reversed_at from sales where id=$1", [sale2])).rows[0].reversed_at, null);
-  // Без фото — отмена без копии.
-  const sale3 = (
-    await db.query("select commit_sale_items($1,$2,$3,false,$4) as id", [orgA, buyer, JSON.stringify([{ product: breaker, qty: "1", price: "360" }]), k(4)])
-  ).rows[0].id;
-  assert.equal((await db.query("select correct_sale($1,$2) as id", [orgA, sale3])).rows[0].id, null);
-  assert.notEqual((await db.query("select reversed_at from sales where id=$1", [sale3])).rows[0].reversed_at, null);
+
+  // Отменённую продажу по фото — обратно: копия фото, продажа остаётся отменённой.
+  await user(stranger);
+  await assert.rejects(db.query("select restore_reversed_document($1,'sale',$2)", [orgA, sale]), /not_a_member/);
+  await user(a);
+  await assert.rejects(db.query("select restore_reversed_document($1,'purchase',$2)", [orgA, sale]), /invalid_record/);
+  const restored = (await db.query("select restore_reversed_document($1,'sale',$2) as id", [orgA, sale])).rows[0].id;
+  await owner();
+  assert.equal((await db.query("select count(*)::int as n from document_pages where document_id=$1", [restored])).rows[0].n, 2);
+  assert.equal((await db.query("select reversed_at is not null as r from sales where id=$1", [sale])).rows[0].r, true);
+  await user(a);
+  await assert.rejects(db.query("select restore_reversed_document($1,'sale',$2)", [orgA, sale2]), /invalid_record/);
   await owner();
 });
-test("correct_purchase: photo copied with all pages, purchase and its paid-now payment reversed together; wrong payment refused", async () => {
+test("correction of a purchase: paid-now payment is reversed together with it only when the new purchase is written", async () => {
   const k = (n) => `aaaa9999-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
   const supplierBalance = async (id) => (await db.query("select balance from supplier_balances where id=$1", [id])).rows[0].balance;
   await owner();
@@ -3208,30 +3268,29 @@ test("correct_purchase: photo copied with all pages, purchase and its paid-now p
   ).rows[0].id;
   assert.equal(await supplierBalance(supplier), "250.00");
 
-  // Оплата не «вместе с приходом» — отказ, ничего не меняется.
   await user(a);
-  await assert.rejects(db.query("select correct_purchase($1,$2,$3)", [orgA, purchase.id, other]), /invalid_payment/);
-  await owner();
-  assert.equal((await db.query("select reversed_at from purchases where id=$1", [purchase.id])).rows[0].reversed_at, null);
-  assert.equal((await db.query("select count(*)::int as n from documents where file_hash='pfix-1'")).rows[0].n, 1);
-
-  await user(b);
-  await assert.rejects(db.query("select correct_purchase($1,$2,$3)", [orgA, purchase.id, paid]), /not_a_member/);
-  await user(a);
-  const copy = (await db.query("select correct_purchase($1,$2,$3) as id", [orgA, purchase.id, paid])).rows[0].id;
+  const copy = (await db.query("select start_correction($1,'purchase',$2) as id", [orgA, purchase.id])).rows[0].id;
   await owner();
   assert.deepEqual((await db.query("select kind,status from documents where id=$1", [copy])).rows[0], { kind: "purchase", status: "uploaded" });
   assert.deepEqual(
     (await db.query("select page_no,file_hash from document_pages where document_id=$1", [copy])).rows,
     [{ page_no: 2, file_hash: "pfix-2" }],
   );
-  // Приход и его оплата отменены, другая оплата осталась: долг = -50 (переплата).
+  // «Исправить» ничего не отменило.
+  assert.equal((await db.query("select reversed_at from purchases where id=$1", [purchase.id])).rows[0].reversed_at, null);
+  assert.equal((await db.query("select reversed_at from payments where id=$1", [paid])).rows[0].reversed_at, null);
+  assert.equal(await supplierBalance(supplier), "250.00");
+
+  // Записали новый приход на 400: старый и его оплата отменены, другая оплата осталась.
+  await user(a);
+  await db.query("select commit_purchase_correction($1,null,$2,$3,'400',$4,$5)", [purchase.id, orgA, supplier, k(4), copy]);
+  await owner();
   assert.notEqual((await db.query("select reversed_at from purchases where id=$1", [purchase.id])).rows[0].reversed_at, null);
   assert.notEqual((await db.query("select reversed_at from payments where id=$1", [paid])).rows[0].reversed_at, null);
   assert.equal((await db.query("select reversed_at from payments where id=$1", [other])).rows[0].reversed_at, null);
-  assert.equal(await supplierBalance(supplier), "-50.00");
+  assert.equal(await supplierBalance(supplier), "350.00");
   await user(a);
-  await assert.rejects(db.query("select correct_purchase($1,$2,null)", [orgA, purchase.id]), /invalid_purchase/);
+  await assert.rejects(db.query("select start_correction($1,'purchase',$2)", [orgA, purchase.id]), /invalid_correction/);
   await owner();
 });
 test("cash moves: only the owner takes or puts cash, once per key, reversible, other shops see nothing", async () => {

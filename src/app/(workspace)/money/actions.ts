@@ -31,7 +31,7 @@ import { isCurrency, rateInput, type Currency } from "@/lib/currency";
 import { partPaymentOf } from "@/lib/part-payment";
 import { redoTarget } from "@/lib/redo";
 import { noteInput, saveRecordNote } from "@/lib/record-note";
-import { saveRecordMaker } from "@/lib/record-maker";
+import { correctionOf } from "@/lib/record-maker";
 
 type Operation = "purchase" | "sale" | "payment";
 const uuidPattern =
@@ -53,6 +53,10 @@ function failureCode(message: string) {
   // unique(organization_id,bank_reference): номер перевода уже в другой оплате.
   // В message нет кода 23505 — только имя ограничения.
   if (message.includes("bank_reference")) return "duplicate";
+  // Исправление: запись уже заменили / чужая / по продаже был возврат.
+  if (message.includes("already_corrected")) return "corrected";
+  if (message.includes("owner_only")) return "fix_owner";
+  if (message.includes("has_returns")) return "fix_return";
   if (message.includes("invalid_") || message.includes("not_a_member"))
     return "invalid";
   return "save";
@@ -230,9 +234,12 @@ async function commitOperationOrRedirect(
       return { error: used ? "photo_used" : "photo_upload" };
     }
   }
+  // Исправление: новая запись и отмена старой — одной транзакцией в базе.
+  const correction = operation === "payment" ? null : correctionOf(form);
   const result =
     operation === "purchase"
-      ? await db.rpc("commit_purchase", {
+      ? await db.rpc(correction ? "commit_purchase_correction" : "commit_purchase", {
+          ...correction,
           p_org: organizationId,
           p_supplier: party,
           ...original,
@@ -241,7 +248,8 @@ async function commitOperationOrRedirect(
           ...(occurredAt ? { p_occurred_at: occurredAt } : {}),
         })
       : operation === "sale"
-        ? await db.rpc("commit_sale", {
+        ? await db.rpc(correction ? "commit_sale_correction" : "commit_sale", {
+            ...correction,
             p_org: organizationId,
             p_customer: party,
             ...original,
@@ -314,7 +322,6 @@ async function commitOperationOrRedirect(
     }
   }
   await saveRecordNote(db, organizationId, operation, result.data as string, noteInput(form.get("note")));
-  if (operation !== "payment") await saveRecordMaker(db, organizationId, operation, result.data as string, form);
   // Оплата части прихода — отдельная запись оплаты поставщику. Приход уже
   // записан: если оплата не прошла, говорим об этом, а не теряем приход.
   let part = "";

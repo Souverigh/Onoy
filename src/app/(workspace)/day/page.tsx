@@ -25,6 +25,7 @@ import { InfoTip } from "@/components/info-tip";
 import { ReportTabs } from "@/components/report-tabs";
 import { DownloadMenu } from "@/components/download-menu";
 import { expenseCategoryLabel } from "@/lib/expenses";
+import { dayCorrections } from "@/lib/day-corrections";
 
 const HISTORY_DAYS = 14;
 
@@ -468,7 +469,7 @@ export default async function DayClose({
   const historyFrom = new Date(
     new Date(dayBounds(today).start).getTime() - (HISTORY_DAYS - 1) * 86400000,
   );
-  const [closure, history, closedDays, pending, unclosed] = await Promise.all([
+  const [closure, history, closedDays, pending, unclosed, corrections] = await Promise.all([
     dayClosure(db, organizationId, date),
     dayHistory(db, organizationId, HISTORY_DAYS),
     db
@@ -482,6 +483,8 @@ export default async function DayClose({
       .eq("organization_id", organizationId)
       .eq("status", "pending"),
     unclosedDays(db, organizationId),
+    // Исправления — всегда по журналу, и у закрытого дня тоже.
+    dayCorrections(db, organizationId, date),
   ]);
   // Закрытый день — снимок на момент закрытия; открытый — считаем сейчас.
   const summary = closure?.snapshot ?? (await computeDaySummary(db, organizationId, date));
@@ -643,6 +646,40 @@ export default async function DayClose({
               </tbody>
             </table>
           </div>
+        </section>
+      )}
+
+      {/* Исправления продаж и прихода за день: было → стало, кто исправил;
+          сумма меньше или наличные стали долгом — заметной меткой (22.10.2026). */}
+      {corrections.length > 0 && (
+        <section className="panel day-corrections">
+          <h2 className="label-with-tip">
+            Исправления · {corrections.length}
+            <InfoTip>
+              Продажи и приход, которые исправили за {dayShort}: старая запись заменена новой (в истории осталась
+              отменённой). «Сумма меньше» и «Наличные → в долг» - проверьте, верно ли.
+            </InfoTip>
+          </h2>
+          <ul className="day-after-list">
+            {corrections.map((c) => (
+              <li key={c.newId} className={c.decreased || c.cashToDebt ? "day-correction-flag" : undefined}>
+                <span>
+                  <Link href={c.href}>
+                    {c.kind === "sale" ? "Продажа" : "Приход"} · {c.party}
+                  </Link>
+                  <small className="muted">
+                    {" "}
+                    · исправил {c.who}, {time(c.at)}
+                  </small>
+                  {c.decreased && <span className="tag reversed-tag">сумма меньше</span>}
+                  {c.cashToDebt && <span className="tag reversed-tag">наличные → в долг</span>}
+                </span>
+                <strong>
+                  {money(c.oldTotal, c.currency ?? shopCurrency)} → {money(c.newTotal, c.currency ?? shopCurrency)}
+                </strong>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 

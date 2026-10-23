@@ -56,6 +56,9 @@ const ERROR_TEXT: Record<string, string> = {
   rate: "Укажите курс - число больше нуля.",
   too_many: "В одной накладной - не больше 200 строк.",
   date: "Проверьте дату: не позже сегодняшнего дня и не раньше чем год назад.",
+  corrected: "Эту запись уже исправили - проверьте историю. Новая запись не сохранена.",
+  fix_owner: "Чужую запись может исправить только владелец. Новая запись не сохранена.",
+  fix_return: "По этой продаже был возврат товара - сначала отмените возврат. Новая запись не сохранена.",
 };
 const NETWORK_TEXT = {
   sale: "Нет связи с сервером - продажа не сохранена. Проверьте интернет и нажмите ещё раз: вторая запись не появится.",
@@ -147,6 +150,11 @@ export function SaleItemsForm({
   }, [state.attempt, state.error]);
 
   const customer = allCustomers.find((c) => c.id === party);
+  // Исправление: старая запись ещё в долге и отменится при записи — её долю вычитаем.
+  const balance =
+    customer?.balance != null
+      ? Number(customer.balance) - (maker?.replaces && maker.replaces.party === party ? maker.replaces.debt : 0)
+      : null;
   const debtCurrency = partyCurrency(customer, shopCurrency);
   // Приход — валюта цен на выбор (просьба пользователя 21.10.2026): накладная
   // поставщика бывает в $. По умолчанию — валюта поставщика (у обычного —
@@ -188,8 +196,8 @@ export function SaleItemsForm({
   }, [lineCurrency]);
   // Долг после записи — в панели: «Долг станет 69 458 сом».
   const debtAfter =
-    customer?.balance != null && debt > 0 ? Number(customer.balance) + (paidNow && !purchase ? 0 : debt) : null;
-  const overLimit = customer && !purchase ? creditLimitExceeded(customer.balance ?? 0, customer.credit_limit, debt, paidNow) : null;
+    balance != null && debt > 0 ? balance + (paidNow && !purchase ? 0 : debt) : null;
+  const overLimit = customer && !purchase ? creditLimitExceeded(balance ?? 0, customer.credit_limit, debt, paidNow) : null;
 
   // Черновик: всё введённое сохраняется в базе само (через секунду после
   // правки, сразу — при уходе со страницы или сворачивании), чтобы переход в

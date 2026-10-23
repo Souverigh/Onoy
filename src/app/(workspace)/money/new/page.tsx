@@ -9,6 +9,7 @@ import type { StockProduct } from "@/lib/match";
 import type { QuickProduct } from "../../stock/actions";
 import { getContext } from "@/lib/context";
 import { memberLabels } from "@/lib/members";
+import { partPaymentOf } from "@/lib/part-payment";
 import type { Maker } from "@/components/maker-field";
 import { officialRates } from "@/lib/fx";
 import { isCurrency } from "@/lib/currency";
@@ -41,6 +42,7 @@ export default async function NewOperation({
     fixed?: string;
     restored?: string;
     fix?: string;
+    replace?: string;
     day?: string;
     from?: string;
     paid?: string;
@@ -95,12 +97,18 @@ export default async function NewOperation({
       : Promise.resolve({ data: [] as QuickProduct[], error: null });
   // Продажа по фото: строки накладной сверяем со складом (просьба пользователя
   // 15.10.2026); цена продажи — для строк фото без цены. Без цен закупки —
-  // продавцу они не нужны.
+  // продавцу они не нужны. Приход по фото: склад — для «+ Добавить строку»
+  // поиском, с ценой закупки (22.10.2026).
   const stockRequest =
-    kind === "sale" && wantedMode === "photo"
+    // Фото из другой формы («Исправить») — всегда по фото, какой бы вид ни запомнили.
+    itemsKind && (wantedMode === "photo" || params.documentId)
       ? db
           .from("product_balances")
-          .select("id,name,sku,unit,sale_price,stock,aliases,sold_count")
+          .select(
+            kind === "purchase"
+              ? "id,name,sku,unit,sale_price,purchase_price,purchase_currency,stock,aliases,sold_count"
+              : "id,name,sku,unit,sale_price,stock,aliases,sold_count",
+          )
           .eq("organization_id", organizationId)
           .is("archived_at", null)
           .order("name")
@@ -248,20 +256,53 @@ export default async function NewOperation({
     const [old, members] = await Promise.all([
       db
         .from(kind === "sale" ? "sales" : "purchases")
-        .select("maker_id")
+        .select(
+          kind === "sale"
+            ? "maker_id,total,reversed_at,paid_immediately,party_id:customer_id,created_at,created_by"
+            : "maker_id,total,reversed_at,party_id:supplier_id,supplier_id,created_at,created_by",
+        )
         .eq("organization_id", organizationId)
         .eq("id", fromId)
         .maybeSingle(),
       memberLabels(db, organizationId),
     ]);
-    if (old.data)
+    const row = old.data as unknown as {
+      maker_id: string | null;
+      total: string;
+      reversed_at: string | null;
+      paid_immediately?: boolean;
+      party_id: string;
+      supplier_id?: string;
+      created_at: string;
+      created_by: string | null;
+    } | null;
+    if (row) {
+      // Старая ещё действует (исправление) — при записи она отменится: сколько
+      // её доля в долге, чтобы «Долг станет …» в форме был после замены.
+      let replaces: Maker["replaces"];
+      if (!row.reversed_at) {
+        let debt = kind === "sale" ? (row.paid_immediately ? 0 : Number(row.total)) : Number(row.total);
+        if (kind === "purchase" && row.supplier_id) {
+          const part = await partPaymentOf(db, organizationId, {
+            supplier_id: row.supplier_id,
+            created_at: row.created_at,
+            created_by: row.created_by,
+          });
+          if (part) debt -= Number(part.amount);
+        }
+        replaces = { party: row.party_id, debt };
+      }
       maker = {
         from: fromId,
-        defaultId: (old.data as { maker_id: string | null }).maker_id,
+        defaultId: row.maker_id,
         options: [...members].map(([id, m]) => ({ id, name: m.name })),
         canChange: isOwner,
+        replaces,
       };
+    }
   }
+  // Исправление: старая запись действует, пока новую не записали.
+  const replacing = Boolean(maker?.replaces);
   // Из карточки клиента/поставщика: берём, только если он из подходящего списка.
   const initialParty = [...(kind === "purchase" ? [] : customers), ...(kind === "sale" ? [] : suppliers)].some(
     (p) => p.id === params.party,
@@ -305,7 +346,17 @@ export default async function NewOperation({
           party={initialParty}
         />
       )}
-      {params.fixed === "1" && draft && (
+      {replacing && (params.fixed === "1" || params.replace === "1") && (
+        <p className="notice" role="status">
+          {kind === "sale" ? "Исправляете продажу." : "Исправляете приход."} Пока не нажали «Записать», прошлая запись
+          действует как была. При записи она заменится этой (в истории останется отменённой)
+          {kind === "purchase" && params.part && /^\d+(\.\d{1,2})?$/.test(params.part)
+            ? `, оплата поставщику ${params.part}, внесённая с ней, тоже отменится - внесите её заново через «Я заплатил поставщику»`
+            : ""}
+          . Передумали - просто уйдите, ничего не изменится.
+        </p>
+      )}
+      {!replacing && params.fixed === "1" && draft && (
         <p className="notice success" role="status">
           {kind === "sale"
             ? "Прошлая продажа отменена - долг и склад вернулись, в истории она осталась."
@@ -393,7 +444,7 @@ export default async function NewOperation({
             initialParty={initialParty}
             shopCurrency={shopCurrency}
             rates={rates}
-            stockProducts={kind === "sale" ? stockProducts : undefined}
+            stockProducts={itemsKind ? stockProducts : undefined}
             fixedDirection={fixedDirection}
             initialAmount={
               !prefill && params.amount && /^\d{1,14}(\.\d{1,2})?$/.test(params.amount)
