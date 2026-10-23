@@ -152,6 +152,18 @@ export async function removeMember(form: FormData) {
   redirect("/settings?staff=removed#staff");
 }
 
+/** Отключить продавцу доступ или вернуть его — без удаления из магазина. */
+export async function setMemberAccess(form: FormData) {
+  const userId = String(form.get("user_id") ?? "");
+  const disabled = form.get("disabled") === "1";
+  if (!uuidPattern.test(userId)) redirect("/settings?staff=error#staff");
+  const { db, organizationId } = await requireOwner();
+  const result = await db.rpc("set_member_disabled", { p_org: organizationId, p_user: userId, p_disabled: disabled });
+  if (result.error) redirect("/settings?staff=error#staff");
+  revalidatePath("/", "layout");
+  redirect(`/settings?staff=${disabled ? "disabled" : "enabled"}#staff`);
+}
+
 export async function renameMember(form: FormData) {
   const userId = String(form.get("user_id") ?? "");
   const name = String(form.get("name") ?? "").trim();

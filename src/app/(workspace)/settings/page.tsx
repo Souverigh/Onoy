@@ -59,7 +59,7 @@ export default async function Settings({
     const members_ = (columns: string) =>
       db.from("organization_members").select(columns).eq("organization_id", organizationId).order("created_at");
     const [m0, i, l] = await Promise.all([
-      members_("user_id,role,display_name,email,invoice_phone"),
+      members_("user_id,role,display_name,email,invoice_phone,disabled_at"),
       db
         .from("organization_invites")
         .select("id,token,display_name,expires_at")

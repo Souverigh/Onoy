@@ -1,13 +1,24 @@
 import { Submit } from "./submit";
-import { createInvite, removeMember, renameMember, revokeInvite } from "@/app/(workspace)/settings/actions";
+import { createInvite, removeMember, renameMember, revokeInvite, setMemberAccess } from "@/app/(workspace)/settings/actions";
+import { ConfirmButton } from "./confirm-button";
 
-export type Member = { user_id: string; role: string; display_name: string | null; email: string | null; invoice_phone?: string };
+export type Member = {
+  user_id: string;
+  role: string;
+  display_name: string | null;
+  email: string | null;
+  invoice_phone?: string;
+  /** Владелец отключил доступ: не входит в магазин, имя и записи остаются. */
+  disabled_at?: string | null;
+};
 export type Invite = { id: string; token: string; display_name: string; expires_at: string };
 
 const statusText: Record<string, string> = {
   invited: "Приглашение создано - отправьте ссылку продавцу.",
   revoked: "Приглашение отменено.",
   removed: "Сотрудник удалён - больше не войдёт в магазин.",
+  disabled: "Доступ отключён - продавец больше не видит магазин и ничего не может записать. Его записи остались.",
+  enabled: "Доступ возвращён - продавец снова может работать.",
   renamed: "Сохранено.",
   name: "Введите имя (до 80 символов).",
   limit: "Лимит тарифа исчерпан: продавцы вместе с неиспользованными приглашениями.",
@@ -71,7 +82,7 @@ export function StaffPanel({
       )}
       <ul className="staff-list">
         {members.map((m) => (
-          <li key={m.user_id}>
+          <li key={m.user_id} className={m.disabled_at ? "staff-disabled" : undefined}>
             <span className="staff-avatar" aria-hidden="true">
               {initial(m.display_name, m.email)}
             </span>
@@ -82,6 +93,7 @@ export function StaffPanel({
                 {m.email ? ` · ${m.email}` : ""}
                 {m.user_id === currentUserId ? " · это вы" : ""}
               </small>
+              {m.disabled_at && <span className="tag reversed-tag">доступ отключён с {date(m.disabled_at)}</span>}
             </span>
             <details className="staff-edit">
               <summary className="text-button">Изменить</summary>
@@ -110,6 +122,28 @@ export function StaffPanel({
                     Сохранить
                   </button>
                 </form>
+                {m.role === "staff" && (
+                  // Отключить — не удалять: имя в истории и «Продавцах» остаётся, доступ можно вернуть.
+                  <form action={setMemberAccess}>
+                    <input type="hidden" name="user_id" value={m.user_id} />
+                    <input type="hidden" name="disabled" value={m.disabled_at ? "0" : "1"} />
+                    {m.disabled_at ? (
+                      <button className="button" type="submit">
+                        Вернуть доступ
+                      </button>
+                    ) : (
+                      <ConfirmButton
+                        className="button danger-outline"
+                        danger={false}
+                        message={`Отключить доступ: ${m.display_name || "продавец"}?`}
+                        text="Продавец сразу перестанет видеть магазин и не сможет ничего записать. Его продажи и оплаты останутся в истории. Доступ можно вернуть здесь же."
+                        confirmLabel="Отключить"
+                      >
+                        Отключить доступ
+                      </ConfirmButton>
+                    )}
+                  </form>
+                )}
                 {m.role === "staff" && (
                   <form action={removeMember}>
                     <input type="hidden" name="user_id" value={m.user_id} />

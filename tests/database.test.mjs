@@ -3293,6 +3293,50 @@ test("correction of a purchase: paid-now payment is reversed together with it on
   await assert.rejects(db.query("select start_correction($1,'purchase',$2)", [orgA, purchase.id]), /invalid_correction/);
   await owner();
 });
+test("disabled seller: sees nothing, writes nothing even through functions; owner turns access back on", async () => {
+  const k = (n) => `aaaacccc-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
+  const seller = "44444444-4444-4444-8444-444444444444";
+  await owner();
+  const buyer = (await db.query("insert into customers(organization_id,name) values ($1,'Клиент отключённого') returning id", [orgA])).rows[0].id;
+  const breaker = (
+    await db.query("select id from products where organization_id=$1 and name='Автомат 16А возврат'", [orgA])
+  ).rows[0].id;
+  const line = JSON.stringify([{ product: breaker, qty: "1", price: "360" }]);
+  await user(seller);
+  assert.ok((await db.query("select count(*)::int as n from sales where organization_id=$1", [orgA])).rows[0].n > 0);
+  // Отключить может только владелец и не себя.
+  await assert.rejects(db.query("select set_member_disabled($1,$2,true)", [orgA, seller]), /owner_only/);
+  await user(a);
+  await assert.rejects(db.query("select set_member_disabled($1,$2,true)", [orgA, a]), /invalid_member/);
+  await db.query("select set_member_disabled($1,$2,true)", [orgA, seller]);
+
+  await user(seller);
+  // Свою строку видит (приложение покажет «Доступ отключён»), данные магазина — нет.
+  assert.equal(
+    (await db.query("select disabled_at is not null as d from organization_members where organization_id=$1 and user_id=$2", [orgA, seller])).rows[0].d,
+    true,
+  );
+  assert.equal((await db.query("select count(*)::int as n from sales where organization_id=$1", [orgA])).rows[0].n, 0);
+  assert.equal((await db.query("select count(*)::int as n from customers where organization_id=$1", [orgA])).rows[0].n, 0);
+  await assert.rejects(db.query("select * from find_similar_records($1,'sale',null,$2,'360')", [orgA, buyer]), /not_a_member/);
+  // Записать — ни продажу, ни клиента, даже прямым вызовом функций.
+  await assert.rejects(db.query("select commit_sale_items($1,$2,$3,false,$4)", [orgA, buyer, line, k(1)]), /member_disabled|not_a_member/);
+  await assert.rejects(db.query("select commit_sale($1,$2,'100',false,$3)", [orgA, buyer, k(2)]), /member_disabled|not_a_member/);
+  await owner();
+  assert.equal((await db.query("select count(*)::int as n from sales where idempotency_key in ($1,$2)", [k(1), k(2)])).rows[0].n, 0);
+
+  // Вернули доступ — снова работает.
+  await user(a);
+  await db.query("select set_member_disabled($1,$2,false)", [orgA, seller]);
+  await user(seller);
+  assert.ok((await db.query("select count(*)::int as n from sales where organization_id=$1", [orgA])).rows[0].n > 0);
+  await db.query("select commit_sale_items($1,$2,$3,false,$4)", [orgA, buyer, line, k(3)]);
+  await owner();
+  assert.deepEqual(
+    (await db.query("select action from audit_events where organization_id=$1 and action like 'member.%abled' order by created_at", [orgA])).rows.map((r) => r.action),
+    ["member.disabled", "member.enabled"],
+  );
+});
 test("cash moves: only the owner takes or puts cash, once per key, reversible, other shops see nothing", async () => {
   const k = (n) => `aaaabbbb-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
   await user(a);

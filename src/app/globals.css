@@ -9426,3 +9426,13 @@ tr.row-link:has(a[data-pending]) {
 .day-corrections .tag {
   margin-left: 8px;
 }
+
+/* Сотрудник с отключённым доступом — бледнее, с меткой под именем. */
+.staff-disabled .staff-avatar,
+.staff-disabled .staff-who strong {
+  opacity: 0.55;
+}
+.staff-who .tag {
+  align-self: flex-start;
+  margin-top: 4px;
+}
