@@ -31,13 +31,21 @@ export function InstallCapture() {
   return null;
 }
 
-type Mode = "hidden" | "prompt" | "ios";
+type Mode = "hidden" | "prompt" | "ios" | "samsung";
+
+/**
+ * Samsung Internet собирает значок-приложение сам, под старый Android, и
+ * Google Play Защита блокирует его как «подозрительное» (жалоба клиента
+ * 23.10.2026). Из Chrome значок подписывает Google — ставим через Chrome.
+ */
+const isSamsungBrowser = () => /SamsungBrowser/i.test(navigator.userAgent);
 
 function detect(): Mode {
   const standalone =
     window.matchMedia("(display-mode: standalone)").matches ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true;
   if (standalone) return "hidden";
+  if (isSamsungBrowser() && /android/i.test(navigator.userAgent)) return "samsung";
   if (deferred) return "prompt";
   // iPad с iOS 13+ притворяется Mac — отличаем по сенсорному экрану.
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
@@ -68,7 +76,7 @@ export function InstallApp({ variant }: { variant: "banner" | "card" | "button" 
   if (mode === "hidden" || (variant === "banner" && dismissed)) return null;
 
   const install = async () => {
-    if (mode === "ios") return setShowIos((v) => !v);
+    if (mode === "ios" || mode === "samsung") return setShowIos((v) => !v);
     const event = deferred;
     if (!event) return;
     await event.prompt();
@@ -91,12 +99,27 @@ export function InstallApp({ variant }: { variant: "banner" | "card" | "button" 
       Установить приложение
     </button>
   );
-  const iosHint = showIos && (
-    <p className="install-app-ios" role="status">
-      В Safari нажмите «Поделиться» (квадрат со стрелкой вверх) внизу экрана, затем «На экран „Домой“». Значок
-      Depter появится рядом с другими приложениями.
-    </p>
-  );
+  // Эта же страница в Chrome (intent-ссылка Android); Chrome не стоит — откроется Google Play.
+  const chromeHref =
+    typeof window === "undefined"
+      ? "#"
+      : `intent://${window.location.host}${window.location.pathname}#Intent;scheme=https;package=com.android.chrome;end`;
+  const iosHint =
+    showIos &&
+    (mode === "samsung" ? (
+      <p className="install-app-ios" role="status">
+        В этом браузере (Samsung Internet) телефон блокирует установленный значок. Откройте Depter в Chrome и
+        нажмите там «Установить приложение» - вход и все данные те же.{" "}
+        <a className="text-button" href={chromeHref}>
+          Открыть в Chrome
+        </a>
+      </p>
+    ) : (
+      <p className="install-app-ios" role="status">
+        В Safari нажмите «Поделиться» (квадрат со стрелкой вверх) внизу экрана, затем «На экран „Домой“». Значок
+        Depter появится рядом с другими приложениями.
+      </p>
+    ));
 
   if (variant === "button")
     return (
