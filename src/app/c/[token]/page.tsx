@@ -9,8 +9,7 @@ import { CURRENCIES, CURRENCY_SIGN, isCurrency, type Currency } from "@/lib/curr
 import { submitClaim } from "./actions";
 import { ClaimPhotoField } from "@/components/claim-photo-field";
 import { CopyButton } from "@/components/copy-button";
-import { ContactLinks } from "@/components/contact-links";
-import { LogoMark } from "@/components/logo-mark";
+import { ClientPromo } from "@/components/client-promo";
 import { normalizePhone } from "@/lib/contacts";
 import { loadCatalogTokenByLink } from "@/lib/catalog-cache";
 
@@ -287,16 +286,11 @@ export default async function ClientPage({
           </button>
         </form>
       </section>
-      {/* Кружок справа внизу: без JS, раскрывается через <details>. */}
-      <details className="client-promo">
-        <summary aria-label="Depter: удобный счёт для ваших клиентов">
-          <LogoMark size={26} />
-        </summary>
-        <div className="client-promo-card">
-          <p>Хотите такой же удобный и понятный счёт для своих клиентов? Напишите нам - поможем.</p>
-          <ContactLinks />
-        </div>
-      </details>
+      {/* Кружок справа внизу: раскрывается через <details>. */}
+      <ClientPromo
+        label="Depter: удобный счёт для ваших клиентов"
+        text="Хотите такой же удобный и понятный счёт для своих клиентов? Напишите нам - поможем."
+      />
       <footer className="client-footer">
         <a href="https://depter.kg" className="text-button">
           Сделано в Depter

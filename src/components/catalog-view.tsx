@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { searchProducts } from "@/lib/match";
 import { money } from "@/lib/format";
 import { normalizePhone } from "@/lib/contacts";
 import { categoryTree, categoryWithChildren, type Category } from "@/lib/category";
+import { ClientPromo } from "./client-promo";
 
 /** photo — адрес фото товара, thumb — его миниатюры (публичное хранилище) или null. */
 export type CatalogItem = {
@@ -60,6 +61,10 @@ export function CatalogView({
   const [top, setTop] = useState<string | null>(null);
   const [sub, setSub] = useState<string | null>(null);
   const [shown, setShown] = useState(PAGE);
+  // Список товаров: на компьютере прокручивается внутри рамки; конец списка
+  // виден — показываем следующие (без кнопки «Показать ещё»).
+  const scroller = useRef<HTMLDivElement>(null);
+  const end = useRef<HTMLDivElement>(null);
   // Мой список: id товара → количество (как ввели, «2,5»).
   const [list, setList] = useState<Record<string, string>>({});
   const [listOpen, setListOpen] = useState(false);
@@ -107,12 +112,125 @@ export function CatalogView({
     return products.filter((p) => p.category && ids.has(p.category));
   }, [top, sub, products, categories]);
   const found = useMemo(() => (trimmed ? searchProducts(trimmed, inCategory, 200) : inCategory), [trimmed, inCategory]);
-  const children = top && top !== OTHER ? (tree.find((t) => t.category.id === top)?.children ?? []) : [];
+  const more = found.length > shown;
+  useEffect(() => {
+    const target = end.current;
+    if (!more || !target || typeof IntersectionObserver === "undefined") return;
+    // Компьютер — своя прокрутка у списка; телефон — вся страница.
+    const box = scroller.current;
+    const root = box && box.scrollHeight > box.clientHeight + 1 ? box : null;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setShown((n) => n + PAGE);
+      },
+      { root, rootMargin: "400px 0px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [more, shown]);
+  // Другой отбор или поиск — список снова с начала.
+  useEffect(() => {
+    scroller.current?.scrollTo({ top: 0 });
+  }, [trimmed, top, sub]);
+  // Сколько товаров в категории (с подкатегориями) — числом в списке.
+  const counts = useMemo(() => {
+    const own = new Map<string, number>();
+    for (const p of products) if (p.category) own.set(p.category, (own.get(p.category) ?? 0) + 1);
+    return own;
+  }, [products]);
+  const topCount = (id: string) =>
+    (counts.get(id) ?? 0) + categories.filter((c) => c.parent_id === id).reduce((s, c) => s + (counts.get(c.id) ?? 0), 0);
+  const otherCount = products.filter((p) => !p.category).length;
+  // Телефон: список категорий раскрывается кнопкой.
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
   const pickTop = (id: string | null) => {
     setTop(id);
     setSub(null);
     setShown(PAGE);
   };
+  const pickSub = (id: string | null) => {
+    setSub(id);
+    setShown(PAGE);
+    setCategoriesOpen(false);
+  };
+  const currentName =
+    top === OTHER
+      ? "Другое"
+      : top
+        ? [tree.find((x) => x.category.id === top)?.category.name, sub ? categories.find((c) => c.id === sub)?.name : null]
+            .filter(Boolean)
+            .join(" / ")
+        : "Все товары";
+
+  /** Категории списком: выбранная раскрывает свои подкатегории. */
+  const categoryList = (
+    <ul className="catalog-category-list">
+      <li>
+        <button
+          type="button"
+          aria-pressed={!top}
+          className={!top ? "active" : undefined}
+          onClick={() => {
+            pickTop(null);
+            setCategoriesOpen(false);
+          }}
+        >
+          <span>Все товары</span>
+          <small>{products.length}</small>
+        </button>
+      </li>
+      {tree.map(({ category, children: subs }) => (
+        <li key={category.id}>
+          <button
+            type="button"
+            aria-pressed={top === category.id && !sub}
+            className={top === category.id ? (sub ? "open" : "active") : undefined}
+            onClick={() => {
+              pickTop(category.id);
+              // Без подкатегорий выбирать дальше нечего — список закрывается.
+              if (!subs.length) setCategoriesOpen(false);
+            }}
+          >
+            <span>{category.name}</span>
+            <small>{topCount(category.id)}</small>
+          </button>
+          {top === category.id && subs.length > 0 && (
+            <ul>
+              {subs.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    aria-pressed={sub === c.id}
+                    className={sub === c.id ? "active" : undefined}
+                    onClick={() => pickSub(c.id)}
+                  >
+                    <span>{c.name}</span>
+                    <small>{counts.get(c.id) ?? 0}</small>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </li>
+      ))}
+      {hasOther && (
+        <li>
+          <button
+            type="button"
+            aria-pressed={top === OTHER}
+            className={top === OTHER ? "active" : undefined}
+            onClick={() => {
+              pickTop(OTHER);
+              setCategoriesOpen(false);
+            }}
+          >
+            <span>Другое</span>
+            <small>{otherCount}</small>
+          </button>
+        </li>
+      )}
+    </ul>
+  );
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
   const picked = Object.entries(list)
     .map(([id, qty]) => ({ product: byId.get(id), qty: qtyNumber(qty) }))
@@ -199,7 +317,14 @@ export function CatalogView({
   return (
     <>
       {/* Компьютер: каталог слева, «Мой список» справа (закреплён); телефон — колонкой. */}
-      <div className="catalog-layout">
+      <div className={tree.length ? "catalog-layout with-categories" : "catalog-layout"}>
+      {/* Компьютер: категории колонкой слева. */}
+      {tree.length > 0 && (
+        <nav className="catalog-categories-side" aria-label="Категории">
+          <h2>Категории</h2>
+          {categoryList}
+        </nav>
+      )}
       <div className="catalog-main">
       <div className="catalog-search">
         <label htmlFor="catalog-search" className="sr-only">
@@ -220,48 +345,21 @@ export function CatalogView({
       </div>
 
       {tree.length > 0 && (
-        <nav className="category-chips" aria-label="Категории">
-          <button type="button" aria-pressed={!top} className={!top ? "active" : undefined} onClick={() => pickTop(null)}>
-            Все
+        <div className="catalog-categories-phone">
+          <button
+            type="button"
+            className="catalog-categories-toggle"
+            aria-expanded={categoriesOpen}
+            onClick={() => setCategoriesOpen((o) => !o)}
+          >
+            <span>
+              <small>Категория</small>
+              {currentName}
+            </span>
+            <span aria-hidden="true">{categoriesOpen ? "▴" : "▾"}</span>
           </button>
-          {tree.map(({ category }) => (
-            <button
-              key={category.id}
-              type="button"
-              aria-pressed={top === category.id}
-              className={top === category.id ? "active" : undefined}
-              onClick={() => pickTop(category.id)}
-            >
-              {category.name}
-            </button>
-          ))}
-          {hasOther && (
-            <button type="button" aria-pressed={top === OTHER} className={top === OTHER ? "active" : undefined} onClick={() => pickTop(OTHER)}>
-              Другое
-            </button>
-          )}
-        </nav>
-      )}
-      {children.length > 0 && (
-        <nav className="category-chips category-chips-sub" aria-label="Подкатегории">
-          <button type="button" aria-pressed={!sub} className={!sub ? "active" : undefined} onClick={() => setSub(null)}>
-            Все в разделе
-          </button>
-          {children.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              aria-pressed={sub === c.id}
-              className={sub === c.id ? "active" : undefined}
-              onClick={() => {
-                setSub(c.id);
-                setShown(PAGE);
-              }}
-            >
-              {c.name}
-            </button>
-          ))}
-        </nav>
+          {categoriesOpen && categoryList}
+        </div>
       )}
 
       {found.length === 0 ? (
@@ -293,6 +391,7 @@ export function CatalogView({
           )}
         </section>
       ) : (
+        <div className="catalog-scroll" ref={scroller}>
         <ul className="catalog-list">
           {found.slice(0, shown).map((p) => {
             const qty = list[p.id];
@@ -350,11 +449,15 @@ export function CatalogView({
             );
           })}
         </ul>
-      )}
-      {found.length > shown && (
-        <button type="button" className="button catalog-more" onClick={() => setShown((n) => n + PAGE)}>
-          Показать ещё ({found.length - shown})
-        </button>
+        {more && (
+          <div ref={end} className="catalog-more-end">
+            {/* Запасной путь, если подгрузка при прокрутке не сработала. */}
+            <button type="button" className="button catalog-more" onClick={() => setShown((n) => n + PAGE)}>
+              Показать ещё ({found.length - shown})
+            </button>
+          </div>
+        )}
+        </div>
       )}
 
       {shopPhone && found.length > 0 && (
@@ -450,6 +553,13 @@ export function CatalogView({
           </div>
         </div>
       )}
+      {/* Depter: свой каталог для магазина; подсказка сама на пару секунд (просьба пользователя 23.10.2026). */}
+      <ClientPromo
+        hint
+        raised={picked.length > 0 || Boolean(undoClear)}
+        label="Depter: такой же каталог для вашего магазина"
+        text="Хотите такой же каталог с ценами для своего магазина? Клиенты выбирают товары и присылают список в WhatsApp. Напишите нам - поможем."
+      />
       {/* Телефон: после «Очистить» панели нет — «Вернуть» на её месте. */}
       {picked.length === 0 && undoClear && <div className="catalog-bar catalog-bar-undo">{undoClear}</div>}
     </>

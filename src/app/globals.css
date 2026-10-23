@@ -10483,41 +10483,156 @@ form label.catalog-products-filter {
   font-size: 13px;
 }
 
-/* Каталог клиента: категории кнопками, на телефоне прокручиваются вбок. */
-.category-chips {
-  display: flex;
-  gap: 8px;
-  margin: 0 0 12px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-}
-.category-chips::-webkit-scrollbar {
+/* Каталог клиента: категории списком. Телефон — кнопка «Категория: …»
+   раскрывает список под поиском; компьютер — колонка слева. */
+.catalog-categories-side {
   display: none;
 }
-.category-chips button {
-  flex: none;
-  min-height: 36px;
-  padding: 0 14px;
-  border: 1px solid var(--button-border);
-  border-radius: 999px;
+.catalog-categories-phone {
+  margin: 0 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
   background: white;
+  overflow: hidden;
+}
+.catalog-categories-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  margin: 0;
+  padding: 6px 16px;
+  border: 0;
+  background: none;
   color: var(--ink);
   font: inherit;
-  font-size: 14px;
-  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: left;
   cursor: pointer;
 }
-.category-chips button.active {
-  border-color: var(--green);
-  background: var(--green);
-  color: white;
+.catalog-categories-toggle > span:first-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
-.category-chips-sub button {
-  min-height: 32px;
+.catalog-categories-toggle small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.catalog-categories-toggle > span:last-child {
+  color: var(--green);
+}
+.catalog-categories-phone .catalog-category-list {
+  max-height: 60vh;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+}
+.catalog-category-list,
+.catalog-category-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.catalog-category-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 46px;
+  margin: 0;
+  padding: 8px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+.catalog-category-list > li:last-child > button {
+  border-bottom: 0;
+}
+.catalog-category-list button:hover {
+  background: var(--hover);
+}
+.catalog-category-list button small {
+  flex: none;
+  color: var(--muted);
   font-size: 13px;
 }
-.category-chips-sub button.active {
+.catalog-category-list button.open {
+  font-weight: 600;
+}
+.catalog-category-list button.active {
   background: var(--green-wash);
   color: var(--green);
+  font-weight: 600;
+}
+.catalog-category-list button.active small {
+  color: var(--green);
+}
+/* Подкатегории — с отступом под своей категорией. */
+.catalog-category-list ul button {
+  min-height: 42px;
+  padding-left: 32px;
+  font-size: 14px;
+}
+@media (min-width: 900px) {
+  .client-page.catalog-page:has(.with-categories) {
+    max-width: 1320px;
+  }
+  .catalog-layout.with-categories {
+    grid-template-columns: 230px minmax(0, 1fr) 320px;
+  }
+  .catalog-categories-phone {
+    display: none;
+  }
+  .catalog-categories-side {
+    position: sticky;
+    top: 16px;
+    display: block;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: white;
+  }
+  .catalog-categories-side h2 {
+    margin: 0;
+    padding: 14px 16px 10px;
+    font-size: 15px;
+  }
+  .catalog-categories-side .catalog-category-list button {
+    min-height: 40px;
+    font-size: 14px;
+  }
+}
+
+/* Каталог клиента на компьютере: товары прокручиваются внутри рамки —
+   шапка, поиск, категории и «Мой список» остаются на месте. */
+@media (min-width: 900px) {
+  .catalog-scroll {
+    max-height: calc(100vh - 210px);
+    min-height: 320px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: var(--radius-lg);
+    scrollbar-width: thin;
+  }
+  .catalog-scroll .catalog-more {
+    margin-bottom: 4px;
+  }
+}
+
+/* Каталог на телефоне: кружок Depter над нижней панелью «Мой список». */
+@media (max-width: 900px) {
+  .client-promo.client-promo-raised {
+    bottom: calc(max(12px, env(safe-area-inset-bottom)) + 84px);
+  }
 }
