@@ -5,6 +5,7 @@ import { CopyButton } from "@/components/copy-button";
 import { ConfirmButton } from "@/components/confirm-button";
 import { Submit } from "@/components/submit";
 import { CatalogProducts, type CatalogProductRow } from "@/components/catalog-products";
+import { productThumbUrl } from "@/lib/product-photo";
 import { closeCatalog, openCatalog } from "./actions";
 
 /**
@@ -23,7 +24,7 @@ export default async function CatalogSettings({
     db.from("catalog_links").select("token,revoked_at").eq("organization_id", organizationId).maybeSingle(),
     db
       .from("products")
-      .select("id,name,unit,sale_price,catalog_hidden")
+      .select("id,name,sku,unit,sale_price,catalog_hidden,photo_path")
       .eq("organization_id", organizationId)
       .is("archived_at", null)
       .order("name")
@@ -104,7 +105,12 @@ export default async function CatalogSettings({
       </section>
 
       <section className="panel">
-        <CatalogProducts products={(products.data ?? []) as CatalogProductRow[]} currency={currency} />
+        <CatalogProducts
+          products={((products.data ?? []) as (Omit<CatalogProductRow, "photo"> & { photo_path: string | null })[]).map(
+            ({ photo_path, ...p }) => ({ ...p, photo: productThumbUrl(photo_path) }),
+          )}
+          currency={currency}
+        />
       </section>
     </>
   );

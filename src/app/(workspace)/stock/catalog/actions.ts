@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireOwner } from "@/lib/context";
+import { refreshCatalog, refreshCatalogToken } from "@/lib/catalog-cache";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const back = (code: string) => `/stock/catalog?${code}`;
@@ -15,6 +16,7 @@ export async function openCatalog() {
     console.error("openCatalog failed", { message: result.error.message });
     redirect(back("error=link"));
   }
+  refreshCatalogToken(typeof result.data === "string" ? result.data : null);
   revalidatePath("/stock/catalog");
   redirect(back("opened=1"));
 }
@@ -22,11 +24,14 @@ export async function openCatalog() {
 /** Выключить: ссылка перестаёт открываться у всех, кому её отправили. */
 export async function closeCatalog() {
   const { db, organizationId } = await requireOwner();
+  // Ссылка до выключения — её кеш сбросим, чтобы она сразу перестала открываться.
+  const before = await db.from("catalog_links").select("token").eq("organization_id", organizationId).maybeSingle();
   const result = await db.rpc("close_catalog_link", { p_org: organizationId });
   if (result.error) {
     console.error("closeCatalog failed", { message: result.error.message });
     redirect(back("error=link"));
   }
+  refreshCatalogToken(before.data?.token as string | undefined);
   revalidatePath("/stock/catalog");
   redirect(back("closed=1"));
 }
@@ -57,6 +62,7 @@ export async function saveCatalogProducts(form: FormData) {
     console.error("saveCatalogProducts failed", { message: result.error.message });
     redirect(back("error=save"));
   }
+  await refreshCatalog(db, organizationId);
   revalidatePath("/stock/catalog");
   redirect(back("saved=1"));
 }

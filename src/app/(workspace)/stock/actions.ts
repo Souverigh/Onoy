@@ -9,6 +9,7 @@ import { bishkekDate } from "@/lib/day-summary";
 import { recordDateTime } from "@/lib/record-date";
 import { noteInput, saveRecordNote } from "@/lib/record-note";
 import { correctionOf } from "@/lib/record-maker";
+import { refreshCatalog } from "@/lib/catalog-cache";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -96,6 +97,8 @@ export async function saveProduct(form: FormData) {
     console.error("saveProduct failed", { message: result.error?.message });
     back(failureCode(result.error?.message));
   }
+  // Цена, название, архив — в каталоге клиентов тоже.
+  await refreshCatalog(db, organizationId);
   revalidatePath("/", "layout");
   // «Сохранить и добавить ещё» — сразу пустая форма.
   redirect(form.get("next") === "new" ? `/stock/new?added=${result.data}` : `/stock/${result.data}?saved=1`);
@@ -108,6 +111,8 @@ export async function archiveProduct(form: FormData) {
   const { db, organizationId } = await getContext();
   const result = await db.rpc("set_product_archived", { p_org: organizationId, p_product: id, p_archived: archived });
   if (result.error) redirect(`/stock/${id}?error=${failureCode(result.error.message)}`);
+  // Цена, название, архив — в каталоге клиентов тоже.
+  await refreshCatalog(db, organizationId);
   revalidatePath("/", "layout");
   redirect(archived ? "/stock?archived_one=1" : `/stock/${id}?restored=1`);
 }
@@ -181,6 +186,7 @@ export async function quickAddProduct(input: {
       .eq("id", result.data)
       .single();
     if (row.error) return { error: "save" };
+    await refreshCatalog(db, organizationId);
     revalidatePath("/stock");
     return { product: row.data as QuickProduct };
   } catch (error) {
@@ -231,6 +237,7 @@ export async function importProducts(rows: ImportPayload[]): Promise<ImportResul
       updated += data.updated;
       errors.push(...data.errors.map((e) => ({ row: e.row + start, error: e.error })));
     }
+    await refreshCatalog(db, organizationId);
     revalidatePath("/", "layout");
     return { created, updated, errors };
   } catch (error) {

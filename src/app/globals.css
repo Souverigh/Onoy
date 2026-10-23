@@ -9684,11 +9684,11 @@ tr.row-link:has(a[data-pending]) {
 
 /* Склад → Каталог для клиентов: ссылка и галочки товаров. */
 .catalog-link-url {
-  margin: 0 0 12px;
-  padding: 10px 12px;
+  margin: 0 0 10px;
+  padding: 8px 12px;
   border-radius: var(--radius-sm);
   background: var(--surface-soft);
-  font-size: 15px;
+  font-size: 14px;
   overflow-wrap: anywhere;
 }
 .catalog-link-actions {
@@ -9696,22 +9696,32 @@ tr.row-link:has(a[data-pending]) {
   flex-wrap: wrap;
   gap: 8px;
 }
+/* Компактнее обычных кнопок: это настройки, а не главное действие экрана. */
 .catalog-link-actions .button {
   width: auto;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 14px;
 }
 .catalog-products-hint {
-  margin: 0 0 12px;
-  font-size: 14px;
+  margin: 0 0 10px;
+  font-size: 13px;
 }
 .catalog-products-tools {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 14px;
-  margin-bottom: 10px;
+  gap: 6px 14px;
+  margin-bottom: 8px;
 }
 .catalog-products-tools input {
   flex: 1 1 220px;
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 15px;
+}
+.catalog-products-tools .text-button {
+  font-size: 14px;
 }
 .catalog-products-list {
   list-style: none;
@@ -9722,21 +9732,35 @@ tr.row-link:has(a[data-pending]) {
 .catalog-products-list li {
   border-bottom: 1px solid var(--line);
 }
+/* Строкой, а не столбиком (у form label по умолчанию столбик): галочка,
+   код, название, цена справа. */
 .catalog-products-list label {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   margin: 0;
-  padding: 10px 2px;
+  padding: 7px 2px;
   color: var(--ink);
-  font-size: 15px;
+  font-size: 14px;
   cursor: pointer;
 }
 .catalog-products-list input[type="checkbox"] {
-  width: 20px;
-  min-height: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
   flex: none;
+}
+.catalog-products-sku {
+  flex: none;
+  width: 110px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .catalog-products-name {
   flex: 1;
@@ -9744,8 +9768,18 @@ tr.row-link:has(a[data-pending]) {
   overflow-wrap: anywhere;
 }
 .catalog-products-price {
+  flex: none;
   white-space: nowrap;
   color: var(--muted);
+  font-size: 13px;
+}
+.catalog-products-list li.muted .catalog-products-name {
+  color: var(--muted);
+}
+@media (max-width: 560px) {
+  .catalog-products-sku {
+    width: 70px;
+  }
 }
 .catalog-products-save {
   position: sticky;
@@ -9769,4 +9803,236 @@ tr.row-link:has(a[data-pending]) {
   .catalog-products-save {
     bottom: calc(var(--bottom-nav) + 8px + env(safe-area-inset-bottom));
   }
+}
+
+/* Страница клиента: «Каталог и цены», если магазин включил каталог. */
+.client-catalog-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--green-border);
+  border-radius: var(--radius-lg);
+  background: var(--green-wash);
+  color: var(--ink);
+  text-decoration: none;
+}
+.client-catalog-link > span:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.client-catalog-link strong {
+  color: var(--green);
+  font-size: 16px;
+}
+.client-catalog-link small {
+  font-size: 13px;
+}
+.client-catalog-link > span:last-child {
+  color: var(--green);
+  font-size: 20px;
+}
+
+/* ===== Фото товара (22.10.2026) ===== */
+/* Карточка товара: фото слева, кнопка «Сфотографировать или выбрать». */
+.product-photo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.product-photo-img,
+.product-photo-empty {
+  flex: none;
+  width: 96px;
+  height: 96px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  object-fit: cover;
+  background: var(--surface-soft);
+}
+.product-photo-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--faint);
+  font-size: 34px;
+  font-weight: 700;
+}
+.product-photo-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.product-photo-actions small {
+  font-size: 13px;
+}
+.product-photo-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-top: 6px;
+}
+.product-photo-buttons .button {
+  width: auto;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.product-photo-buttons .button.disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.product-photo .form-error {
+  margin: 6px 0 0;
+}
+
+/* Каталог клиента: миниатюра слева в строке товара. */
+.catalog-thumb {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface-soft);
+}
+.catalog-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.catalog-thumb-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--faint);
+  font-size: 20px;
+  font-weight: 700;
+}
+/* Фото крупно: тёмный фон, по нажатию вне фото — закрыть. */
+.catalog-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 20, 18, 0.72);
+}
+.catalog-zoom figure {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(520px, 100%);
+  max-height: 100%;
+  margin: 0;
+  padding: 12px;
+  border-radius: 16px;
+  background: white;
+}
+.catalog-zoom img {
+  width: 100%;
+  max-height: 60vh;
+  border-radius: var(--radius);
+  object-fit: contain;
+  background: var(--surface-soft);
+}
+.catalog-zoom figcaption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 16px;
+}
+.catalog-zoom figcaption small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+.catalog-zoom-actions {
+  display: flex;
+  gap: 8px;
+}
+.catalog-zoom-actions .button {
+  flex: 1;
+}
+/* «Не нашли нужное? Отправьте фото» — под списком товаров. */
+.catalog-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px dashed var(--green-border);
+  border-radius: var(--radius-lg);
+  background: white;
+}
+.catalog-ask > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.catalog-ask small {
+  font-size: 13px;
+}
+.catalog-ask .button {
+  width: auto;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+/* Владелец, «Товары в каталоге»: миниатюра, «Без фото», «+ Фото». */
+.catalog-products-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.catalog-products-list li > label {
+  flex: 1;
+  min-width: 0;
+}
+.catalog-products-thumb {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--surface-soft);
+}
+.catalog-products-thumb-empty {
+  border: 1px dashed var(--line);
+}
+.catalog-products-edit {
+  flex: none;
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+form label.catalog-products-filter {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  cursor: pointer;
+}
+.catalog-products-filter input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
 }

@@ -5,7 +5,8 @@ import { searchProducts } from "@/lib/match";
 import { money } from "@/lib/format";
 import { normalizePhone } from "@/lib/contacts";
 
-export type CatalogItem = { id: string; name: string; unit: string; price: string };
+/** photo — адрес фото товара, thumb — его миниатюры (публичное хранилище) или null. */
+export type CatalogItem = { id: string; name: string; unit: string; price: string; photo: string | null; thumb: string | null };
 
 /** Сколько товаров показывать сразу; дальше — «Показать ещё» (телефону тяжело рисовать тысячи строк). */
 const PAGE = 60;
@@ -44,6 +45,8 @@ export function CatalogView({
   // Мой список: id товара → количество (как ввели, «2,5»).
   const [list, setList] = useState<Record<string, string>>({});
   const [listOpen, setListOpen] = useState(false);
+  // Фото товара крупно (нажали на миниатюру).
+  const [zoom, setZoom] = useState<CatalogItem | null>(null);
   // Список уже прочитан из браузера — до этого не сохраняем (иначе пустой
   // начальный список затрёт сохранённый).
   const [loaded, setLoaded] = useState(false);
@@ -130,11 +133,14 @@ export function CatalogView({
           {shopPhone && (
             <a
               className="button"
-              href={waHref(shopPhone, trimmed ? `Здравствуйте! Есть ли у вас «${trimmed}»?` : "Здравствуйте! Подскажите, пожалуйста, что есть в наличии?")}
+              href={waHref(
+                shopPhone,
+                trimmed ? `Здравствуйте! Есть ли у вас «${trimmed}»? (фото ниже, если есть)` : "Здравствуйте! Подскажите, пожалуйста, что есть в наличии?",
+              )}
               target="_blank"
               rel="noopener noreferrer"
             >
-              Спросить в WhatsApp
+              Спросить или отправить фото в WhatsApp
             </a>
           )}
         </section>
@@ -144,6 +150,27 @@ export function CatalogView({
             const qty = list[p.id];
             return (
               <li key={p.id} className={qty ? "catalog-item in-list" : "catalog-item"}>
+                {p.photo ? (
+                  <button type="button" className="catalog-thumb" onClick={() => setZoom(p)} aria-label={`Фото: ${p.name}`}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.thumb ?? p.photo}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      width={56}
+                      height={56}
+                      // Миниатюры нет (фото загрузили до неё) — полное фото.
+                      onError={(e) => {
+                        if (p.photo && e.currentTarget.src !== p.photo) e.currentTarget.src = p.photo;
+                      }}
+                    />
+                  </button>
+                ) : (
+                  <span className="catalog-thumb catalog-thumb-empty" aria-hidden="true">
+                    {p.name.trim().charAt(0).toUpperCase()}
+                  </span>
+                )}
                 <span className="catalog-item-text">
                   <span className="catalog-item-name">{p.name}</span>
                   <span className="catalog-item-price">
@@ -182,7 +209,56 @@ export function CatalogView({
         </button>
       )}
 
+      {shopPhone && found.length > 0 && (
+        <div className="catalog-ask">
+          <span>
+            <strong>Не нашли нужное?</strong>
+            <small className="muted">Отправьте фото или название товара - подскажем, есть ли он.</small>
+          </span>
+          <a
+            className="button"
+            href={waHref(shopPhone, "Здравствуйте! Ищу такой товар (фото ниже). Есть у вас?")}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Отправить фото
+          </a>
+        </div>
+      )}
+
       <p className="catalog-note muted">Цены могут меняться - точную сумму подтвердит продавец.</p>
+
+      {zoom?.photo && (
+        <div className="catalog-zoom" role="dialog" aria-modal="true" aria-label={zoom.name} onClick={() => setZoom(null)}>
+          <figure onClick={(e) => e.stopPropagation()}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={zoom.photo} alt={zoom.name} />
+            <figcaption>
+              <span>{zoom.name}</span>
+              <strong>
+                {price(zoom.price)} <small>за {zoom.unit}</small>
+              </strong>
+            </figcaption>
+            <div className="catalog-zoom-actions">
+              {!list[zoom.id] && (
+                <button
+                  type="button"
+                  className="button primary"
+                  onClick={() => {
+                    setQty(zoom.id, "1");
+                    setZoom(null);
+                  }}
+                >
+                  + В список
+                </button>
+              )}
+              <button type="button" className="button" onClick={() => setZoom(null)}>
+                Закрыть
+              </button>
+            </div>
+          </figure>
+        </div>
+      )}
 
       {picked.length > 0 && (
         <div className="catalog-bar">

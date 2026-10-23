@@ -1,12 +1,22 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { searchProducts } from "@/lib/match";
 import { money } from "@/lib/format";
 import { Submit } from "./submit";
 import { saveCatalogProducts } from "@/app/(workspace)/stock/catalog/actions";
 
-export type CatalogProductRow = { id: string; name: string; unit: string; sale_price: string; catalog_hidden: boolean };
+export type CatalogProductRow = {
+  id: string;
+  name: string;
+  sku: string | null;
+  unit: string;
+  sale_price: string;
+  catalog_hidden: boolean;
+  /** Готовый адрес фото или null. */
+  photo: string | null;
+};
 
 /**
  * Владелец: какие товары видны клиентам в каталоге. Галочка — показывать;
@@ -15,11 +25,15 @@ export type CatalogProductRow = { id: string; name: string; unit: string; sale_p
 export function CatalogProducts({ products, currency }: { products: CatalogProductRow[]; currency: string }) {
   const [hidden, setHidden] = useState(() => new Set(products.filter((p) => p.catalog_hidden).map((p) => p.id)));
   const [query, setQuery] = useState("");
+  // «Без фото» — что ещё сфотографировать для каталога.
+  const [noPhoto, setNoPhoto] = useState(false);
   const initial = useMemo(() => new Set(products.filter((p) => p.catalog_hidden).map((p) => p.id)), [products]);
   const priced = products.filter((p) => Number(p.sale_price) > 0);
   const visible = priced.filter((p) => !hidden.has(p.id)).length;
   const trimmed = query.trim();
-  const rows = trimmed ? searchProducts(trimmed, products, 300) : products;
+  const searched = trimmed ? searchProducts(trimmed, products, 300) : products;
+  const rows = noPhoto ? searched.filter((p) => !p.photo) : searched;
+  const withoutPhoto = priced.filter((p) => !p.photo).length;
   const changed = hidden.size !== initial.size || [...hidden].some((id) => !initial.has(id));
 
   function toggle(id: string, show: boolean) {
@@ -54,6 +68,10 @@ export function CatalogProducts({ products, currency }: { products: CatalogProdu
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Найти товар"
         />
+        <label className="catalog-products-filter">
+          <input type="checkbox" checked={noPhoto} onChange={(e) => setNoPhoto(e.target.checked)} />
+          Без фото ({withoutPhoto})
+        </label>
         <button type="button" className="text-button" onClick={() => setHidden(new Set())}>
           Показать все
         </button>
@@ -73,11 +91,22 @@ export function CatalogProducts({ products, currency }: { products: CatalogProdu
                   disabled={noPrice}
                   onChange={(e) => toggle(p.id, e.target.checked)}
                 />
+                {p.photo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className="catalog-products-thumb" src={p.photo} alt="" loading="lazy" />
+                ) : (
+                  <span className="catalog-products-thumb catalog-products-thumb-empty" aria-hidden="true" />
+                )}
+                <span className="catalog-products-sku">{p.sku || "-"}</span>
                 <span className="catalog-products-name">{p.name}</span>
                 <span className="catalog-products-price">
                   {noPrice ? "нет цены" : `${money(p.sale_price, currency)} / ${p.unit}`}
                 </span>
               </label>
+              {/* Фото и цену меняют в карточке товара. */}
+              <Link className="catalog-products-edit" href={`/stock/${p.id}`} aria-label={`Открыть товар: ${p.name}`}>
+                {p.photo ? "Изменить" : "+ Фото"}
+              </Link>
             </li>
           );
         })}

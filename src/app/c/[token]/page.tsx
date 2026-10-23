@@ -12,6 +12,7 @@ import { CopyButton } from "@/components/copy-button";
 import { ContactLinks } from "@/components/contact-links";
 import { LogoMark } from "@/components/logo-mark";
 import { normalizePhone } from "@/lib/contacts";
+import { loadCatalogTokenByLink } from "@/lib/catalog-cache";
 
 // Страница клиента — не для поиска (задача 46).
 export const metadata: Metadata = { robots: { index: false, follow: false } };
@@ -114,7 +115,11 @@ export default async function ClientPage({
     );
   }
 
-  const paymentResult = await anon.rpc("get_shop_payment_by_token", { p_token: token });
+  const [paymentResult, catalogToken] = await Promise.all([
+    anon.rpc("get_shop_payment_by_token", { p_token: token }),
+    // Каталог магазина включён — ссылка на него, из кеша на 10 минут (ошибка — без ссылки).
+    loadCatalogTokenByLink(token.toLowerCase()).catch(() => null),
+  ]);
   const pay = (paymentResult.error ? null : paymentResult.data) as Payment | null;
   const accounts = [
     { label: "MBank", value: pay?.mbank },
@@ -149,6 +154,15 @@ export default async function ClientPage({
           <p className="muted">Срок оплаты - до {dayMonth(statement.promised_date)}</p>
         )}
       </section>
+      {catalogToken && (
+        <a className="client-catalog-link" href={`/catalog/${catalogToken}`}>
+          <span>
+            <strong>Каталог и цены</strong>
+            <small className="muted">Посмотрите товары и отправьте заказ в WhatsApp</small>
+          </span>
+          <span aria-hidden="true">→</span>
+        </a>
+      )}
       {claimed && (
         <p className="notice success" role="status">
           Заявка отправлена.{fromReceipt ? " Сумму прочитали с чека." : ""} Магазин подтвердит оплату - долг

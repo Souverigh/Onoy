@@ -10,6 +10,8 @@ import { adjustStock, archiveProduct } from "../actions";
 import { STOCK_ERROR_TEXT } from "@/lib/stock";
 import { convertAmount, isCurrency, ratePair } from "@/lib/currency";
 import { officialRates } from "@/lib/fx";
+import { ProductPhotoField } from "@/components/product-photo-field";
+import { productPhotoUrl } from "@/lib/product-photo";
 
 type Movement = {
   id: string;
@@ -53,7 +55,7 @@ export default async function ProductPage({
   const { error, saved, stocked, restored, mode } = await searchParams;
   if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
   const { db, organizationId, currency } = await getContext();
-  const [productResult, movementsResult, returnsResult] = await Promise.all([
+  const [productResult, movementsResult, returnsResult, photoResult] = await Promise.all([
     db
       .from("product_balances")
       .select("id,name,sku,unit,sale_price,purchase_price,purchase_currency,min_stock,aliases,stock,archived_at,sold_count")
@@ -76,7 +78,10 @@ export default async function ProductPage({
       .eq("product_id", id)
       .order("created_at", { ascending: false })
       .limit(50),
+    // Фото для каталога — из таблицы товаров (в представлении остатков его нет).
+    db.from("products").select("photo_path").eq("organization_id", organizationId).eq("id", id).maybeSingle(),
   ]);
+  const photoPath = (photoResult.data as { photo_path: string | null } | null)?.photo_path ?? null;
   const product = productResult.data as (ProductEntry & { stock: string; archived_at: string | null; sold_count: number }) | null;
   if (productResult.error || !product) notFound();
   // Закупка в другой валюте — показываем и в валюте магазина по курсу сегодня.
@@ -169,6 +174,12 @@ export default async function ProductPage({
         <p className="form-error" role="alert">
           {STOCK_ERROR_TEXT[error] ?? STOCK_ERROR_TEXT.save}
         </p>
+      )}
+
+      {!product.archived_at && (
+        <section className="panel">
+          <ProductPhotoField productId={product.id} name={product.name} initialUrl={productPhotoUrl(photoPath)} />
+        </section>
       )}
 
       <section className="panel stock-panel">

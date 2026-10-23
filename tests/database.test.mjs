@@ -3373,15 +3373,39 @@ test("catalog: owner opens a link; anyone with it sees names and sale prices onl
   assert.ok(ids.includes(shown));
   for (const id of [free, hidden, old]) assert.ok(!ids.includes(id));
   // Ничего лишнего: ни остатков, ни закупки, ни кодов.
-  assert.deepEqual(Object.keys(page.products.find((p) => p.id === shown)).sort(), ["id", "name", "price", "unit"]);
+  assert.deepEqual(Object.keys(page.products.find((p) => p.id === shown)).sort(), ["id", "name", "photo", "price", "unit"]);
   assert.equal(page.products.find((p) => p.id === shown).price, "360.00");
   assert.equal(await catalog("0".repeat(32)), null);
+  // Фото товара: путь только своего магазина и товара; в каталоге — путь.
+  await user(seller);
+  const photo = `${orgA}/${shown}/abc.jpg`;
+  assert.equal((await db.query("select set_product_photo($1,$2,$3) as old", [orgA, shown, photo])).rows[0].old, null);
+  await assert.rejects(db.query("select set_product_photo($1,$2,$3)", [orgA, shown, `${orgB}/${shown}/x.jpg`]), /invalid_photo/);
+  await assert.rejects(db.query("select set_product_photo($1,$2,$3)", [orgA, shown, `${orgA}/${shown}/../x.jpg`]), /invalid_photo/);
+  await user(b);
+  await assert.rejects(db.query("select set_product_photo($1,$2,null)", [orgA, shown]), /not_a_member/);
+  assert.equal((await catalog(token)).products.find((p) => p.id === shown).photo, photo);
+  await user(seller);
+  assert.equal((await db.query("select set_product_photo($1,$2,null) as old", [orgA, shown])).rows[0].old, photo);
+  assert.equal((await catalog(token)).products.find((p) => p.id === shown).photo, null);
+  // Страница клиента: ссылка каталога его магазина — пока каталог включён.
+  await owner();
+  const clientLink = (
+    await db.query("insert into share_links(organization_id,customer_id) select $1, id from customers where organization_id=$1 limit 1 returning token", [orgA])
+  ).rows[0].token;
+  await db.exec("SET ROLE anon;");
+  assert.equal((await db.query("select get_catalog_token_by_link($1) as t", [clientLink])).rows[0].t, token);
+  assert.equal((await db.query("select get_catalog_token_by_link($1) as t", ["0".repeat(32)])).rows[0].t, null);
+  await owner();
   assert.equal(await catalog("not-a-token"), null);
 
   // Выключили — ссылка не открывается; включили снова — новая, старая мертва.
   await user(a);
   await db.query("select close_catalog_link($1)", [orgA]);
   assert.equal(await catalog(token), null);
+  await db.exec("SET ROLE anon;");
+  assert.equal((await db.query("select get_catalog_token_by_link($1) as t", [clientLink])).rows[0].t, null);
+  await owner();
   await user(a);
   const fresh = (await db.query("select open_catalog_link($1) as t", [orgA])).rows[0].t;
   assert.notEqual(fresh, token);

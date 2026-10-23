@@ -1,26 +1,25 @@
 import type { Metadata } from "next";
-import { cache } from "react";
 import { notFound } from "next/navigation";
-import { createAnonClient } from "@/lib/supabase/server";
 import { phoneText } from "@/lib/format";
 import { normalizePhone } from "@/lib/contacts";
-import { CatalogView, type CatalogItem } from "@/components/catalog-view";
+import { CatalogView } from "@/components/catalog-view";
+import { productPhotoUrl, productThumbUrl } from "@/lib/product-photo";
+import { loadCatalog } from "@/lib/catalog-cache";
 
-type Catalog = { shop_name: string; shop_phone: string; currency: string; products: CatalogItem[] };
+// Страница собирается один раз на ссылку и раздаётся из кеша (CDN), без
+// запросов к базе на каждый заход. Изменили товары — кеш сбрасывается сразу
+// (refreshCatalog); на всякий случай — не реже раза в час (CATALOG_REVALIDATE).
+export const revalidate = 3600;
+export const dynamicParams = true;
+export function generateStaticParams() {
+  return [];
+}
 
-/** Каталог по ссылке (без входа): get_catalog — только название, единица и цена продажи. */
-const loadCatalog = cache(async (token: string): Promise<Catalog | null> => {
-  if (!/^[a-f0-9]{32}$/i.test(token)) return null;
-  const { data, error } = await createAnonClient().rpc("get_catalog", { p_token: token.toLowerCase() });
-  if (error) {
-    console.error("catalog: get_catalog failed", { message: error.message });
-    return null;
-  }
-  return (data as Catalog | null) ?? null;
-});
+const tokenPattern = /^[a-f0-9]{32}$/;
 
 export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
-  const catalog = await loadCatalog((await params).token);
+  const { token } = await params;
+  const catalog = tokenPattern.test(token) ? await loadCatalog(token) : null;
   return {
     title: catalog ? `${catalog.shop_name} - каталог` : "Каталог",
     // Ссылка для своих клиентов — не для поиска.
@@ -34,7 +33,7 @@ export async function generateMetadata({ params }: { params: Promise<{ token: st
  */
 export default async function CatalogPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  if (!/^[a-f0-9]{32}$/i.test(token)) notFound();
+  if (!tokenPattern.test(token)) notFound();
   const catalog = await loadCatalog(token);
   if (!catalog)
     return (
@@ -72,7 +71,7 @@ export default async function CatalogPage({ params }: { params: Promise<{ token:
         shopName={catalog.shop_name}
         shopPhone={phone}
         currency={catalog.currency}
-        products={catalog.products}
+        products={catalog.products.map((p) => ({ ...p, photo: productPhotoUrl(p.photo), thumb: productThumbUrl(p.photo) }))}
       />
     </main>
   );

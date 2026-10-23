@@ -2,6 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { EXPIRED_COOKIE, SEEN_COOKIE, inactivityExpired } from "@/lib/session-timeout";
 export async function proxy(request: NextRequest) {
+  // Каталог для клиентов — без входа, из кеша (CDN): сессию не трогаем.
+  if (request.nextUrl.pathname.startsWith("/catalog/")) return NextResponse.next();
   let response = NextResponse.next({ request });
   response.headers.set("Cache-Control", "private, no-store");
   if (
