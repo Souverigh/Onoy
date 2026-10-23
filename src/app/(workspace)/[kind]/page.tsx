@@ -10,17 +10,29 @@ import { Icon } from "@/components/icon";
 import { NavSelect, NavSelects } from "@/components/nav-select";
 import { OVERDUE_THRESHOLDS, dayMonth, overdueThreshold, promiseStatus } from "@/lib/promise";
 import { bishkekDate } from "@/lib/day-summary";
+import { memberLabels } from "@/lib/members";
+
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export default async function DirectoryPage({
   params,
   searchParams,
 }: {
   params: Promise<{ kind: string }>;
-  searchParams: Promise<{ q?: string; page?: string; overdue?: string; archived?: string; deleted?: string; sort?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    page?: string;
+    overdue?: string;
+    archived?: string;
+    deleted?: string;
+    sort?: string;
+    seller?: string;
+  }>;
 }) {
   const { kind } = await params;
   if (!isDirectory(kind)) notFound();
   const meta = directoryMeta[kind];
-  const { q = "", page = "1", overdue: rawOverdue, archived: rawArchived, deleted, sort: rawSort } = await searchParams;
+  const { q = "", page = "1", overdue: rawOverdue, archived: rawArchived, deleted, sort: rawSort, seller: rawSeller } =
+    await searchParams;
   // Клиенты и поставщики: по умолчанию «недавние» — последние изменения сверху.
   const sort: SortKey = kind === "products" ? "name" : SORTS.some(([key]) => key === rawSort) ? (rawSort as SortKey) : "recent";
   // Архив (ТЗ §15.2): по умолчанию скрыт, отдельный фильтр «Архив».
@@ -29,7 +41,42 @@ export default async function DirectoryPage({
   const overdue = kind === "customers" ? overdueThreshold(rawOverdue) : null;
   const current = Math.max(1, Math.min(10000, parseInt(page) || 1));
   const query = q.trim().slice(0, 100);
-  const { db, organizationId, currency: shopCurrency } = await getContext();
+  const { db, organizationId, currency: shopCurrency, isOwner } = await getContext();
+  // «Кто внёс» (просьба пользователя 23.10.2026): клиенты и поставщики, по
+  // которым сотрудник записал продажу/приход (maker_id) или оплату (created_by).
+  // Владелец выбирает любого сотрудника; продавец видит в списке только себя (RLS).
+  const members = kind !== "products" ? await memberLabels(db, organizationId) : new Map();
+  const seller = rawSeller && uuidPattern.test(rawSeller) && members.has(rawSeller) ? rawSeller : null;
+  const sellerIds = seller
+    ? await Promise.all([
+        db
+          .from(kind === "customers" ? "sales" : "purchases")
+          .select(kind === "customers" ? "customer_id" : "supplier_id")
+          .eq("organization_id", organizationId)
+          .eq("maker_id", seller)
+          .range(0, 9999),
+        db
+          .from("payments")
+          .select(kind === "customers" ? "customer_id" : "supplier_id")
+          .eq("organization_id", organizationId)
+          .eq("created_by", seller)
+          .not(kind === "customers" ? "customer_id" : "supplier_id", "is", null)
+          .range(0, 9999),
+      ]).then((results) => {
+        if (results.some((r) => r.error)) throw new Error("Не удалось загрузить записи сотрудника");
+        const key = kind === "customers" ? "customer_id" : "supplier_id";
+        return [
+          ...new Set(results.flatMap((r) => ((r.data ?? []) as unknown as Record<string, string>[]).map((row) => row[key]))),
+        ];
+      })
+    : null;
+  /** Оба отбора сразу («Просрочено» и «Кто внёс») — только общие id. */
+  const both = (ids: string[] | null) => {
+    if (!sellerIds) return ids;
+    if (!ids) return sellerIds;
+    const mine = new Set(sellerIds);
+    return ids.filter((id) => mine.has(id));
+  };
   // Давность долга > 30 дней — одним запросом на весь магазин: из него и
   // метки «долг N дн.» в строках, и фильтр «Просрочено 30/60/90» (пороги ≥ 30).
   const lateRequest =
@@ -78,8 +125,8 @@ export default async function DirectoryPage({
   // список ждёт id просроченных.
   // Список с сортировкой; представления ещё нет — прежний, по имени.
   const loadList = async (overdueIds: string[] | null) => {
-    const result = await listRequest(overdueIds);
-    return result.error && kind !== "products" ? listRequest(overdueIds, true) : result;
+    const result = await listRequest(both(overdueIds));
+    return result.error && kind !== "products" ? listRequest(both(overdueIds), true) : result;
   };
   const [late, { data, error, count }] = overdue
     ? await lateRequest.then(async (rows) => [
@@ -97,18 +144,21 @@ export default async function DirectoryPage({
     if (overdue) params.set("overdue", String(overdue));
     if (archived) params.set("archived", "1");
     if (sort !== "recent" && kind !== "products") params.set("sort", sort);
+    if (seller) params.set("seller", seller);
     for (const [key, value] of Object.entries(extra)) params.set(key, String(value));
     const text = params.toString();
     return `/${kind}${text ? `?${text}` : ""}`;
   };
   // Адрес варианта «Показать» / «Сначала»: поиск сохраняем, страницу — с первой.
-  const viewHref = (v: { overdue?: number; archived?: boolean; sort?: SortKey }) => {
+  const viewHref = (v: { overdue?: number; archived?: boolean; sort?: SortKey; seller?: string | null }) => {
     const params = new URLSearchParams();
     if (query) params.set("q", query);
     if (v.overdue) params.set("overdue", String(v.overdue));
     if (v.archived) params.set("archived", "1");
     const nextSort = v.sort ?? sort;
     if (nextSort !== "recent") params.set("sort", nextSort);
+    const nextSeller = v.seller === undefined ? seller : v.seller;
+    if (nextSeller) params.set("seller", nextSeller);
     const text = params.toString();
     return `/${kind}${text ? `?${text}` : ""}`;
   };
@@ -159,6 +209,7 @@ export default async function DirectoryPage({
           {overdue && <input type="hidden" name="overdue" value={overdue} />}
           {archived && <input type="hidden" name="archived" value="1" />}
           {sort !== "recent" && kind !== "products" && <input type="hidden" name="sort" value={sort} />}
+          {seller && <input type="hidden" name="seller" value={seller} />}
           <label htmlFor="search-name" className="sr-only">
             {kind === "products" ? "Поиск по названию" : "Поиск по имени или телефону"}
           </label>
@@ -171,7 +222,7 @@ export default async function DirectoryPage({
           />
           <button className="button">Найти</button>
           {query && (
-            <Link className="text-button" href={`/${kind}`}>
+            <Link className="text-button" href={seller ? `/${kind}?seller=${seller}` : `/${kind}`}>
               Сбросить
             </Link>
           )}
@@ -209,6 +260,28 @@ export default async function DirectoryPage({
                 selected: sort === key,
               }))}
             />
+            {/* Владельцу — когда в магазине есть продавцы; продавцу — «Все» или «Мои». */}
+            {(isOwner ? members.size > 1 : members.size > 0) && (
+              <NavSelect
+                label="Кто вносил"
+                tip={
+                  <InfoTip>
+                    {kind === "customers" ? "Клиенты" : "Поставщики"}, по которым сотрудник записал{" "}
+                    {kind === "customers" ? "продажу" : "приход"} или оплату.
+                  </InfoTip>
+                }
+                options={[
+                  { label: "Все сотрудники", href: viewHref({ overdue: overdue ?? undefined, archived, seller: null }), selected: !seller },
+                  ...[...members.entries()]
+                    .sort(([, x], [, y]) => (x.role === y.role ? x.name.localeCompare(y.name, "ru") : x.role === "owner" ? -1 : 1))
+                    .map(([id, m]) => ({
+                      label: isOwner ? m.name : "Мои записи",
+                      href: viewHref({ overdue: overdue ?? undefined, archived, seller: id }),
+                      selected: seller === id,
+                    })),
+                ]}
+              />
+            )}
           </NavSelects>
         )}
         {entries.length ? (
