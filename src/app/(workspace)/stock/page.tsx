@@ -158,6 +158,11 @@ export default async function StockPage({
           <p className="muted">Остатки, цены и коды. Товар от поставщика прибавляет остаток, продажа - списывает.</p>
         </div>
         <div className="heading-actions stock-heading-actions">
+          {isOwner && (
+            <Link className="button" href="/stock/catalog">
+              Каталог для клиентов
+            </Link>
+          )}
           <Link className="button" href="/stock/import">
             Из Excel
           </Link>

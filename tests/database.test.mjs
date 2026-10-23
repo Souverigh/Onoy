@@ -32,7 +32,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 25);
+  assert.equal(rows.length, 26);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -3336,6 +3336,60 @@ test("disabled seller: sees nothing, writes nothing even through functions; owne
     (await db.query("select action from audit_events where organization_id=$1 and action like 'member.%abled' order by created_at", [orgA])).rows.map((r) => r.action),
     ["member.disabled", "member.enabled"],
   );
+});
+test("catalog: owner opens a link; anyone with it sees names and sale prices only; hidden, archived and priceless products stay out", async () => {
+  const seller = "44444444-4444-4444-8444-444444444444";
+  const catalog = async (token) => {
+    await owner();
+    await db.exec("SET ROLE anon;");
+    const value = (await db.query("select get_catalog($1) as c", [token])).rows[0].c;
+    await owner();
+    return value;
+  };
+  await owner();
+  const shown = (await db.query("select id from products where organization_id=$1 and name='Автомат 16А возврат'", [orgA])).rows[0].id;
+  const free = (await db.query("insert into products(organization_id,name,sale_price) values ($1,'Каталог без цены',0) returning id", [orgA])).rows[0].id;
+  const hidden = (await db.query("insert into products(organization_id,name,sale_price) values ($1,'Каталог скрытый',50) returning id", [orgA])).rows[0].id;
+  const old = (
+    await db.query("insert into products(organization_id,name,sale_price,archived_at) values ($1,'Каталог архив',50,now()) returning id", [orgA])
+  ).rows[0].id;
+
+  // Только владелец.
+  await user(seller);
+  await assert.rejects(db.query("select open_catalog_link($1)", [orgA]), /owner_only/);
+  await user(a);
+  const token = (await db.query("select open_catalog_link($1) as t", [orgA])).rows[0].t;
+  assert.match(token, /^[a-f0-9]{32}$/);
+  assert.equal((await db.query("select open_catalog_link($1) as t", [orgA])).rows[0].t, token);
+  await db.query("select set_catalog_hidden($1,$2::uuid[])", [orgA, [hidden]]);
+  await user(seller);
+  await assert.rejects(db.query("select set_catalog_hidden($1,$2::uuid[])", [orgA, []]), /owner_only/);
+
+  const page = await catalog(token);
+  assert.equal(page.shop_name, "Магазин A");
+  const ids = page.products.map((p) => p.id);
+  assert.ok(ids.includes(shown));
+  for (const id of [free, hidden, old]) assert.ok(!ids.includes(id));
+  // Ничего лишнего: ни остатков, ни закупки, ни кодов.
+  assert.deepEqual(Object.keys(page.products.find((p) => p.id === shown)).sort(), ["id", "name", "price", "unit"]);
+  assert.equal(page.products.find((p) => p.id === shown).price, "360.00");
+  assert.equal(await catalog("0".repeat(32)), null);
+  assert.equal(await catalog("not-a-token"), null);
+
+  // Выключили — ссылка не открывается; включили снова — новая, старая мертва.
+  await user(a);
+  await db.query("select close_catalog_link($1)", [orgA]);
+  assert.equal(await catalog(token), null);
+  await user(a);
+  const fresh = (await db.query("select open_catalog_link($1) as t", [orgA])).rows[0].t;
+  assert.notEqual(fresh, token);
+  assert.equal(await catalog(token), null);
+  assert.ok((await catalog(fresh)).products.length > 0);
+  // Вернуть скрытый — пустой список скрытых.
+  await user(a);
+  await db.query("select set_catalog_hidden($1,$2::uuid[])", [orgA, []]);
+  assert.ok((await catalog(fresh)).products.some((p) => p.id === hidden));
+  await owner();
 });
 test("cash moves: only the owner takes or puts cash, once per key, reversible, other shops see nothing", async () => {
   const k = (n) => `aaaabbbb-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
