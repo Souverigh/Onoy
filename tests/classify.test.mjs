@@ -108,3 +108,11 @@ test("checkDocument: answers before v2 (no class, no sides) stay valid invoices"
   };
   assert.deepEqual(checkDocument(legacy, "purchase", isOwn), { ok: true, counterparty: "Тимур", fragment: false });
 });
+
+test("notebookNamesPrompt: shop customers as a handwriting hint, deduplicated and capped", async () => {
+  const { notebookNamesPrompt } = await import("../src/lib/adre/notebook-hints.ts");
+  const text = notebookNamesPrompt(["Каныкей эже", "Каныкей  эже", " ", "Айнура м/с", ...Array.from({ length: 600 }, (_, i) => `Клиент ${i}`)]);
+  assert.match(text, /уже есть у магазина: Каныкей эже; Айнура м\/с; Клиент 0;/);
+  assert.equal((text.match(/Клиент \d+/g) ?? []).length, 498);
+  assert.match(text, /не подгоняй под список/);
+});

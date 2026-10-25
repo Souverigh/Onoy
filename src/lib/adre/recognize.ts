@@ -203,10 +203,10 @@ async function saveFingerprint(
  * Страницы тетради при переносе долгов — разовая операция, фото не
  * сохраняются как документы и не кешируются.
  */
-export async function recognizeNotebook(pages: PhotoPage[]) {
+export async function recognizeNotebook(pages: PhotoPage[], names: string[] = []) {
   const provider = getProvider();
   if (!provider) throw new Error("no_provider_configured");
-  const { result } = await provider.recognizeNotebook(pages);
+  const { result } = await provider.recognizeNotebook(pages, names);
   return {
     rows: (result.rows ?? [])
       .map((row) => ({

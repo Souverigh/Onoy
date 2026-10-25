@@ -1,4 +1,5 @@
 import "server-only";
+import { notebookNamesPrompt } from "./notebook-hints";
 import type {
   InvoiceResult,
   ReceiptResult,
@@ -141,7 +142,8 @@ const partPrompt = {
 };
 const partRule = `n - номер строки, как он написан в колонке «№» на бумаге; если номеров на бумаге нет - 0. Если в обрезанной части не видно, чьё название повторяется в строке (только размер или знак повтора), пиши как есть.`;
 
-const notebookPrompt = `Это страницы тетради долгов магазина стройматериалов в Кыргызстане (рукописная кириллица, кыргызские и узбекские имена). Нужен текущий долг каждого человека на сегодня: имя (как написано), телефон, если записан, и сумма в сомах. Если у человека несколько записей (долг, частичные оплаты, зачёркнутые суммы) - верни один итоговый остаток: зачёркнутое не считай, оплаты вычти. Сумма положительная - человек должен; отрицательная - аванс (заплатил больше, чем должен). Дата долга (date) - если у записи написана дата, как на бумаге («15.09» или «15.09.2026»); если дат несколько - самая ранняя из неоплаченных; нет даты - null. Одно имя - одна строка. Уверенность 0-1 по каждой строке. Если что-то неразборчиво или неоднозначно - опиши в warnings. Пиши warnings только по-русски, коротко и простыми словами для продавца, без английских и технических слов: что именно проверить и где (имя, строка, сумма). Пример: «У Асана сумма неразборчива: 15 000 или 16 000». Отвечай только JSON по заданной схеме.`;
+const notebookPrompt = `Это страницы тетради долгов магазина стройматериалов в Кыргызстане (рукописная кириллица, кыргызские и узбекские имена). Нужен текущий долг каждого человека на сегодня: имя (как написано), телефон, если записан, и сумма в сомах. Если у человека несколько записей (долг, частичные оплаты, зачёркнутые суммы) - верни один итоговый остаток: зачёркнутое не считай, оплаты вычти. Сумма положительная - человек должен; отрицательная - аванс (заплатил больше, чем должен). Дата долга (date) - если у записи написана дата, как на бумаге («15.09» или «15.09.2026»); если дат несколько - самая ранняя из неоплаченных; нет даты - null. Одно имя - одна строка. Имя пиши целиком, со всем, что рядом с ним для различения людей: обращение, место, примета («Гулнара эже», «Айбек байке», «Чынара Ак-Марал», «Айнура м/с», «Нурсулуу эже»). Обращения в тетрадях: эже (к женщине, самое частое), байке, агай, ака, апа, келин, эне (редко). В почерке «ж» похожа на «н»: слово после женского имени, похожее на «эне», почти всегда «эже» - пиши «эне», только если «н» видна ясно. Телефон относится к записи, рядом с которой или прямо под которой он написан. Если у записи нет суммы (только имя и телефон) - не бери сумму из соседней строки: amount 0 и предупреждение. Суммы вида «3500+4000», «2250+550-500», «4750-1700=3050» - посчитай итог (если итог после «=» написан - бери его). Уверенность 0-1 по каждой строке. Если что-то неразборчиво или неоднозначно - опиши в warnings. Пиши warnings только по-русски, коротко и простыми словами для продавца, без английских и технических слов: что именно проверить и где (имя, строка, сумма). Пример: «У Асана сумма неразборчива: 15 000 или 16 000». Отвечай только JSON по заданной схеме.`;
+
 
 const receiptPrompt = `Ты распознаёшь чек или скриншот перевода банка MBank (Кыргызстан). Извлеки банк, номер операции, дату и время перевода (datetime - как на чеке, в формате ГГГГ-ММ-ДДTчч:мм, например 2026-09-26T14:35, без часового пояса), сумму и её валюту (currency: KGS - сом, USD - доллар, RUB - рубль; по знаку на чеке, без знака у MBank - KGS), имя отправителя, имя и телефон получателя, назначение платежа, и уверенность 0-1. Отвечай только JSON по заданной схеме.`;
 
@@ -172,7 +174,14 @@ function estimateCost(raw: unknown): number | null {
  * качество распознавания документов на medium уже не растёт.
  * Настраивается через GEMINI_THINKING_LEVEL / GEMINI_MEDIA_RESOLUTION.
  */
-function tuningConfig() {
+function tuningConfig(handwriting = false) {
+  // Тетрадь — почерк, и перенос разовый: фото в высоком разрешении и больше
+  // рассуждения (имена и суммы от руки на среднем путаются: «эже» → «эне»).
+  if (handwriting)
+    return {
+      thinkingConfig: { thinkingLevel: process.env.GEMINI_NOTEBOOK_THINKING_LEVEL || "high" },
+      mediaResolution: process.env.GEMINI_NOTEBOOK_MEDIA_RESOLUTION || "MEDIA_RESOLUTION_HIGH",
+    };
   return {
     thinkingConfig: { thinkingLevel: process.env.GEMINI_THINKING_LEVEL || "low" },
     mediaResolution: process.env.GEMINI_MEDIA_RESOLUTION || "MEDIA_RESOLUTION_MEDIUM",
@@ -185,6 +194,7 @@ async function callGemini(
   prompt: string,
   schema: object,
   pages: PhotoPage[],
+  handwriting = false,
 ): Promise<{ json: unknown; raw: unknown }> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const request = (tuned: boolean) =>
@@ -209,7 +219,7 @@ async function callGemini(
         generationConfig: {
           responseMimeType: "application/json",
           responseSchema: schema,
-          ...(tuned ? tuningConfig() : {}),
+          ...(tuned ? tuningConfig(handwriting) : {}),
         },
       }),
     });
@@ -249,8 +259,9 @@ export function createGeminiProvider(apiKey: string, model: string): Recognition
       const { json, raw } = await callGemini(model, apiKey, prompt, invoiceSchema, pages);
       return { result: json as InvoiceResult, raw, costUsd: estimateCost(raw) };
     },
-    async recognizeNotebook(pages): Promise<RawCall<NotebookResult>> {
-      const { json, raw } = await callGemini(model, apiKey, notebookPrompt, notebookSchema, pages);
+    async recognizeNotebook(pages, names): Promise<RawCall<NotebookResult>> {
+      const prompt = names?.length ? `${notebookPrompt}\n\n${notebookNamesPrompt(names)}` : notebookPrompt;
+      const { json, raw } = await callGemini(model, apiKey, prompt, notebookSchema, pages, true);
       return { result: json as NotebookResult, raw, costUsd: estimateCost(raw) };
     },
     async recognizeExpense(pages): Promise<RawCall<ExpenseResult>> {

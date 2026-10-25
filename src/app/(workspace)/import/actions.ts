@@ -38,8 +38,19 @@ export async function recognizeNotebookPhotos(
         mimeType: documentMimeType(photo),
       })),
     );
+    // Клиенты магазина — подсказка модели к почерку (имена пишутся как в Depter).
+    const known = await db
+      .from("customers")
+      .select("name")
+      .eq("organization_id", organizationId)
+      .is("archived_at", null)
+      .is("merged_into_id", null)
+      .order("created_at", { ascending: false })
+      .range(0, 499);
+    if (known.error) console.error("recognizeNotebookPhotos: customers failed", { message: known.error.message });
+    const names = (known.data ?? []).map((c) => String(c.name));
     const [result, photoPaths] = await Promise.all([
-      recognizeNotebook(pages),
+      recognizeNotebook(pages, names),
       uploadNotebookPhotos(db, organizationId, photos),
     ]);
     return { ok: true, ...result, photos: photoPaths };

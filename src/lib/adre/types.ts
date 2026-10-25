@@ -107,6 +107,7 @@ export interface RecognitionProvider {
   model: string;
   recognizeInvoice(pages: PhotoPage[], part?: PagePart): Promise<RawCall<InvoiceResult>>;
   recognizeReceipt(photo: Buffer, mimeType: string): Promise<RawCall<ReceiptResult>>;
-  recognizeNotebook(pages: PhotoPage[]): Promise<RawCall<NotebookResult>>;
+  /** names — клиенты магазина: модель пишет имя как в списке, если узнала его. */
+  recognizeNotebook(pages: PhotoPage[], names?: string[]): Promise<RawCall<NotebookResult>>;
   recognizeExpense(pages: PhotoPage[]): Promise<RawCall<ExpenseResult>>;
 }
