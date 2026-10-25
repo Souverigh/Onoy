@@ -32,7 +32,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 28);
+  assert.equal(rows.length, 29);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -3819,4 +3819,122 @@ test("invoice of a staff sale: the staff member's name and the shop phone, not t
   await db.query("update sales set made_by=$2 where id=$1", [fixed, staff]);
   i = await info(fixed);
   assert.equal(i.staff_seller_name, "Асад Б.");
+});
+
+test("catalog orders: a customer orders by the catalog link, prices come from stock, the shop makes a sale from it", async () => {
+  const k = (n) => `aaaadddd-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
+  const seller = "44444444-4444-4444-8444-444444444444";
+  await user(a);
+  const token = (await db.query("select open_catalog_link($1) as t", [orgA])).rows[0].t;
+  await owner();
+  const lamp = (await db.query("select id from products where organization_id=$1 and name='Автомат 16А возврат'", [orgA])).rows[0].id;
+  const hidden = (
+    await db.query("insert into products(organization_id,name,sale_price,catalog_hidden) values ($1,'Заказ скрытый',10,true) returning id", [orgA])
+  ).rows[0].id;
+  const buyer = (await db.query("insert into customers(organization_id,name,phone) values ($1,'Заказ Айгуль','+996555123456') returning id", [orgA])).rows[0].id;
+  const clientLink = (await db.query("insert into share_links(organization_id,customer_id) values ($1,$2) returning token", [orgA, buyer])).rows[0].token;
+  const otherBuyer = (await db.query("insert into customers(organization_id,name) values ($1,'Чужой клиент') returning id", [orgB])).rows[0].id;
+  const otherLink = (await db.query("insert into share_links(organization_id,customer_id) values ($1,$2) returning token", [orgB, otherBuyer])).rows[0].token;
+
+  const submit = async (items, phone, client = null, catalog = token) => {
+    await owner();
+    await db.exec("SET ROLE anon;");
+    try {
+      return (
+        await db.query("select submit_catalog_order($1,$2::jsonb,'  Айгуль  ',$3,'к вечеру',$4) as id", [catalog, JSON.stringify(items), phone, client])
+      ).rows[0].id;
+    } finally {
+      await owner();
+    }
+  };
+  // Без телефона и не с личной страницы — нельзя; мусор и чужие ссылки — отказ.
+  await assert.rejects(submit([{ id: lamp, qty: "2" }], null), /phone_required/);
+  await assert.rejects(submit([{ id: lamp, qty: "2" }], "12"), /invalid_phone/);
+  await assert.rejects(submit([{ id: lamp, qty: "2" }], null, otherLink), /phone_required/);
+  await assert.rejects(submit([], "+996 555 000 222"), /invalid_order/);
+  await assert.rejects(submit([{ id: lamp, qty: "0" }], "+996 555 000 222"), /invalid_order/);
+  await assert.rejects(submit([{ id: lamp, qty: "abc" }], "+996 555 000 222"), /invalid_order/);
+  await assert.rejects(submit([{ id: "not-a-uuid", qty: "1" }], "+996 555 000 222"), /invalid_order/);
+  await assert.rejects(submit([{ id: lamp, qty: "1" }, { id: lamp, qty: "2" }], "+996 555 000 222"), /invalid_order/);
+  await assert.rejects(submit([{ id: hidden, qty: "1" }], "+996 555 000 222"), /order_changed/);
+  await assert.rejects(submit([{ id: lamp, qty: "1" }], "+996 555 000 222", null, "0".repeat(32)), /invalid_catalog/);
+
+  // Цена — со склада, даже если браузер прислал свою.
+  const order = await submit([{ id: lamp, qty: "2.5", price: "1" }], "+996 555 000 222");
+  const row = (await db.query("select * from catalog_orders where id=$1", [order])).rows[0];
+  assert.equal(row.status, "new");
+  assert.equal(row.buyer_name, "Айгуль");
+  assert.equal(row.note, "к вечеру");
+  assert.equal(row.customer_id, null);
+  assert.equal(row.total, "900.00");
+  assert.deepEqual(row.items, [{ product_id: lamp, name: "Автомат 16А возврат", unit: row.items[0].unit, qty: "2.5", price: "360.00" }]);
+  // С личной страницы клиента — заказ сразу его, телефон не нужен.
+  const mine = await submit([{ id: lamp, qty: "1" }], null, clientLink);
+  assert.equal((await db.query("select customer_id from catalog_orders where id=$1", [mine])).rows[0].customer_id, buyer);
+
+  // Видят только в своём магазине; продавец — тоже.
+  await user(b);
+  assert.equal((await db.query("select count(*)::int as n from catalog_orders")).rows[0].n, 0);
+  await assert.rejects(db.query("select set_catalog_order_dismissed($1,$2,true)", [orgA, order]), /not_a_member/);
+  await user(seller);
+  assert.equal((await db.query("select count(*)::int as n from catalog_orders where organization_id=$1", [orgA])).rows[0].n, 2);
+
+  // «Сделать продажу»: только со своим черновиком.
+  const draft = (
+    await db.query("select save_record_draft($1,null,'sale',$2::jsonb) as id", [orgA, JSON.stringify({ party: buyer, lines: [] })])
+  ).rows[0].id;
+  await user(a);
+  await assert.rejects(db.query("select accept_catalog_order($1,$2,$3)", [orgA, mine, draft]), /invalid_draft/);
+  await user(seller);
+  await db.query("select accept_catalog_order($1,$2,$3)", [orgA, mine, draft]);
+  // Владелец не перехватит начатый продавцом заказ, пока черновик продавца жив.
+  await user(a);
+  const ownerDraft = (
+    await db.query("select save_record_draft($1,null,'sale',$2::jsonb) as id", [orgA, JSON.stringify({ party: buyer, lines: [] })])
+  ).rows[0].id;
+  await assert.rejects(db.query("select accept_catalog_order($1,$2,$3)", [orgA, mine, ownerDraft]), /order_in_progress/);
+  await db.query("select delete_record_draft($1,$2)", [orgA, ownerDraft]);
+  await user(seller);
+  // Черновик не от заказа — продажа заказ не трогает.
+  const line = JSON.stringify([{ product: lamp, qty: "1", price: "360" }]);
+  const sale = (await db.query("select commit_sale_items($1,$2,$3,false,$4) as id", [orgA, buyer, line, k(1)])).rows[0].id;
+  assert.equal((await db.query("select complete_catalog_order($1,$2,$3) as ok", [orgA, k(2), sale])).rows[0].ok, false);
+  assert.equal((await db.query("select complete_catalog_order($1,$2,$3) as ok", [orgA, draft, sale])).rows[0].ok, true);
+  let state = (await db.query("select status,sale_id,handled_by from catalog_orders where id=$1", [mine])).rows[0];
+  assert.deepEqual([state.status, state.sale_id, state.handled_by], ["sold", sale, seller]);
+  // Проданный не убрать и не начать заново.
+  await assert.rejects(db.query("select set_catalog_order_dismissed($1,$2,true)", [orgA, mine]), /order_handled/);
+  await assert.rejects(db.query("select accept_catalog_order($1,$2,$3)", [orgA, mine, draft]), /order_handled/);
+
+  // «Убрать» и «Вернуть».
+  await db.query("select set_catalog_order_dismissed($1,$2,true)", [orgA, order]);
+  await assert.rejects(db.query("select set_catalog_order_dismissed($1,$2,true)", [orgA, order]), /order_handled/);
+  await db.query("select set_catalog_order_dismissed($1,$2,false)", [orgA, order]);
+  state = (await db.query("select status from catalog_orders where id=$1", [order])).rows[0];
+  assert.equal(state.status, "new");
+
+  // «Мои заказы» для клиента: только товары, сумма, статус — без телефона и имени.
+  await owner();
+  await db.exec("SET ROLE anon;");
+  const byIds = (await db.query("select get_catalog_orders($1,$2::uuid[]) as v", [token, [order, k(9)]])).rows[0].v;
+  assert.deepEqual(byIds.map((o) => [o.id, o.status, o.total]), [[order, "new", "900.00"]]);
+  assert.deepEqual(Object.keys(byIds[0]).sort(), ["created_at", "id", "items", "status", "total"]);
+  assert.deepEqual(byIds[0].items, [{ name: "Автомат 16А возврат", unit: row.items[0].unit, qty: "2.5", price: "360.00" }]);
+  assert.deepEqual((await db.query("select get_catalog_orders($1,$2::uuid[]) as v", ["0".repeat(32), [order]])).rows[0].v, []);
+  const clientOrders = (await db.query("select get_client_orders($1) as v", [clientLink])).rows[0].v;
+  assert.deepEqual(clientOrders.map((o) => [o.id, o.status, o.sale_id]), [[mine, "sold", sale]]);
+  assert.deepEqual((await db.query("select get_client_orders($1) as v", [otherLink])).rows[0].v, []);
+  await owner();
+  await user(seller);
+
+  // Напрямую в таблицу — нельзя ни клиенту, ни продавцу.
+  await assert.rejects(db.query("update catalog_orders set status='sold' where id=$1", [order]), /permission denied/);
+  await owner();
+  await db.exec("SET ROLE anon;");
+  await assert.rejects(db.query("select * from catalog_orders"), /permission denied/);
+  await owner();
+  assert.deepEqual(
+    (await db.query("select action from audit_events where organization_id=$1 and action like 'catalog_order.%' order by created_at, action", [orgA])).rows.map((r) => r.action),
+    ["catalog_order.submitted", "catalog_order.submitted", "catalog_order.accepted", "catalog_order.sold", "catalog_order.dismissed", "catalog_order.restored"],
+  );
 });

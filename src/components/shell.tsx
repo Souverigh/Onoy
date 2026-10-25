@@ -18,6 +18,8 @@ const allNav: NavItem[] = [
   // Итог дня, отчёт за месяц и продавцы — вкладками одного раздела (report-tabs.tsx).
   ["/day", "Отчёты", "chart"],
   ["/claims", "Платежи", "check"],
+  // Заказы клиентов из каталога (задача № 12) — видят все, продажу делает и продавец.
+  ["/orders", "Заказы", "cart"],
   ["/documents", "Документы", "camera"],
   ["/settings", "Настройки", "settings"],
 ];
@@ -51,6 +53,7 @@ export function Shell({
   preview = false,
   reviewCount = 0,
   claimsCount = 0,
+  ordersCount = 0,
   isOwner = true,
 }: {
   name: string;
@@ -60,6 +63,8 @@ export function Shell({
   reviewCount?: number;
   /** Заявки «Я оплатил», ждущие владельца — главный бейдж. */
   claimsCount?: number;
+  /** Новые заказы из каталога — бейдж у «Заказов». */
+  ordersCount?: number;
   isOwner?: boolean;
 }) {
   const path = usePathname();
@@ -124,6 +129,8 @@ export function Shell({
   const badge = (href: string) =>
     href === "/claims" && claimsCount > 0 ? (
       <span className="nav-badge">{claimsCount}</span>
+    ) : href === "/orders" && ordersCount > 0 ? (
+      <span className="nav-badge">{ordersCount}</span>
     ) : href === "/documents" && reviewCount > 0 ? (
       <span className="nav-badge nav-badge-muted">{reviewCount}</span>
     ) : null;
@@ -188,10 +195,12 @@ export function Shell({
           >
             <Icon name={menuOpen ? "close" : "menu"} />
             <span>Ещё</span>
-            {/* «Платежи» теперь в меню — их бейдж главнее накладных. */}
+            {/* «Платежи» и «Заказы» в меню — их бейджи главнее накладных. */}
             {!menuOpen &&
               (isOwner && claimsCount > 0 ? (
                 <span className="nav-badge">{claimsCount}</span>
+              ) : ordersCount > 0 ? (
+                <span className="nav-badge">{ordersCount}</span>
               ) : reviewCount > 0 ? (
                 <span className="nav-badge nav-badge-muted">{reviewCount}</span>
               ) : null)}

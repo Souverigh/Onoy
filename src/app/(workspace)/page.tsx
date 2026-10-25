@@ -26,12 +26,19 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
     .select("id", { count: "exact", head: true })
     .eq("organization_id", organizationId)
     .in("status", ["review", "failed"]);
+  // Новые заказы из каталога (задача № 12) — и владельцу, и продавцу.
+  const orders = db
+    .from("catalog_orders")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId)
+    .eq("status", "new");
   // Продавцу итоги магазина не показываем (ТЗ) — и не считаем.
   if (!isOwner) {
     const today = bishkekDate();
-    const [recent, reviewResult, mine, owed] = await Promise.all([
+    const [recent, reviewResult, ordersResult, mine, owed] = await Promise.all([
       recentRecords(db, organizationId),
       review,
+      orders,
       // Свои продажи за сегодня и долг своих клиентов — без итогов магазина.
       sellerDetail(db, organizationId, user.id, today, today, shopCurrency).catch(() => null),
       sellerCustomerDebts(db, organizationId, user.id, shopCurrency).catch(() => null),
@@ -45,6 +52,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
           ownerOnlyNotice={error === "owner"}
           recent={recent}
           reviewCount={reviewResult.count ?? 0}
+          newOrders={ordersResult.count ?? 0}
           mySales={
             mine
               ? { date: today, today: mine.sold, todayCount: mine.count, owed: owed?.total ?? 0, currency: shopCurrency }
@@ -55,7 +63,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
     );
   }
   const today = bishkekDate();
-  const [customerBalances, supplierBalances, late, history, claims, reviewResult, recent] = await Promise.all([
+  const [customerBalances, supplierBalances, late, history, claims, reviewResult, recent, ordersResult] = await Promise.all([
     // Долги — по валютам: доллары Хороза со сомами не складываем.
     db
       .from("customer_balances")
@@ -78,6 +86,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
       .eq("status", "pending"),
     review,
     recentRecords(db, organizationId),
+    orders,
   ]);
   if (customerBalances.error || supplierBalances.error) throw new Error("Не удалось загрузить показатели");
   // В тийынах/копейках — без ошибок float.
@@ -179,6 +188,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
         }
         pendingClaims={claims.count ?? 0}
         reviewCount={reviewResult.count ?? 0}
+        newOrders={ordersResult.count ?? 0}
         recent={recent}
       />
     </>

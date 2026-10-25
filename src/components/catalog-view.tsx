@@ -6,6 +6,9 @@ import { money } from "@/lib/format";
 import { normalizePhone } from "@/lib/contacts";
 import { categoryTree, categoryWithChildren, type Category } from "@/lib/category";
 import { ClientPromo } from "./client-promo";
+import { loadMyOrders, submitCatalogOrder, type OrderResult } from "@/app/catalog/[token]/actions";
+import { ClientOrders } from "./client-orders";
+import { CLIENT_ORDER_STATUS, MY_ORDERS_LIMIT, type ClientOrder } from "@/lib/client-orders";
 
 /** photo — адрес фото товара, thumb — его миниатюры (публичное хранилище) или null. */
 export type CatalogItem = {
@@ -28,6 +31,28 @@ const PAGE = 60;
 const waHref = (phone: string, text: string) =>
   `https://wa.me/${normalizePhone(phone).replace(/\D/g, "")}?text=${encodeURIComponent(text)}`;
 
+/** Что ответить клиенту, если заказ не ушёл. */
+const ORDER_ERRORS: Record<Exclude<OrderResult, { ok: true; id: string }>["error"], string> = {
+  phone: "Укажите телефон - по нему магазин свяжется с вами.",
+  changed: "Какой-то товар уже убрали из каталога. Обновите страницу и проверьте список.",
+  too_many: "Магазин сейчас получил слишком много заказов. Попробуйте чуть позже или напишите в WhatsApp.",
+  catalog: "Каталог выключен. Попросите у продавца новую ссылку.",
+  save: "Не получилось отправить. Проверьте интернет и попробуйте ещё раз.",
+};
+
+/** Имя и телефон покупателя — запоминаем в браузере для следующего заказа. */
+const BUYER_KEY = "catalog-buyer";
+
+/** «1 товар», «3 товара», «5 товаров». */
+function goodsWord(n: number) {
+  const tens = n % 100;
+  const ones = n % 10;
+  if (tens >= 11 && tens <= 14) return "товаров";
+  if (ones === 1) return "товар";
+  if (ones >= 2 && ones <= 4) return "товара";
+  return "товаров";
+}
+
 /** «3», «2,5» → число; пусто и мусор — 0. */
 const qtyNumber = (value: string) => {
   const n = Number(value.replace(",", "."));
@@ -37,9 +62,10 @@ const qtyText = (n: number) => String(n).replace(".", ",");
 
 /**
  * Каталог магазина для его клиентов (просьба пользователя 22.10.2026):
- * поиск, цены, и «Мой список» — отмеченные товары одной кнопкой уходят
- * магазину сообщением в WhatsApp. Ничего не записывается в базу: список
- * живёт в браузере клиента.
+ * поиск, цены, и «Мой список». Список живёт в браузере клиента, пока он не
+ * нажмёт «Отправить заказ»: заказ сохраняется в Depter (задача № 12), магазин
+ * видит его в «Заказах» и делает из него продажу. Написать в WhatsApp — по
+ * желанию, после отправки.
  */
 export function CatalogView({
   token,
@@ -81,6 +107,53 @@ export function CatalogView({
   // начальный список затрёт сохранённый).
   const [loaded, setLoaded] = useState(false);
   const storageKey = `catalog-list-${token}`;
+  // Каталог открыт с личной страницы клиента (?c=ссылка) — заказ сразу его,
+  // имя и телефон не спрашиваем.
+  const [client, setClient] = useState<string | null>(null);
+  // «Мои заказы»: с личной страницы — заказы клиента; из общего каталога —
+  // отправленные из этого браузера (номера в localStorage).
+  const ordersKey = `catalog-orders-${token}`;
+  const [myOrders, setMyOrders] = useState<ClientOrder[]>([]);
+  const [ordersOpen, setOrdersOpen] = useState(false);
+  const savedOrderIds = (): string[] => {
+    try {
+      const ids = JSON.parse(localStorage.getItem(ordersKey) ?? "[]");
+      return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string").slice(0, MY_ORDERS_LIMIT) : [];
+    } catch {
+      return [];
+    }
+  };
+  async function refreshOrders(c: string | null, ids = savedOrderIds()) {
+    if (!c && !ids.length) return;
+    try {
+      setMyOrders(await loadMyOrders(token, ids, c));
+    } catch {
+      // Нет сети — список заказов просто не обновится.
+    }
+  }
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("c");
+    const c = raw && /^[a-f0-9]{32}$/.test(raw) ? raw : null;
+    setClient(c);
+    // Один раз при открытии каталога.
+    void refreshOrders(c);
+  }, []);
+  // Окно «Отправить заказ»: поля, ожидание, ошибка; sent — заказ ушёл (список
+  // уже очищен, в окне — текст для WhatsApp).
+  const [orderOpen, setOrderOpen] = useState(false);
+  const [buyer, setBuyer] = useState({ name: "", phone: "" });
+  const [orderNote, setOrderNote] = useState("");
+  const [sending, setSending] = useState(false);
+  const [orderError, setOrderError] = useState("");
+  const [sent, setSent] = useState<{ message: string } | null>(null);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(BUYER_KEY) ?? "{}") as { name?: unknown; phone?: unknown };
+      setBuyer({ name: typeof saved.name === "string" ? saved.name : "", phone: typeof saved.phone === "string" ? saved.phone : "" });
+    } catch {
+      // Нет доступа к хранилищу — введут заново.
+    }
+  }, []);
 
   // Список переживает перезагрузку страницы (только в этом браузере).
   useEffect(() => {
@@ -308,11 +381,60 @@ export function CatalogView({
       ))}
     </ol>
   );
-  const sendButton = shopPhone ? (
-    <a className="button primary catalog-send" href={waHref(shopPhone, message)} target="_blank" rel="noopener noreferrer">
-      Отправить в WhatsApp
-    </a>
-  ) : null;
+  const sendButton = (
+    <button
+      type="button"
+      className="button primary catalog-send"
+      onClick={() => {
+        setOrderError("");
+        setSent(null);
+        setOrderOpen(true);
+      }}
+    >
+      Отправить заказ
+    </button>
+  );
+
+  async function sendOrder(e: React.FormEvent) {
+    e.preventDefault();
+    if (sending || !picked.length) return;
+    setSending(true);
+    setOrderError("");
+    try {
+      const result = await submitCatalogOrder({
+        token,
+        client,
+        items: picked.map((x) => ({ id: x.product.id, qty: x.qty })),
+        name: buyer.name,
+        phone: buyer.phone,
+        note: orderNote,
+      });
+      if ("error" in result) {
+        // Личную ссылку клиента отозвали (старая закладка с ?c=) — база его
+        // не узнала: показываем поля имени и телефона.
+        if (result.error === "phone" && client) setClient(null);
+        setOrderError(ORDER_ERRORS[result.error]);
+        return;
+      }
+      const ids = [result.id, ...savedOrderIds().filter((id) => id !== result.id)].slice(0, MY_ORDERS_LIMIT);
+      try {
+        if (!client) localStorage.setItem(BUYER_KEY, JSON.stringify(buyer));
+        localStorage.setItem(ordersKey, JSON.stringify(ids));
+      } catch {
+        // Не запомнили — не страшно.
+      }
+      void refreshOrders(client, ids);
+      const note = orderNote.trim();
+      setSent({ message: note ? `${message}\nКомментарий: ${note}` : message });
+      setList({});
+      setListOpen(false);
+      setOrderNote("");
+    } catch {
+      setOrderError(ORDER_ERRORS.save);
+    } finally {
+      setSending(false);
+    }
+  }
 
   return (
     <>
@@ -326,6 +448,24 @@ export function CatalogView({
         </nav>
       )}
       <div className="catalog-main">
+      {myOrders.length > 0 && (
+        <button
+          type="button"
+          className="catalog-my-orders"
+          onClick={() => {
+            setOrdersOpen(true);
+            void refreshOrders(client);
+          }}
+        >
+          <span>
+            <strong>Мои заказы</strong>
+            <small className="muted">
+              {myOrders.length} · последний: {CLIENT_ORDER_STATUS[myOrders[0].status].label.toLowerCase()}
+            </small>
+          </span>
+          <span aria-hidden="true">→</span>
+        </button>
+      )}
       <div className="catalog-search">
         <label htmlFor="catalog-search" className="sr-only">
           Найти товар
@@ -498,7 +638,7 @@ export function CatalogView({
           <>
             {undoClear || (
               <p className="muted">
-                Нажмите «+ В список» у нужных товаров - список с суммой уйдёт магазину одним сообщением в WhatsApp.
+                Нажмите «+ В список» у нужных товаров, потом «Отправить заказ» - магазин получит список с суммой.
               </p>
             )}
           </>
@@ -558,8 +698,97 @@ export function CatalogView({
         hint
         raised={picked.length > 0 || Boolean(undoClear)}
         label="Depter: такой же каталог для вашего магазина"
-        text="Хотите такой же каталог с ценами для своего магазина? Клиенты выбирают товары и присылают список в WhatsApp. Напишите нам - поможем."
+        text="Хотите такой же каталог с ценами для своего магазина? Клиенты выбирают товары и присылают заказ прямо в Depter. Напишите нам - поможем."
       />
+      {ordersOpen && (
+        <div className="catalog-zoom" role="dialog" aria-modal="true" aria-label="Мои заказы" onClick={() => setOrdersOpen(false)}>
+          <div className="catalog-order" onClick={(e) => e.stopPropagation()}>
+            <h2>Мои заказы</h2>
+            <ClientOrders orders={myOrders} currency={currency} />
+            <button type="button" className="button" onClick={() => setOrdersOpen(false)}>
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
+      {orderOpen && (
+        <div className="catalog-zoom" role="dialog" aria-modal="true" aria-label="Отправить заказ" onClick={() => !sending && setOrderOpen(false)}>
+          {sent ? (
+            <div className="catalog-order" onClick={(e) => e.stopPropagation()}>
+              <h2>Заказ отправлен</h2>
+              <p className="muted">
+                {shopName} получил ваш список. Продавец свяжется с вами, чтобы подтвердить заказ и сумму. Что с заказом - в «Мои
+                заказы» над поиском.
+              </p>
+              <div className="catalog-zoom-actions">
+                {shopPhone && (
+                  <a className="button" href={waHref(shopPhone, sent.message)} target="_blank" rel="noopener noreferrer">
+                    Написать в WhatsApp
+                  </a>
+                )}
+                <button type="button" className="button primary" onClick={() => setOrderOpen(false)}>
+                  Готово
+                </button>
+              </div>
+            </div>
+          ) : (
+            <form className="catalog-order" onClick={(e) => e.stopPropagation()} onSubmit={sendOrder}>
+              <h2>Отправить заказ</h2>
+              <p className="catalog-order-total">
+                <span className="muted">
+                  {picked.length} {goodsWord(picked.length)}
+                </span>
+                <strong>{price(total)}</strong>
+              </p>
+              {client ? (
+                <p className="muted">Магазин увидит, что заказ от вас.</p>
+              ) : (
+                <>
+                  <label>
+                    Ваше имя
+                    <input
+                      autoComplete="name"
+                      maxLength={100}
+                      value={buyer.name}
+                      onChange={(e) => setBuyer((b) => ({ ...b, name: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Телефон
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      required
+                      maxLength={40}
+                      placeholder="+996"
+                      value={buyer.phone}
+                      onChange={(e) => setBuyer((b) => ({ ...b, phone: e.target.value }))}
+                    />
+                  </label>
+                </>
+              )}
+              <label>
+                Комментарий <small className="muted">(необязательно)</small>
+                <textarea rows={2} maxLength={1000} value={orderNote} onChange={(e) => setOrderNote(e.target.value)} />
+              </label>
+              {orderError && (
+                <p className="form-error" role="alert">
+                  {orderError}
+                </p>
+              )}
+              <div className="catalog-zoom-actions">
+                <button type="button" className="button" disabled={sending} onClick={() => setOrderOpen(false)}>
+                  Назад
+                </button>
+                <button type="submit" className="button primary" disabled={sending}>
+                  {sending ? "Отправляем…" : "Отправить заказ"}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
       {/* Телефон: после «Очистить» панели нет — «Вернуть» на её месте. */}
       {picked.length === 0 && undoClear && <div className="catalog-bar catalog-bar-undo">{undoClear}</div>}
     </>

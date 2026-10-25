@@ -48,6 +48,7 @@ export function Dashboard({
   today,
   pendingClaims = 0,
   reviewCount = 0,
+  newOrders = 0,
   recent = [],
   mySales,
 }: {
@@ -66,6 +67,8 @@ export function Dashboard({
   pendingClaims?: number;
   /** Накладные с расхождением или ошибкой распознавания — «незавершённые». */
   reviewCount?: number;
+  /** Новые заказы клиентов из каталога (задача № 12). */
+  newOrders?: number;
   recent?: RecentRecord[];
   /** Продавец: его продажи за сегодня и сколько должны его клиенты. */
   mySales?: { date: string; today: number; todayCount: number; owed: number; currency: string };
@@ -142,6 +145,11 @@ export function Dashboard({
       {!staff && pendingClaims > 0 && (
         <Link className="notice claims-notice" href={href("/claims")}>
           Ждут подтверждения: {pendingClaims} {plural(pendingClaims, "оплата", "оплаты", "оплат")} →
+        </Link>
+      )}
+      {newOrders > 0 && (
+        <Link className="notice claims-notice" href={href("/orders")}>
+          Новые заказы из каталога: {newOrders} →
         </Link>
       )}
       {reviewCount > 0 && (

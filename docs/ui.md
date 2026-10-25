@@ -50,7 +50,12 @@
 - `.table-wrap` + `table` — таблица; на телефоне прокручивается внутри.
 - Загрузка — серые макеты из `components/skeleton.tsx` в `loading.tsx`.
 - Страницы для клиентов без входа (`/c/…`, `/catalog/…`) — `main.client-page`
-  без бокового меню; каталог — `CatalogView` (поиск, «Мой список» в WhatsApp).
+  без бокового меню; каталог — `CatalogView` (поиск, «Мой список», «Отправить
+  заказ» окном `.catalog-order`); заказы клиента со статусом — `ClientOrders`
+  (в каталоге за кнопкой `.catalog-my-orders`, на странице клиента — панелью).
+- Заказ из каталога в кабинете — `.panel.order-card` (кто, `.order-lines`,
+  `.order-total`, `.order-note`, `.order-actions`); обработанные — списком
+  `.draft-list` с `.tag`.
 
 ## Кнопки
 

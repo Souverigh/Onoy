@@ -12,6 +12,8 @@ import { CopyButton } from "@/components/copy-button";
 import { ClientPromo } from "@/components/client-promo";
 import { normalizePhone } from "@/lib/contacts";
 import { loadCatalogTokenByLink } from "@/lib/catalog-cache";
+import { ClientOrders } from "@/components/client-orders";
+import { clientOrders } from "@/lib/client-orders";
 
 // Страница клиента — не для поиска (задача 46).
 export const metadata: Metadata = { robots: { index: false, follow: false } };
@@ -114,11 +116,14 @@ export default async function ClientPage({
     );
   }
 
-  const [paymentResult, catalogToken] = await Promise.all([
+  const [paymentResult, catalogToken, ordersResult] = await Promise.all([
     anon.rpc("get_shop_payment_by_token", { p_token: token }),
     // Каталог магазина включён — ссылка на него, из кеша на 10 минут (ошибка — без ссылки).
     loadCatalogTokenByLink(token.toLowerCase()).catch(() => null),
+    // Его заказы из каталога (задача № 12); ошибка — без блока.
+    anon.rpc("get_client_orders", { p_token: token.toLowerCase() }),
   ]);
+  const orders = ordersResult.error ? [] : clientOrders(ordersResult.data);
   const pay = (paymentResult.error ? null : paymentResult.data) as Payment | null;
   const accounts = [
     { label: "MBank", value: pay?.mbank },
@@ -154,13 +159,20 @@ export default async function ClientPage({
         )}
       </section>
       {catalogToken && (
-        <a className="client-catalog-link" href={`/catalog/${catalogToken}`}>
+        // ?c= — заказ из каталога сразу на этого клиента (задача № 12).
+        <a className="client-catalog-link" href={`/catalog/${catalogToken}?c=${token.toLowerCase()}`}>
           <span>
             <strong>Каталог и цены</strong>
-            <small className="muted">Посмотрите товары и отправьте заказ в WhatsApp</small>
+            <small className="muted">Посмотрите товары и отправьте заказ магазину</small>
           </span>
           <span aria-hidden="true">→</span>
         </a>
+      )}
+      {orders.length > 0 && (
+        <section className="panel">
+          <h2>Мои заказы</h2>
+          <ClientOrders orders={orders} currency={cur} invoiceHref={(sale) => `/c/${token}/invoice/${sale}`} />
+        </section>
       )}
       {claimed && (
         <p className="notice success" role="status">

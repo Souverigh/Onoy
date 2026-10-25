@@ -12,8 +12,9 @@ export default async function Layout({
   const sub = subscriptionState(ctx.paidUntil, ctx.blocked?.reason, Boolean(ctx.blocked), bishkekDate());
   const date = (d: string) =>
     new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long" }).format(new Date(`${d}T12:00:00+06:00`));
-  // Бейджи: заявки клиентов (деньги, главный) и накладные с расхождением.
-  const [review, claims] = await Promise.all([
+  // Бейджи: заявки клиентов (деньги, главный), новые заказы из каталога и
+  // накладные с расхождением.
+  const [review, claims, orders] = await Promise.all([
     ctx.db
       .from("documents")
       .select("id", { count: "exact", head: true })
@@ -26,12 +27,18 @@ export default async function Layout({
           .eq("organization_id", ctx.organizationId)
           .eq("status", "pending")
       : Promise.resolve({ count: 0 }),
+    ctx.db
+      .from("catalog_orders")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", ctx.organizationId)
+      .eq("status", "new"),
   ]);
   return (
     <Shell
       name={ctx.organizationName}
       reviewCount={review.count ?? 0}
       claimsCount={claims.count ?? 0}
+      ordersCount={orders.count ?? 0}
       isOwner={ctx.isOwner}
     >
       {sub.kind === "blocked" && (

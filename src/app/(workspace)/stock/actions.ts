@@ -380,6 +380,22 @@ async function dropDraft(form: FormData) {
   }
 }
 
+/**
+ * Записали продажу по черновику заказа из каталога — заказ «Продан» (задача
+ * № 12). Черновик не от заказа — ничего не меняется. Ошибка не мешает записи.
+ */
+async function completeOrder(form: FormData, saleId: string) {
+  const id = text(form, "draft_id");
+  if (!uuidPattern.test(id)) return;
+  try {
+    const { db, organizationId } = await getContext();
+    const result = await db.rpc("complete_catalog_order", { p_org: organizationId, p_draft: id, p_sale: saleId });
+    if (result.error) console.error("completeOrder failed", { message: result.error.message });
+  } catch (error) {
+    console.error("completeOrder failed", error);
+  }
+}
+
 export type SaleLine = { product: string; qty: string; price: string };
 export type SaleItemsState = { error?: string; attempt?: number };
 
@@ -437,6 +453,7 @@ export async function commitSaleItems(previous: SaleItemsState, form: FormData):
     }
     saleId = result.data as string;
     await saveRecordNote(db, organizationId, "sale", saleId, noteInput(form.get("note")));
+    await completeOrder(form, saleId);
     await dropDraft(form);
   } catch (error) {
     unstable_rethrow(error);

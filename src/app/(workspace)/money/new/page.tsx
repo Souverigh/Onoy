@@ -41,6 +41,8 @@ export default async function NewOperation({
     draft?: string;
     fixed?: string;
     restored?: string;
+    /** Продажа по заказу из каталога: «1» или «missing» — часть товаров убрали со склада. */
+    order?: string;
     fix?: string;
     replace?: string;
     day?: string;
@@ -400,6 +402,13 @@ export default async function NewOperation({
           {kind === "sale" ? "Отменённая продажа открыта снова" : "Отменённый приход открыт снова"} - те же{" "}
           {kind === "sale" ? "клиент" : "поставщик"}, {existingDocument ? "фото, строки" : "товары"}, цены и дата. Проверьте и
           запишите: появится новая запись, отменённая останется в истории.
+        </p>
+      )}
+      {params.order && kind === "sale" && draft && (
+        <p className="notice success" role="status">
+          Продажа по заказу из каталога: товары, количество и цены - из заказа.
+          {params.order === "missing" && " Часть товаров уже убрали со склада - их в списке нет."}{" "}
+          {draft.data.party ? "Проверьте" : "Выберите клиента, проверьте"} товары и запишите - заказ станет «Продан».
         </p>
       )}
       {draftParam && !draft && (
