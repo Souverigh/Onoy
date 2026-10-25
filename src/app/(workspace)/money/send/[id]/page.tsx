@@ -222,7 +222,7 @@ export default async function SendSalePage({
             pending={pending}
           >
             {imageUrl && (
-              <a className="send-action" href={`/money/send/${sale.id}/pdf?print=1`} target="_blank" rel="noreferrer">
+              <a className="send-action" href={`/money/send/${sale.id}/print`} target="_blank" rel="noreferrer">
                 <Icon name="printer" />
                 <span>Печать</span>
               </a>

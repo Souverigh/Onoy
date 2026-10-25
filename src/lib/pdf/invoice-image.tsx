@@ -66,8 +66,11 @@ export async function renderInvoiceImage(origin: string, data: InvoiceData): Pro
   const [fontList, qr] = await Promise.all([loadFonts(origin), data.clientUrl ? qrDataUrl(data.clientUrl) : null]);
   const rowsHeight = data.lines.reduce((h, line) => h + 10 + 26 * nameLines(line.name_raw), 0);
   const notes = [data.debtNote, data.balanceNote].filter(Boolean) as string[];
-  const height =
+  // Не ниже ширины: картинку печатают через «Поделиться → Печать», и iPhone
+  // кладёт широкую картинку на альбомный лист.
+  const contentHeight =
     PAD * 2 + 48 + 44 + 34 + (data.lines.length ? 44 + rowsHeight : 0) + 64 + notes.length * 30 + 40 + 96 + (qr ? 128 : 0) - 20;
+  const height = Math.max(contentHeight, Math.round(WIDTH * 1.05));
   const col = { n: 56, qty: 120, price: 130, sum: 150 };
   const cell = { padding: "6px 10px", fontSize: 18, display: "flex" } as const;
   return new ImageResponse(
