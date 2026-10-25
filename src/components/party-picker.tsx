@@ -28,6 +28,7 @@ export function PartyPicker({
   placeholder,
   footer,
   actions,
+  error,
 }: {
   label: string;
   /** Имя поля формы с id выбранного. */
@@ -44,6 +45,8 @@ export function PartyPicker({
    * «Из контактов». `close` — закрыть список, `query` — что уже набрано.
    */
   actions?: (close: () => void, query: string) => React.ReactNode;
+  /** Ошибка прямо у поля: «Выберите клиента из списка». */
+  error?: string | null;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -109,6 +112,7 @@ export function PartyPicker({
           value={query}
           aria-controls={listId}
           aria-expanded={open}
+          aria-invalid={error ? true : undefined}
           onFocus={() => setOpen(true)}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -147,6 +151,11 @@ export function PartyPicker({
           </ul>
         )}
       </div>
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
       {footer}
     </div>
   );

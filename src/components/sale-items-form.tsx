@@ -129,6 +129,12 @@ export function SaleItemsForm({
   const [madeBy, setMadeBy] = useState(draft?.data.madeBy ?? "");
   const [rateValue, setRateValue] = useState(draft?.data.rate ?? "");
   const [localError, setLocalError] = useState<string | null>(null);
+  // Номер нажатия «Записать» с ошибкой: повторное нажатие снова показывает её.
+  const [localAttempt, setLocalAttempt] = useState(0);
+  const fail = (code: string) => {
+    setLocalError(code);
+    setLocalAttempt((n) => n + 1);
+  };
   // Новый товар прямо отсюда, если поиск ничего не нашёл.
   const [creating, setCreating] = useState<{ name: string; unit: string; price: string } | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -145,9 +151,20 @@ export function SaleItemsForm({
     }
   }, {});
   const errorRef = useRef<HTMLParagraphElement>(null);
+  const partyRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (state.error) errorRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (state.error)
+      (state.error === "party" ? partyRef : errorRef).current?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [state.attempt, state.error]);
+  // Ошибка проверки перед записью: внизу её закрывает панель «Записать» —
+  // показываем её; нет клиента — ведём к полю «Клиент», ошибка там.
+  useEffect(() => {
+    if (!localAttempt) return;
+    const target = localError === "party" ? partyRef.current : errorRef.current;
+    target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    // Только по нажатию «Записать», не при каждой смене ошибки.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localAttempt]);
 
   const customer = allCustomers.find((c) => c.id === party);
   // Исправление: старая запись ещё в долге и отменится при записи — её долю вычитаем.
@@ -381,13 +398,13 @@ export function SaleItemsForm({
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (saving) return;
-    if (!party) return setLocalError("party");
-    if (!lines.length) return setLocalError("lines");
-    if (lines.some((l) => !(Number(stockNumber(l.qty, 3)) > 0))) return setLocalError("qty");
-    if (lines.some((l) => stockNumber(l.price || "0", 2) === null)) return setLocalError("price");
+    if (!party) return fail("party");
+    if (!lines.length) return fail("lines");
+    if (lines.some((l) => !(Number(stockNumber(l.qty, 3)) > 0))) return fail("qty");
+    if (lines.some((l) => stockNumber(l.price || "0", 2) === null)) return fail("price");
     // Приход без цены закупки — себестоимость потеряется; просим указать.
-    if (purchase && lines.some((l) => !l.price.trim())) return setLocalError("cost");
-    if (needsRate && !rate) return setLocalError("rate");
+    if (purchase && lines.some((l) => !l.price.trim())) return fail("cost");
+    if (needsRate && !rate) return fail("rate");
     setLocalError(null);
     const form = new FormData(e.currentTarget);
     // Черновик в записи: дождаться его сохранения (нужен id), дальше не сохранять —
@@ -404,22 +421,21 @@ export function SaleItemsForm({
   }
 
   const error = localError ?? state.error;
-  const errorText = error
-    ? error === "party"
-      ? purchase
-        ? "Выберите поставщика из списка."
-        : "Выберите клиента из списка."
-      : error === "network"
+  const partyError =
+    error === "party" ? (purchase ? "Выберите поставщика из списка." : "Выберите клиента из списка.") : null;
+  const errorText =
+    error && error !== "party"
+      ? error === "network"
         ? NETWORK_TEXT[kind]
         : (ERROR_TEXT[error] ?? STOCK_ERROR_TEXT[error] ?? STOCK_ERROR_TEXT.save)
-    : null;
+      : null;
 
   return (
     <form onSubmit={submit} className="simple-operation-form sale-items-form sale-sheet-form">
       <input type="hidden" name="idempotency_key" value={idempotencyKeyPinned} />
       {recordDate && <input type="hidden" name="record_date" value={recordDate} />}
       {purchase && <input type="hidden" name="line_currency" value={lineCurrency} />}
-      <div className="sale-sheet-top">
+      <div className="sale-sheet-top" ref={partyRef}>
       <PartyPicker
         label={purchase ? "Поставщик" : "Клиент"}
         name={purchase ? "supplier_id" : "customer_id"}
@@ -428,8 +444,10 @@ export function SaleItemsForm({
         onChange={(id) => {
           setParty(id);
           if (id) setNewCustomer(null);
+          if (id && localError === "party") setLocalError(null);
         }}
         shopCurrency={shopCurrency}
+        error={partyError}
         actions={
           purchase
             ? (close, typed) => (

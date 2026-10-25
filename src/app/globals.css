@@ -6397,6 +6397,14 @@ tr.row-link:has(a[data-pending]) {
 .party-picker-field > .party-picker-search {
   width: 100%;
 }
+/* «Записать» без клиента: поле подсвечено, ошибка — под ним. */
+.party-picker-search[aria-invalid="true"] {
+  border-color: var(--danger-ink);
+  box-shadow: 0 0 0 3px var(--danger-bg);
+}
+.party-picker > .form-error {
+  margin: 6px 0 0;
+}
 .party-picker-list.dropdown {
   position: absolute;
   top: 100%;
