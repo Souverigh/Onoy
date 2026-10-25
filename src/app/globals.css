@@ -7151,73 +7151,133 @@ tr.row-link:has(a[data-pending]) {
     justify-content: space-between;
   }
 }
-/* Заказ из каталога (задача № 12): «На кого продажа» — найденный клиент с
-   долгом и телефоном или карточки выбора (как «Наличными» — .cash-toggle). */
+/* Заказ из каталога (задача № 12): «На кого продажа» — список в одной рамке,
+   как выбор в мобильных приложениях: имя и телефон слева, долг справа. */
 .order-customer {
   display: grid;
-  gap: 12px;
+  gap: 14px;
 }
-.order-customer p {
+.order-customer-head h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.order-customer-head p {
   margin: 0;
+  font-size: 14px;
 }
-.order-customer-found,
-.order-customer-option {
+.order-customer-form {
+  display: grid;
+  gap: 14px;
+  max-width: 560px;
+}
+.order-choice-list {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: white;
+  overflow: hidden;
+}
+/* form label — общее правило полей (колонка, отступ снизу): здесь строка. */
+.order-choice,
+form label.order-choice {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 12px;
+  margin: 0;
   padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: white;
+  color: var(--ink);
+  font-size: 15px;
 }
-.order-customer-found {
-  border-color: var(--green-border);
-  background: var(--green-wash);
+.order-choice + .order-choice {
+  border-top: 1px solid var(--line);
 }
-.order-customer-option {
+form label.order-choice {
   cursor: pointer;
 }
-.order-customer-option:has(input:checked) {
-  border-color: var(--green);
-  background: var(--green-soft);
+form label.order-choice:hover {
+  background: var(--hover);
 }
-/* Общее правило полей (ширина 100%, высота 48px) радиокнопке не подходит. */
-.order-customer-option input[type="radio"] {
+form label.order-choice:has(input:checked),
+.order-choice.is-selected {
+  background: var(--green-wash);
+}
+.order-choice input[type="radio"] {
   flex: none;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   min-height: 0;
   margin: 0;
   padding: 0;
   accent-color: var(--green);
 }
-.order-customer-text {
+.order-choice-mark {
   display: grid;
-  gap: 2px;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--green);
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+}
+.order-choice.is-new .order-choice-mark {
+  background: var(--neutral-soft);
+  color: var(--ink-soft);
+}
+.order-choice-main {
+  display: grid;
+  flex: 1;
+  gap: 1px;
   min-width: 0;
 }
-.order-customer-text small {
-  font-size: 13px;
+/* Имя целиком (переносится): по нему выбирают, кто это. */
+.order-choice-main strong {
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
-.order-pick {
-  display: grid;
-  gap: 12px;
+.order-choice-main small,
+.order-choice-side small {
+  color: var(--muted);
+  font-size: 12px;
 }
-.order-pick fieldset {
+.order-choice-side {
   display: grid;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  border: 0;
+  flex: none;
+  justify-items: end;
+  gap: 1px;
+  text-align: right;
+}
+.order-choice-side strong {
+  font-weight: 600;
+  white-space: nowrap;
 }
 .order-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 16px;
 }
 .order-actions form {
   margin: 0;
+}
+/* Заголовок заказа: телефон и WhatsApp переносятся под имя, а не раздвигают экран. */
+.order-heading {
+  flex-wrap: wrap;
+}
+.order-heading > div:first-child {
+  min-width: 0;
+}
+@media (max-width: 560px) {
+  .order-heading .page-heading-actions {
+    width: 100%;
+  }
+  .order-heading .page-heading-actions .button {
+    flex: 1;
+    padding: 10px;
+    font-size: 14px;
+  }
 }
 .order-table td:nth-child(n + 2),
 .order-table th:nth-child(n + 2) {
@@ -7243,12 +7303,9 @@ tr.row-link:has(a[data-pending]) {
   gap: 10px;
 }
 @media (max-width: 560px) {
-  .order-actions form:first-child,
+  /* Телефон: главная кнопка во всю ширину, «Другой клиент» — под ней. */
   .order-actions > .button {
     flex: 1 1 100%;
-  }
-  .order-actions form:first-child .button {
-    width: 100%;
   }
 }
 /* Строка списка продаж/прихода ведёт на запись: ссылка с даты на всю строку. */

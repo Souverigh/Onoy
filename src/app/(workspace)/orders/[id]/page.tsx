@@ -23,17 +23,23 @@ import { ORDER_ERRORS, orderDateTime, qtyText } from "../order-text";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Карточка клиента в выборе: имя, телефон, долг — видно, что это тот самый. */
+/** Строка клиента в выборе: имя и телефон слева, долг справа — видно, что это тот самый. */
 function CustomerLine({ customer, card, shopCurrency }: { customer: OrderCustomer; card?: CustomerCard; shopCurrency: string }) {
-  const details = [
-    card?.phone ? phoneText(card.phone) : null,
-    card ? (card.balance === 0 ? "долга нет" : `долг ${debtMoney(card.balance.toFixed(2), card.currency ?? shopCurrency)}`) : null,
-  ].filter(Boolean);
   return (
-    <span className="order-customer-text">
-      <strong>{customer.name}</strong>
-      {details.length > 0 && <small className="muted">{details.join(" · ")}</small>}
-    </span>
+    <>
+      <span className="order-choice-main">
+        <strong>{customer.name}</strong>
+        {card?.phone && <small>{phoneText(card.phone)}</small>}
+      </span>
+      {card && (
+        <span className="order-choice-side">
+          <small>{card.balance < 0 ? "аванс" : "долг"}</small>
+          <strong>
+            {card.balance === 0 ? "нет" : debtMoney(Math.abs(card.balance).toFixed(2), card.currency ?? shopCurrency)}
+          </strong>
+        </span>
+      )}
+    </>
   );
 }
 
@@ -81,7 +87,7 @@ export default async function OrderPage({
       <Link className="back-link" href="/orders">
         ← Заказы
       </Link>
-      <div className="page-heading">
+      <div className="page-heading order-heading">
         <div>
           <h1>{title}</h1>
           <p className="muted">
@@ -196,9 +202,10 @@ export default async function OrderPage({
 }
 
 /**
- * «На кого продажа» (customer в makeSaleFromOrder): узнанный клиент; один из
- * нескольких с этим телефоном; новый — клиент из имени и телефона заказа.
- * «Другой клиент» — выбрать в форме продажи.
+ * «На кого продажа» (customer в makeSaleFromOrder) — список в одной рамке,
+ * как выбор в мобильных приложениях: узнанный клиент (с галочкой); несколько
+ * с этим телефоном — выбрать строкой; новый — клиент из имени и телефона
+ * заказа. «Другой клиент» (other) — выбрать в форме продажи.
  */
 function SaleChoice({
   order,
@@ -211,88 +218,74 @@ function SaleChoice({
   cards: Map<string, CustomerCard>;
   shopCurrency: string;
 }) {
-  const other = (label: string) => (
-    <form action={makeSaleFromOrder}>
-      <input type="hidden" name="id" value={order.id} />
-      <input type="hidden" name="customer" value="pick" />
-      <button type="submit" className="text-button">
-        {label}
-      </button>
-    </form>
-  );
-  const newName = order.buyer_name?.trim() || (order.buyer_phone ? phoneText(normalizePhone(order.buyer_phone)) : "");
+  const phone = order.buyer_phone ? phoneText(normalizePhone(order.buyer_phone)) : "";
+  const newName = order.buyer_name?.trim() || phone;
+  const hint =
+    match.kind === "one"
+      ? match.byLink
+        ? "Заказ отправлен с личной страницы клиента."
+        : "Телефон из заказа уже есть у клиента магазина."
+      : match.kind === "many"
+        ? "Этот телефон есть у нескольких клиентов - выберите нужного."
+        : newName
+          ? "Такого клиента в магазине ещё нет - создадим его из заказа. Следующий заказ с этого номера узнается сам."
+          : "Покупатель не оставил телефон - выберите клиента в форме продажи.";
+  const submitLabel =
+    match.kind === "none" ? (newName ? "Создать клиента и продать" : "Выбрать клиента и продать") : "Сделать продажу";
   return (
     <section className="panel order-customer">
-      <div className="section-title">
+      <div className="order-customer-head">
         <h2>На кого продажа</h2>
-        <span className={match.kind === "none" ? "tag" : "tag green"}>
-          {match.kind === "none" ? "Новый покупатель" : match.kind === "many" ? "Несколько клиентов" : "Клиент магазина"}
-        </span>
+        <p className="muted">{hint}</p>
       </div>
-      {match.kind === "one" && (
-        <>
-          <p className="muted">
-            {match.byLink ? "Заказ отправлен с личной страницы клиента." : "Этот телефон уже есть у клиента магазина."}
-          </p>
-          <div className="order-customer-found">
-            <CustomerLine customer={match.customer} card={cards.get(match.customer.id)} shopCurrency={shopCurrency} />
-          </div>
-          <div className="order-actions">
-            <form action={makeSaleFromOrder}>
-              <input type="hidden" name="id" value={order.id} />
-              <input type="hidden" name="customer" value={match.customer.id} />
-              <Submit>Сделать продажу на этого клиента</Submit>
-            </form>
-            {other("Это другой клиент")}
-          </div>
-        </>
-      )}
-      {match.kind === "many" && (
-        <form action={makeSaleFromOrder} className="order-pick">
-          <input type="hidden" name="id" value={order.id} />
-          <p className="muted">Этот телефон есть у нескольких клиентов магазина. Выберите, на кого записать продажу.</p>
-          <fieldset>
-            <legend className="sr-only">Клиент</legend>
-            {match.customers.map((c) => (
-              <label key={c.id} className="order-customer-option">
-                <input type="radio" name="customer" value={c.id} required />
-                <CustomerLine customer={c} card={cards.get(c.id)} shopCurrency={shopCurrency} />
-              </label>
-            ))}
-          </fieldset>
-          <div className="order-actions">
-            <Submit>Сделать продажу</Submit>
-          </div>
-        </form>
-      )}
-      {match.kind === "many" && <div className="order-actions">{other("Другой клиент - выбрать в форме")}</div>}
-      {match.kind === "none" && (
-        <>
-          <p className="muted">
-            {newName
-              ? `Клиента с этим телефоном в магазине нет. Создадим клиента «${newName}» с телефоном из заказа - следующий заказ с этого номера узнается сам.`
-              : "Покупатель не оставил телефон - выберите клиента в форме продажи."}
-          </p>
-          <div className="order-actions">
-            {newName ? (
-              <>
-                <form action={makeSaleFromOrder}>
-                  <input type="hidden" name="id" value={order.id} />
-                  <input type="hidden" name="customer" value="new" />
-                  <Submit>Создать клиента и сделать продажу</Submit>
-                </form>
-                {other("Это постоянный клиент - выбрать")}
-              </>
-            ) : (
-              <form action={makeSaleFromOrder}>
-                <input type="hidden" name="id" value={order.id} />
-                <input type="hidden" name="customer" value="pick" />
-                <Submit>Сделать продажу</Submit>
-              </form>
+      <form action={makeSaleFromOrder} className="order-customer-form">
+        <input type="hidden" name="id" value={order.id} />
+        {match.kind === "one" && <input type="hidden" name="customer" value={match.customer.id} />}
+        {match.kind === "none" && <input type="hidden" name="customer" value={newName ? "new" : "pick"} />}
+        {(match.kind !== "none" || newName) && (
+          <div className="order-choice-list" role={match.kind === "many" ? "radiogroup" : undefined} aria-label="Клиент">
+            {match.kind === "one" && (
+              <div className="order-choice is-selected">
+                <span className="order-choice-mark" aria-hidden="true">
+                  ✓
+                </span>
+                <CustomerLine customer={match.customer} card={cards.get(match.customer.id)} shopCurrency={shopCurrency} />
+              </div>
+            )}
+            {match.kind === "many" &&
+              match.customers.map((c) => (
+                <label key={c.id} className="order-choice">
+                  <input type="radio" name="customer" value={c.id} required />
+                  <CustomerLine customer={c} card={cards.get(c.id)} shopCurrency={shopCurrency} />
+                </label>
+              ))}
+            {match.kind === "none" && (
+              <div className="order-choice is-new">
+                <span className="order-choice-mark" aria-hidden="true">
+                  +
+                </span>
+                <span className="order-choice-main">
+                  <strong>{newName}</strong>
+                  {phone && phone !== newName && <small>{phone}</small>}
+                </span>
+                <span className="order-choice-side">
+                  <small>новый</small>
+                  <strong>клиент</strong>
+                </span>
+              </div>
             )}
           </div>
-        </>
-      )}
+        )}
+        <div className="order-actions">
+          <Submit>{submitLabel}</Submit>
+          {(match.kind !== "none" || newName) && (
+            // Без проверки «выберите клиента»: другой клиент выбирается в форме продажи.
+            <button type="submit" name="other" value="1" formNoValidate className="text-button">
+              {match.kind === "none" ? "Это постоянный клиент" : "Другой клиент"}
+            </button>
+          )}
+        </div>
+      </form>
     </section>
   );
 }

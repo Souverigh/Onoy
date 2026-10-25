@@ -63,7 +63,8 @@ async function saleCustomer(
  */
 export async function makeSaleFromOrder(form: FormData) {
   const id = String(form.get("id") ?? "");
-  const choice = String(form.get("customer") ?? "");
+  // «Другой клиент» — выбрать в форме продажи, что бы ни было отмечено.
+  const choice = form.get("other") ? "pick" : String(form.get("customer") ?? "");
   if (!uuidPattern.test(id)) redirect("/orders");
   const { db, organizationId, currency } = await getContext();
   const orderResult = await db
