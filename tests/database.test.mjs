@@ -3784,3 +3784,39 @@ test("app_schema_version() returns the newest migration number for the pre-deplo
   await owner();
   assert.equal((await db.query("select public.app_schema_version() as v")).rows[0].v, latestMigration().version);
 });
+
+test("invoice of a staff sale: the staff member's name and the shop phone, not the shop's seller from settings", async () => {
+  const staff = "77777777-7777-4777-8777-777777777777";
+  const info = async (sale) => (await db.query("select private.sale_invoice_info($1,$2) as i", [orgA, sale])).rows[0].i;
+  await owner();
+  await db.query("insert into auth.users values ($1) on conflict do nothing", [staff]);
+  await db.query(
+    "insert into organization_members(organization_id,user_id,role,display_name) values ($1,$2,'staff','Асад') on conflict do nothing",
+    [orgA, staff],
+  );
+  await db.query("update organizations set seller_name='Маликнур', seller_phone='+996 220 934 210', phone='+996 555 000 111' where id=$1", [orgA]);
+  const buyer = (await db.query("insert into customers(organization_id,name) values ($1,'Накладная Улан') returning id", [orgA])).rows[0].id;
+  const sell = async (by, key) =>
+    (
+      await db.query(
+        "insert into sales(organization_id,customer_id,total,status,idempotency_key,created_by) values ($1,$2,100,'posted',$3,$4) returning id",
+        [orgA, buyer, key, by],
+      )
+    ).rows[0].id;
+  const staffSale = await sell(staff, "aaaa9999-0000-4000-8000-000000000001");
+  // Имя для накладной не задано — имя в команде и телефон магазина.
+  let i = await info(staffSale);
+  assert.deepEqual([i.staff_seller_name, i.staff_seller_phone], ["Асад", "+996 555 000 111"]);
+  // Задал своё — оно.
+  await db.query("update organization_members set invoice_name='Асад Б.', invoice_phone='+996 700 1' where organization_id=$1 and user_id=$2", [orgA, staff]);
+  i = await info(staffSale);
+  assert.deepEqual([i.staff_seller_name, i.staff_seller_phone], ["Асад Б.", "+996 700 1"]);
+  // Продажа владельца — как раньше: «Продавец» из Настроек магазина.
+  i = await info(await sell(a, "aaaa9999-0000-4000-8000-000000000002"));
+  assert.deepEqual([i.staff_seller_name ?? null, i.shop_seller_name], [null, "Маликнур"]);
+  // Владелец исправил продажу и выбрал продавца (made_by) — на накладной продавец.
+  const fixed = await sell(a, "aaaa9999-0000-4000-8000-000000000003");
+  await db.query("update sales set made_by=$2 where id=$1", [fixed, staff]);
+  i = await info(fixed);
+  assert.equal(i.staff_seller_name, "Асад Б.");
+});
