@@ -20,6 +20,8 @@ export type CatalogOrder = {
   handled_at: string | null;
 };
 
+export const ORDER_COLUMNS = "id,created_at,status,customer_id,buyer_name,buyer_phone,note,items,total,draft_id,sale_id,handled_by,handled_at";
+
 export type OrderCustomer = { id: string; name: string };
 
 /**
@@ -38,11 +40,12 @@ export type PhoneBook = Map<string, OrderCustomer[]>;
 /**
  * Телефоны клиентов магазина. Номер хранится как ввели («0555 12-34-56» из
  * тетради, «+996555123456» из формы) — сравниваем по phoneKey, как
- * partyFromContact в форме продажи. Объединённые и архивные не берём.
+ * partyFromContact в форме продажи. Объединённые и архивные не берём. Из
+ * таблицы, не из customer_balances: долг считать для всех не нужно.
  */
 export async function phoneBook(db: SupabaseClient, organizationId: string): Promise<PhoneBook> {
   const { data, error } = await db
-    .from("customer_balances")
+    .from("customers")
     .select("id,name,phone")
     .eq("organization_id", organizationId)
     .neq("phone", "")
@@ -68,7 +71,10 @@ export async function linkedCustomers(db: SupabaseClient, organizationId: string
   if (!ids.length) return found;
   type Row = { id: string; name: string; merged_into_id: string | null };
   const load = async (list: string[]) =>
-    ((await db.from("customers").select("id,name,merged_into_id").eq("organization_id", organizationId).in("id", list)).data ?? []) as Row[];
+    list.length
+      ? (((await db.from("customers").select("id,name,merged_into_id").eq("organization_id", organizationId).in("id", list)).data ??
+          []) as Row[])
+      : [];
   const rows = await load(ids);
   const targets = await load([...new Set(rows.map((r) => r.merged_into_id).filter((id): id is string => Boolean(id)))]);
   const byId = new Map(targets.map((t) => [t.id, t]));
@@ -92,4 +98,27 @@ export function matchOrder(
   if (found.length === 1) return { kind: "one", customer: found[0], byLink: false };
   if (found.length > 1) return { kind: "many", customers: found };
   return { kind: "none" };
+}
+
+/** Клиенты, на кого может пойти заказ. */
+export function matchCustomers(match: OrderMatch): OrderCustomer[] {
+  return match.kind === "one" ? [match.customer] : match.kind === "many" ? match.customers : [];
+}
+
+/** Долг и телефон клиента — чтобы продавец видел, что это тот самый. */
+export type CustomerCard = { phone: string | null; balance: number; currency: string | null };
+
+export async function customerCards(db: SupabaseClient, organizationId: string, ids: string[]): Promise<Map<string, CustomerCard>> {
+  if (!ids.length) return new Map();
+  const { data } = await db
+    .from("customer_balances")
+    .select("id,phone,balance,currency")
+    .eq("organization_id", organizationId)
+    .in("id", [...new Set(ids)]);
+  return new Map(
+    ((data ?? []) as { id: string; phone: string | null; balance: string; currency: string | null }[]).map((c) => [
+      c.id,
+      { phone: c.phone, balance: Number(c.balance), currency: c.currency },
+    ]),
+  );
 }

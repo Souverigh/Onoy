@@ -7151,68 +7151,64 @@ tr.row-link:has(a[data-pending]) {
     justify-content: space-between;
   }
 }
-/* Заказы из каталога (задача № 12): карточка заказа — кто, строки, итог, действия. */
-.orders-list {
-  display: grid;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-.order-card {
+/* Заказ из каталога (задача № 12): «На кого продажа» — найденный клиент с
+   долгом и телефоном или карточки выбора (как «Наличными» — .cash-toggle). */
+.order-customer {
   display: grid;
   gap: 12px;
 }
-.order-card-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-.order-card-head h2 {
-  margin: 0;
-  font-size: 18px;
-}
-.order-card-head p {
-  margin: 2px 0 0;
-  font-size: 13px;
-}
-.order-card-contacts {
-  display: flex;
-  gap: 8px;
-}
-.order-card p {
+.order-customer p {
   margin: 0;
 }
-.order-lines {
-  list-style: none;
+.order-customer-found,
+.order-customer-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: white;
+}
+.order-customer-found {
+  border-color: var(--green-border);
+  background: var(--green-wash);
+}
+.order-customer-option {
+  cursor: pointer;
+}
+.order-customer-option:has(input:checked) {
+  border-color: var(--green);
+  background: var(--green-soft);
+}
+/* Общее правило полей (ширина 100%, высота 48px) радиокнопке не подходит. */
+.order-customer-option input[type="radio"] {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  min-height: 0;
   margin: 0;
   padding: 0;
+  accent-color: var(--green);
 }
-.order-lines li {
-  display: flex;
-  justify-content: space-between;
+.order-customer-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.order-customer-text small {
+  font-size: 13px;
+}
+.order-pick {
+  display: grid;
   gap: 12px;
-  padding: 8px 0;
 }
-.order-lines li + li {
-  border-top: 1px solid var(--line);
-}
-.order-lines strong {
-  white-space: nowrap;
-}
-.order-total {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-soft);
-}
-.order-note {
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--notice-bg);
-  color: var(--notice-ink);
+.order-pick fieldset {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 .order-actions {
   display: flex;
@@ -7223,28 +7219,23 @@ tr.row-link:has(a[data-pending]) {
 .order-actions form {
   margin: 0;
 }
-/* Несколько клиентов с телефоном заказа — выбрать, на кого продажа. */
-.order-pick {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 12px;
+.order-table td:nth-child(n + 2),
+.order-table th:nth-child(n + 2) {
+  text-align: right;
+  white-space: nowrap;
 }
-.order-pick fieldset {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  border: 0;
+.order-table tfoot td {
+  font-weight: 700;
 }
-.order-pick legend {
-  margin-bottom: 4px;
-  font-weight: 600;
+.order-note {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--notice-bg);
+  color: var(--notice-ink);
 }
-.order-pick label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.order-dismiss {
+  margin: 0 0 24px;
 }
 .orders-undo {
   display: flex;
@@ -7252,16 +7243,11 @@ tr.row-link:has(a[data-pending]) {
   gap: 10px;
 }
 @media (max-width: 560px) {
-  .order-card-contacts {
-    width: 100%;
-  }
-  .order-card-contacts .button,
   .order-actions form:first-child,
   .order-actions > .button {
-    flex: 1;
+    flex: 1 1 100%;
   }
-  .order-actions form:first-child .button,
-  .order-actions > .button {
+  .order-actions form:first-child .button {
     width: 100%;
   }
 }

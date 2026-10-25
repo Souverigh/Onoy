@@ -73,7 +73,7 @@ export async function makeSaleFromOrder(form: FormData) {
     .eq("id", id)
     .maybeSingle();
   const order = orderResult.data as Pick<CatalogOrder, "id" | "status" | "customer_id" | "buyer_name" | "buyer_phone" | "note" | "items"> | null;
-  if (!order || (order.status !== "new" && order.status !== "accepted")) redirect("/orders?error=handled");
+  if (!order || (order.status !== "new" && order.status !== "accepted")) redirect(`/orders/${id}?error=handled`);
 
   // Товар — снимком со склада, как в других черновиках; убранный со склада пропускаем.
   const productsResult = await db
@@ -85,10 +85,10 @@ export async function makeSaleFromOrder(form: FormData) {
   const lines = order.items
     .filter((i) => products.has(i.product_id))
     .map((i) => ({ product: products.get(i.product_id), qty: asInput(i.qty), price: asInput(i.price) }));
-  if (!lines.length) redirect("/orders?error=products");
+  if (!lines.length) redirect(`/orders/${id}?error=products`);
   const total = lines.reduce((s, l) => s + Math.round(Number(l.qty.replace(",", ".")) * Number(l.price.replace(",", ".")) * 100) / 100, 0);
   const found = await saleCustomer(db, organizationId, order, choice);
-  if (found === "error") redirect("/orders?error=customer");
+  if (found === "error") redirect(`/orders/${id}?error=customer`);
   const customer = found;
   const who = [order.buyer_name, order.buyer_phone].filter(Boolean).join(", ");
   const data: DraftData = {
@@ -105,7 +105,7 @@ export async function makeSaleFromOrder(form: FormData) {
   const draft = await db.rpc("save_record_draft", { p_org: organizationId, p_id: null, p_kind: "sale", p_data: data });
   if (draft.error || !draft.data) {
     console.error("makeSaleFromOrder: draft failed", { message: draft.error?.message });
-    redirect(`/orders?error=${draft.error?.message.includes("too_many_drafts") ? "drafts" : "save"}`);
+    redirect(`/orders/${id}?error=${draft.error?.message.includes("too_many_drafts") ? "drafts" : "save"}`);
   }
   const draftId = String(draft.data);
   const accepted = await db.rpc("accept_catalog_order", { p_org: organizationId, p_id: order.id, p_draft: draftId });
@@ -114,7 +114,7 @@ export async function makeSaleFromOrder(form: FormData) {
     await db.rpc("delete_record_draft", { p_org: organizationId, p_id: draftId });
     console.error("makeSaleFromOrder: accept failed", { message: accepted.error.message });
     const message = accepted.error.message;
-    redirect(`/orders?error=${message.includes("order_handled") ? "handled" : message.includes("order_in_progress") ? "progress" : "save"}`);
+    redirect(`/orders/${id}?error=${message.includes("order_handled") ? "handled" : message.includes("order_in_progress") ? "progress" : "save"}`);
   }
   revalidatePath("/", "layout");
   redirect(`/money/new?type=sale&mode=items&draft=${draftId}&order=${lines.length < order.items.length ? "missing" : "1"}`);
@@ -129,8 +129,8 @@ export async function setOrderDismissed(form: FormData) {
   const result = await db.rpc("set_catalog_order_dismissed", { p_org: organizationId, p_id: id, p_dismissed: dismissed });
   if (result.error) {
     console.error("setOrderDismissed failed", { message: result.error.message });
-    redirect(`/orders?error=${result.error.message.includes("order_handled") ? "handled" : "save"}`);
+    redirect(`/orders/${id}?error=${result.error.message.includes("order_handled") ? "handled" : "save"}`);
   }
   revalidatePath("/", "layout");
-  redirect(dismissed ? `/orders?dismissed=${id}` : "/orders");
+  redirect(dismissed ? `/orders?dismissed=${id}` : `/orders/${id}`);
 }
