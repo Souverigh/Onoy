@@ -2196,13 +2196,13 @@ test("expenses: any member records, owner reverses, author undoes, other shops s
 test("warehouse: products with codes, sale lines write off stock, reversal returns it, receive and import", async () => {
   await user(a);
   const stock = async (id) => (await db.query("select stock from product_balances where id=$1", [id])).rows[0].stock;
-  // Код присваивается сам (1, 2…), если не задан; занятый код и повтор названия — отказ.
+  // Код необязателен и сам не придумывается; занятый код и повтор названия — отказ.
   const cable = (
     await db.query("select save_product($1,null,'Кабель ВВГнг 3х2,5',null,'м','85.50','60','10',array['ввг 3*2.5'],'100') as id", [orgA])
   ).rows[0].id;
   const cement = (await db.query("select save_product($1,null,'Цемент М400','C-400','мешок','520') as id", [orgA])).rows[0].id;
   const row = (await db.query("select sku,unit,aliases from products where id=$1", [cable])).rows[0];
-  assert.match(row.sku, /^\d+$/);
+  assert.equal(row.sku, null);
   assert.deepEqual([row.unit, row.aliases], ["м", ["ввг 3*2.5"]]);
   assert.equal(await stock(cable), "100.000");
   await assert.rejects(db.query("select save_product($1,null,'Другое','c-400','шт','1')", [orgA]), /sku_taken/);
@@ -2365,6 +2365,63 @@ test("warehouse: products with codes, sale lines write off stock, reversal retur
   assert.deepEqual(await cost("Вилка 807"), ["57.00", null]);
   await assert.rejects(db.query("select save_product($1,$2,'Вилка 807',null,'шт','75','1','0',null,null,'EUR')", [orgA, fork]), /invalid_currency/);
   assert.ok((await db.query("select purchase_currency, stock_value from product_list where id=$1", [fork])).rows[0]);
+
+  // Прайс дилера после товаров без кода (случай 25.10.2026): товары без кода
+  // остаются без кода, товар с тем же кодом, но другим названием, не
+  // переписывает чужой — строка не грузится, в ошибке — чей код.
+  await db.query("select save_product($1,null,'Прожектор BILLOW 100W','2','шт','900')", [orgA]);
+  const dealer = (
+    await db.query("select import_products($1,$2) as r", [
+      orgA,
+      JSON.stringify([
+        { name: "Автомат SAFE 1P", sale_price: "300" },
+        { name: "Розетка без кода", sale_price: "120" },
+        { name: "FELIX БЕЛЫЙ", sku: "2", sale_price: "450" },
+        { name: "прожектор billow 100w", sku: "2", sale_price: "950" },
+        { name: "Бек Кабель 2х2,5", sku: "D-7", sale_price: "60" },
+        { name: "Бек Кабель 2х2,5", sku: "d-7", stock: "12" },
+      ]),
+    ])
+  ).rows[0].r;
+  assert.deepEqual(dealer.errors, [{ row: 3, error: "sku_other", other: "Прожектор BILLOW 100W" }]);
+  assert.deepEqual([dealer.created, dealer.updated], [3, 2]);
+  const byName = async (name) =>
+    (await db.query("select name,sku,sale_price from products where organization_id=$1 and name=$2", [orgA, name])).rows[0];
+  assert.deepEqual(await byName("Прожектор BILLOW 100W"), { name: "Прожектор BILLOW 100W", sku: "2", sale_price: "950.00" });
+  assert.deepEqual(await byName("Автомат SAFE 1P"), { name: "Автомат SAFE 1P", sku: null, sale_price: "300.00" });
+  assert.equal((await byName("Розетка без кода")).sku, null);
+  assert.equal(await byName("FELIX БЕЛЫЙ"), undefined);
+  // Товар без кода, найденный по названию, получает код из файла.
+  await db.query("select import_products($1,$2)", [orgA, JSON.stringify([{ name: "Автомат SAFE 1P", sku: "S-1" }])]);
+  assert.equal((await byName("Автомат SAFE 1P")).sku, "S-1");
+  // В форме код можно стереть; null (не передан) — код остаётся.
+  const auto = (await db.query("select id from products where organization_id=$1 and name='Автомат SAFE 1P'", [orgA])).rows[0].id;
+  await db.query("select save_product($1,$2,'Автомат SAFE 1P',null,'шт','300')", [orgA, auto]);
+  assert.equal((await byName("Автомат SAFE 1P")).sku, "S-1");
+  await db.query("select save_product($1,$2,'Автомат SAFE 1P','','шт','300')", [orgA, auto]);
+  assert.equal((await byName("Автомат SAFE 1P")).sku, null);
+
+  // Без кода товар находится и по другому названию, и в архиве (возвращается),
+  // остаток бывает в минусе; смена кода — в ответе с прежним кодом.
+  const lampId = (await db.query("select save_product($1,null,'Лампа импорт 10W','L-10','шт','90',null,'0',array['лампочка 10 ватт']) as id", [orgA])).rows[0].id;
+  const oldId = (await db.query("select save_product($1,null,'Старый товар',null,'шт','10') as id", [orgA])).rows[0].id;
+  await db.query("select set_product_archived($1,$2,true)", [orgA, oldId]);
+  const more = (
+    await db.query("select import_products($1,$2) as r", [
+      orgA,
+      JSON.stringify([
+        { name: "Лампочка 10 ватт", sku: "L-10N", stock: "-3" },
+        { name: "старый товар", sale_price: "12" },
+        { name: "Новый в минусе", stock: "-2" },
+      ]),
+    ])
+  ).rows[0].r;
+  assert.deepEqual([more.created, more.updated, more.restored, more.errors], [1, 2, 1, []]);
+  assert.deepEqual(more.recoded, [{ row: 1, old: "L-10" }]);
+  assert.equal(await stock(lampId), "-3.000");
+  assert.equal((await db.query("select archived_at from products where id=$1", [oldId])).rows[0].archived_at, null);
+  assert.equal((await db.query("select count(*)::int as n from products where organization_id=$1 and lower(name)='старый товар'", [orgA])).rows[0].n, 1);
+  assert.equal((await db.query("select stock from product_balances where organization_id=$1 and name='Новый в минусе'", [orgA])).rows[0].stock, "-2.000");
 
   // Архив: товар скрыт, вернуть можно; чужой магазин не видит и не продаёт.
   await db.query("select set_product_archived($1,$2,true)", [orgA, cable]);
@@ -3551,14 +3608,22 @@ test("categories: two levels, members sort products, owner deletes without losin
   await assert.rejects(db.query("select set_products_category($1,$2::uuid[],null)", [orgA, [spot]]), /not_a_member/);
   await assert.rejects(db.query("select set_products_category($1,$2::uuid[],$3)", [orgB, [spot], light]), /not_a_member|invalid_category/);
 
-  // Excel: по коду, подкатегория создаётся; пустая категория ничего не меняет.
+  // Excel: только владелец; по коду, подкатегория создаётся; пустая категория ничего не меняет.
   await user(seller);
+  await assert.rejects(
+    db.query("select set_import_categories($1,$2::jsonb)", [orgA, JSON.stringify([{ sku: "kat-1", name: "кат ручной", category: "Лампы" }])]),
+    /owner_only/,
+  );
+  await assert.rejects(db.query("select import_products($1,$2)", [orgA, JSON.stringify([{ name: "Продавец грузит" }])]), /owner_only/);
+  await user(a);
   assert.equal(
     (
       await db.query("select set_import_categories($1,$2::jsonb) as n", [
         orgA,
         JSON.stringify([
-          { sku: "kat-1", name: "что угодно", category: "освещение", subcategory: "Бра" },
+          { sku: "kat-1", name: "кат ручной", category: "освещение", subcategory: "Бра" },
+          // Код чужой (название другое) — товар с этим кодом не трогаем.
+          { sku: "KAT-1", name: "Совсем другой товар", category: "Лампы", subcategory: "" },
           { sku: null, name: "Кат лампа", category: "", subcategory: "" },
           { sku: null, name: "Нет такого", category: "Лампы", subcategory: "" },
         ]),

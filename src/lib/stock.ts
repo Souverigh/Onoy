@@ -144,9 +144,22 @@ export function detectColumns(table: string[][]): { header: number; columns: Col
       const rule = HEADER_RULES.find(([field, re]) => columns[field] === undefined && re.test(text));
       if (rule) columns[rule[0]] = c;
     });
+    // «Цена опт» и «Цена розн.» — ценой продажи берём розничную, а не левую.
+    const retail = priceColumns(table[r]).find((c) => /розн/.test(table[r][c].toLowerCase()));
+    if (retail !== undefined && !Object.values(columns).includes(retail)) columns.sale_price = retail;
     if (columns.name !== undefined) return { header: r, columns };
   }
   return null;
+}
+
+/** Колонки шапки, похожие на цену продажи (не закупки): их бывает несколько. */
+export function priceColumns(headerRow: string[]): number[] {
+  const sale = HEADER_RULES.find(([field]) => field === "sale_price")![1];
+  const cost = HEADER_RULES.find(([field]) => field === "purchase_price")![1];
+  return headerRow.flatMap((cell, c) => {
+    const text = cell.toLowerCase().replace(/ё/g, "е").trim();
+    return text && sale.test(text) && !cost.test(text) ? [c] : [];
+  });
 }
 
 export type ImportRow = {
@@ -165,6 +178,8 @@ export type ImportRow = {
   subcategory: string | null;
   /** Что не так с ячейками — строка всё равно уйдёт, без этих значений. */
   warnings: string[];
+  /** После mergeImportRows: строки файла с тем же товаром, слитые в эту. */
+  also?: number[];
 };
 
 /**
@@ -186,12 +201,24 @@ export function importRows(
     const name = cell(row, "name").replace(/\s+/g, " ").slice(0, 160);
     if (!name) continue;
     const warnings: string[] = [];
-    const number = (field: ImportField, scale: number) => {
+    const number = (field: ImportField, scale: number, signed = false) => {
       const raw = cell(row, field);
       if (!raw) return null;
-      const value = stockNumber(raw, scale);
-      if (value === null) warnings.push(`${IMPORT_FIELD_LABEL[field]}: «${raw}» - не число`);
-      return value;
+      const label = IMPORT_FIELD_LABEL[field];
+      // Остаток бывает в минусе (продали больше, чем было записано); цена — нет.
+      const negative = /^[-−–]/.test(raw);
+      const body = negative ? raw.replace(/^[-−–]\s*/, "") : raw;
+      const value = negative && !signed ? null : stockNumber(body, scale);
+      if (value === null) {
+        warnings.push(`${label}: «${raw}» - ${negative && !signed ? "меньше нуля, не загрузим" : "не число"}`);
+        return null;
+      }
+      const shown = value.replace(".", ",");
+      // «1,250» текстом — это 1,25 или 1 250? Пишем, как прочитали.
+      if (/^[1-9]\d{0,2}[,.]\d{3}$/.test(body.replace(/\s/g, "")))
+        warnings.push(`${label}: «${raw}» - прочитали как ${shown}; если это ${body.replace(/[,.\s]/g, "")} - уберите запятую`);
+      else if ((/[.,](\d+)\D*$/.exec(body)?.[1].length ?? 0) > scale) warnings.push(`${label}: «${raw}» - округлим до ${shown}`);
+      return negative && Number(value) !== 0 ? `-${value}` : value;
     };
     const rawUnit = cell(row, "unit");
     const unit = rawUnit ? normalizeUnit(rawUnit) : null;
@@ -206,16 +233,30 @@ export function importRows(
     const ownCurrency = costCurrency(rawCurrency);
     if (rawCurrency && !ownCurrency && purchasePrice !== null)
       warnings.push(`Валюта «${rawCurrency}» - не знаем, будет ${currency}`);
+    const sku = cell(row, "sku").slice(0, 80) || null;
+    // Один код у разных товаров файла — загрузится только первый.
+    const same = sku ? rows.find((x) => x.sku?.toLowerCase() === sku.toLowerCase()) : null;
+    if (same && same.name.toLowerCase() !== name.toLowerCase()) warnings.push(`Код «${sku}» уже у «${same.name}» (строка ${same.line}) - эта строка не загрузится`);
+    // Тот же товар ещё раз (у дилера — в двух разделах): mergeImportRows сольёт строки.
+    const twin = rows.find((x) => x.name.toLowerCase() === name.toLowerCase());
+    if (twin) {
+      const codes = rows.filter((x) => x.name.toLowerCase() === name.toLowerCase() && x.sku).map((x) => x.sku!.toLowerCase());
+      const newCode = sku && codes.length && !codes.includes(sku.toLowerCase());
+      warnings.push(
+        `Повтор строки ${twin.line} - это один товар: остатки сложим, цену и остальное возьмём из последней строки` +
+          (newCode ? `; код будет «${sku}»` : ""),
+      );
+    }
     rows.push({
       line: r + 1,
       name,
-      sku: cell(row, "sku").slice(0, 80) || null,
+      sku,
       unit,
       sale_price: number("sale_price", 2),
       purchase_price: purchasePrice,
       purchase_currency:
         purchasePrice === null ? null : (ownCurrency ?? costCurrency(cell(row, "purchase_price").replace(/[\d\s.,]/g, "")) ?? currency),
-      stock: number("stock", 3),
+      stock: number("stock", 3, true),
       category,
       subcategory,
       warnings,
@@ -224,10 +265,62 @@ export function importRows(
   return rows;
 }
 
+/**
+ * Один товар несколько раз в файле (по названию, без учёта регистра) — одна
+ * строка: остатки складываются, остальное — из последней строки, где оно есть.
+ * Иначе база записала бы остаток последней строки, а не сумму.
+ */
+export function mergeImportRows(rows: ImportRow[]): ImportRow[] {
+  const byName = new Map<string, ImportRow>();
+  const merged: ImportRow[] = [];
+  for (const row of rows) {
+    const key = row.name.toLowerCase();
+    const first = byName.get(key);
+    if (!first) {
+      const copy = { ...row, also: [] };
+      byName.set(key, copy);
+      merged.push(copy);
+      continue;
+    }
+    first.also!.push(row.line);
+    if (row.stock !== null)
+      first.stock = first.stock === null ? row.stock : String(Math.round((Number(first.stock) + Number(row.stock)) * 1000) / 1000);
+    if (row.sku !== null) first.sku = row.sku;
+    if (row.unit !== null) first.unit = row.unit;
+    if (row.sale_price !== null) first.sale_price = row.sale_price;
+    if (row.purchase_price !== null) {
+      first.purchase_price = row.purchase_price;
+      first.purchase_currency = row.purchase_currency;
+    }
+    if (row.category !== null) {
+      first.category = row.category;
+      first.subcategory = row.subcategory;
+    }
+  }
+  return merged;
+}
+
+/**
+ * Строки после шапки, где название пустое, а в других ячейках что-то есть:
+ * importRows их пропускает — показываем продавцу номера (с 1, как в Excel).
+ */
+export function namelessLines(table: string[][], header: number, columns: ColumnMap): number[] {
+  const nameColumn = columns.name;
+  if (nameColumn === undefined) return [];
+  const lines: number[] = [];
+  for (let r = header + 1; r < table.length; r++) {
+    const row = table[r] ?? [];
+    if (!(row[nameColumn] ?? "").trim() && row.some((cell) => cell.trim())) lines.push(r + 1);
+  }
+  return lines;
+}
+
 /** Тексты ошибок склада по коду из адреса или ответа действия. */
 export const STOCK_ERROR_TEXT: Record<string, string> = {
   name_taken: "Товар с таким названием уже есть - откройте его или назовите иначе.",
   sku_taken: "Этот код уже у другого товара.",
+  sku_other: "этот код уже у другого товара - строка не загружена, проверьте код.",
+  owner_only: "Загружать товары из Excel может только владелец магазина.",
   invalid_unit: "Выберите единицу из списка.",
   invalid_currency: "Валюта - сом, доллар или рубль.",
   invalid_price: "Цена - число не меньше нуля, до 2 знаков после запятой.",

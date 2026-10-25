@@ -6,6 +6,8 @@
  * («85.5»), пустые — "".
  */
 export type Table = string[][];
+/** Прочитанный файл: лист, все листы книги и скрытые в Excel строки (номера с 1). */
+export type Book = { table: Table; sheets: string[]; sheet: number; hidden: number[] };
 
 const MAX_ROWS = 5000;
 
@@ -85,14 +87,39 @@ function columnIndex(ref: string): number {
   return n - 1;
 }
 
-function numberText(raw: string): string {
+function numberText(raw: string, zeros = 0): string {
   const n = Number(raw);
   if (!Number.isFinite(n)) return raw;
   // 85.499999999 → 85.5: в Excel числа хранятся как double.
-  return String(Math.round(n * 1e6) / 1e6);
+  const text = String(Math.round(n * 1e6) / 1e6);
+  // Формат «000000»: Excel показывает код 123 как «000123» — читаем как видно.
+  return zeros && /^\d+$/.test(text) ? text.padStart(zeros, "0") : text;
+}
+
+/**
+ * Стили ячеек (номер из атрибута s) → сколько цифр в формате из одних нулей
+ * («000123»); 0 — у стиля другой формат.
+ */
+function zeroPadStyles(styles: string): number[] {
+  const codes = new Map<string, string>();
+  for (const m of styles.matchAll(/<(?:\w+:)?numFmt\b([^>]*)\/?>/g)) {
+    const id = /\bnumFmtId="(\d+)"/.exec(m[1])?.[1];
+    const code = /\bformatCode="([^"]*)"/.exec(m[1])?.[1];
+    if (id && code != null) codes.set(id, decodeXml(code).replace(/[\\"]/g, ""));
+  }
+  const xfs = /<(?:\w+:)?cellXfs\b[^>]*>([\s\S]*?)<\/(?:\w+:)?cellXfs>/.exec(styles)?.[1] ?? "";
+  return [...xfs.matchAll(/<(?:\w+:)?xf\b([^>]*)/g)].map((m) => {
+    const code = codes.get(/\bnumFmtId="(\d+)"/.exec(m[1])?.[1] ?? "") ?? "";
+    return /^0+$/.test(code) ? code.length : 0;
+  });
 }
 
 export async function readXlsx(buffer: ArrayBuffer): Promise<Table> {
+  return (await readWorkbook(buffer)).table;
+}
+
+/** Лист `sheetIndex` (по порядку в книге) и список листов. */
+export async function readWorkbook(buffer: ArrayBuffer, sheetIndex = 0): Promise<Book> {
   const bytes = new Uint8Array(buffer);
   const entries = zipEntries(bytes);
   const byName = new Map(entries.map((e) => [e.name.replace(/^\//, ""), e]));
@@ -101,31 +128,38 @@ export async function readXlsx(buffer: ArrayBuffer): Promise<Table> {
     return entry ? readEntry(bytes, entry) : Promise.resolve("");
   };
 
-  // Первый лист по порядку в книге.
-  const [workbook, rels, shared] = await Promise.all([
+  const [workbook, rels, shared, styles] = await Promise.all([
     read("xl/workbook.xml"),
     read("xl/_rels/workbook.xml.rels"),
     read("xl/sharedStrings.xml"),
+    read("xl/styles.xml"),
   ]);
-  const firstSheetRel = /<(?:\w+:)?sheet\b[^>]*\br:id="([^"]+)"/.exec(workbook)?.[1];
+  const sheetTags = [...workbook.matchAll(/<(?:\w+:)?sheet\b([^>]*)\/?>/g)].map((m) => m[1]);
+  const sheets = sheetTags.map((attrs, i) => decodeXml(/\bname="([^"]*)"/.exec(attrs)?.[1] ?? `Лист ${i + 1}`));
+  const sheet = sheetIndex >= 0 && sheetIndex < sheetTags.length ? sheetIndex : 0;
+  const sheetRel = sheetTags.length ? /\br:id="([^"]+)"/.exec(sheetTags[sheet])?.[1] : undefined;
   let sheetPath = "xl/worksheets/sheet1.xml";
-  if (firstSheetRel) {
+  if (sheetRel) {
     for (const m of rels.matchAll(/<Relationship\b([^>]*)\/?>/g)) {
       const attrs = m[1];
-      if (new RegExp(`\\bId="${firstSheetRel}"`).test(attrs)) {
+      if (new RegExp(`\\bId="${sheetRel}"`).test(attrs)) {
         const target = /\bTarget="([^"]+)"/.exec(attrs)?.[1];
         if (target) sheetPath = target.startsWith("/") ? target.slice(1) : `xl/${target.replace(/^\.\//, "")}`;
       }
     }
   }
-  const sheet = await read(sheetPath);
-  if (!sheet) throw new Error("not_xlsx");
+  const sheetXml = await read(sheetPath);
+  if (!sheetXml) throw new Error("not_xlsx");
   const strings = [...shared.matchAll(/<(?:\w+:)?si>([\s\S]*?)<\/(?:\w+:)?si>/g)].map((m) => textOf(m[1]));
+  const zeroPad = zeroPadStyles(styles);
 
   const table: Table = [];
-  for (const rowMatch of sheet.matchAll(/<(?:\w+:)?row\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?row>/g)) {
+  const hidden: number[] = [];
+  for (const rowMatch of sheetXml.matchAll(/<(?:\w+:)?row\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?row>/g)) {
     const rowNumber = Number(/\br="(\d+)"/.exec(rowMatch[1])?.[1] ?? table.length + 1);
     if (rowNumber > MAX_ROWS) break;
+    // Скрыта в Excel (или отфильтрована): продавец её не видит, но она в файле.
+    if (/\bhidden="(1|true)"/.test(rowMatch[1])) hidden.push(rowNumber);
     const row: string[] = [];
     let next = 0;
     for (const cell of rowMatch[2].matchAll(/<(?:\w+:)?c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?c>)/g)) {
@@ -141,14 +175,14 @@ export async function readXlsx(buffer: ArrayBuffer): Promise<Table> {
       else if (type === "inlineStr") value = textOf(inner);
       else if (type === "str" || type === "e") value = decodeXml(v ?? "");
       else if (type === "b") value = v === "1" ? "ИСТИНА" : "ЛОЖЬ";
-      else if (v != null) value = numberText(v);
+      else if (v != null) value = numberText(v, zeroPad[Number(/\bs="(\d+)"/.exec(attrs)?.[1] ?? -1)] ?? 0);
       while (row.length < col) row.push("");
       row[col] = value.trim();
     }
     while (table.length < rowNumber - 1) table.push([]);
     table.push(row);
   }
-  return table;
+  return { table, sheets, sheet, hidden };
 }
 
 // --- CSV ----------------------------------------------------------------------
@@ -162,10 +196,12 @@ export function readCsv(buffer: ArrayBuffer): Table {
     text = new TextDecoder("windows-1251").decode(buffer);
   }
   text = text.replace(/^﻿/, "");
-  const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
+  // Разделитель — тот, что есть в большинстве первых строк: одна строка-заголовок
+  // («Прайс, ООО Свет») не решает за весь файл.
+  const lines = text.split(/\r?\n/).filter((l) => l.trim()).slice(0, 20);
   const separator = [";", "\t", ","]
-    .map((s) => [s, firstLine.split(s).length] as const)
-    .sort((a, b) => b[1] - a[1])[0][0];
+    .map((s) => [s, lines.filter((l) => l.includes(s)).length, lines.reduce((n, l) => n + l.split(s).length - 1, 0)] as const)
+    .sort((a, b) => b[1] - a[1] || b[2] - a[2])[0][0];
   const table: Table = [];
   let row: string[] = [];
   let cell = "";
@@ -198,10 +234,11 @@ export function readCsv(buffer: ArrayBuffer): Table {
   return table;
 }
 
-export async function readTable(file: File): Promise<Table> {
+/** Файл прайса: .xlsx — лист `sheet` (по умолчанию первый), иначе CSV. */
+export async function readTable(file: File, sheet = 0): Promise<Book> {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer.slice(0, 4));
   // PK\x03\x04 — zip (xlsx); иначе считаем текстом (csv).
-  if (bytes[0] === 0x50 && bytes[1] === 0x4b) return readXlsx(buffer);
-  return readCsv(buffer);
+  if (bytes[0] === 0x50 && bytes[1] === 0x4b) return readWorkbook(buffer, sheet);
+  return { table: readCsv(buffer), sheets: [], sheet: 0, hidden: [] };
 }

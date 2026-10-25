@@ -81,7 +81,7 @@ export function ProductForm({
         )}
         <label>
           Код товара
-          <input name="sku" maxLength={80} autoComplete="off" defaultValue={product?.sku ?? ""} placeholder="Пусто - номер присвоим сами" />
+          <input name="sku" maxLength={80} autoComplete="off" defaultValue={product?.sku ?? ""} placeholder="Необязательно" />
           <small className="muted">Артикул, штрихкод или свой номер - по нему тоже ищется.</small>
         </label>
       </div>

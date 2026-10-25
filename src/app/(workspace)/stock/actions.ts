@@ -236,21 +236,36 @@ export type ImportResult =
   | {
       created: number;
       updated: number;
-      errors: { row: number; error: string }[];
+      /** other — название товара, у которого уже этот код (ошибка sku_other). */
+      errors: { row: number; error: string; other?: string }[];
+      /** Сколько товаров вернули из архива. */
+      restored: number;
+      /** Товар найден по названию, код сменился на код из файла; old — прежний. */
+      recoded: { row: number; old: string }[];
+      /** Загрузка оборвалась: записаны первые `stopped` строк, остальные — нет. */
+      stopped?: number;
       /** У скольких товаров категория из файла; categoryError — товары есть, категории не встали. */
       categorized?: number;
       categoryError?: boolean;
     }
   | { error: string };
 
-/** Прайс частями по 500 строк — номера строк в ошибках сквозные. */
+/**
+ * Прайс частями по 500 строк — номера строк в ошибках сквозные. Каждая часть
+ * записывается сразу: оборвалось на второй — первая уже на складе, это и
+ * возвращаем (`stopped`), повторная загрузка файла ничего не задвоит.
+ */
 export async function importProducts(rows: ImportPayload[]): Promise<ImportResult> {
   try {
     if (!Array.isArray(rows) || rows.length === 0 || rows.length > 2000) return { error: "invalid" };
-    const { db, organizationId } = await getContext();
+    const { db, organizationId, isOwner } = await getContext();
+    if (!isOwner) return { error: "owner_only" };
     let created = 0;
     let updated = 0;
-    const errors: { row: number; error: string }[] = [];
+    let restored = 0;
+    let stopped: number | undefined;
+    const errors: { row: number; error: string; other?: string }[] = [];
+    const recoded: { row: number; old: string }[] = [];
     for (let start = 0; start < rows.length; start += 500) {
       const chunk = rows.slice(start, start + 500).map((r) => ({
         name: String(r.name ?? "").slice(0, 160),
@@ -261,20 +276,38 @@ export async function importProducts(rows: ImportPayload[]): Promise<ImportResul
         purchase_currency: r.purchase_price !== null && isCurrency(r.purchase_currency) ? r.purchase_currency : null,
         stock: r.stock,
       }));
-      const result = await db.rpc("import_products", { p_org: organizationId, p_rows: chunk });
-      if (result.error || !result.data) {
-        console.error("importProducts failed", { message: result.error?.message, start });
-        return { error: failureCode(result.error?.message) };
+      let result;
+      try {
+        result = await db.rpc("import_products", { p_org: organizationId, p_rows: chunk });
+      } catch (error) {
+        unstable_rethrow(error);
+        console.error("importProducts chunk failed", error);
+        result = null;
       }
-      const data = result.data as { created: number; updated: number; errors: { row: number; error: string }[] };
+      if (!result || result.error || !result.data) {
+        console.error("importProducts failed", { message: result?.error?.message, start });
+        if (start === 0) return { error: failureCode(result?.error?.message) };
+        stopped = start;
+        break;
+      }
+      const data = result.data as {
+        created: number;
+        updated: number;
+        restored?: number;
+        recoded?: { row: number; old: string }[];
+        errors: { row: number; error: string; other?: string }[];
+      };
       created += data.created;
       updated += data.updated;
-      errors.push(...data.errors.map((e) => ({ row: e.row + start, error: e.error })));
+      restored += data.restored ?? 0;
+      errors.push(...data.errors.map((e) => ({ ...e, row: e.row + start })));
+      recoded.push(...(data.recoded ?? []).map((e) => ({ ...e, row: e.row + start })));
     }
     // Категории — после товаров: товар ищется по коду или названию, как при импорте.
     let categorized = 0;
     let categoryError = false;
     const withCategory = rows
+      .slice(0, stopped ?? rows.length)
       .filter((r) => r.category && String(r.category).trim())
       .map((r) => ({
         sku: r.sku ? String(r.sku).slice(0, 80) : null,
@@ -291,7 +324,7 @@ export async function importProducts(rows: ImportPayload[]): Promise<ImportResul
     }
     await refreshCatalog(db, organizationId);
     revalidatePath("/", "layout");
-    return { created, updated, errors, categorized, categoryError };
+    return { created, updated, restored, recoded, stopped, errors, categorized, categoryError };
   } catch (error) {
     unstable_rethrow(error);
     console.error("importProducts: unexpected failure", error);

@@ -200,9 +200,11 @@ export default async function StockPage({
           <Link className="button" href="/stock/categories">
             Категории
           </Link>
-          <Link className="button" href="/stock/import">
-            Из Excel
-          </Link>
+          {isOwner && (
+            <Link className="button" href="/stock/import">
+              Из Excel
+            </Link>
+          )}
           <Link className="button" href="/money/new?type=purchase&mode=items">
             + Товар от поставщика
           </Link>
@@ -374,13 +376,17 @@ export default async function StockPage({
                     ? "Все товары в наличии учтены в стоимости склада."
                   : filter === "archive"
                     ? "Сюда попадают товары, которые больше не продаёте."
-                    : "Добавьте товары по одному или загрузите прайс из Excel - потом продажу можно оформлять накладной прямо в приложении."}
+                    : isOwner
+                      ? "Добавьте товары по одному или загрузите прайс из Excel - потом продажу можно оформлять накладной прямо в приложении."
+                      : "Добавьте товары по одному - потом продажу можно оформлять накладной прямо в приложении."}
             </p>
             {!query && !category && filter === "all" && (
               <div className="simple-operation-actions">
-                <Link className="button primary" href="/stock/import">
-                  Загрузить из Excel
-                </Link>
+                {isOwner && (
+                  <Link className="button primary" href="/stock/import">
+                    Загрузить из Excel
+                  </Link>
+                )}
                 <Link className="button" href="/stock/new">
                   Добавить товар
                 </Link>
@@ -400,9 +406,11 @@ export default async function StockPage({
       </section>
       {/* Телефон: кнопки внизу, над нижней панелью — под большим пальцем. */}
       <div className="stock-bottom-actions">
-        <Link className="button" href="/stock/import">
-          Из Excel
-        </Link>
+        {isOwner && (
+          <Link className="button" href="/stock/import">
+            Из Excel
+          </Link>
+        )}
         <Link className="button primary" href="/stock/new">
           <Icon name="plus" />
           Товар

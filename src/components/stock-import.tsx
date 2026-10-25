@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { importProducts, type ImportResult } from "@/app/(workspace)/stock/actions";
-import { readTable, type Table } from "@/lib/xlsx-read";
+import { readTable, type Book } from "@/lib/xlsx-read";
+import { buildXlsx } from "@/lib/xlsx";
 import { CURRENCY_NAME, CURRENCY_SIGN, type Currency } from "@/lib/currency";
 import {
   COST_CURRENCIES,
@@ -12,6 +13,9 @@ import {
   costCurrency,
   detectColumns,
   importRows,
+  mergeImportRows,
+  namelessLines,
+  priceColumns,
   type ColumnMap,
   type CostCurrency,
   type ImportField,
@@ -30,6 +34,11 @@ const FIELDS: ImportField[] = [
   "subcategory",
 ];
 const MAX_ROWS = 2000;
+// Ошибок в итогах видно сразу; остальные — под «Показать ещё».
+const SHOWN_ERRORS = 20;
+
+/** Строка файла, которая не загрузилась, и почему; also — повторы того же товара. */
+type Failed = { line: number; also?: number[]; name: string; why: string };
 
 /** Буква колонки как в Excel: 0 → A, 26 → AA. */
 function letter(index: number): string {
@@ -52,8 +61,10 @@ function previewCell(row: ImportRow, field: ImportField): string {
 }
 
 export function StockImport({ shopCurrency }: { shopCurrency: Currency }) {
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [table, setTable] = useState<Table | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [book, setBook] = useState<Book | null>(null);
+  // Скрытые в Excel строки (фильтр, «скрыть») — по умолчанию грузим, как и раньше.
+  const [skipHidden, setSkipHidden] = useState(false);
   const [header, setHeader] = useState(0);
   const [columns, setColumns] = useState<ColumnMap>({});
   // Валюта закупки для строк, где её нет ни в колонке валюты, ни в ячейке цены.
@@ -62,16 +73,18 @@ export function StockImport({ shopCurrency }: { shopCurrency: Currency }) {
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
 
-  async function pick(file: File | null) {
+  async function pick(file: File | null, sheet = 0) {
     setResult(null);
     setReadError(null);
-    setTable(null);
+    setBook(null);
+    setFile(file);
     if (!file) return;
-    setFileName(file.name);
     try {
-      const read = await readTable(file);
+      const opened = await readTable(file, sheet);
+      const read = opened.table;
       const found = detectColumns(read);
-      setTable(read);
+      setBook(opened);
+      setSkipHidden(false);
       setHeader(found?.header ?? -1);
       setColumns(found?.columns ?? { name: 0 });
       // «Цена закупки, $» в шапке — по умолчанию доллары.
@@ -88,19 +101,32 @@ export function StockImport({ shopCurrency }: { shopCurrency: Currency }) {
     }
   }
 
+  const fileName = file?.name ?? null;
+  const hidden = new Set(book?.hidden ?? []);
+  // Исходный лист — для скачивания не загруженных строк; table — без скрытых, если их пропускаем.
+  const sheetRows = book?.table ?? null;
+  const table = sheetRows && skipHidden ? sheetRows.map((r, i) => (hidden.has(i + 1) ? [] : r)) : sheetRows;
   const rows = table ? importRows(table, header, columns, currency) : [];
-  const foreignCost = rows.filter((r) => r.purchase_currency && r.purchase_currency !== shopCurrency).length;
+  // Один товар в нескольких строках — одной строкой, остатки сложены.
+  const merged = mergeImportRows(rows);
+  const uploaded = merged.slice(0, MAX_ROWS);
+  const repeats = rows.length - merged.length;
+  const nameless = table ? namelessLines(table, header, columns) : [];
+  const hiddenUsed = skipHidden ? [] : rows.filter((r) => hidden.has(r.line)).map((r) => r.line);
+  const foreignCost = merged.filter((r) => r.purchase_currency && r.purchase_currency !== shopCurrency).length;
   const warned = rows.filter((r) => r.warnings.length > 0);
   const width = table ? Math.max(0, ...table.slice(0, 50).map((r) => r.length)) : 0;
   const headerCells = table && header >= 0 ? (table[header] ?? []) : [];
+  // «Цена опт» и «Цена розн.»: какая колонка взята ценой продажи — видно сразу.
+  const otherPrices = priceColumns(headerCells).filter((c) => !Object.values(columns).includes(c));
 
   async function upload() {
-    if (!rows.length || saving) return;
+    if (!uploaded.length || saving) return;
     setSaving(true);
     try {
       setResult(
         await importProducts(
-          rows.slice(0, MAX_ROWS).map((r) => ({
+          uploaded.map((r) => ({
             name: r.name,
             sku: r.sku,
             unit: r.unit,
@@ -121,36 +147,129 @@ export function StockImport({ shopCurrency }: { shopCurrency: Currency }) {
     }
   }
 
+  // Всё, что не попало на склад: ошибки базы, строки без названия, строки сверх MAX_ROWS.
+  const failed: Failed[] =
+    result && !("error" in result)
+      ? [
+          ...result.errors.map((e) => {
+            const row = uploaded[e.row - 1];
+            const why =
+              e.error === "sku_other" && e.other
+                ? `код «${row?.sku}» уже у товара «${e.other}» - проверьте код`
+                : (STOCK_ERROR_TEXT[e.error] ?? "проверьте значения");
+            return { line: row?.line ?? e.row, also: row?.also, name: row?.name ?? "", why };
+          }),
+          ...nameless.map((line) => ({ line, name: "", why: "нет названия" })),
+          ...(result.stopped !== undefined ? uploaded.slice(result.stopped) : []).map((r) => ({
+            line: r.line,
+            also: r.also,
+            name: r.name,
+            why: "загрузка оборвалась - строка не записана, загрузите файл ещё раз",
+          })),
+          ...merged.slice(MAX_ROWS).map((r) => ({
+            line: r.line,
+            also: r.also,
+            name: r.name,
+            why: `больше ${MAX_ROWS} товаров в одном файле - загрузите их отдельным файлом`,
+          })),
+        ].sort((x, y) => x.line - y.line)
+      : [];
+
+  /** Не загруженные строки — Excel в том же виде, что исходный файл, плюс колонка «Почему». */
+  function downloadFailed() {
+    if (!sheetRows || !failed.length) return;
+    // Повтор товара — все его строки, иначе после исправления остаток сложится не весь.
+    const lines = failed.flatMap((f) => [f.line, ...(f.also ?? [])].map((line) => ({ line, why: f.why })));
+    lines.sort((x, y) => x.line - y.line);
+    const source = lines.map((f) => sheetRows[f.line - 1] ?? []);
+    const headerRow = header >= 0 ? (sheetRows[header] ?? []) : [];
+    const columnCount = Math.max(headerRow.length, ...source.map((r) => r.length));
+    const xlsx = buildXlsx([
+      {
+        name: "Не загружены",
+        columns: [
+          ...Array.from({ length: columnCount }, (_, c) => ({ header: headerRow[c] || letter(c), width: c === columns.name ? 40 : 14 })),
+          { header: "Почему не загрузилась", width: 60 },
+        ],
+        rows: lines.map((f, i) => [
+          ...Array.from({ length: columnCount }, (_, c) => source[i][c] ?? ""),
+          f.why.charAt(0).toUpperCase() + f.why.slice(1),
+        ]),
+      },
+    ]);
+    const url = URL.createObjectURL(new Blob([xlsx], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Не загружены - ${(fileName ?? "товары").replace(/\.(xlsx|csv)$/i, "")}.xlsx`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   if (result && !("error" in result)) {
+    const failedItem = (f: Failed) => (
+      <li key={f.line}>
+        {f.also?.length ? `Строки ${[f.line, ...f.also].join(", ")}` : `Строка ${f.line}`}
+        {f.name ? ` «${f.name}»` : ""} - {f.why}
+      </li>
+    );
     return (
       <div className="stock-import-result">
         <p className="notice success" role="status">
-          Готово: новых товаров - {result.created}, обновлено - {result.updated}.
+          {result.stopped !== undefined ? "Загружено частично" : "Готово"}: новых товаров - {result.created}, обновлено -{" "}
+          {result.updated}.{result.restored ? ` Из архива вернули: ${result.restored}.` : ""}
           {result.categorized ? ` Категория поставлена у ${result.categorized}.` : ""}
         </p>
+        {result.stopped !== undefined && (
+          <p className="form-error" role="alert">
+            Связь оборвалась: записаны первые {result.stopped} товаров из {uploaded.length}, остальные - нет. Загрузите этот
+            же файл ещё раз - записанные не задвоятся.
+          </p>
+        )}
+        {result.recoded.length > 0 && (
+          <div className="photo-check-mismatch" role="status">
+            У {result.recoded.length} товаров сменился код на код из файла:
+            <ul>
+              {result.recoded.slice(0, SHOWN_ERRORS).map((e) => {
+                const row = uploaded[e.row - 1];
+                return (
+                  <li key={e.row}>
+                    Строка {row?.line ?? e.row} «{row?.name}»: было «{e.old}», стало «{row?.sku}»
+                  </li>
+                );
+              })}
+            </ul>
+            {result.recoded.length > SHOWN_ERRORS && <small className="muted">И ещё {result.recoded.length - SHOWN_ERRORS}.</small>}
+          </div>
+        )}
         {result.categoryError && (
           <p className="form-error" role="alert">
             Товары загружены, но категории поставить не удалось. Загрузите файл ещё раз - товары не задвоятся.
           </p>
         )}
-        {result.errors.length > 0 && (
+        {failed.length > 0 && (
           <div className="photo-check-mismatch" role="status">
-            Не загрузили строк: {result.errors.length}.
-            <ul>
-              {result.errors.slice(0, 20).map((e) => (
-                <li key={e.row}>
-                  Строка {rows[e.row - 1]?.line ?? e.row} «{rows[e.row - 1]?.name}» -{" "}
-                  {STOCK_ERROR_TEXT[e.error] ?? "проверьте значения"}
-                </li>
-              ))}
-            </ul>
+            Не загрузили строк: {failed.length}. Остальные товары на складе.
+            <ul>{failed.slice(0, SHOWN_ERRORS).map(failedItem)}</ul>
+            {failed.length > SHOWN_ERRORS && (
+              <details>
+                <summary>Показать ещё {failed.length - SHOWN_ERRORS}</summary>
+                <ul>{failed.slice(SHOWN_ERRORS).map(failedItem)}</ul>
+              </details>
+            )}
+            <button type="button" className="button" onClick={downloadFailed}>
+              Скачать эти строки (Excel)
+            </button>
+            <small className="muted">
+              В файле - только эти строки и колонка «Почему не загрузилась». Исправьте и загрузите его снова: остальные
+              товары не задвоятся.
+            </small>
           </div>
         )}
         <div className="simple-operation-actions">
           <Link className="button primary" href="/stock">
             Открыть склад
           </Link>
-          <button type="button" className="button" onClick={() => void pick(null).then(() => setFileName(null))}>
+          <button type="button" className="button" onClick={() => void pick(null)}>
             Загрузить ещё файл
           </button>
         </div>
@@ -177,6 +296,19 @@ export function StockImport({ shopCurrency }: { shopCurrency: Currency }) {
         <p className="form-error" role="alert">
           {readError}
         </p>
+      )}
+      {book && book.sheets.length > 1 && (
+        <label className="stock-import-sheet">
+          Лист книги
+          <select value={book.sheet} onChange={(e) => void pick(file, Number(e.target.value))}>
+            {book.sheets.map((name, i) => (
+              <option key={i} value={i}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <small className="muted">В файле листов: {book.sheets.length}. Загружается только выбранный.</small>
+        </label>
       )}
       {table && (
         <>
@@ -256,13 +388,58 @@ export function StockImport({ shopCurrency }: { shopCurrency: Currency }) {
           )}
 
           <h2>
-            Товаров в файле: {rows.length}
-            {rows.length > MAX_ROWS && <span className="muted"> - загрузим первые {MAX_ROWS}</span>}
+            Товаров в файле: {merged.length}
+            {merged.length > MAX_ROWS && <span className="muted"> - загрузим первые {MAX_ROWS}</span>}
           </h2>
+          {repeats > 0 && (
+            <p className="photo-check-mismatch" role="status">
+              Одни и те же товары повторяются в файле ({repeats} строк) - загрузим каждый один раз: остатки сложим, цену и
+              остальное возьмём из последней строки. Строки - в списке ниже.
+            </p>
+          )}
+          {otherPrices.length > 0 && (
+            <p className="photo-check-mismatch" role="status">
+              В файле несколько колонок цены:{" "}
+              {[columns.sale_price, ...otherPrices]
+                .filter((c): c is number => c !== undefined)
+                .map((c) => `«${headerCells[c]}»`)
+                .join(", ")}
+              .{" "}
+              {columns.sale_price !== undefined
+                ? `Ценой продажи взята «${headerCells[columns.sale_price]}» - если нужна другая, выберите её выше.`
+                : "Выберите выше, какая из них - цена продажи."}
+            </p>
+          )}
+          {hiddenUsed.length > 0 && (
+            <div className="photo-check-mismatch" role="status">
+              В Excel скрыто строк с товарами: {hiddenUsed.length} (
+              {hiddenUsed.length > 10 ? `строки ${hiddenUsed.slice(0, 10).join(", ")} и ещё ${hiddenUsed.length - 10}` : `строки ${hiddenUsed.join(", ")}`}
+              ) - они тоже загрузятся.
+              <label className="stock-import-check">
+                <input type="checkbox" checked={skipHidden} onChange={(e) => setSkipHidden(e.target.checked)} />
+                Не загружать скрытые строки
+              </label>
+            </div>
+          )}
+          {skipHidden && (
+            <p className="muted">
+              Скрытые строки не загрузятся.{" "}
+              <button type="button" className="text-button" onClick={() => setSkipHidden(false)}>
+                Загрузить и их
+              </button>
+            </p>
+          )}
           {foreignCost > 0 && (
             <p className="muted">
               Цена закупки не в {CURRENCY_SIGN[shopCurrency]} у {foreignCost} товаров - сохраним как есть, в валюте
               закупки. Цена продажи остаётся в {CURRENCY_SIGN[shopCurrency]}.
+            </p>
+          )}
+          {nameless.length > 0 && (
+            <p className="photo-check-mismatch" role="status">
+              Строк без названия: {nameless.length} - не загрузятся (
+              {nameless.length > 10 ? `строки ${nameless.slice(0, 10).join(", ")} и ещё ${nameless.length - 10}` : `строки ${nameless.join(", ")}`}
+              ). Если это товары - впишите название в Excel.
             </p>
           )}
           {warned.length > 0 && (
@@ -308,12 +485,24 @@ export function StockImport({ shopCurrency }: { shopCurrency: Currency }) {
           )}
           {warned.length > 0 && (
             <ul className="stock-import-warnings muted">
-              {warned.slice(0, 10).map((r) => (
+              {warned.slice(0, SHOWN_ERRORS).map((r) => (
                 <li key={r.line}>
                   Строка {r.line}: {r.warnings.join("; ")}
                 </li>
               ))}
             </ul>
+          )}
+          {warned.length > SHOWN_ERRORS && (
+            <details className="stock-import-warnings-more">
+              <summary>Показать ещё {warned.length - SHOWN_ERRORS}</summary>
+              <ul className="stock-import-warnings muted">
+                {warned.slice(SHOWN_ERRORS).map((r) => (
+                  <li key={r.line}>
+                    Строка {r.line}: {r.warnings.join("; ")}
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
           {result && "error" in result && (
             <p className="form-error" role="alert">
@@ -323,14 +512,14 @@ export function StockImport({ shopCurrency }: { shopCurrency: Currency }) {
             </p>
           )}
           <div className="simple-operation-actions">
-            <button type="button" className="button primary" disabled={!rows.length || saving} onClick={() => void upload()}>
-              {saving ? "Загружаем…" : `Загрузить товаров: ${Math.min(rows.length, MAX_ROWS)}`}
+            <button type="button" className="button primary" disabled={!uploaded.length || saving} onClick={() => void upload()}>
+              {saving ? "Загружаем…" : `Загрузить товаров: ${uploaded.length}`}
             </button>
           </div>
           <p className="operation-hint">
-            Товар с тем же кодом или названием обновится (цена, единица, категория), остаток станет как в файле. Новые -
-            добавятся. Категории из файла, которых ещё нет, создадутся.
-            Повторная загрузка того же файла ничего не задвоит.
+            Товар с тем же кодом или названием обновится (цена, единица, категория), остаток станет как в файле - даже
+            если после скачивания файла были продажи. Товар из архива вернётся. Новые - добавятся. Категории из файла,
+            которых ещё нет, создадутся. Повторная загрузка того же файла товары не задвоит.
           </p>
         </>
       )}

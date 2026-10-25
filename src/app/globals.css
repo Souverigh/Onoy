@@ -10644,3 +10644,42 @@ form label.catalog-products-filter {
     bottom: calc(max(12px, env(safe-area-inset-bottom)) + 84px);
   }
 }
+
+/* Импорт склада: не загруженные строки — список, «Показать ещё», скачать Excel. */
+.stock-import-result .photo-check-mismatch {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.stock-import-result .photo-check-mismatch ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.stock-import-result .photo-check-mismatch summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+/* Импорт склада: выбор листа книги, «не загружать скрытые строки», хвост предупреждений. */
+.stock-import-sheet {
+  display: grid;
+  gap: 4px;
+  max-width: 360px;
+  margin-top: 12px;
+}
+.stock-import-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-weight: 600;
+}
+.stock-import-check input {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+.stock-import-warnings-more summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin: 4px 0;
+}

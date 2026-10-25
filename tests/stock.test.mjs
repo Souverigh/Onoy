@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateRawSync } from "node:zlib";
-import { costCurrency, detectColumns, importRows, normalizeUnit, stockNumber } from "../src/lib/stock.ts";
+import { costCurrency, detectColumns, importRows, mergeImportRows, namelessLines, normalizeUnit, priceColumns, stockNumber } from "../src/lib/stock.ts";
 import { normalizeText, searchProducts } from "../src/lib/match.ts";
-import { readCsv, readXlsx } from "../src/lib/xlsx-read.ts";
+import { readCsv, readWorkbook, readXlsx } from "../src/lib/xlsx-read.ts";
 import { buildXlsx } from "../src/lib/xlsx.ts";
 
 test("normalizeUnit: how units are written on invoices and price lists", () => {
@@ -213,4 +213,95 @@ test("stockValue: what lies on the shelf, at purchase and at sale price", async 
   assert.equal(value.inStock, 4);
   assert.equal(value.noCost, 1);
   assert.equal(value.noSale, 1);
+});
+
+test("importRows: one code on two different products in a file is flagged", () => {
+  const table = [
+    ["Название", "Код"],
+    ["Прожектор BILLOW 100W", "2"],
+    ["FELIX БЕЛЫЙ", "2"],
+    ["прожектор billow 100w", "2"],
+    ["Без кода", ""],
+  ];
+  const rows = importRows(table, 0, { name: 0, sku: 1 });
+  // Строка 4 — тот же прожектор ещё раз: не ошибка кода, а повтор (сольётся).
+  assert.deepEqual(rows.map((r) => r.warnings.length), [0, 1, 1, 0]);
+  assert.match(rows[2].warnings[0], /Повтор строки 2/);
+  assert.match(rows[1].warnings[0], /Код «2» уже у «Прожектор BILLOW 100W» \(строка 2\)/);
+  assert.equal(rows[3].sku, null);
+});
+
+test("namelessLines: rows with data but no name are reported, empty rows are not", () => {
+  const table = [
+    ["Название", "Код", "Цена"],
+    ["Лампа", "L1", "100"],
+    ["", "L2", "200"],
+    ["", "", ""],
+    ["  ", "", "50"],
+  ];
+  assert.deepEqual(namelessLines(table, 0, { name: 0, sku: 1, sale_price: 2 }), [3, 5]);
+  assert.equal(importRows(table, 0, { name: 0, sku: 1, sale_price: 2 }).length, 1);
+});
+
+test("readWorkbook: chosen sheet, sheet names, hidden rows, codes with leading zeros", async () => {
+  const files = {
+    "xl/workbook.xml":
+      '<workbook xmlns:r="r"><sheets><sheet name="Описание" sheetId="1" r:id="rId1"/><sheet name="Прайс &amp; цены" sheetId="2" r:id="rId2"/></sheets></workbook>',
+    "xl/_rels/workbook.xml.rels":
+      '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml" Type="x"/><Relationship Id="rId2" Target="worksheets/sheet2.xml" Type="x"/></Relationships>',
+    "xl/styles.xml":
+      '<styleSheet><numFmts count="1"><numFmt numFmtId="164" formatCode="000000"/></numFmts><cellXfs count="2"><xf numFmtId="0"/><xf numFmtId="164" applyNumberFormat="1"/></cellXfs></styleSheet>',
+    "xl/worksheets/sheet1.xml": '<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Читайте второй лист</t></is></c></row></sheetData></worksheet>',
+    "xl/worksheets/sheet2.xml":
+      '<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Код</t></is></c></row>' +
+      '<row r="2" hidden="1"><c r="A2" s="1"><v>123</v></c><c r="B2" s="0"><v>45</v></c></row></sheetData></worksheet>',
+  };
+  const zip = makeZip(Object.entries(files).map(([name, text]) => ({ name, data: deflateRawSync(Buffer.from(text)), size: Buffer.byteLength(text) })));
+  const buffer = zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength);
+  const first = await readWorkbook(buffer);
+  assert.deepEqual([first.sheets, first.sheet, first.table], [["Описание", "Прайс & цены"], 0, [["Читайте второй лист"]]]);
+  const second = await readWorkbook(buffer, 1);
+  assert.deepEqual([second.sheet, second.hidden, second.table], [1, [2], [["Код"], ["000123", "45"]]]);
+});
+
+test("readCsv: a title line with commas does not decide the separator", () => {
+  const csv = new TextEncoder().encode("Прайс, ООО Свет\nНазвание;Цена\nЛампа;100\n");
+  assert.deepEqual(readCsv(csv.buffer), [["Прайс, ООО Свет"], ["Название", "Цена"], ["Лампа", "100"]]);
+});
+
+test("importRows: negative stock, «1,250», rounding, negative price; mergeImportRows sums repeats", () => {
+  const table = [
+    ["Название", "Код", "Цена", "Цена закупки", "Остаток"],
+    ["Лампа", "", "1,250", "0,295", "-3"],
+    ["Розетка", "R1", "-5", "", "−2,5"],
+    ["лампа", "L1", "120", "", "10"],
+    ["Кабель", "", "", "", ""],
+    ["ЛАМПА", "L2", "", "", "1,5"],
+  ];
+  const columns = { name: 0, sku: 1, sale_price: 2, purchase_price: 3, stock: 4 };
+  const rows = importRows(table, 0, columns);
+  assert.deepEqual(rows.map((r) => r.stock), ["-3", "-2.5", "10", null, "1.5"]);
+  assert.match(rows[0].warnings.join(), /«1,250» - прочитали как 1,25; если это 1250 - уберите запятую/);
+  assert.match(rows[0].warnings.join(), /«0,295» - округлим до 0,3/);
+  assert.equal(rows[1].sale_price, null);
+  assert.match(rows[1].warnings.join(), /«-5» - меньше нуля/);
+  assert.match(rows[2].warnings.join(), /Повтор строки 2/);
+  assert.match(rows[4].warnings.join(), /код будет «L2»/);
+
+  const merged = mergeImportRows(rows);
+  assert.equal(merged.length, 3);
+  assert.deepEqual(
+    [merged[0].name, merged[0].line, merged[0].also, merged[0].stock, merged[0].sku, merged[0].sale_price, merged[0].purchase_price],
+    ["Лампа", 2, [4, 6], "8.5", "L2", "120", "0.3"],
+  );
+  // Исходные строки не меняются: предпросмотр показывает их как в файле.
+  assert.equal(rows[0].stock, "-3");
+});
+
+test("detectColumns: retail price column wins over wholesale; priceColumns lists both", () => {
+  const table = [["Наименование", "Цена опт", "Цена розн.", "Цена закупки"]];
+  const found = detectColumns(table);
+  assert.equal(found.columns.sale_price, 2);
+  assert.equal(found.columns.purchase_price, 3);
+  assert.deepEqual(priceColumns(table[0]), [1, 2]);
 });
