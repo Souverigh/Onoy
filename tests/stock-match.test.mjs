@@ -1,6 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { exactProduct, linesWithStockPrices, plainName, suggestProduct } from "../src/lib/match.ts";
+import {
+  NEW_PRODUCT,
+  chosenProduct,
+  exactProduct,
+  lineCode,
+  lineName,
+  lineProduct,
+  linesWithStockPrices,
+  plainName,
+  productByCode,
+  productByModel,
+  suggestProduct,
+} from "../src/lib/match.ts";
 
 const product = (id, name, aliases = []) => ({ id, name, sku: null, unit: "шт", stock: "10", aliases, sold_count: 0 });
 const products = [
@@ -77,4 +89,34 @@ test("linesWithStockPrices: a line without a price on the photo takes the stock 
   // Подставлять нечего — null.
   assert.equal(linesWithStockPrices([lines[0]], priced, { 1: null }), null);
   assert.equal(linesWithStockPrices([lines[1], lines[3]], priced, {}), null);
+});
+
+test("purchase lines: supplier code finds the product, model only suggests, owner's choice wins", () => {
+  const product = (id, name, sku, aliases = []) => ({ id, name, sku, unit: "шт", sale_price: "94", stock: "0", aliases, sold_count: 0 });
+  const products = [
+    product("p20", "Лампа PREMIER-20", "001-006-0020"),
+    product("t20", "Лампа TORCH-20", "001-016-0020"),
+    product("short", "Короткий код", "38"),
+  ];
+  const line = "001-006-0020 20W 6400K E27 СВЕТОДИОДНАЯ ЛАМПА PREMIER-20";
+  assert.equal(lineCode(line), "001-006-0020");
+  assert.equal(lineName(line), "20W 6400K E27 СВЕТОДИОДНАЯ ЛАМПА PREMIER-20");
+  assert.equal(lineCode("LED-9W лампа"), null);
+  assert.equal(lineCode("38 шт кабель"), null);
+  assert.equal(lineName("052-005-120"), "052-005-120");
+  assert.equal(productByCode(line, products)?.id, "p20");
+  // Короткий код («38») словом в строке — не совпадение.
+  assert.equal(productByCode("Кабель 38 м", products), null);
+  assert.equal(lineProduct(line, products)?.id, "p20");
+  // Код другой, модель та же — только вопрос «Это …?».
+  const other = "001-016-0030 20W 6400K E27 СВЕТОДИОДНАЯ ЛАМПА TORCH-20";
+  assert.equal(lineProduct(other, products), null);
+  assert.equal(productByModel(other, products)?.id, "t20");
+  assert.equal(productByModel("Лампа LED 20W", products), null);
+  // Выбор: товар, «Новый товар» и «Не принимать» — сильнее поиска.
+  const invoiceLine = { n: 1, name_raw: line, qty: "1", unit: "шт", price: "1", sum: "1", confidence: 1 };
+  assert.equal(chosenProduct(invoiceLine, products, {})?.id, "p20");
+  assert.equal(chosenProduct(invoiceLine, products, { 1: "t20" })?.id, "t20");
+  assert.equal(chosenProduct(invoiceLine, products, { 1: NEW_PRODUCT }), null);
+  assert.equal(chosenProduct(invoiceLine, products, { 1: null }), null);
 });

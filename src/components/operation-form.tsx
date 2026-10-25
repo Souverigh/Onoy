@@ -31,7 +31,7 @@ import { PartyPicker, type PickerParty } from "./party-picker";
 import { NewCustomerInline } from "./new-customer-inline";
 import { ConfirmDialog } from "./confirm-dialog";
 import { RecognizedLines, linesTotal, type CatalogProduct } from "./recognized-lines";
-import { lineProductsValue } from "./sale-stock-lines";
+import { lineProductsValue, stockSummary } from "./sale-stock-lines";
 import { LeaveGuard } from "./leave-guard";
 import { NoteField } from "./note-field";
 import { MakerField, type Maker } from "./maker-field";
@@ -446,6 +446,8 @@ export function OperationForm({
   const describeError = (error: string | undefined | null) =>
     error === "retry"
       ? "Эта запись уже сохранена - возможно, при прошлой попытке. Проверьте историю."
+      : error === "stock_asking"
+        ? "Ответьте в «Товарах накладной», похожие ли это товары склада («Да» или «Новый товар») - иначе на складе появятся дубли."
       : error === "amount"
         ? "Введите сумму больше нуля."
         : error === "rate"
@@ -575,6 +577,11 @@ export function OperationForm({
     }
     if (kind === "payment" && dateTouched && !dateValue) {
       setLocalError("date");
+      return;
+    }
+    // Приход: строка похожа на товар склада, а ответа нет — без него завели бы дубль.
+    if (purchaseAsking > 0) {
+      setLocalError("stock_asking");
       return;
     }
     setLocalError(null);
@@ -878,9 +885,13 @@ export function OperationForm({
   const amountNote =
     foreign && debtAmount > 0 ? `В долг: ${money(debtAmount, debtCurrency)} по курсу ${formatRate(rate ?? 0)}` : null;
 
-  // Строки с фото против склада — только продажа и только если на складе что-то есть.
+  // Строки с фото против склада: продажа — если на складе что-то есть; приход —
+  // всегда (просьба пользователя 26.10.2026): товар по коду или названию, похожий —
+  // «Это …?», иначе новый — вместо молча заведённого товара с кодом в названии.
   const stockLines =
-    kind === "sale" && stockProducts?.length && checkedPhoto?.result?.lines.length ? checkedPhoto.result.lines : null;
+    (kind === "sale" ? stockProducts?.length : kind === "purchase" && stockProducts) && checkedPhoto?.result?.lines.length
+      ? checkedPhoto.result.lines
+      : null;
   // «+ Добавить строку» в «Товарах накладной»: товар склада с ценой в валюте накладной.
   const catalog: CatalogProduct[] = (stockProducts ?? []).map((p) => {
     const price = kind === "purchase" ? p.purchase_price : p.sale_price;
@@ -889,12 +900,24 @@ export function OperationForm({
   });
   const currentStockChoices =
     stockChoices && stockChoices.documentId === checkedPhoto?.documentId ? stockChoices.choices : {};
+  const stockMatching = stockLines
+    ? {
+        products: stockProducts ?? [],
+        choices: currentStockChoices,
+        purchase: kind === "purchase",
+        onChoose: (n: number, productId: string | null) =>
+          checkedPhoto &&
+          setStockChoices({ documentId: checkedPhoto.documentId, choices: { ...currentStockChoices, [n]: productId } }),
+      }
+    : null;
+  const purchaseAsking = kind === "purchase" && stockLines && stockMatching ? stockSummary(stockLines, stockMatching).asking : 0;
 
   // Строка совпала со складом, а цены на фото нет — ставим цену продажи товара.
   // Цена товара в валюте магазина: накладная в другой валюте — не трогаем.
   useEffect(() => {
     const current = checkedPhoto?.result;
-    if (!stockLines || !checkedPhoto || !current || suggestionCurrency !== shopCurrency) return;
+    // Только продажа: у прихода цена строки — закупочная, цену продажи не ставим.
+    if (kind !== "sale" || !stockLines || !checkedPhoto || !current || suggestionCurrency !== shopCurrency) return;
     const given = stockPrices.current?.documentId === checkedPhoto.documentId ? stockPrices.current.given : {};
     const filled = linesWithStockPrices(stockLines, stockProducts ?? [], currentStockChoices, given);
     if (!filled) return;
@@ -909,7 +932,7 @@ export function OperationForm({
       photoAmount.current = String(total);
       return photoAmount.current;
     });
-  }, [checkedPhoto, stockLines, stockProducts, currentStockChoices, suggestionCurrency, shopCurrency]);
+  }, [kind, checkedPhoto, stockLines, stockProducts, currentStockChoices, suggestionCurrency, shopCurrency]);
 
   // Продавец исправил строки накладной: итог строк пересчитываем, а сумму в
   // поле меняем, только если там стоял прежний итог строк (подставлен с фото).
@@ -1150,7 +1173,7 @@ export function OperationForm({
           <input
             type="hidden"
             name="line_products"
-            value={lineProductsValue(stockLines, stockProducts ?? [], currentStockChoices)}
+            value={lineProductsValue(stockLines, stockProducts ?? [], currentStockChoices, kind === "purchase")}
           />
         )}
         {errorText && (
@@ -1786,19 +1809,7 @@ export function OperationForm({
             onChange={editLines}
             defaultOpen={correcting}
             catalog={catalog}
-            stock={
-              stockLines
-                ? {
-                    products: stockProducts ?? [],
-                    choices: currentStockChoices,
-                    onChoose: (n, productId) =>
-                      setStockChoices({
-                        documentId: checkedPhoto.documentId,
-                        choices: { ...currentStockChoices, [n]: productId },
-                      }),
-                  }
-                : undefined
-            }
+            stock={stockMatching ?? undefined}
           />
         )}
         {kind !== "payment" && hasDetails && (

@@ -2,7 +2,7 @@
 
 import { redirect, unstable_rethrow } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { getContext } from "@/lib/context";
+import { getContext, requireOwner } from "@/lib/context";
 import { isProductUnit, stockNumber, type ProductUnit } from "@/lib/stock";
 import { isCurrency, rateInput, type Currency } from "@/lib/currency";
 import { bishkekDate } from "@/lib/day-summary";
@@ -33,6 +33,7 @@ function failureCode(message: string | undefined): string {
     "already_corrected",
     "owner_only",
     "has_returns",
+    "product_merged",
   ])
     if (text.includes(code))
       return code === "idempotency_conflict"
@@ -140,6 +141,40 @@ export async function archiveProduct(form: FormData) {
   await refreshCatalog(db, organizationId);
   revalidatePath("/", "layout");
   redirect(archived ? "/stock?archived_one=1" : `/stock/${id}?restored=1`);
+}
+
+/** Дубль → товар (владелец): записи дубля переходят к товару, дубль — в архив. */
+export async function mergeProducts(form: FormData) {
+  const id = text(form, "id");
+  const into = text(form, "into");
+  if (!uuidPattern.test(id)) redirect("/stock?error=invalid");
+  if (!uuidPattern.test(into) || into === id) redirect(`/stock/${id}?error=merge`);
+  const { db, organizationId } = await requireOwner();
+  const result = await db.rpc("merge_products", { p_org: organizationId, p_from: id, p_into: into });
+  if (result.error) {
+    console.error("mergeProducts failed", { message: result.error.message });
+    redirect(`/stock/${id}?error=merge`);
+  }
+  await refreshCatalog(db, organizationId);
+  revalidatePath("/", "layout");
+  redirect(`/stock/${into}?merged=1`);
+}
+
+/** Отмена объединения в течение суток. */
+export async function undoProductMerge(form: FormData) {
+  const id = text(form, "id");
+  const merge = text(form, "merge");
+  if (!uuidPattern.test(id)) redirect("/stock?error=invalid");
+  if (!uuidPattern.test(merge)) redirect(`/stock/${id}?error=merge`);
+  const { db, organizationId } = await requireOwner();
+  const result = await db.rpc("undo_product_merge", { p_org: organizationId, p_merge: merge });
+  if (result.error) {
+    console.error("undoProductMerge failed", { message: result.error.message });
+    redirect(`/stock/${id}?error=merge_expired`);
+  }
+  await refreshCatalog(db, organizationId);
+  revalidatePath("/", "layout");
+  redirect(`/stock/${id}?unmerged=1`);
 }
 
 export async function adjustStock(form: FormData) {

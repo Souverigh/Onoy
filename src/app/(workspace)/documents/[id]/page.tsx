@@ -9,7 +9,7 @@ import { documentPages, signedPhotoUrl } from "@/lib/storage";
 import { DocumentPhotos } from "@/components/document-photos";
 import { retryRecognition, confirmDocument, updateLine, saveAlias, addLine } from "../actions";
 import { DeleteWithUndo } from "@/components/delete-with-undo";
-import { bestMatches, similarity } from "@/lib/match";
+import { bestMatches, lineProduct, similarity } from "@/lib/match";
 import { ReceiveStock, type ReceiveLine } from "@/components/receive-stock";
 import { STOCK_ERROR_TEXT, normalizeUnit } from "@/lib/stock";
 import { TOLERANCE } from "@/lib/adre/reconcile";
@@ -213,14 +213,26 @@ export default async function DocumentDetail({
   const purchaseRow = doc.kind === "purchase" ? (purchaseResult.data as { id: string; reversed_at: string | null; stocked_at: string | null } | null) : null;
   const canStock = Boolean(purchaseRow && !purchaseRow.reversed_at && !purchaseRow.stocked_at && lines.some((l) => Number(l.qty) > 0));
   let receiveLines: ReceiveLine[] = [];
+  // Товар по коду поставщика или точному названию — первым и наверняка (выберется
+  // сам), затем похожие по названию.
+  const receiveMatches = (
+    name: string,
+    products: { id: string; name: string; sku: string | null; aliases: string[]; unit: string }[],
+  ): ReceiveLine["matches"] => {
+    const sure = lineProduct(name, products.map((p) => ({ ...p, sale_price: "0", stock: "0", sold_count: 0 })));
+    const similar = bestMatches(name, products, 3, 0.45)
+      .filter((m) => m.candidate.id !== sure?.id)
+      .map((m) => ({ id: m.candidate.id, name: m.candidate.name, unit: m.candidate.unit, score: m.score }));
+    return sure ? [{ id: sure.id, name: sure.name, unit: sure.unit, score: 1 }, ...similar].slice(0, 3) : similar;
+  };
   if (canStock) {
     const productResult = await db
       .from("products")
-      .select("id,name,aliases,unit")
+      .select("id,name,sku,aliases,unit")
       .eq("organization_id", organizationId)
       .is("archived_at", null)
       .range(0, 4999);
-    const products = (productResult.data ?? []) as { id: string; name: string; aliases: string[]; unit: string }[];
+    const products = (productResult.data ?? []) as { id: string; name: string; sku: string | null; aliases: string[]; unit: string }[];
     receiveLines = lines
       .filter((l) => Number(l.qty) > 0 && Number(l.price) >= 0)
       .map((l) => ({
@@ -231,12 +243,7 @@ export default async function DocumentDetail({
         unit: normalizeUnit(l.unit),
         rawUnit: l.unit,
         price: String(l.price),
-        matches: bestMatches(l.name_raw, products, 3, 0.45).map((m) => ({
-          id: m.candidate.id,
-          name: m.candidate.name,
-          unit: m.candidate.unit,
-          score: m.score,
-        })),
+        matches: receiveMatches(l.name_raw, products),
       }));
   }
 

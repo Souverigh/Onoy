@@ -270,16 +270,72 @@ export function suggestProduct<T extends StockProduct>(name: string, products: T
   return best?.product ?? null;
 }
 
-/** Выбор продавца по строке: id товара или null — «Не списывать со склада». */
+/**
+ * Выбор продавца по строке: id товара; null — «Не списывать» (у прихода — «Не
+ * принимать на склад»); NEW_PRODUCT — у прихода «Новый товар».
+ */
 export type StockChoices = Record<number, string | null>;
+export const NEW_PRODUCT = "new";
 
-/** Товар строки: выбор продавца, иначе точное совпадение; похожий — только после «Да». */
+// Код поставщика в начале строки: «001-006-0020 20W …» — цифровые группы через
+// - . / (не «20W», не «LED-9W»). Как private.line_code в базе.
+const LINE_CODE = /^\s*(\d{2,}(?:[-./][0-9A-Za-z]+)+)(?:\s|$)/;
+
+/** Код поставщика в начале названия строки накладной; нет — null. */
+export function lineCode(name: string): string | null {
+  return LINE_CODE.exec(name)?.[1] ?? null;
+}
+
+/** Название строки без кода в начале (как private.line_name). */
+export function lineName(name: string): string {
+  const clean = name.trim().replace(/\s+/g, " ");
+  return clean.replace(/^\d{2,}(?:[-./][0-9A-Za-z]+)+(\s+|$)/, "").trim() || clean;
+}
+
+/**
+ * Товар по коду: код товара (от 5 знаков, с цифрой — не «38») стоит словом в
+ * названии строки; код в начале строки — первым. Как private.product_by_line.
+ */
+export function productByCode<T extends StockProduct>(name: string, products: T[]): T | null {
+  const words = name.trim().toLowerCase().split(/\s+/);
+  const lead = lineCode(name)?.toLowerCase();
+  const found = products.filter((p) => {
+    const sku = (p.sku ?? "").toLowerCase();
+    return sku.length >= 5 && /\d/.test(sku) && words.includes(sku);
+  });
+  return found.find((p) => p.sku!.toLowerCase() === lead) ?? found[0] ?? null;
+}
+
+/** Товар строки без выбора: по коду, по точному названию (с кодом и без). Как в базе. */
+export function lineProduct<T extends StockProduct>(name: string, products: T[]): T | null {
+  return productByCode(name, products) ?? exactProduct(name, products) ?? exactProduct(lineName(name), products);
+}
+
+// Модель в названии: «PREMIER-20», «TORCH-20», «GAMA-120» — буквы и цифры через дефис.
+const MODEL = /^[\p{L}]{3,}-?\d+[\p{L}\d]*$/u;
+
+/**
+ * Похожий товар по модели: модель из названия товара («Лампа PREMIER-20») есть
+ * словом в строке накладной. Только для вопроса «Это …?», не само.
+ */
+export function productByModel<T extends StockProduct>(name: string, products: T[]): T | null {
+  const words = new Set(name.toLowerCase().split(/[\s,;()]+/));
+  let best: { product: T; length: number } | null = null;
+  for (const product of products)
+    for (const text of textsOf(product))
+      for (const word of text.toLowerCase().split(/[\s,;()]+/))
+        if (word.length >= 5 && MODEL.test(word) && words.has(word) && (!best || word.length > best.length))
+          best = { product, length: word.length };
+  return best?.product ?? null;
+}
+
+/** Товар строки: выбор продавца, иначе по коду или точному названию; похожий — только после «Да». */
 export function chosenProduct(line: InvoiceLine, products: StockProduct[], choices: StockChoices): StockProduct | null {
   if (line.n in choices) {
     const id = choices[line.n];
-    return id ? (products.find((p) => p.id === id) ?? null) : null;
+    return id && id !== NEW_PRODUCT ? (products.find((p) => p.id === id) ?? null) : null;
   }
-  return exactProduct(line.name_raw, products);
+  return lineProduct(line.name_raw, products);
 }
 
 /** Цена на фото есть: строка без цены — «0» или пусто. */

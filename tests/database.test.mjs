@@ -32,7 +32,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 27);
+  assert.equal(rows.length, 28);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -2580,6 +2580,126 @@ test("auto stock: a checked purchase invoice goes to stock by itself; purchase l
 
   await user(b);
   await assert.rejects(db.query("select commit_purchase_items($1,$2,$3,$4)", [orgA, supplier, lines, k(8)]), /not_a_member/);
+});
+
+test("purchase by photo: supplier code in the line finds the product, owner's choice per line, merge of duplicates", async () => {
+  const stock = async (id) => Number((await db.query("select stock from product_balances where id=$1", [id])).rows[0].stock);
+  const k = (n) => `aaaa7777-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
+  const product = async (name) =>
+    (await db.query("select id,name,sku,aliases,archived_at,merged_into_id from products where organization_id=$1 and name=$2", [orgA, name])).rows[0];
+  const doc = async (name, rows) => {
+    await owner();
+    const id = (
+      await db.query(
+        "insert into documents(organization_id,storage_path,file_hash,mime_type,kind,status) values ($1,$2,$2,'image/jpeg','purchase','digitized') returning id",
+        [orgA, name],
+      )
+    ).rows[0].id;
+    for (const [n, name_raw, qty, price] of rows)
+      await db.query("insert into document_lines(organization_id,document_id,n,name_raw,qty,unit,price) values ($1,$2,$3,$4,$5,'шт',$6)", [orgA, id, n, name_raw, qty, price]);
+    await user(a);
+    return id;
+  };
+
+  // Код и название без кода: только цифровые группы в начале строки.
+  const codeOf = async (name) => (await db.query("select private.line_code($1) as c, private.line_name($1) as n", [name])).rows[0];
+  await owner();
+  assert.deepEqual(await codeOf("001-006-0020 20W 6400K E27 ЛАМПА PREMIER-20"), { c: "001-006-0020", n: "20W 6400K E27 ЛАМПА PREMIER-20" });
+  assert.deepEqual(await codeOf("LED-9W лампа"), { c: null, n: "LED-9W лампа" });
+  assert.deepEqual(await codeOf("38 шт кабель"), { c: null, n: "38 шт кабель" });
+  assert.deepEqual(await codeOf("052-005-120"), { c: "052-005-120", n: "052-005-120" });
+
+  const supplier = (await db.query("insert into suppliers(organization_id,name) values ($1,'Horoz Asia') returning id", [orgA])).rows[0].id;
+  await user(a);
+  const premier = (await db.query("select save_product($1,null,'Лампа PREMIER-20','001-006-0020','шт','94') as id", [orgA])).rows[0].id;
+  const torch = (await db.query("select save_product($1,null,'Лампа TORCH-20','001-016-0020','шт','94') as id", [orgA])).rows[0].id;
+  const short = (await db.query("select save_product($1,null,'Короткий код','38','шт','1') as id", [orgA])).rows[0].id;
+
+  // Без выбора (старая форма): по коду — к товару, синоним запомнили; без совпадения —
+  // новый товар, код в поле «Код», название без кода; короткий код «38» не ловится.
+  const first = await doc("code-1", [
+    [1, "001-006-0020 20W 6400K E27 СВЕТОДИОДНАЯ ЛАМПА PREMIER-20", "200", "0.84"],
+    [2, "001-016-0030 30W 6400K E27 СВЕТОДИОДНАЯ ЛАМПА TORCH-30", "24", "1.65"],
+    [3, "38 шт кабель", "1", "5"],
+  ]);
+  await db.query("select commit_purchase($1,$2,'200',$3,$4)", [orgA, supplier, k(1), first]);
+  assert.equal(await stock(premier), 200);
+  assert.ok((await product("Лампа PREMIER-20")).aliases.includes("001-006-0020 20W 6400K E27 СВЕТОДИОДНАЯ ЛАМПА PREMIER-20"));
+  const torch30 = await product("30W 6400K E27 СВЕТОДИОДНАЯ ЛАМПА TORCH-30");
+  assert.equal(torch30.sku, "001-016-0030");
+  assert.equal(await stock(torch30.id), 24);
+  assert.equal(await stock(short), 0);
+  assert.equal((await product("38 шт кабель")).sku, null);
+  assert.equal(
+    (await db.query("select count(*)::int as n from document_lines where document_id=$1 and product_id is not null", [first])).rows[0].n,
+    3,
+  );
+
+  // Выбор владельца: этот товар (синоним), не принимать, новый; строки без выбора — поиском.
+  const second = await doc("code-2", [
+    [1, "Лампочка 20 ватт торч", "5", "0.99"],
+    [2, "Доставка", "1", "10"],
+    [3, "001-006-0018 18W 6400K E27 СВЕТОДИОДНАЯ ЛАМПА PREMIER-18", "200", "0.81"],
+    [4, "001-006-0020 20W 6400K E27 СВЕТОДИОДНАЯ ЛАМПА PREMIER-20", "10", "0.84"],
+  ]);
+  const choices = [
+    { n: 1, product: torch },
+    { n: 2, product: null },
+    { n: 3, product: null, new: true },
+  ];
+  const commit = (choice, key, document) =>
+    db.query(
+      "select commit_purchase(p_org=>$1,p_supplier=>$2,p_amount=>'300',p_idempotency_key=>$3,p_document=>$4,p_line_products=>$5::jsonb)",
+      [orgA, supplier, key, document, JSON.stringify(choice)],
+    );
+  await commit(choices, k(2), second);
+  assert.equal(await stock(torch), 5);
+  assert.ok((await product("Лампа TORCH-20")).aliases.includes("Лампочка 20 ватт торч"));
+  assert.equal(await product("Доставка"), undefined);
+  assert.equal((await product("18W 6400K E27 СВЕТОДИОДНАЯ ЛАМПА PREMIER-18")).sku, "001-006-0018");
+  assert.equal(await stock(premier), 210);
+  // «Новый товар» по той же строке ещё раз (исправление прихода) — второй не заводится.
+  const again = await doc("code-3", [[1, "001-006-0018 18W 6400K E27 СВЕТОДИОДНАЯ ЛАМПА PREMIER-18", "10", "0.81"]]);
+  await commit([{ n: 1, product: null, new: true }], k(8), again);
+  assert.equal(
+    (await db.query("select count(*)::int as n from products where organization_id=$1 and name='18W 6400K E27 СВЕТОДИОДНАЯ ЛАМПА PREMIER-18'", [orgA])).rows[0].n,
+    1,
+  );
+  assert.equal(await stock((await product("18W 6400K E27 СВЕТОДИОДНАЯ ЛАМПА PREMIER-18")).id), 210);
+  // Кривой выбор и чужой товар — отказ; выбор без накладной — отказ.
+  await assert.rejects(commit([{ n: 1, product: "11111111-1111-4111-8111-111111111111" }], k(3), second), /invalid_product/);
+  await assert.rejects(commit([{ n: 1 }], k(4), second), /invalid_line/);
+  await assert.rejects(commit([{ n: 1, product: null, new: "да" }], k(5), second), /invalid_line/);
+  await assert.rejects(commit([{ n: 1, product: torch }], k(6), null), /invalid_line/);
+
+  // Объединение: всё дубля — товару, имя — синоним, дубль в архиве и без кода.
+  const dup = (await db.query("select save_product($1,null,'Дубль PREMIER','DUP-12345','шт','1',null,'0',null,'7') as id", [orgA])).rows[0].id;
+  await user(b);
+  await assert.rejects(db.query("select merge_products($1,$2,$3)", [orgA, dup, premier]), /not_a_member/);
+  await user(a);
+  await assert.rejects(db.query("select merge_products($1,$2,$2)", [orgA, dup]), /invalid_product/);
+  const merge = (await db.query("select merge_products($1,$2,$3) as id", [orgA, dup, premier])).rows[0].id;
+  assert.equal(await stock(premier), 217);
+  const merged = await product("Дубль PREMIER");
+  assert.deepEqual([merged.sku, merged.merged_into_id, Boolean(merged.archived_at)], [null, premier, true]);
+  const kept = await product("Лампа PREMIER-20");
+  assert.equal(kept.sku, "001-006-0020");
+  assert.ok(kept.aliases.includes("Дубль PREMIER"));
+  await assert.rejects(db.query("select set_product_archived($1,$2,false)", [orgA, dup]), /product_merged/);
+  await assert.rejects(db.query("select merge_products($1,$2,$3)", [orgA, dup, torch]), /invalid_product/);
+  await assert.rejects(commit([{ n: 1, product: dup }], k(7), second), /invalid_product/);
+  // Отмена: всё обратно, код дубля вернулся, синоним убран.
+  await db.query("select undo_product_merge($1,$2)", [orgA, merge]);
+  assert.equal(await stock(premier), 210);
+  assert.equal(await stock(dup), 7);
+  const back = await product("Дубль PREMIER");
+  assert.deepEqual([back.sku, back.merged_into_id, back.archived_at], ["DUP-12345", null, null]);
+  assert.ok(!(await product("Лампа PREMIER-20")).aliases.includes("Дубль PREMIER"));
+  await assert.rejects(db.query("select undo_product_merge($1,$2)", [orgA, merge]), /undo_expired/);
+  // Код дубля переходит товару без кода.
+  const noCode = (await db.query("select save_product($1,null,'Без кода',null,'шт','1') as id", [orgA])).rows[0].id;
+  await db.query("select merge_products($1,$2,$3)", [orgA, dup, noCode]);
+  assert.equal((await product("Без кода")).sku, "DUP-12345");
 });
 
 test("auto stock for sales: a checked sale invoice writes off the seller's choice or exact names; reversal and returns put it back", async () => {

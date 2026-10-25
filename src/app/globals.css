@@ -10683,3 +10683,31 @@ form label.catalog-products-filter {
   font-weight: 600;
   margin: 4px 0;
 }
+/* Товар: «Дубль? Объединить с…» и «Отменить объединение». */
+.product-merge {
+  display: grid;
+  gap: 10px;
+}
+.product-merge input[type="search"] {
+  width: 100%;
+  min-height: 48px;
+}
+.product-merge-picked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+}
+.product-merge .button {
+  justify-self: start;
+}
+.product-merge-undo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 12px;
+}

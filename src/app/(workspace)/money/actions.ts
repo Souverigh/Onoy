@@ -64,18 +64,24 @@ function failureCode(message: string) {
 
 /**
  * Выбор товаров по строкам фото: [{n, product}] — product это id товара или
- * null («Не списывать со склада»). Кривое — без выбора: база спишет только
- * точные совпадения названий.
+ * null («Не списывать» / «Не принимать на склад»); у прихода {product: null,
+ * new: true} — «Новый товар». Кривое — без выбора: база найдёт товар сама
+ * (продажа — точное название, приход — код или название).
  */
-function lineProductsInput(raw: FormDataEntryValue | null): { n: number; product: string | null }[] | null {
+function lineProductsInput(
+  raw: FormDataEntryValue | null,
+  purchase = false,
+): { n: number; product: string | null; new?: boolean }[] | null {
   if (typeof raw !== "string" || !raw) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > 200) return null;
-    const lines = parsed.map((item: { n?: unknown; product?: unknown }) => ({
-      n: Number(item?.n),
-      product: typeof item?.product === "string" && uuidPattern.test(item.product) ? item.product : null,
-    }));
+    const lines = parsed.map((item: { n?: unknown; product?: unknown; new?: unknown }) => {
+      const product = typeof item?.product === "string" && uuidPattern.test(item.product) ? item.product : null;
+      return purchase && !product && item?.new === true
+        ? { n: Number(item?.n), product, new: true }
+        : { n: Number(item?.n), product };
+    });
     return lines.every((l) => Number.isInteger(l.n) && l.n > 0 && l.n < 10000) ? lines : null;
   } catch {
     return null;
@@ -217,8 +223,8 @@ async function commitOperationOrRedirect(
     throw error;
   }
   if (!(Number(amount) > 0)) return { error: "amount" };
-  // Продажа по фото: какие строки списать со склада (выбор продавца в форме).
-  const lineProducts = operation === "sale" ? lineProductsInput(form.get("line_products")) : null;
+  // Продажа и приход по фото: какой товар у каждой строки (выбор в форме).
+  const lineProducts = operation === "payment" ? null : lineProductsInput(form.get("line_products"), operation === "purchase");
 
   const { db, organizationId } = await getContext();
   // Исходная сумма и курс — только если валюта суммы не валюта долга.
@@ -246,6 +252,7 @@ async function commitOperationOrRedirect(
           p_idempotency_key: idempotencyKey,
           p_document: documentId,
           ...(occurredAt ? { p_occurred_at: occurredAt } : {}),
+          ...(lineProducts && documentId ? { p_line_products: lineProducts } : {}),
         })
       : operation === "sale"
         ? await db.rpc(correction ? "commit_sale_correction" : "commit_sale", {

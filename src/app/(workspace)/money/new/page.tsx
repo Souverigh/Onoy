@@ -16,7 +16,7 @@ import { isCurrency } from "@/lib/currency";
 import { documentPages, signedPhotoUrl } from "@/lib/storage";
 import { draftData, type Draft } from "@/lib/drafts";
 import type { InvoiceLine, InvoiceResult } from "@/lib/adre/types";
-import type { StockChoices } from "@/lib/match";
+import { NEW_PRODUCT, type StockChoices } from "@/lib/match";
 
 type Operation = "purchase" | "sale" | "payment";
 type Party = { id: string; name: string; currency: string | null };
@@ -138,7 +138,8 @@ export default async function NewOperation({
   ]);
   const products = (productResult.data ?? []) as QuickProduct[];
   // Склад не загрузился — продажа всё равно пишется, просто без списания по выбору.
-  const stockProducts = (stockResult.data ?? []) as StockProduct[];
+  // Приход: без склада выбор по строкам не показываем — база найдёт товары сама.
+  const stockProducts = stockResult.error ? undefined : ((stockResult.data ?? []) as StockProduct[]);
   // Фото из другой формы — всегда по фото.
   const saleMode = !itemsKind || params.documentId ? "photo" : wantedMode;
   if (customerResult.error || supplierResult.error)
@@ -194,7 +195,7 @@ export default async function NewOperation({
   if (itemsKind && params.fix === "1" && existingDocument && params.from && /^[a-f0-9-]{36}$/i.test(params.from)) {
     const old = await db
       .from(kind === "sale" ? "sales" : "purchases")
-      .select(kind === "sale" ? "document_id,line_products" : "document_id")
+      .select("document_id,line_products")
       .eq("organization_id", organizationId)
       .eq("id", params.from)
       .maybeSingle();
@@ -203,7 +204,7 @@ export default async function NewOperation({
       const [oldLines, oldExtraction] = await Promise.all([
         db
           .from("document_lines")
-          .select("n,name_raw,qty,unit,price")
+          .select("n,name_raw,qty,unit,price,product_id")
           .eq("organization_id", organizationId)
           .eq("document_id", oldRow.document_id)
           .order("n"),
@@ -238,8 +239,14 @@ export default async function NewOperation({
         seller_edited: true,
       };
       const choices: StockChoices = {};
-      for (const c of Array.isArray(oldRow.line_products) ? (oldRow.line_products as { n?: unknown; product?: unknown }[]) : [])
-        if (typeof c?.n === "number") choices[c.n] = typeof c.product === "string" ? c.product : null;
+      for (const c of Array.isArray(oldRow.line_products) ? (oldRow.line_products as { n?: unknown; product?: unknown; new?: unknown }[]) : [])
+        if (typeof c?.n === "number")
+          choices[c.n] = typeof c.product === "string" ? c.product : c.new === true ? NEW_PRODUCT : null;
+      // Строка уже легла на товар (в том числе заведённый «Новым товаром») —
+      // исправление берёт его, а не заводит второй такой же.
+      for (const l of oldLines.data ?? [])
+        if (typeof l.product_id === "string" && (choices[Number(l.n)] === NEW_PRODUCT || !(Number(l.n) in choices)))
+          choices[Number(l.n)] = l.product_id;
       correction = { result, choices };
     }
   }
@@ -465,7 +472,7 @@ export default async function NewOperation({
             initialParty={initialParty}
             shopCurrency={shopCurrency}
             rates={rates}
-            stockProducts={itemsKind ? afterReplace(stockProducts) : undefined}
+            stockProducts={itemsKind && stockProducts ? afterReplace(stockProducts) : undefined}
             fixedDirection={fixedDirection}
             initialAmount={
               !prefill && params.amount && /^\d{1,14}(\.\d{1,2})?$/.test(params.amount)

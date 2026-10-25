@@ -152,15 +152,24 @@ export function RecognizedLines({
     <details className="recognized-lines" open={defaultOpen || Boolean(summary?.asking) || undefined}>
       <summary>
         Товары накладной · {lines.length} {lineWord(lines.length)}
-        {summary && <span className="muted"> · со склада {summary.writtenOff}</span>}
+        {summary &&
+          (stock?.purchase ? (
+            <span className="muted">
+              {" "}
+              · на склад {summary.writtenOff}
+              {summary.added > 0 ? ` · новых ${summary.added}` : ""}
+            </span>
+          ) : (
+            <span className="muted"> · со склада {summary.writtenOff}</span>
+          ))}
         {summary && summary.asking > 0 && <span className="sale-stock-asking"> · проверьте {summary.asking}</span>}
         {stock && (
           // Нажатие на «!» не должно сворачивать блок.
           <span className="sale-stock-tip" onClick={(e) => e.preventDefault()}>
             <InfoTip>
-              Нажмите на строку, чтобы исправить название, количество или цену. «✓ Со склада» - спишем с остатка.
-              Похожий товар спишем только после «Да» - название с фото запомним. «Не списывать» - строка останется в
-              накладной и долге клиента, склад не изменится.
+              {stock.purchase
+                ? "Нажмите на строку, чтобы исправить название, количество или цену. «✓ На склад» - приход ляжет на этот товар (нашли по коду или названию). Похожий - только после «Да», название с накладной запомним. «Новый товар» - заведём с кодом из накладной. «Не принимать» - строка останется в накладной и долге поставщику, склад не изменится."
+                : "Нажмите на строку, чтобы исправить название, количество или цену. «✓ Со склада» - спишем с остатка. Похожий товар спишем только после «Да» - название с фото запомним. «Не списывать» - строка останется в накладной и долге клиента, склад не изменится."}
             </InfoTip>
           </span>
         )}

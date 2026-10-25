@@ -6,7 +6,9 @@ import { money, quantity, decimalLessThan } from "@/lib/format";
 import { ProductForm, type ProductEntry } from "@/components/product-form";
 import { Submit } from "@/components/submit";
 import { QtyStepper } from "@/components/qty-stepper";
-import { adjustStock, archiveProduct } from "../actions";
+import { adjustStock, archiveProduct, undoProductMerge } from "../actions";
+import { ProductMerge } from "@/components/product-merge";
+import { ConfirmButton } from "@/components/confirm-button";
 import { STOCK_ERROR_TEXT } from "@/lib/stock";
 import { convertAmount, isCurrency, ratePair } from "@/lib/currency";
 import { officialRates } from "@/lib/fx";
@@ -50,12 +52,20 @@ export default async function ProductPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; saved?: string; stocked?: string; restored?: string; mode?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    saved?: string;
+    stocked?: string;
+    restored?: string;
+    mode?: string;
+    merged?: string;
+    unmerged?: string;
+  }>;
 }) {
   const { id } = await params;
-  const { error, saved, stocked, restored, mode } = await searchParams;
+  const { error, saved, stocked, restored, mode, merged, unmerged } = await searchParams;
   if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
-  const { db, organizationId, currency } = await getContext();
+  const { db, organizationId, currency, isOwner } = await getContext();
   const [productResult, movementsResult, returnsResult, photoResult, categoryData] = await Promise.all([
     db
       .from("product_balances")
@@ -79,11 +89,48 @@ export default async function ProductPage({
       .eq("product_id", id)
       .order("created_at", { ascending: false })
       .limit(50),
-    // Фото для каталога — из таблицы товаров (в представлении остатков его нет).
-    db.from("products").select("photo_path").eq("organization_id", organizationId).eq("id", id).maybeSingle(),
+    // Фото для каталога и объединение — из таблицы товаров (в представлении остатков их нет).
+    db.from("products").select("photo_path,merged_into_id").eq("organization_id", organizationId).eq("id", id).maybeSingle(),
     loadCategories(db, organizationId),
   ]);
-  const photoPath = (photoResult.data as { photo_path: string | null } | null)?.photo_path ?? null;
+  const photoRow = photoResult.data as { photo_path: string | null; merged_into_id: string | null } | null;
+  const photoPath = photoRow?.photo_path ?? null;
+  const mergedIntoId = photoRow?.merged_into_id ?? null;
+  // Объединение (владелец): с чем объединён, что объединили сюда за сутки, другие товары для выбора.
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const [mergedIntoResult, recentMergesResult, othersResult] = await Promise.all([
+    mergedIntoId
+      ? db.from("products").select("id,name").eq("organization_id", organizationId).eq("id", mergedIntoId).maybeSingle()
+      : null,
+    isOwner
+      ? db
+          .from("product_merges")
+          .select("id,from_id")
+          .eq("organization_id", organizationId)
+          .eq("into_id", id)
+          .is("undone_at", null)
+          .gt("created_at", dayAgo)
+          .order("created_at", { ascending: false })
+      : null,
+    isOwner && !mergedIntoId
+      ? db
+          .from("products")
+          .select("id,name,sku,aliases")
+          .eq("organization_id", organizationId)
+          .is("archived_at", null)
+          .is("merged_into_id", null)
+          .neq("id", id)
+          .order("name")
+          .range(0, 4999)
+      : null,
+  ]);
+  const mergedInto = (mergedIntoResult?.data as { id: string; name: string } | null) ?? null;
+  const recentMerges = (recentMergesResult?.data ?? []) as { id: string; from_id: string }[];
+  const mergedFrom = recentMerges.length
+    ? (((await db.from("products").select("id,name").eq("organization_id", organizationId).in("id", recentMerges.map((m) => m.from_id)))
+        .data ?? []) as { id: string; name: string }[])
+    : [];
+  const others = (othersResult?.data ?? []) as { id: string; name: string; sku: string | null; aliases: string[] | null }[];
   const product = productResult.data as (ProductEntry & { stock: string; archived_at: string | null; sold_count: number }) | null;
   if (productResult.error || !product) notFound();
   // Закупка в другой валюте — показываем и в валюте магазина по курсу сегодня.
@@ -157,11 +204,38 @@ export default async function ProductPage({
           </p>
         </div>
       </div>
-      {product.archived_at && (
+      {mergedInto ? (
         <p className="notice" role="status">
-          Товар в архиве - в продаже его не видно.
+          Товар объединён с <Link href={`/stock/${mergedInto.id}`}>{mergedInto.name}</Link> - остаток и все записи там.
+        </p>
+      ) : (
+        product.archived_at && (
+          <p className="notice" role="status">
+            Товар в архиве - в продаже его не видно.
+          </p>
+        )
+      )}
+      {(merged || unmerged) && (
+        <p className="notice success" role="status">
+          {merged ? "Товары объединены - остаток и записи дубля теперь здесь." : "Объединение отменено."}
         </p>
       )}
+      {recentMerges.map((m) => (
+        <form key={m.id} action={undoProductMerge} className="product-merge-undo">
+          <input type="hidden" name="id" value={id} />
+          <input type="hidden" name="merge" value={m.id} />
+          <span>Сюда объединён «{mergedFrom.find((p) => p.id === m.from_id)?.name ?? "товар"}».</span>
+          <ConfirmButton
+            className="button danger-outline"
+            danger={false}
+            confirmLabel="Да, разъединить"
+            message="Отменить объединение?"
+            text="Остаток, продажи, приходы и возвраты вернутся к прежнему товару, он снова будет в продаже."
+          >
+            Отменить объединение
+          </ConfirmButton>
+        </form>
+      ))}
       {(saved || restored) && (
         <p className="notice success" role="status">
           {restored ? "Товар снова в продаже." : "Сохранено."}
@@ -271,13 +345,20 @@ export default async function ProductPage({
         <h2>Изменить товар</h2>
         <ProductForm product={product} currency={currency} categories={categoryData.categories} hints={categoryData.hints} />
       </section>
-      <form action={archiveProduct} className="stock-archive">
-        <input type="hidden" name="id" value={product.id} />
-        <input type="hidden" name="archived" value={product.archived_at ? "false" : "true"} />
-        <button className="text-button" type="submit">
-          {product.archived_at ? "Вернуть в продажу" : "Убрать в архив (больше не продаём)"}
-        </button>
-      </form>
+      {isOwner && !mergedInto && others.length > 0 && (
+        <section className="panel">
+          <ProductMerge id={product.id} name={product.name} others={others} />
+        </section>
+      )}
+      {!mergedInto && (
+        <form action={archiveProduct} className="stock-archive">
+          <input type="hidden" name="id" value={product.id} />
+          <input type="hidden" name="archived" value={product.archived_at ? "false" : "true"} />
+          <button className="text-button" type="submit">
+            {product.archived_at ? "Вернуть в продажу" : "Убрать в архив (больше не продаём)"}
+          </button>
+        </form>
+      )}
     </>
   );
 }
