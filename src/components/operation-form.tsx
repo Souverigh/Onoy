@@ -246,6 +246,14 @@ export function OperationForm({
   // Номер последнего выбранного фото: ответ по старому фото, пришедший позже,
   // не должен перезаписать результат по новому.
   const photoRequest = useRef(0);
+  // Сумма и валюта, поставленные с фото накладной (не введённые продавцом):
+  // фото убрали или заменили — их стираем, новое фото посчитает заново.
+  const photoAmount = useRef<string | null>(null);
+  const photoCurrency = useRef<Currency | null>(null);
+  function setAmountFromPhoto(value: string) {
+    photoAmount.current = value;
+    setAmountValue(value);
+  }
   // Страницы накладной по порядку добавления. Исходные файлы — ужимаем при
   // каждой проверке, потому что степень сжатия зависит от числа страниц.
   const [pages, setPages] = useState<File[]>([]);
@@ -705,9 +713,19 @@ export function OperationForm({
       const paper = r.total_declared != null && r.total_declared > 0 ? r.total_declared : null;
       const twoTotals = paper != null && Math.abs(r.total_computed - paper) > TOLERANCE;
       if (r.total_computed > 0 && !twoTotals) {
-        setAmountValue((prev) => (prev.trim() ? prev : String(r.total_computed)));
+        // Проверка шла асинхронно — смотрим свежее значение, не из замыкания.
+        setAmountValue((prev) => {
+          if (prev.trim()) return prev;
+          photoAmount.current = String(r.total_computed);
+          return photoAmount.current;
+        });
         // Валюта написана на накладной ($, ₽) — сумма в ней.
-        if (r.currency_evidence === "symbol" && r.currency) setAmountCurrency((prev) => prev ?? (r.currency as Currency));
+        if (r.currency_evidence === "symbol" && r.currency)
+          setAmountCurrency((prev) => {
+            if (prev) return prev;
+            photoCurrency.current = r.currency as Currency;
+            return photoCurrency.current;
+          });
       }
     } else if (res.error === "photo_used") {
       setCheckNote(PHOTO_USED_TEXT);
@@ -781,6 +799,13 @@ export function OperationForm({
     setUseExisting(false);
     setCheckedPhoto(null);
     setCheckNote(null);
+    setConfirmedTotal(null);
+    // Сумма прежнего фото к новому не относится; введённую продавцом не трогаем.
+    if (photoAmount.current != null && amountFromInput(amountValue) === amountFromInput(photoAmount.current))
+      setAmountValue("");
+    if (photoCurrency.current && amountCurrency === photoCurrency.current) setAmountCurrency(null);
+    photoAmount.current = null;
+    photoCurrency.current = null;
     if (!next.length || (kind !== "purchase" && kind !== "sale")) {
       fillPagesInput([]);
       setChecking(false);
@@ -880,7 +905,9 @@ export function OperationForm({
     // Сумма пустая или стоял прежний итог строк — ставим новый итог.
     setAmountValue((prev) => {
       const entered = amountFromInput(prev);
-      return entered === 0 || entered === current.total_computed ? String(total) : prev;
+      if (entered !== 0 && entered !== current.total_computed) return prev;
+      photoAmount.current = String(total);
+      return photoAmount.current;
     });
   }, [checkedPhoto, stockLines, stockProducts, currentStockChoices, suggestionCurrency, shopCurrency]);
 
@@ -892,16 +919,17 @@ export function OperationForm({
     const total = linesTotal(lines);
     setCheckedPhoto({ ...checkedPhoto, result: { ...current, lines, total_computed: total, seller_edited: true } });
     // Исправление продажи: сумма всегда за строками, чтобы долг клиента совпал с накладной.
-    if (correcting || amountFromInput(amountValue) === current.total_computed) setAmountValue(String(total));
+    if (correcting || amountFromInput(amountValue) === current.total_computed) setAmountFromPhoto(String(total));
   }
 
   function takeSuggestion(value: number, key: "lines" | "paper") {
-    setAmountValue(String(value));
+    setAmountFromPhoto(String(value));
     setConfirmedTotal(key);
     if (localError === "amount") setLocalError(null);
     // Сумма с накладной — в её валюте (продавец нажал сам).
     if (suggestedCurrency) {
-      setAmountCurrency(suggestedCurrency === debtCurrency ? null : suggestedCurrency);
+      photoCurrency.current = suggestedCurrency === debtCurrency ? null : suggestedCurrency;
+      setAmountCurrency(photoCurrency.current);
       setRateValue("");
     }
   }
