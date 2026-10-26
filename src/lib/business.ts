@@ -16,6 +16,11 @@ export const MODULES = {
     label: "Каталог и заказы",
     description: "Ссылка на каталог для клиентов и их заказы в разделе «Заказы».",
   },
+  // Каждый размер и цвет — отдельный товар со своим остатком (product_models).
+  variants: {
+    label: "Размеры и цвета",
+    description: "Товар-модель с размерами и цветами: у каждого свой остаток.",
+  },
 } as const;
 
 export type ModuleId = keyof typeof MODULES;
@@ -35,13 +40,33 @@ export type Preset = {
   modules: readonly ModuleId[];
   /** Названия разделов меню вместо обычных (ключ — адрес раздела). */
   navLabels?: Readonly<Record<string, string>>;
+  /** Оси модели (VARIANT_AXES) по порядку; нет — размер и цвет. */
+  variantAxes?: readonly VariantAxisKey[];
 };
+
+/** Чем различаются товары одной модели и что подсказать к выбору. */
+export const VARIANT_AXES = {
+  size: {
+    label: "Размер",
+    suggest: ["XS", "S", "M", "L", "XL", "XXL", "3XL", "36", "38", "40", "42", "44", "46", "48", "50", "52"],
+  },
+  color: {
+    label: "Цвет",
+    suggest: ["Чёрный", "Белый", "Серый", "Синий", "Красный", "Зелёный", "Бежевый", "Коричневый", "Розовый"],
+  },
+} as const;
+
+export type VariantAxisKey = keyof typeof VARIANT_AXES;
 
 export const PRESETS = {
   shop: { label: "Магазин", modules: ["stock", "catalog"] },
   grocery: { label: "Продуктовый магазин", modules: ["stock", "catalog"] },
-  clothing: { label: "Одежда и обувь", modules: ["stock", "catalog"] },
-  clothing_rental: { label: "Прокат одежды", modules: ["stock", "catalog"], navLabels: { "/stock": "Вещи" } },
+  clothing: { label: "Одежда и обувь", modules: ["stock", "catalog", "variants"] },
+  clothing_rental: {
+    label: "Прокат одежды",
+    modules: ["stock", "catalog", "variants"],
+    navLabels: { "/stock": "Вещи" },
+  },
   restaurant: { label: "Кафе, ресторан", modules: ["stock"], navLabels: { "/stock": "Продукты" } },
   other: { label: "Другое", modules: ["stock", "catalog"] },
 } as const satisfies Record<string, Preset>;
@@ -80,3 +105,7 @@ export function moduleOverrides(type: BusinessType, chosen: readonly ModuleId[])
 /** Название раздела меню для вида бизнеса. */
 export const navLabel = (type: BusinessType, href: string, label: string) =>
   (PRESETS[type] as Preset).navLabels?.[href] ?? label;
+
+/** Оси модели для вида бизнеса. */
+export const variantAxes = (type: BusinessType): readonly VariantAxisKey[] =>
+  (PRESETS[type] as Preset).variantAxes ?? ["size", "color"];

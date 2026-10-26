@@ -10,7 +10,7 @@ export default async function NewProductPage({
   searchParams: Promise<{ error?: string; added?: string }>;
 }) {
   const { error, added } = await searchParams;
-  const { db, organizationId, currency } = await getContext();
+  const { db, organizationId, currency, modules } = await getContext();
   // «Добавить и ещё один»: показываем, что прошлый сохранился.
   const { categories, hints } = await loadCategories(db, organizationId);
   const last =
@@ -27,6 +27,14 @@ export default async function NewProductPage({
           <span className="eyebrow">СКЛАД</span>
           <h1>Новый товар</h1>
         </div>
+        {/* Одежда и обувь (модуль «variants»): одна модель — все размеры и цвета. */}
+        {modules.includes("variants") && (
+          <div className="page-heading-actions">
+            <Link className="button" href="/stock/model/new">
+              С размерами и цветами
+            </Link>
+          </div>
+        )}
       </div>
       {last && (
         <p className="notice success" role="status">

@@ -60,6 +60,10 @@
   `.order-choice-mark`, имя и телефон `.order-choice-main` слева, долг
   `.order-choice-side` справа; выбранная — зелёная). Под списком главная
   кнопка и `.text-button` в одну строку (`.order-actions`).
+- Товар с размерами и цветами — `ModelForm` (`/stock/model/…`): ось —
+  `fieldset.model-axis` с чипами `.model-value` (`.active` — можно убрать) и
+  подсказками `.category-chip`, «Свой вариант» — `.model-axis-add`; остатки —
+  `table.variant-grid` (число `.variant-cell`, новое — поле `.variant-qty`).
 - Выбор строкой внутри `form` — селектор `form label.<класс>`: общее правило
   `form label` (колонка, отступ снизу 18px) и полей (`width: 100%`,
   `min-height: 48px`) иначе растягивает строку и рисует огромный кружок.

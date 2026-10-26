@@ -32,7 +32,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 29);
+  assert.equal(rows.length, 30);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -3988,4 +3988,83 @@ test("business profile: existing shops stay untouched, only the owner sets the t
     from: { type: null, modules: null },
     to: { type: "restaurant", modules: ["+catalog", "-stock"] },
   });
+});
+
+test("product models: sizes and colors become ordinary products, existing products stay untouched", async () => {
+  const seller = "44444444-4444-4444-8444-444444444444";
+  await owner();
+  // Миграция: у всех прежних товаров колонки пустые.
+  assert.equal((await db.query("select count(*)::int as n from products where model_id is not null or variant_attrs is not null")).rows[0].n, 0);
+  const before = (await db.query("select id,name,sale_price from products where organization_id=$1 order by id", [orgA])).rows;
+
+  const axes = (sizes, colors = ["Чёрный"]) => JSON.stringify([{ key: "size", values: sizes }, { key: "color", values: colors }]);
+  const rows = (list) => JSON.stringify(list.map(([size, color, qty]) => ({ attrs: { size, color }, qty })));
+  const save = (model, name, ax, rs, price = "1200", apply = false) =>
+    db.query("select save_product_model($1,$2,$3,$4::jsonb,$5::jsonb,$6,'700',null,$7) as id", [orgA, model, name, ax, rs, price, apply]);
+
+  // Продавец тоже может (товары меняют все участники), чужой — нет.
+  await user(b);
+  await assert.rejects(save(null, "Футболка", axes(["S"]), rows([["S", "Чёрный", "1"]])), /not_a_member/);
+  await user(seller);
+  const model = (await save(null, " Футболка  Nike ", axes(["S", "M"]), rows([["S", "Чёрный", "3"], ["M", "Чёрный", "0"]]))).rows[0].id;
+  await owner();
+  let variants = (
+    await db.query(
+      "select p.name,p.unit,p.sale_price,p.purchase_price,p.variant_attrs,b.stock from products p join product_balances b on b.id=p.id where p.model_id=$1 order by p.name",
+      [model],
+    )
+  ).rows;
+  assert.deepEqual(
+    variants.map((v) => [v.name, v.unit, v.sale_price, v.purchase_price, Number(v.stock)]),
+    [
+      ["Футболка Nike (M, Чёрный)", "шт", "1200.00", "700.00", 0],
+      ["Футболка Nike (S, Чёрный)", "шт", "1200.00", "700.00", 3],
+    ],
+  );
+  assert.deepEqual(variants[1].variant_attrs, { size: "S", color: "Чёрный" });
+
+  // Новый размер и цвет: создаются только недостающие, старые не задваиваются и не меняются.
+  await user(a);
+  await save(model, "другое имя", axes(["S", "M", "L"], ["Чёрный", "Белый"]), rows([["S", "Чёрный", "5"], ["L", "Белый", "2"]]), "1500");
+  await owner();
+  variants = (await db.query("select name,sale_price from products where model_id=$1 order by name", [model])).rows;
+  assert.deepEqual(
+    variants.map((v) => [v.name, v.sale_price]),
+    [
+      ["Футболка Nike (L, Белый)", "1500.00"],
+      ["Футболка Nike (M, Чёрный)", "1200.00"],
+      ["Футболка Nike (S, Чёрный)", "1200.00"],
+    ],
+  );
+  const s = (await db.query("select b.stock from products p join product_balances b on b.id=p.id where p.name='Футболка Nike (S, Чёрный)'")).rows[0];
+  assert.equal(Number(s.stock), 3, "an existing size keeps its stock");
+  assert.deepEqual((await db.query("select axes from product_models where id=$1", [model])).rows[0].axes[0].values, ["S", "M", "L"]);
+
+  // «Цена для всех размеров» — только товарам этой модели.
+  await user(a);
+  await save(model, null, axes(["S", "M", "L"], ["Чёрный", "Белый"]), "[]", "1300", true);
+  await owner();
+  assert.deepEqual(
+    (await db.query("select distinct sale_price from products where model_id=$1", [model])).rows.map((r) => r.sale_price),
+    ["1300.00"],
+  );
+  assert.deepEqual((await db.query("select id,name,sale_price from products where organization_id=$1 and model_id is null order by id", [orgA])).rows, before);
+
+  // Мусор и занятые названия — отказ, ничего не создаётся.
+  await user(a);
+  await assert.rejects(save(null, "Куртка", axes(["S", "s"]), rows([["S", "Чёрный", "1"]])), /invalid_axes/);
+  await assert.rejects(save(null, "Куртка", axes(["S"]), rows([["XL", "Чёрный", "1"]])), /invalid_variants/);
+  await assert.rejects(save(null, "Куртка", axes(["S"]), JSON.stringify([{ attrs: { size: "S" }, qty: "1" }])), /invalid_variants/);
+  await assert.rejects(save(null, "Куртка", axes(["S"]), rows([["S", "Чёрный", "-1"]])), /invalid_variants/);
+  await assert.rejects(save(null, "Куртка", axes(["S"]), "[]"), /invalid_variants/);
+  await assert.rejects(save(null, "Футболка Nike", axes(["M"]), rows([["M", "Чёрный", "1"]])), /name_taken/);
+  await owner();
+  assert.equal((await db.query("select count(*)::int as n from product_models where organization_id=$1", [orgA])).rows[0].n, 1);
+
+  // Чужой магазин не видит модели; напрямую в таблицу не написать.
+  await user(b);
+  assert.equal((await db.query("select count(*)::int as n from product_models")).rows[0].n, 0);
+  await assert.rejects(db.query("insert into product_models(organization_id,name,axes) values ($1,'x','[]')", [orgB]), /permission denied/);
+  await owner();
+  assert.ok((await db.query("select count(*)::int as n from audit_events where action='product_model.saved' and entity_id=$1", [model])).rows[0].n >= 3);
 });

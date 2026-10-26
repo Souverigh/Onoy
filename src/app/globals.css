@@ -10977,3 +10977,114 @@ form label.catalog-products-filter {
   gap: 10px;
   margin: 0 0 12px;
 }
+
+/* Модель с размерами и цветами (model-form.tsx): оси с вариантами и сетка остатков. */
+.model-axis {
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.model-axis legend {
+  margin-bottom: 8px;
+  padding: 0;
+  font-weight: 600;
+}
+.model-axis-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.model-value {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 2px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+button.model-value.active {
+  border-color: var(--green-border);
+  background: var(--green-soft);
+  color: var(--green);
+  cursor: pointer;
+}
+.model-axis-add {
+  display: flex;
+  gap: 8px;
+  max-width: 480px;
+}
+.model-axis-add input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.model-axis-add .button {
+  flex: 0 0 auto;
+}
+.model-grid-block {
+  margin: 4px 0 18px;
+}
+.model-grid-title {
+  margin: 0 0 2px;
+  font-size: 17px;
+}
+.model-grid-block > .muted {
+  margin: 0 0 10px;
+}
+/* Сетка по содержимому, не на всю карточку. */
+table.variant-grid {
+  width: auto;
+}
+.variant-grid th,
+.variant-grid td {
+  padding: 4px;
+  text-align: center;
+  white-space: nowrap;
+}
+.variant-grid tbody th {
+  text-align: left;
+  font-weight: 600;
+}
+form .variant-qty,
+.variant-qty {
+  width: 72px;
+  min-width: 56px;
+  min-height: 40px;
+  text-align: center;
+}
+.variant-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  min-height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+.variant-cell.muted {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 13px;
+}
+.variant-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.variant-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}

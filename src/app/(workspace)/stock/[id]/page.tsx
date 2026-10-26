@@ -90,10 +90,12 @@ export default async function ProductPage({
       .order("created_at", { ascending: false })
       .limit(50),
     // Фото для каталога и объединение — из таблицы товаров (в представлении остатков их нет).
-    db.from("products").select("photo_path,merged_into_id").eq("organization_id", organizationId).eq("id", id).maybeSingle(),
+    db.from("products").select("photo_path,merged_into_id,model_id").eq("organization_id", organizationId).eq("id", id).maybeSingle(),
     loadCategories(db, organizationId),
   ]);
-  const photoRow = photoResult.data as { photo_path: string | null; merged_into_id: string | null } | null;
+  const photoRow = photoResult.data as { photo_path: string | null; merged_into_id: string | null; model_id?: string | null } | null;
+  // Размер или цвет модели (миграция 20261029100000) — ссылка на все её товары.
+  const modelId = photoRow?.model_id ?? null;
   const photoPath = photoRow?.photo_path ?? null;
   const mergedIntoId = photoRow?.merged_into_id ?? null;
   // Объединение (владелец): с чем объединён, что объединили сюда за сутки, другие товары для выбора.
@@ -202,6 +204,11 @@ export default async function ProductPage({
             {costInShop && ` (≈ ${costInShop} по курсу сегодня)`}
             {product.sold_count > 0 && ` · продаж за 90 дней: ${product.sold_count}`}
           </p>
+          {modelId && (
+            <Link className="text-button" href={`/stock/model/${modelId}`}>
+              Все размеры и цвета модели →
+            </Link>
+          )}
         </div>
       </div>
       {mergedInto ? (

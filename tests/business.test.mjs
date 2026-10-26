@@ -13,8 +13,9 @@ import {
 
 test("business: a shop without a type (every shop before the migration) keeps every section and its names", () => {
   assert.equal(businessType(null), "shop");
-  assert.deepEqual(resolveModules(null, null), MODULE_IDS);
-  assert.deepEqual(resolveModules(undefined, []), MODULE_IDS);
+  // Ровно то, что было до видов бизнеса: склад и каталог, без новых модулей.
+  assert.deepEqual(resolveModules(null, null), ["stock", "catalog"]);
+  assert.deepEqual(resolveModules(undefined, []), ["stock", "catalog"]);
   for (const [href, label] of [["/stock", "Склад"], ["/orders", "Заказы"], ["/customers", "Клиенты"]])
     assert.equal(navLabel(businessType(null), href, label), label);
 });
@@ -38,7 +39,9 @@ test("business: owner overrides switch modules on and off, garbage is ignored", 
   assert.deepEqual(resolveModules("restaurant", ["+catalog"]), ["stock", "catalog"]);
   assert.deepEqual(resolveModules("shop", ["-catalog"]), ["stock"]);
   assert.deepEqual(resolveModules("shop", ["-stock", "-catalog"]), []);
-  assert.deepEqual(resolveModules("shop", ["+rocket", "catalog", "-", "-nothing"]), MODULE_IDS);
+  assert.deepEqual(resolveModules("shop", ["+rocket", "catalog", "-", "-nothing"]), ["stock", "catalog"]);
+  assert.deepEqual(resolveModules("shop", ["+variants"]), MODULE_IDS);
+  assert.deepEqual(resolveModules("clothing", null), ["stock", "catalog", "variants"]);
 });
 
 test("business: overrides saved from the chosen switches give back exactly those switches", () => {
