@@ -13,7 +13,8 @@ export default async function Layout({
   const sub = subscriptionState(ctx.paidUntil, ctx.blocked?.reason, Boolean(ctx.blocked), bishkekDate());
   const date = (d: string) =>
     new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long" }).format(new Date(`${d}T12:00:00+06:00`));
-  // Бейджи: заявки клиентов (деньги, главный), новые заказы из каталога и
+  // Бейджи: заявки клиентов (деньги, главный), необработанные заказы из
+  // каталога (новые и начатые, ещё не проданные) и
   // накладные с расхождением.
   const [review, claims, orders] = await Promise.all([
     ctx.db
@@ -32,7 +33,7 @@ export default async function Layout({
       .from("catalog_orders")
       .select("id", { count: "exact", head: true })
       .eq("organization_id", ctx.organizationId)
-      .eq("status", "new"),
+      .in("status", ["new", "accepted"]),
   ]);
   return (
     <Shell

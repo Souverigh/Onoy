@@ -26,12 +26,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
     .select("id", { count: "exact", head: true })
     .eq("organization_id", organizationId)
     .in("status", ["review", "failed"]);
-  // Новые заказы из каталога (задача № 12) — и владельцу, и продавцу.
+  // Необработанные заказы из каталога (задача № 12): новые и начатые — и владельцу, и продавцу.
   const orders = db
     .from("catalog_orders")
     .select("id", { count: "exact", head: true })
     .eq("organization_id", organizationId)
-    .eq("status", "new");
+    .in("status", ["new", "accepted"]);
   // Продавцу итоги магазина не показываем (ТЗ) — и не считаем.
   if (!isOwner) {
     const today = bishkekDate();

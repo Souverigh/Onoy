@@ -149,7 +149,7 @@ export function Dashboard({
       )}
       {newOrders > 0 && (
         <Link className="notice claims-notice" href={href("/orders")}>
-          Новые заказы из каталога: {newOrders} →
+          Заказы из каталога ждут продажи: {newOrders} →
         </Link>
       )}
       {reviewCount > 0 && (
