@@ -30,7 +30,7 @@ export const getContext = cache(async () => {
   const { db, user } = await getUserContext();
   const { data, error } = await db
     .from("organization_members")
-    .select("organization_id,role,disabled_at,organizations(name,plan,paid_until,blocked_at,blocked_reason,currency,business_type,module_overrides)")
+    .select("organization_id,role,disabled_at,organizations(name,plan,paid_until,blocked_at,blocked_reason,currency,business_type,module_overrides,created_at)")
     .eq("user_id", user.id)
     .order("created_at")
     .limit(1)
@@ -51,6 +51,7 @@ export const getContext = cache(async () => {
     currency: string | null;
     business_type: string | null;
     module_overrides: string[] | null;
+    created_at: string | null;
   };
   return {
     db,
@@ -70,6 +71,8 @@ export const getContext = cache(async () => {
     business: businessType(org.business_type),
     /** Включённые модули: по виду бизнеса с поправками владельца. */
     modules: resolveModules(org.business_type, org.module_overrides),
+    /** Когда магазин открыт — новому магазину старые «Что нового» не показываем. */
+    shopCreatedAt: org.created_at,
   };
 });
 

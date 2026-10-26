@@ -6,6 +6,8 @@ import { Icon, type IconName } from "./icon";
 import { InstallApp } from "./install-app";
 import { REPORT_TAB_KEY, reportTabHref } from "./report-tabs";
 import { DEFAULT_BUSINESS, MODULE_IDS, navLabel, type BusinessType, type ModuleId } from "@/lib/business";
+import { newestNews, unreadNews, type NewsEntry } from "@/lib/changelog";
+import { WhatsNewDialog, readNewsSeen, saveNewsSeen } from "./whats-new";
 
 /** Адрес, название, иконка и модуль (src/lib/business.ts), если раздел не из ядра. */
 type NavItem = [string, string, IconName, ModuleId?];
@@ -23,6 +25,8 @@ const allNav: NavItem[] = [
   // Заказы клиентов из каталога (задача № 12) — видят все, продажу делает и продавец.
   ["/orders", "Заказы", "cart", "catalog"],
   ["/documents", "Документы", "camera"],
+  // «Что нового» (src/lib/changelog.ts): окно на главной и лента обновлений.
+  ["/news", "Что нового", "spark"],
   ["/settings", "Настройки", "settings"],
 ];
 /** Разделы только для владельца (итоги, заявки клиентов). */
@@ -59,6 +63,8 @@ export function Shell({
   isOwner = true,
   business = DEFAULT_BUSINESS,
   modules = MODULE_IDS,
+  news = [],
+  shopCreatedAt = null,
 }: {
   name: string;
   children: React.ReactNode;
@@ -74,9 +80,27 @@ export function Shell({
   business?: BusinessType;
   /** Включённые модули: разделы выключенных скрыты из меню, данные остаются. */
   modules?: readonly ModuleId[];
+  /** «Что нового» для этого человека (роль, модули) и когда открыт магазин. */
+  news?: NewsEntry[];
+  shopCreatedAt?: string | null;
 }) {
   const path = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Непрочитанное «Что нового» — по отметке в браузере; в разделе — прочитано.
+  const [unread, setUnread] = useState<NewsEntry[]>([]);
+  useEffect(() => {
+    if (preview) return;
+    if (path === "/news") {
+      saveNewsSeen(newestNews(news));
+      setUnread([]);
+      return;
+    }
+    setUnread(unreadNews(news, readNewsSeen(), new Date().toISOString().slice(0, 10), shopCreatedAt));
+  }, [path, news, shopCreatedAt, preview]);
+  const closeNews = () => {
+    saveNewsSeen(newestNews(news));
+    setUnread([]);
+  };
   // Переход по ссылке или Esc закрывают меню.
   useEffect(() => setMenuOpen(false), [path]);
   // Выпадающие меню на <details> («Скачать», «⋯ Ещё»): нажатие мимо меню,
@@ -142,6 +166,8 @@ export function Shell({
       <span className="nav-badge">{ordersCount}</span>
     ) : href === "/documents" && reviewCount > 0 ? (
       <span className="nav-badge nav-badge-muted">{reviewCount}</span>
+    ) : href === "/news" && unread.length > 0 ? (
+      <span className="nav-badge nav-badge-muted">{unread.length}</span>
     ) : null;
 
   // Внизу у продавца вместо «Итога дня» (итоги — у владельца) — «Поставщики».
@@ -212,6 +238,8 @@ export function Shell({
                 <span className="nav-badge">{ordersCount}</span>
               ) : reviewCount > 0 ? (
                 <span className="nav-badge nav-badge-muted">{reviewCount}</span>
+              ) : unread.length > 0 ? (
+                <span className="nav-badge nav-badge-muted">{unread.length}</span>
               ) : null)}
           </button>
         </nav>
@@ -251,6 +279,8 @@ export function Shell({
         <main className="content">
           {/* Предложение поставить значок на телефон — только на главной, можно скрыть. */}
           {!preview && path === "/" && <InstallApp variant="banner" />}
+          {/* После обновления — один раз окном; «Понятно» — до следующего. */}
+          {!preview && path === "/" && unread.length > 0 && <WhatsNewDialog entries={unread} onClose={closeNews} />}
           {children}
         </main>
       </div>

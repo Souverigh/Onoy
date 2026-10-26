@@ -2,6 +2,7 @@ import { getContext } from "@/lib/context";
 import { Shell } from "@/components/shell";
 import { subscriptionState } from "@/lib/subscription";
 import { bishkekDate } from "@/lib/day-summary";
+import { CHANGELOG, newsFor } from "@/lib/changelog";
 export const dynamic = "force-dynamic";
 export default async function Layout({
   children,
@@ -42,6 +43,8 @@ export default async function Layout({
       isOwner={ctx.isOwner}
       business={ctx.business}
       modules={ctx.modules}
+      news={newsFor(CHANGELOG, ctx.isOwner, ctx.modules)}
+      shopCreatedAt={ctx.shopCreatedAt}
     >
       {sub.kind === "blocked" && (
         <p className="form-error shop-blocked" role="alert">

@@ -21,7 +21,8 @@ export type IconName =
   | "chat"
   | "phone"
   | "cart"
-  | "more";
+  | "more"
+  | "spark";
 const paths: Record<IconName, string> = {
   home: "M3 10 12 3l9 7v10H3V10Zm6 10v-7h6v7",
   people:
@@ -49,6 +50,7 @@ const paths: Record<IconName, string> = {
   cart: "M3 4h2.5l2.2 10.5h10.6L20.5 7.5H6.4M9 20.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm8.5 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z",
   more: "M5 10.8a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm7 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm7 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Z",
   user: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z",
+  spark: "M12 3v4m0 10v4M3 12h4m10 0h4M6 6l2.5 2.5m7 7L18 18M6 18l2.5-2.5m7-7L18 6",
 };
 export function Icon({ name }: { name: IconName }) {
   return (

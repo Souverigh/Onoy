@@ -11350,3 +11350,47 @@ form .variant-qty,
     font-size: 14px;
   }
 }
+/* «Что нового»: окно на главной (whats-new.tsx) и раздел /news. */
+.news-dialog {
+  width: min(480px, calc(100vw - 32px));
+}
+.news-dialog .eyebrow {
+  display: block;
+  margin-bottom: 6px;
+}
+.news-list {
+  display: grid;
+  gap: 14px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.news-list li {
+  display: grid;
+  gap: 4px;
+}
+.news-list li + li {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.news-list p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1.45;
+}
+.news-list .text-button {
+  justify-self: start;
+  padding-left: 0;
+  color: var(--green);
+  font-weight: 600;
+}
+.news-day {
+  margin-bottom: 16px;
+}
+.news-date {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
