@@ -70,6 +70,12 @@
   только за переключателем «Товар уже есть в магазине» (так же в
   `ProductForm` — свёрнутым `details.more-fields`). Остатки —
   `table.variant-grid` (число `.variant-cell`, новое — поле `.variant-qty`).
+- Размеры одной модели везде собираются в одну запись (`groupByModel`,
+  порядок размеров — `sortVariants` из `lib/product-model.ts`): на складе —
+  строка модели с метками `.stock-variant` (остаток, мало — `.low`); в
+  поиске товара продажи — `.product-model-result` с кнопками
+  `.product-size`; в каталоге клиента — карточка `.catalog-model` с
+  кнопками `.catalog-size` и строками `.catalog-size-row` со счётчиком.
 - Выбор строкой внутри `form` — селектор `form label.<класс>`: общее правило
   `form label` (колонка, отступ снизу 18px) и полей (`width: 100%`,
   `min-height: 48px`) иначе растягивает строку и рисует огромный кружок.

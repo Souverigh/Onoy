@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { phoneText } from "@/lib/format";
 import { normalizePhone } from "@/lib/contacts";
 import { CatalogView } from "@/components/catalog-view";
+import { parseAxes } from "@/lib/product-model";
 import { productPhotoUrl, productThumbUrl } from "@/lib/product-photo";
 import { loadCatalog } from "@/lib/catalog-cache";
 
@@ -76,8 +77,11 @@ export default async function CatalogPage({ params }: { params: Promise<{ token:
           photo: productPhotoUrl(p.photo),
           thumb: productThumbUrl(p.photo),
           category: p.category ?? null,
+          model: p.model ?? null,
+          variant: p.variant ?? null,
         }))}
         categories={(catalog.categories ?? []).map((c) => ({ id: c.id, name: c.name, parent_id: c.parent }))}
+        models={(catalog.models ?? []).map((m) => ({ id: m.id, name: m.name, axes: parseAxes(m.axes) }))}
       />
     </main>
   );

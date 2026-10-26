@@ -46,3 +46,59 @@ export function parseAxes(value: unknown): ModelAxis[] {
       : [],
   );
 }
+
+/** Модель: название и оси с вариантами по порядку (product_models). */
+export type ModelInfo = { id: string; name: string; axes: ModelAxis[] };
+
+/** Товар модели: какая модель и какой он размер/цвет. */
+export type VariantOf = { model: string; attrs: VariantAttrs };
+
+/** «S, Чёрный» — размер и цвет товара модели. */
+export const variantLabel = (axes: readonly ModelAxis[], attrs: VariantAttrs | null | undefined) =>
+  axes.map((a) => attrs?.[a.key]).filter(Boolean).join(", ");
+
+/**
+ * Товары модели по порядку её осей: S, M, L — как в модели, а не по
+ * алфавиту (L, M, S). Значение, которого в модели нет, — в конце.
+ */
+export function sortVariants<T>(items: readonly T[], axes: readonly ModelAxis[], attrsOf: (item: T) => VariantAttrs | null | undefined): T[] {
+  const rank = (item: T) =>
+    axes.map((a) => {
+      const i = a.values.indexOf(attrsOf(item)?.[a.key] ?? "");
+      return i < 0 ? a.values.length : i;
+    });
+  // Цвет (вторая ось) — главнее: «Чёрный: S, M, L», потом «Белый: S, M, L».
+  const order = (r: number[]) => [...r.slice(1), r[0]];
+  return [...items].sort((x, y) => {
+    const a = order(rank(x)),
+      b = order(rank(y));
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i];
+    return 0;
+  });
+}
+
+export type Grouped<T> = { kind: "item"; item: T } | { kind: "model"; model: string; items: T[] };
+
+/**
+ * Список с товарами моделей, собранными в одну запись на месте первого из
+ * них; остальные — как были. Порядок не меняется.
+ */
+export function groupByModel<T>(items: readonly T[], modelOf: (item: T) => string | null | undefined): Grouped<T>[] {
+  const out: Grouped<T>[] = [];
+  const groups = new Map<string, { kind: "model"; model: string; items: T[] }>();
+  for (const item of items) {
+    const model = modelOf(item);
+    if (!model) {
+      out.push({ kind: "item", item });
+      continue;
+    }
+    const group = groups.get(model);
+    if (group) group.items.push(item);
+    else {
+      const created = { kind: "model" as const, model, items: [item] };
+      groups.set(model, created);
+      out.push(created);
+    }
+  }
+  return out;
+}

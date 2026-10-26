@@ -17,6 +17,7 @@ import { documentPages, signedPhotoUrl } from "@/lib/storage";
 import { draftData, type Draft } from "@/lib/drafts";
 import type { InvoiceLine, InvoiceResult } from "@/lib/adre/types";
 import { NEW_PRODUCT, type StockChoices } from "@/lib/match";
+import { loadVariants } from "@/lib/model-data";
 
 type Operation = "purchase" | "sale" | "payment";
 type Party = { id: string; name: string; currency: string | null };
@@ -116,7 +117,12 @@ export default async function NewOperation({
           .order("name")
           .range(0, 4999)
       : Promise.resolve({ data: [] as StockProduct[], error: null });
-  const [customerResult, supplierResult, rates, productResult, stockResult] = await Promise.all([
+  // Размеры одной модели — одной строкой в поиске товара (миграция 20261029100000).
+  const variantsRequest =
+    itemsKind && !params.documentId && wantedMode === "items"
+      ? loadVariants(db, organizationId)
+      : Promise.resolve({ variants: {}, models: {} });
+  const [customerResult, supplierResult, rates, productResult, stockResult, variantData] = await Promise.all([
     db
       .from("customer_balances")
       .select("id,name,phone,aliases,balance,credit_limit,currency")
@@ -137,6 +143,7 @@ export default async function NewOperation({
     officialRates(["KGS", "USD", "RUB"]),
     productsRequest,
     stockRequest,
+    variantsRequest,
   ]);
   const products = (productResult.data ?? []) as QuickProduct[];
   // Склад не загрузился — продажа всё равно пишется, просто без списания по выбору.
@@ -457,6 +464,8 @@ export default async function NewOperation({
             kind={kind === "purchase" ? "purchase" : "sale"}
             customers={kind === "purchase" ? suppliers : customers}
             products={afterReplace(products)}
+            variants={variantData.variants}
+            models={variantData.models}
             shopCurrency={shopCurrency}
             rates={rates}
             idempotencyKey={randomUUID()}

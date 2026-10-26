@@ -3550,7 +3550,17 @@ test("catalog: owner opens a link; anyone with it sees names and sale prices onl
   assert.ok(ids.includes(shown));
   for (const id of [free, hidden, old]) assert.ok(!ids.includes(id));
   // Ничего лишнего: ни остатков, ни закупки, ни кодов.
-  assert.deepEqual(Object.keys(page.products.find((p) => p.id === shown)).sort(), ["category", "id", "name", "photo", "price", "unit"]);
+  // Модель и размер (20261030100000) — не секрет; закупки и остатков нет.
+  assert.deepEqual(Object.keys(page.products.find((p) => p.id === shown)).sort(), [
+    "category",
+    "id",
+    "model",
+    "name",
+    "photo",
+    "price",
+    "unit",
+    "variant",
+  ]);
   assert.equal(page.products.find((p) => p.id === shown).price, "360.00");
   assert.equal(await catalog("0".repeat(32)), null);
   // Фото товара: путь только своего магазина и товара; в каталоге — путь.
@@ -4067,4 +4077,25 @@ test("product models: sizes and colors become ordinary products, existing produc
   await assert.rejects(db.query("insert into product_models(organization_id,name,axes) values ($1,'x','[]')", [orgB]), /permission denied/);
   await owner();
   assert.ok((await db.query("select count(*)::int as n from audit_events where action='product_model.saved' and entity_id=$1", [model])).rows[0].n >= 3);
+});
+
+test("catalog: products of a model carry the model and size, models come with their order of sizes", async () => {
+  await user(a);
+  const token = (await db.query("select open_catalog_link($1) as t", [orgA])).rows[0].t;
+  await owner();
+  await db.exec("SET ROLE anon;");
+  const catalog = (await db.query("select get_catalog($1) as c", [token])).rows[0].c;
+  await owner();
+  const shirt = catalog.products.find((p) => p.name === "Футболка Nike (M, Чёрный)");
+  assert.ok(shirt.model);
+  assert.deepEqual(shirt.variant, { size: "M", color: "Чёрный" });
+  assert.deepEqual(
+    catalog.models.map((m) => [m.id, m.name, m.axes[0].values]),
+    [[shirt.model, "Футболка Nike", ["S", "M", "L"]]],
+  );
+  // Обычные товары — как раньше, без модели.
+  const plain = catalog.products.find((p) => p.name === "Автомат 16А возврат");
+  assert.equal(plain.model, null);
+  assert.equal(plain.variant, null);
+  assert.deepEqual(Object.keys(catalog).sort(), ["categories", "currency", "models", "products", "shop_name", "shop_phone"]);
 });

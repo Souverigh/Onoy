@@ -21,6 +21,7 @@ import { NoteField } from "./note-field";
 import { MakerField, type Maker } from "./maker-field";
 import { money, quantity } from "@/lib/format";
 import { searchProducts } from "@/lib/match";
+import { groupByModel, sortVariants, variantLabel, type ModelInfo, type VariantOf } from "@/lib/product-model";
 import { PRODUCT_UNITS, STOCK_ERROR_TEXT, stockNumber } from "@/lib/stock";
 import { CURRENCIES, CURRENCY_SIGN, convertAmount, formatRate, isCurrency, partyCurrency, ratePair, rateInput, type Currency } from "@/lib/currency";
 import { creditLimitExceeded } from "@/lib/credit-limit";
@@ -73,6 +74,8 @@ export function SaleItemsForm({
   kind = "sale",
   customers,
   products: initialProducts,
+  variants = {},
+  models = {},
   shopCurrency,
   rates,
   idempotencyKey,
@@ -84,6 +87,9 @@ export function SaleItemsForm({
   /** Клиенты для продажи, поставщики для прихода. */
   customers: Customer[];
   products: QuickProduct[];
+  /** Товары моделей с размерами (model-data.ts): в поиске модель — одной строкой с размерами. */
+  variants?: Record<string, VariantOf>;
+  models?: Record<string, ModelInfo>;
   shopCurrency: Currency;
   rates: RateQuotes;
   idempotencyKey: string;
@@ -299,7 +305,17 @@ export function SaleItemsForm({
 
   const trimmed = query.trim();
   const inCart = new Set(lines.map((l) => l.product.id));
-  const results = trimmed ? searchProducts(trimmed, products, 8) : [];
+  // Размеры одной модели — одной строкой подсказки с кнопками размеров.
+  const results = trimmed
+    ? groupByModel(searchProducts(trimmed, products, 40), (p) => (models[variants[p.id]?.model ?? ""] ? variants[p.id].model : null)).slice(0, 8)
+    : [];
+  // Все размеры модели (не только найденные), по порядку S, M, L.
+  const sizesOf = (modelId: string) =>
+    sortVariants(
+      products.filter((p) => variants[p.id]?.model === modelId),
+      models[modelId].axes,
+      (p) => variants[p.id]?.attrs,
+    );
   // Подсказки строки ввода: выделенная (стрелки), открыты — пока в поиске есть текст.
   const [active, setActive] = useState(0);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -686,8 +702,11 @@ export function SaleItemsForm({
                       // Enter добавляет выбранный товар, а не отправляет форму.
                       e.preventDefault();
                       if (!trimmed) return;
-                      if (active < results.length) add(results[active]);
-                      else startCreating();
+                      const picked = results[active];
+                      if (!picked) startCreating();
+                      else if (picked.kind === "item") add(picked.item);
+                      // Модель с одним размером — сразу его; иначе выбирают размер кнопкой.
+                      else if (sizesOf(picked.model).length === 1) add(sizesOf(picked.model)[0]);
                     } else if (e.key === "Escape") {
                       setQuery("");
                     }
@@ -695,7 +714,35 @@ export function SaleItemsForm({
                 />
                 {dropdownOpen && (
                   <ul id="product-search-results" className="product-results sale-sheet-dropdown" role="listbox">
-                    {results.map((p, i) => (
+                    {results.map((r, i) => {
+                      if (r.kind === "model") {
+                        const model = models[r.model];
+                        return (
+                          <li key={r.model} role="option" aria-selected={i === active} className="product-model-result">
+                            <div className={i === active ? "active" : ""} onMouseEnter={() => setActive(i)}>
+                              <span className="product-result-name">{model.name}</span>
+                              <small className="muted">Выберите размер:</small>
+                              <span className="product-sizes">
+                                {sizesOf(r.model).map((p) => (
+                                  <button
+                                    key={p.id}
+                                    type="button"
+                                    tabIndex={-1}
+                                    className={inCart.has(p.id) ? "product-size in-cart" : "product-size"}
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => add(p)}
+                                  >
+                                    {variantLabel(model.axes, variants[p.id]?.attrs)}
+                                    <small>{quantity(p.stock)}</small>
+                                  </button>
+                                ))}
+                              </span>
+                            </div>
+                          </li>
+                        );
+                      }
+                      const p = r.item;
+                      return (
                       <li key={p.id} role="option" aria-selected={i === active}>
                         <button
                           type="button"
@@ -714,7 +761,8 @@ export function SaleItemsForm({
                           </small>
                         </button>
                       </li>
-                    ))}
+                      );
+                    })}
                     <li role="option" aria-selected={active === results.length}>
                       <button
                         type="button"

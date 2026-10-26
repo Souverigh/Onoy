@@ -9,6 +9,7 @@ import { ClientPromo } from "./client-promo";
 import { loadMyOrders, submitCatalogOrder, type OrderResult } from "@/app/catalog/[token]/actions";
 import { ClientOrders } from "./client-orders";
 import { CLIENT_ORDER_STATUS, MY_ORDERS_LIMIT, type ClientOrder } from "@/lib/client-orders";
+import { groupByModel, sortVariants, variantLabel, type ModelInfo, type VariantAttrs } from "@/lib/product-model";
 
 /** photo — адрес фото товара, thumb — его миниатюры (публичное хранилище) или null. */
 export type CatalogItem = {
@@ -20,6 +21,9 @@ export type CatalogItem = {
   thumb: string | null;
   /** Категория товара; null — без категории («Другое»). */
   category: string | null;
+  /** Размер/цвет модели (миграция 20261030100000): модель — одной карточкой. */
+  model?: string | null;
+  variant?: VariantAttrs | null;
 };
 
 /** Отбор «Другое» — товары без категории. */
@@ -74,6 +78,7 @@ export function CatalogView({
   currency,
   products,
   categories,
+  models = [],
 }: {
   token: string;
   shopName: string;
@@ -81,6 +86,8 @@ export function CatalogView({
   currency: string;
   products: CatalogItem[];
   categories: Category[];
+  /** Модели с размерами: их товары — одной карточкой с выбором размера. */
+  models?: ModelInfo[];
 }) {
   const [query, setQuery] = useState("");
   // Категория и подкатегория (просьба пользователя 23.10.2026); null — все товары.
@@ -185,7 +192,13 @@ export function CatalogView({
     return products.filter((p) => p.category && ids.has(p.category));
   }, [top, sub, products, categories]);
   const found = useMemo(() => (trimmed ? searchProducts(trimmed, inCategory, 200) : inCategory), [trimmed, inCategory]);
-  const more = found.length > shown;
+  // Размеры одной модели — одной карточкой на месте первого найденного.
+  const modelById = useMemo(() => new Map(models.map((m) => [m.id, m])), [models]);
+  const entries = useMemo(
+    () => groupByModel(found, (p) => (p.model && modelById.has(p.model) ? p.model : null)),
+    [found, modelById],
+  );
+  const more = entries.length > shown;
   useEffect(() => {
     const target = end.current;
     if (!more || !target || typeof IntersectionObserver === "undefined") return;
@@ -436,6 +449,132 @@ export function CatalogView({
     }
   }
 
+  const itemRow = (p: CatalogItem) => {
+    const qty = list[p.id];
+    return (
+      <li key={p.id} className={qty ? "catalog-item in-list" : "catalog-item"}>
+        {p.photo ? (
+          <button type="button" className="catalog-thumb" onClick={() => setZoom(p)} aria-label={`Фото: ${p.name}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={p.thumb ?? p.photo}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              width={56}
+              height={56}
+              // Миниатюры нет (фото загрузили до неё) — полное фото.
+              onError={(e) => {
+                if (p.photo && e.currentTarget.src !== p.photo) e.currentTarget.src = p.photo;
+              }}
+            />
+          </button>
+        ) : (
+          <span className="catalog-thumb catalog-thumb-empty" aria-hidden="true">
+            {p.name.trim().charAt(0).toUpperCase()}
+          </span>
+        )}
+        <span className="catalog-item-text">
+          <span className="catalog-item-name">{p.name}</span>
+          <span className="catalog-item-price">
+            {price(p.price)} <small>за {p.unit}</small>
+          </span>
+        </span>
+        {qty ? (
+          <span className="catalog-qty" role="group" aria-label={`Сколько: ${p.name}`}>
+            <button type="button" aria-label="Меньше" onClick={() => step(p.id, -1)}>
+              −
+            </button>
+            <input
+              inputMode="decimal"
+              autoComplete="off"
+              aria-label={`Количество, ${p.unit}`}
+              value={qty}
+              onChange={(e) => setQty(p.id, e.target.value.replace(/[^\d.,]/g, "").slice(0, 8))}
+            />
+            <button type="button" aria-label="Больше" onClick={() => step(p.id, 1)}>
+              +
+            </button>
+          </span>
+        ) : (
+          <button type="button" className="catalog-add" onClick={() => setQty(p.id, "1")} aria-label={`В список: ${p.name}`}>
+            + В список
+          </button>
+        )}
+      </li>
+    );
+  };
+  // Модель: фото, название, цена и размеры кнопками; выбранные — со счётчиком.
+  const modelCard = (modelId: string) => {
+    const model = modelById.get(modelId)!;
+    const sizes = sortVariants(
+      products.filter((p) => p.model === modelId),
+      model.axes,
+      (p) => p.variant,
+    );
+    const withPhoto = sizes.find((p) => p.photo);
+    const prices = [...new Set(sizes.map((p) => Number(p.price)))].sort((a, b) => a - b);
+    const chosen = sizes.filter((p) => list[p.id]);
+    return (
+      <li key={modelId} className={chosen.length ? "catalog-item catalog-model in-list" : "catalog-item catalog-model"}>
+        <div className="catalog-model-head">
+          {withPhoto ? (
+            <button type="button" className="catalog-thumb" onClick={() => setZoom(withPhoto)} aria-label={`Фото: ${model.name}`}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={withPhoto.thumb ?? withPhoto.photo ?? ""} alt="" loading="lazy" decoding="async" width={56} height={56} />
+            </button>
+          ) : (
+            <span className="catalog-thumb catalog-thumb-empty" aria-hidden="true">
+              {model.name.trim().charAt(0).toUpperCase()}
+            </span>
+          )}
+          <span className="catalog-item-text">
+            <span className="catalog-item-name">{model.name}</span>
+            <span className="catalog-item-price">
+              {prices.length > 1 ? `от ${price(prices[0])}` : price(prices[0] ?? 0)} <small>за шт</small>
+            </span>
+          </span>
+        </div>
+        <div className="catalog-sizes" role="group" aria-label={`Размер: ${model.name}`}>
+          {sizes.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={list[p.id] ? "catalog-size active" : "catalog-size"}
+              aria-pressed={Boolean(list[p.id])}
+              onClick={() => (list[p.id] ? step(p.id, 1) : setQty(p.id, "1"))}
+            >
+              {variantLabel(model.axes, p.variant)}
+              {list[p.id] ? ` · ${list[p.id]}` : ""}
+            </button>
+          ))}
+        </div>
+        {chosen.map((p) => (
+          <div key={p.id} className="catalog-size-row">
+            <span>
+              {variantLabel(model.axes, p.variant)}
+              {prices.length > 1 && <small className="muted"> · {price(p.price)}</small>}
+            </span>
+            <span className="catalog-qty" role="group" aria-label={`Сколько: ${p.name}`}>
+              <button type="button" aria-label="Меньше" onClick={() => step(p.id, -1)}>
+                −
+              </button>
+              <input
+                inputMode="decimal"
+                autoComplete="off"
+                aria-label={`Количество, ${p.unit}`}
+                value={list[p.id]}
+                onChange={(e) => setQty(p.id, e.target.value.replace(/[^\d.,]/g, "").slice(0, 8))}
+              />
+              <button type="button" aria-label="Больше" onClick={() => step(p.id, 1)}>
+                +
+              </button>
+            </span>
+          </div>
+        ))}
+      </li>
+    );
+  };
   return (
     <>
       {/* Компьютер: каталог слева, «Мой список» справа (закреплён); телефон — колонкой. */}
@@ -533,67 +672,13 @@ export function CatalogView({
       ) : (
         <div className="catalog-scroll" ref={scroller}>
         <ul className="catalog-list">
-          {found.slice(0, shown).map((p) => {
-            const qty = list[p.id];
-            return (
-              <li key={p.id} className={qty ? "catalog-item in-list" : "catalog-item"}>
-                {p.photo ? (
-                  <button type="button" className="catalog-thumb" onClick={() => setZoom(p)} aria-label={`Фото: ${p.name}`}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={p.thumb ?? p.photo}
-                      alt=""
-                      loading="lazy"
-                      decoding="async"
-                      width={56}
-                      height={56}
-                      // Миниатюры нет (фото загрузили до неё) — полное фото.
-                      onError={(e) => {
-                        if (p.photo && e.currentTarget.src !== p.photo) e.currentTarget.src = p.photo;
-                      }}
-                    />
-                  </button>
-                ) : (
-                  <span className="catalog-thumb catalog-thumb-empty" aria-hidden="true">
-                    {p.name.trim().charAt(0).toUpperCase()}
-                  </span>
-                )}
-                <span className="catalog-item-text">
-                  <span className="catalog-item-name">{p.name}</span>
-                  <span className="catalog-item-price">
-                    {price(p.price)} <small>за {p.unit}</small>
-                  </span>
-                </span>
-                {qty ? (
-                  <span className="catalog-qty" role="group" aria-label={`Сколько: ${p.name}`}>
-                    <button type="button" aria-label="Меньше" onClick={() => step(p.id, -1)}>
-                      −
-                    </button>
-                    <input
-                      inputMode="decimal"
-                      autoComplete="off"
-                      aria-label={`Количество, ${p.unit}`}
-                      value={qty}
-                      onChange={(e) => setQty(p.id, e.target.value.replace(/[^\d.,]/g, "").slice(0, 8))}
-                    />
-                    <button type="button" aria-label="Больше" onClick={() => step(p.id, 1)}>
-                      +
-                    </button>
-                  </span>
-                ) : (
-                  <button type="button" className="catalog-add" onClick={() => setQty(p.id, "1")} aria-label={`В список: ${p.name}`}>
-                    + В список
-                  </button>
-                )}
-              </li>
-            );
-          })}
+          {entries.slice(0, shown).map((e) => (e.kind === "model" ? modelCard(e.model) : itemRow(e.item)))}
         </ul>
         {more && (
           <div ref={end} className="catalog-more-end">
             {/* Запасной путь, если подгрузка при прокрутке не сработала. */}
             <button type="button" className="button catalog-more" onClick={() => setShown((n) => n + PAGE)}>
-              Показать ещё ({found.length - shown})
+              Показать ещё ({entries.length - shown})
             </button>
           </div>
         )}

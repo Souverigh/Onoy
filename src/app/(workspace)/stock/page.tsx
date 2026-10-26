@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Fragment } from "react";
 import { getContext } from "@/lib/context";
 import { money, quantity, decimalLessThan } from "@/lib/format";
 import { Icon } from "@/components/icon";
@@ -9,6 +10,8 @@ import { stockValue, type StockValueRow } from "@/lib/stock";
 import { loadCategories } from "@/lib/category-data";
 import { categoryGroups, categoryLabel, categoryTree, categoryWithChildren, suggestCategory } from "@/lib/category";
 import { CategoryChip } from "@/components/category-helper";
+import { loadVariants } from "@/lib/model-data";
+import { groupByModel, sortVariants, variantLabel } from "@/lib/product-model";
 
 type Row = {
   id: string;
@@ -40,6 +43,10 @@ const SORTS: [SortKey, string][] = [
 const shortDate = (value: string) =>
   new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", day: "numeric", month: "short" }).format(new Date(value));
 
+/** «1 размер», «3 размера», «12 размеров». */
+const sizesWord = (n: number) =>
+  `${n} ${n % 10 === 1 && n % 100 !== 11 ? "размер" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "размера" : "размеров"}`;
+
 /** Мало: остаток ниже минимума или закончился (≤ 0). */
 const isLow = (row: Pick<Row, "stock" | "min_stock">) =>
   !decimalLessThan("0", row.stock) || decimalLessThan(row.stock, row.min_stock);
@@ -67,7 +74,11 @@ export default async function StockPage({
   const current = Math.max(1, Math.min(1000, parseInt(page) || 1));
   const { db, organizationId, currency, isOwner } = await getContext();
   // Категории (миграция 20261023100000): отбор, подпись в строке и подсказка.
-  const { categories, products: named, hints } = await loadCategories(db, organizationId);
+  // Категории и модели с размерами (собрать их товары в одну строку) — параллельно.
+  const [{ categories, products: named, hints }, { variants, models }] = await Promise.all([
+    loadCategories(db, organizationId),
+    loadVariants(db, organizationId),
+  ]);
   const category =
     rawCategory === "none" || categories.some((c) => c.id === rawCategory) ? (rawCategory as string) : null;
 
@@ -171,6 +182,72 @@ export default async function StockPage({
   ];
   // Категорий ещё нет, а товары есть — предлагаем разложить (категории подобраны по названиям).
   const offered = !categories.length && named.length >= 4 ? categoryGroups(named).length : 0;
+  const productRow = (row: Row) => (
+    <li key={row.id} className="op-list-item">
+      <Link className="op-list-main" href={`/stock/${row.id}`}>
+        <strong>{row.name}</strong>
+      </Link>
+      <span className={`op-list-amount${isLow(row) && filter !== "archive" ? " warning" : ""}`}>
+        {quantity(row.stock)} {row.unit}
+      </span>
+      <span className="op-list-meta muted">
+        {row.sku ? `Код ${row.sku} · ` : ""}
+        {Number(row.sale_price) > 0 ? `${money(row.sale_price, currency)} за ${row.unit}` : "цена не указана"}
+        {decimalLessThan("0", row.stock) &&
+          Number(row.purchase_price) > 0 &&
+          ` · на складе на ${money(lineValue(row.stock, row.purchase_price), row.purchase_currency ?? currency)}`}
+        {sort === "popular" && ` · продаж за 90 дн.: ${row.sold_count ?? 0}`}
+        {sort === "received" && (row.last_received_at ? ` · приход ${shortDate(row.last_received_at)}` : " · приходов не было")}
+        {row.category_id && categoryLabel(categories, row.category_id) && ` · ${categoryLabel(categories, row.category_id)}`}
+      </span>
+      {!row.category_id && filter !== "archive" && (() => {
+        // Подсказка по названию: нажали — категория поставлена.
+        const hint = suggestCategory(row.name, hints);
+        const label = categoryLabel(categories, hint);
+        return hint && label ? (
+          <span className="op-list-meta stock-category-hint">
+            <CategoryChip productId={row.id} categoryId={hint} label={label} />
+          </span>
+        ) : null;
+      })()}
+      {isLow(row) && filter !== "archive" && (
+        <span className="op-list-meta warning stock-low-tag">
+          {decimalLessThan("0", row.stock) ? "мало" : "нет на складе"}
+        </span>
+      )}
+    </li>
+  );
+  // Размеры и цвета одной модели — одной строкой: всего, по размерам по порядку.
+  const modelRow = (modelId: string, items: Row[]) => {
+    const model = models[modelId];
+    if (!model) return <Fragment key={modelId}>{items.map(productRow)}</Fragment>;
+    const sorted = sortVariants(items, model.axes, (row) => variants[row.id]?.attrs);
+    const total = items.reduce((sum, row) => sum + Number(row.stock), 0);
+    const prices = [...new Set(items.map((row) => Number(row.sale_price)))].sort((a, b) => a - b);
+    const low = filter !== "archive" && items.some(isLow);
+    return (
+      <li key={modelId} className="op-list-item stock-model">
+        <Link className="op-list-main" href={`/stock/model/${modelId}`}>
+          <strong>{model.name}</strong>
+        </Link>
+        <span className={`op-list-amount${low ? " warning" : ""}`}>{quantity(String(Math.round(total * 1000) / 1000))} шт</span>
+        <span className="op-list-meta muted">
+          {sizesWord(items.length)}
+          {prices[0] > 0
+            ? ` · ${prices.length > 1 ? `${money(String(prices[0]), currency)} - ${money(String(prices[prices.length - 1]), currency)}` : money(String(prices[0]), currency)}`
+            : " · цена не указана"}
+          {items[0].category_id && categoryLabel(categories, items[0].category_id) && ` · ${categoryLabel(categories, items[0].category_id)}`}
+        </span>
+        <span className="op-list-meta stock-variants">
+          {sorted.map((row) => (
+            <Link key={row.id} href={`/stock/${row.id}`} className={isLow(row) && filter !== "archive" ? "stock-variant low" : "stock-variant"}>
+              {variantLabel(model.axes, variants[row.id]?.attrs)} <b>{quantity(row.stock)}</b>
+            </Link>
+          ))}
+        </span>
+      </li>
+    );
+  };
   return (
     <>
       <div className="page-heading">
@@ -313,41 +390,9 @@ export default async function StockPage({
         </NavSelects>
         {rows.length ? (
           <ul className="stock-list">
-            {rows.map((row) => (
-              <li key={row.id} className="op-list-item">
-                <Link className="op-list-main" href={`/stock/${row.id}`}>
-                  <strong>{row.name}</strong>
-                </Link>
-                <span className={`op-list-amount${isLow(row) && filter !== "archive" ? " warning" : ""}`}>
-                  {quantity(row.stock)} {row.unit}
-                </span>
-                <span className="op-list-meta muted">
-                  {row.sku ? `Код ${row.sku} · ` : ""}
-                  {Number(row.sale_price) > 0 ? `${money(row.sale_price, currency)} за ${row.unit}` : "цена не указана"}
-                  {decimalLessThan("0", row.stock) &&
-                    Number(row.purchase_price) > 0 &&
-                    ` · на складе на ${money(lineValue(row.stock, row.purchase_price), row.purchase_currency ?? currency)}`}
-                  {sort === "popular" && ` · продаж за 90 дн.: ${row.sold_count ?? 0}`}
-                  {sort === "received" && (row.last_received_at ? ` · приход ${shortDate(row.last_received_at)}` : " · приходов не было")}
-                  {row.category_id && categoryLabel(categories, row.category_id) && ` · ${categoryLabel(categories, row.category_id)}`}
-                </span>
-                {!row.category_id && filter !== "archive" && (() => {
-                  // Подсказка по названию: нажали — категория поставлена.
-                  const hint = suggestCategory(row.name, hints);
-                  const label = categoryLabel(categories, hint);
-                  return hint && label ? (
-                    <span className="op-list-meta stock-category-hint">
-                      <CategoryChip productId={row.id} categoryId={hint} label={label} />
-                    </span>
-                  ) : null;
-                })()}
-                {isLow(row) && filter !== "archive" && (
-                  <span className="op-list-meta warning stock-low-tag">
-                    {decimalLessThan("0", row.stock) ? "мало" : "нет на складе"}
-                  </span>
-                )}
-              </li>
-            ))}
+            {groupByModel(rows, (row) => variants[row.id]?.model).map((g) =>
+              g.kind === "item" ? productRow(g.item) : modelRow(g.model, g.items),
+            )}
           </ul>
         ) : (
           <div className="empty">
