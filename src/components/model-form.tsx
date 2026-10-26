@@ -54,6 +54,10 @@ function AxisPicker({
   const menu = useRef<HTMLDetailsElement>(null);
   const [draft, setDraft] = useState("");
   const has = (value: string) => axis.values.some((v) => same(v, value));
+  // Системы размеров (буквенные, цифровые, обувь) — вкладками, по одной:
+  // они разные, хоть числа и совпадают. Сразу — та, где уже есть выбранное.
+  const [tab, setTab] = useState(() => Math.max(0, axis.groups.findIndex((g) => g.values.some(has))));
+  const shown = axis.groups.length > 1 ? [axis.groups[tab] ?? axis.groups[0]] : axis.groups;
   const set = (values: string[]) => onChange(ordered(values, axis.groups));
   const toggle = (value: string) =>
     has(value) ? !locked(value) && set(axis.values.filter((v) => !same(v, value))) : set([...axis.values, value]);
@@ -78,12 +82,27 @@ function AxisPicker({
           <span aria-hidden="true">▾</span>
         </summary>
         <div className="more-menu-list axis-picker-panel">
-          {axis.groups.map((group) => {
+          {axis.groups.length > 1 && (
+            <div className="method-pills axis-tabs" role="group" aria-label="Система размеров">
+              {axis.groups.map((group, index) => (
+                <button
+                  key={group.label}
+                  type="button"
+                  className={index === tab ? "active" : ""}
+                  aria-pressed={index === tab}
+                  onClick={() => setTab(index)}
+                >
+                  {group.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {shown.map((group) => {
             const all = group.values.every(has);
             return (
               <div key={group.label} className="axis-group">
                 <div className="axis-group-head">
-                  <strong>{group.label}</strong>
+                  <strong>{axis.groups.length > 1 ? "Отметьте нужные" : group.label}</strong>
                   <button
                     type="button"
                     className="text-button"

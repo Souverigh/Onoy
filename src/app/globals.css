@@ -11215,3 +11215,13 @@ form .variant-qty,
     min-width: 44px;
   }
 }
+/* Вкладки систем размеров в списке (model-form.tsx). */
+.method-pills.axis-tabs {
+  display: flex;
+}
+.method-pills.axis-tabs button {
+  flex: 1 1 0;
+  min-height: 40px;
+  padding: 0 8px;
+  font-size: 14px;
+}
