@@ -1,16 +1,21 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getContext } from "@/lib/context";
 import { ProductForm } from "@/components/product-form";
 import { STOCK_ERROR_TEXT } from "@/lib/stock";
 import { loadCategories } from "@/lib/category-data";
+import { startsWithModel } from "@/lib/business";
 
 export default async function NewProductPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; added?: string }>;
+  searchParams: Promise<{ error?: string; added?: string; plain?: string }>;
 }) {
-  const { error, added } = await searchParams;
-  const { db, organizationId, currency, modules } = await getContext();
+  const { error, added, plain } = await searchParams;
+  const { db, organizationId, currency, modules, business } = await getContext();
+  // Вид бизнеса главнее: у одежды новый товар — сразу с размерами и цветами;
+  // обычный — кнопкой оттуда (?plain=1), и после «Добавить и ещё один» тоже.
+  if (startsWithModel(business, modules) && !plain && !added && !error) redirect("/stock/model/new");
   // «Добавить и ещё один»: показываем, что прошлый сохранился.
   const { categories, hints } = await loadCategories(db, organizationId);
   const last =

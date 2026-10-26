@@ -13,14 +13,19 @@ export default async function NewModelPage({ searchParams }: { searchParams: Pro
   const axes = variantAxes(business).map((key) => ({ key, values: [], ...VARIANT_AXES[key] }));
   return (
     <>
-      <Link className="back-link" href="/stock/new">
-        ← Обычный товар
+      <Link className="back-link" href="/stock">
+        ← Склад
       </Link>
       <div className="page-heading">
         <div>
           <span className="eyebrow">СКЛАД</span>
           <h1>Товар с размерами и цветами</h1>
           <p className="muted">Каждый размер и цвет станет отдельным товаром со своим остатком - продавать как обычно.</p>
+        </div>
+        <div className="page-heading-actions">
+          <Link className="button" href="/stock/new?plain=1">
+            Без размеров
+          </Link>
         </div>
       </div>
       {error && (

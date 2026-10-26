@@ -42,17 +42,30 @@ export type Preset = {
   navLabels?: Readonly<Record<string, string>>;
   /** Оси модели (VARIANT_AXES) по порядку; нет — размер и цвет. */
   variantAxes?: readonly VariantAxisKey[];
+  /** «Новый товар» сразу открывает форму с размерами и цветами (если модуль включён). */
+  newProduct?: "model";
 };
 
 /** Чем различаются товары одной модели и что подсказать к выбору. */
 export const VARIANT_AXES = {
   size: {
-    label: "Размер",
-    suggest: ["XS", "S", "M", "L", "XL", "XXL", "3XL", "36", "38", "40", "42", "44", "46", "48", "50", "52"],
+    label: "Размеры",
+    placeholder: "Выберите размеры",
+    groups: [
+      { label: "Буквенные", values: ["XS", "S", "M", "L", "XL", "XXL", "3XL"] },
+      { label: "Цифровые", values: ["40", "42", "44", "46", "48", "50", "52", "54", "56"] },
+      { label: "Обувь", values: ["35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46"] },
+    ],
   },
   color: {
-    label: "Цвет",
-    suggest: ["Чёрный", "Белый", "Серый", "Синий", "Красный", "Зелёный", "Бежевый", "Коричневый", "Розовый"],
+    label: "Цвета",
+    placeholder: "Без цвета",
+    groups: [
+      {
+        label: "Цвета",
+        values: ["Чёрный", "Белый", "Серый", "Синий", "Голубой", "Красный", "Зелёный", "Бежевый", "Коричневый", "Розовый", "Жёлтый"],
+      },
+    ],
   },
 } as const;
 
@@ -61,11 +74,12 @@ export type VariantAxisKey = keyof typeof VARIANT_AXES;
 export const PRESETS = {
   shop: { label: "Магазин", modules: ["stock", "catalog"] },
   grocery: { label: "Продуктовый магазин", modules: ["stock", "catalog"] },
-  clothing: { label: "Одежда и обувь", modules: ["stock", "catalog", "variants"] },
+  clothing: { label: "Одежда и обувь", modules: ["stock", "catalog", "variants"], newProduct: "model" },
   clothing_rental: {
     label: "Прокат одежды",
     modules: ["stock", "catalog", "variants"],
     navLabels: { "/stock": "Вещи" },
+    newProduct: "model",
   },
   restaurant: { label: "Кафе, ресторан", modules: ["stock"], navLabels: { "/stock": "Продукты" } },
   other: { label: "Другое", modules: ["stock", "catalog"] },
@@ -109,3 +123,7 @@ export const navLabel = (type: BusinessType, href: string, label: string) =>
 /** Оси модели для вида бизнеса. */
 export const variantAxes = (type: BusinessType): readonly VariantAxisKey[] =>
   (PRESETS[type] as Preset).variantAxes ?? ["size", "color"];
+
+/** Новый товар этого магазина — сразу модель с размерами и цветами. */
+export const startsWithModel = (type: BusinessType, modules: readonly ModuleId[]) =>
+  (PRESETS[type] as Preset).newProduct === "model" && modules.includes("variants");

@@ -60,9 +60,15 @@
   `.order-choice-mark`, имя и телефон `.order-choice-main` слева, долг
   `.order-choice-side` справа; выбранная — зелёная). Под списком главная
   кнопка и `.text-button` в одну строку (`.order-actions`).
-- Товар с размерами и цветами — `ModelForm` (`/stock/model/…`): ось —
-  `fieldset.model-axis` с чипами `.model-value` (`.active` — можно убрать) и
-  подсказками `.category-chip`, «Свой вариант» — `.model-axis-add`; остатки —
+- Товар с размерами и цветами — `ModelForm` (`/stock/model/…`): выбор
+  нескольких значений — `AxisPicker`, поле-кнопка `.axis-picker-button` с
+  выбранным через запятую, по нажатию — `details.more-menu` с группами
+  галочек (`label.axis-option`, «Выбрать все»), «Свой вариант» и «Готово»;
+  на телефоне список раскрывается в форме, не поверх. Форма — блоками
+  `.model-section` с заголовком `.model-section-title` («1. Модель»…),
+  что получится — метки в `.model-preview`; количество при создании —
+  только за переключателем «Товар уже есть в магазине» (так же в
+  `ProductForm` — свёрнутым `details.more-fields`). Остатки —
   `table.variant-grid` (число `.variant-cell`, новое — поле `.variant-qty`).
 - Выбор строкой внутри `form` — селектор `form label.<класс>`: общее правило
   `form label` (колонка, отступ снизу 18px) и полей (`width: 100%`,

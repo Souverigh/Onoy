@@ -6,7 +6,8 @@ import { STOCK_ERROR_TEXT } from "@/lib/stock";
 import { VARIANT_AXES } from "@/lib/business";
 import { parseAxes, type VariantAttrs } from "@/lib/product-model";
 
-const AXIS_TEXT: Record<string, { label: string; suggest: readonly string[] }> = VARIANT_AXES;
+const AXIS_TEXT: Record<string, { label: string; placeholder: string; groups: readonly { label: string; values: readonly string[] }[] }> =
+  VARIANT_AXES;
 
 /** Модель: остатки по размерам и цветам, новые сочетания, цены всем сразу. */
 export default async function ModelPage({
@@ -55,7 +56,8 @@ export default async function ModelPage({
   const axes = parseAxes(model.axes).map((a) => ({
     ...a,
     label: AXIS_TEXT[a.key]?.label ?? a.key,
-    suggest: AXIS_TEXT[a.key]?.suggest ?? [],
+    placeholder: AXIS_TEXT[a.key]?.placeholder ?? "",
+    groups: AXIS_TEXT[a.key]?.groups ?? [],
   }));
   const priced = products.find((p) => !p.archived_at) ?? products[0];
   return (

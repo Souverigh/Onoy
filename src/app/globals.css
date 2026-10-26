@@ -10978,64 +10978,173 @@ form label.catalog-products-filter {
   margin: 0 0 12px;
 }
 
-/* Модель с размерами и цветами (model-form.tsx): оси с вариантами и сетка остатков. */
-.model-axis {
-  margin: 0 0 18px;
-  padding: 0;
-  border: 0;
+/* Модель с размерами и цветами (model-form.tsx): выбор размеров и цветов
+   выпадающим списком с галочками (details.more-menu) и сетка остатков. */
+.axis-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
   min-width: 0;
 }
-.model-axis legend {
-  margin-bottom: 8px;
-  padding: 0;
-  font-weight: 600;
+.axis-field-label {
+  font-size: 14px;
+  color: var(--ink-soft);
 }
-.model-axis-values {
+.axis-picker > summary {
+  list-style: none;
+}
+.axis-picker > summary::-webkit-details-marker {
+  display: none;
+}
+.axis-picker-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: var(--control-height);
+  padding: 0 14px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-sm);
+  background: white;
+  color: var(--ink);
+  font-size: 16px;
+  cursor: pointer;
+}
+.axis-picker-button > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.axis-picker-button.empty > span:first-child {
+  color: var(--muted);
+}
+.axis-picker[open] > .axis-picker-button {
+  border-color: var(--green);
+}
+.more-menu-list.axis-picker-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(440px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+  padding: 14px;
+  overflow-y: auto;
+}
+.axis-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+.axis-options {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 8px;
 }
-.model-value {
+form label.axis-option {
   display: inline-flex;
+  flex-direction: row;
   align-items: center;
-  min-height: 32px;
-  padding: 2px 12px;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 12px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: var(--surface-soft);
   color: var(--ink);
-  font: inherit;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
+  cursor: pointer;
 }
-button.model-value.active {
+form label.axis-option:has(input:checked) {
   border-color: var(--green-border);
   background: var(--green-soft);
   color: var(--green);
-  cursor: pointer;
 }
-.model-axis-add {
+form label.axis-option input {
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--green);
+}
+.axis-picker-panel .model-axis-add {
   display: flex;
   gap: 8px;
-  max-width: 480px;
 }
-.model-axis-add input {
+.axis-picker-panel .model-axis-add input {
   flex: 1 1 auto;
   min-width: 0;
 }
-.model-axis-add .button {
+.axis-picker-panel .model-axis-add .button {
   flex: 0 0 auto;
 }
-.model-grid-block {
-  margin: 4px 0 18px;
+.axis-done {
+  align-self: flex-end;
 }
-.model-grid-title {
-  margin: 0 0 2px;
-  font-size: 17px;
+.variant-empty {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  text-align: center;
 }
-.model-grid-block > .muted {
-  margin: 0 0 10px;
+/* Блоки формы модели: заголовок, поля, разделитель снизу. */
+.model-section {
+  padding: 0 0 18px;
+  margin: 0 0 20px;
+  border-bottom: 1px solid var(--line);
+}
+.model-section-title {
+  margin: 0 0 14px;
+  font-size: 16px;
+}
+.model-form > .model-section:last-of-type {
+  border-bottom: 0;
+  margin-bottom: 4px;
+}
+.model-section .axis-field {
+  margin-bottom: 14px;
+}
+.model-section .setting-switch {
+  margin-bottom: 0;
+}
+.model-section .table-wrap {
+  margin-top: 12px;
+}
+.model-section-hint {
+  margin: 14px 0 0;
+}
+.model-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 0;
+  font-size: 14px;
+}
+.model-preview .tag {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+  background: var(--surface-soft);
+}
+.variant-cell.new {
+  border: 1px dashed var(--green-border);
+  background: var(--green-wash);
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 600;
+}
+.model-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+@media (max-width: 560px) {
+  .model-actions .button {
+    width: 100%;
+  }
 }
 /* Сетка по содержимому, не на всю карточку. */
 table.variant-grid {
@@ -11087,4 +11196,22 @@ form .variant-qty,
   gap: 12px;
   padding: 6px 0;
   border-bottom: 1px solid var(--line);
+}
+@media (max-width: 560px) {
+  /* На телефоне список размеров раскрывается прямо в форме, не поверх. */
+  .more-menu-list.axis-picker-panel {
+    position: static;
+    width: auto;
+    max-height: none;
+    margin-top: 6px;
+    box-shadow: none;
+  }
+  form .variant-qty,
+  .variant-qty {
+    width: 52px;
+    min-width: 44px;
+  }
+  .variant-cell {
+    min-width: 44px;
+  }
 }

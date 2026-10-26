@@ -59,3 +59,14 @@ test("business: a cafe calls stock «Продукты», other sections keep the
   assert.equal(navLabel("restaurant", "/stock", "Склад"), "Продукты");
   assert.equal(navLabel("restaurant", "/customers", "Клиенты"), "Клиенты");
 });
+
+test("business: clothing starts a new product with sizes and colors, other shops with a plain product", async () => {
+  const { startsWithModel } = await import("../src/lib/business.ts");
+  assert.equal(startsWithModel("clothing", resolveModules("clothing", null)), true);
+  assert.equal(startsWithModel("clothing_rental", resolveModules("clothing_rental", null)), true);
+  // Владелец выключил размеры — обычный товар.
+  assert.equal(startsWithModel("clothing", resolveModules("clothing", ["-variants"])), false);
+  // Магазин включил размеры сам — главным остаётся обычный товар.
+  assert.equal(startsWithModel("shop", resolveModules("shop", ["+variants"])), false);
+  assert.equal(startsWithModel(businessType(null), resolveModules(null, null)), false);
+});

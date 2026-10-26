@@ -72,13 +72,6 @@ export function ProductForm({
             placeholder="0"
           />
         </label>
-        {!product && (
-          <label>
-            Сколько есть сейчас
-            <QtyStepper name="opening_stock" label="Сколько есть сейчас" />
-            <small className="muted">Можно оставить пустым и добавить позже («Пришло»).</small>
-          </label>
-        )}
         <label>
           Код товара
           <input name="sku" maxLength={80} autoComplete="off" defaultValue={product?.sku ?? ""} placeholder="Необязательно" />
@@ -86,6 +79,25 @@ export function ProductForm({
         </label>
       </div>
       <CategoryField categories={categories} hints={hints} initial={product?.category_id ?? null} />
+      {/* Количество при создании — только если товар уже лежит в магазине:
+          пришедший от поставщика записывают «Товаром от поставщика» (долг, закупка). */}
+      {!product && (
+        <details className="more-fields">
+          <summary>
+            <span className="more-fields-title">Товар уже есть в магазине - указать количество</span>
+          </summary>
+          <div className="more-fields-body">
+            <label>
+              Сколько есть сейчас
+              <QtyStepper name="opening_stock" label="Сколько есть сейчас" />
+              <small className="muted">
+                Запишется как начальный остаток. Пришёл от поставщика - оставьте пустым и запишите «Товар от
+                поставщика»: будут долг и цена закупки.
+              </small>
+            </label>
+          </div>
+        </details>
+      )}
       <details className="more-fields" open={Boolean(product && (Number(product.purchase_price) || Number(product.min_stock) || product.aliases.length))}>
         <summary>
           <span className="more-fields-title">Закупка, минимум, другие названия</span>
