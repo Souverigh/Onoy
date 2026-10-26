@@ -1,12 +1,14 @@
 import "server-only";
-import { Document, Page, Text, View, Svg, Path, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
+import { Document, Page, Text, View, Svg, Path, Link, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import QRCode from "qrcode";
 import { ensureFontsRegistered } from "./fonts";
 import { money, phoneText, quantity } from "../format";
 
 // Вид — по образцу накладной магазина (nakladnaya_obrazec.pdf): синяя шапка
 // таблицы, итог с количеством, долг после накладной, подписи и один QR — на
-// страницу клиента (нет ссылки — нет QR).
+// страницу клиента (нет ссылки — нет QR). Справа внизу — строка о Depter:
+// накладную видят покупатели, среди них другие магазины. Второй QR не ставим —
+// сканировали бы не тот вместо своего долга.
 const BLUE = "#4f7cac";
 const DARK_BLUE = "#2f5b8a";
 const GRID = "#c9d6e3";
@@ -39,12 +41,21 @@ const styles = StyleSheet.create({
   signLine: { borderBottom: `0.75 solid ${BLUE}`, alignSelf: "stretch", height: 10 },
   signCaption: { fontSize: 7, color: MUTED, marginTop: 2 },
   phone: { marginTop: 6 },
-  qrRow: { flexDirection: "row", alignItems: "center", marginTop: 12 },
+  bottomRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12 },
+  qrRow: { flexDirection: "row", alignItems: "center" },
   qrText: { marginLeft: 14, color: MUTED, fontSize: 9, lineHeight: 1.4, maxWidth: 220 },
-  footer: { position: "absolute", bottom: 10, left: 40, right: 40, fontSize: 7, color: "#9aa39a", textAlign: "right" },
+  promo: { alignItems: "flex-end", fontSize: 9, lineHeight: 1.4, color: MUTED },
+  promoTitle: { fontWeight: "bold", color: "#1d2a2a" },
+  promoLink: { fontWeight: "bold", fontSize: 10.5, color: DARK_BLUE, textDecoration: "none" },
 });
 
-export const FOOTER = "Накладная сделана в Depter · depter.kg";
+/** Строка о Depter внизу накладной (PDF и картинка). */
+export const PROMO = {
+  title: "Ведёте долги в тетради?",
+  text: "Depter — учёт долгов и продаж в телефоне",
+  site: "depter.kg",
+  href: "https://depter.kg",
+};
 
 /** «ТОВАРНАЯ НАКЛАДНАЯ № 15 от «03» октября 2026 г.» */
 export function invoiceTitle(data: InvoiceData) {
@@ -200,16 +211,23 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
           <Party label="ПРОДАВЕЦ" party={data.seller} />
         </View>
 
-        {data.clientUrl && (
-          <View style={styles.qrRow} wrap={false}>
-            <QrCode text={data.clientUrl} size={54} />
-            <Text style={styles.qrText}>Накладные, долг и оплата -{"\n"}по QR-коду</Text>
+        <View style={styles.bottomRow} wrap={false}>
+          {data.clientUrl ? (
+            <View style={styles.qrRow}>
+              <QrCode text={data.clientUrl} size={54} />
+              <Text style={styles.qrText}>Накладные, долг и оплата -{"\n"}по QR-коду</Text>
+            </View>
+          ) : (
+            <View />
+          )}
+          <View style={styles.promo}>
+            <Text style={styles.promoTitle}>{PROMO.title}</Text>
+            <Text>{PROMO.text}</Text>
+            <Link src={PROMO.href} style={styles.promoLink}>
+              {PROMO.site}
+            </Link>
           </View>
-        )}
-
-        <Text style={styles.footer} fixed>
-          {FOOTER}
-        </Text>
+        </View>
       </Page>
     </Document>
   );

@@ -2,11 +2,11 @@ import "server-only";
 import { ImageResponse } from "next/og";
 import QRCode from "qrcode";
 import { phoneText } from "../format";
-import { FOOTER, amount, invoiceTitle, qtyText, totalQuantity, totalText, type InvoiceData, type InvoiceParty } from "./invoice";
+import { PROMO, amount, invoiceTitle, qtyText, totalQuantity, totalText, type InvoiceData, type InvoiceParty } from "./invoice";
 
 // Картинка накладной для экрана и WhatsApp (задача 8) — тот же вид, что PDF
 // (invoice.tsx): синяя шапка таблицы, итог, подписи, один QR на страницу
-// клиента. Satori: только flexbox, у блока с несколькими детьми — display:flex.
+// клиента и строка о Depter справа. Satori: только flexbox, у блока с несколькими детьми — display:flex.
 const BLUE = "#4f7cac";
 const DARK_BLUE = "#2f5b8a";
 const GRID = "#c9d6e3";
@@ -69,7 +69,7 @@ export async function renderInvoiceImage(origin: string, data: InvoiceData): Pro
   // Не ниже ширины: картинку печатают через «Поделиться → Печать», и iPhone
   // кладёт широкую картинку на альбомный лист.
   const contentHeight =
-    PAD * 2 + 48 + 44 + 34 + (data.lines.length ? 44 + rowsHeight : 0) + 64 + notes.length * 30 + 40 + 96 + (qr ? 128 : 0) - 20;
+    PAD * 2 + 48 + 44 + 34 + (data.lines.length ? 44 + rowsHeight : 0) + 64 + notes.length * 30 + 40 + 96 + 128 - 20;
   const height = Math.max(contentHeight, Math.round(WIDTH * 1.05));
   const col = { n: 56, qty: 120, price: 130, sum: 150 };
   const cell = { padding: "6px 10px", fontSize: 18, display: "flex" } as const;
@@ -150,19 +150,25 @@ export async function renderInvoiceImage(origin: string, data: InvoiceData): Pro
           <Party label="ПРОДАВЕЦ" party={data.seller} />
         </div>
 
-        {qr && (
-          <div style={{ display: "flex", alignItems: "center", marginTop: 24 }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={qr} width={104} height={104} alt="" />
-            <div style={{ display: "flex", flexDirection: "column", marginLeft: 18, color: MUTED, fontSize: 17 }}>
-              <span>Накладные, долг и оплата -</span>
-              <span>по QR-коду</span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 24 }}>
+          {qr ? (
+            <div style={{ display: "flex", alignItems: "center" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={qr} width={104} height={104} alt="" />
+              <div style={{ display: "flex", flexDirection: "column", marginLeft: 18, color: MUTED, fontSize: 17 }}>
+                <span>Накладные, долг и оплата -</span>
+                <span>по QR-коду</span>
+              </div>
             </div>
+          ) : (
+            <div style={{ display: "flex" }} />
+          )}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", color: MUTED, fontSize: 17 }}>
+            <span style={{ fontWeight: 700, color: INK }}>{PROMO.title}</span>
+            <span>{PROMO.text}</span>
+            <span style={{ fontWeight: 700, color: DARK_BLUE, fontSize: 21 }}>{PROMO.site}</span>
           </div>
-        )}
-
-        <div style={{ display: "flex", flex: 1 }} />
-        <div style={{ display: "flex", justifyContent: "flex-end", color: "#9aa39a", fontSize: 13 }}>{FOOTER}</div>
+        </div>
       </div>
     ),
     {
