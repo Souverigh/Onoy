@@ -7,7 +7,8 @@ import { getContext } from "@/lib/context";
 import { StaffPanel, type Invite, type Member } from "@/components/staff-panel";
 import { Submit } from "@/components/submit";
 import { NoAutofillInput } from "@/components/no-autofill-input";
-import { changeEmail, changePassword, updateShop } from "./actions";
+import { changeEmail, changePassword, updateBusiness, updateShop } from "./actions";
+import { BUSINESS_TYPES, MODULES, MODULE_IDS, PRESETS } from "@/lib/business";
 import { EXPORT_TABLES } from "@/lib/export-data";
 import { DEFAULT_MESSAGE_TEMPLATE, MESSAGE_LINK_LINES, MESSAGE_PLACEHOLDERS, MESSAGE_TEMPLATE_MAX } from "@/lib/invoice-message";
 
@@ -37,10 +38,10 @@ const EMAIL_ERRORS = new Set(["email_invalid", "email_same", "email_taken", "ema
 export default async function Settings({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string; staff?: string; account?: string; to?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string; staff?: string; account?: string; to?: string; business?: string }>;
 }) {
-  const { db, organizationId, organizationName, user, isOwner, plan, paidUntil, currency } = await getContext();
-  const { saved, error, staff, account, to } = await searchParams;
+  const { db, organizationId, organizationName, user, isOwner, plan, paidUntil, currency, business, modules } = await getContext();
+  const { saved, error, staff, account, to, business: businessStatus } = await searchParams;
   // Сотрудники и приглашения — только владельцу (RLS тоже не отдаст продавцу).
   let members: Member[] = [];
   let invites: Invite[] = [];
@@ -127,6 +128,7 @@ export default async function Settings({
     { id: "documents", label: "Накладные" },
     ...(isOwner
       ? [
+          { id: "business", label: "Вид бизнеса" },
           { id: "staff", label: "Сотрудники" },
           { id: "export", label: "Выгрузка" },
         ]
@@ -360,6 +362,56 @@ export default async function Settings({
               <Submit>Сохранить изменения</Submit>
             </div>
           </form>
+
+          {/* Вид бизнеса и модули (src/lib/business.ts) — отдельной формой, только владельцу. */}
+          {isOwner && (
+            <form action={updateBusiness} className="settings-form">
+              <section className="panel settings-card" id="business">
+                <header>
+                  <h2>Вид бизнеса</h2>
+                  <p className="muted">От него зависят разделы в меню. Записи и данные при смене не меняются.</p>
+                </header>
+                {businessStatus === "saved" && (
+                  <p className="notice success" role="status">
+                    Сохранено.
+                  </p>
+                )}
+                {businessStatus === "failed" && (
+                  <p className="form-error" role="alert">
+                    Не удалось сохранить. Обновите страницу и попробуйте ещё раз.
+                  </p>
+                )}
+                <label>
+                  Чем вы занимаетесь
+                  <select name="business_type" defaultValue={business}>
+                    {BUSINESS_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {PRESETS[type].label}
+                      </option>
+                    ))}
+                  </select>
+                  <small className="muted">Сменили вид - разделы встанут по нему, ниже их можно поправить.</small>
+                </label>
+                <input type="hidden" name="previous_type" value={business} />
+                {MODULE_IDS.map((id) => (
+                  <label className="setting-switch" key={id}>
+                    <span>
+                      <strong>{MODULES[id].label}</strong>
+                      <small className="muted">{MODULES[id].description}</small>
+                    </span>
+                    <input type="checkbox" role="switch" name="modules" value={id} defaultChecked={modules.includes(id)} />
+                  </label>
+                ))}
+                <small className="muted settings-hint">
+                  Выключенный раздел только скрыт из меню - всё, что в нём записано, сохраняется и вернётся, если
+                  включить.
+                </small>
+                <div className="settings-save">
+                  <Submit>Сохранить</Submit>
+                </div>
+              </section>
+            </form>
+          )}
 
           {isOwner && (
             <StaffPanel

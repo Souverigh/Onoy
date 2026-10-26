@@ -1,6 +1,7 @@
 import { getUserContext } from "@/lib/context";
 import { createOrganization } from "../auth/actions";
 import { Submit } from "@/components/submit";
+import { BUSINESS_TYPES, DEFAULT_BUSINESS, PRESETS } from "@/lib/business";
 export default async function Onboarding({
   searchParams,
 }: {
@@ -30,6 +31,17 @@ export default async function Onboarding({
               required
               maxLength={120}
             />
+          </label>
+          <label>
+            Чем вы занимаетесь
+            <select name="business_type" defaultValue={DEFAULT_BUSINESS}>
+              {BUSINESS_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {PRESETS[type].label}
+                </option>
+              ))}
+            </select>
+            <small className="muted">Под это подстроим разделы. Поменять можно в Настройках.</small>
           </label>
           <label>
             Имя продавца

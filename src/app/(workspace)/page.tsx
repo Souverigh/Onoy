@@ -12,7 +12,7 @@ import { waPhone } from "@/lib/share";
 const REMIND_LIMIT = 6;
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ error?: string; password?: string }> }) {
-  const { db, organizationId, organizationName, isOwner, user, currency: shopCurrency } = await getContext();
+  const { db, organizationId, organizationName, isOwner, user, currency: shopCurrency, modules } = await getContext();
   const { error, password } = await searchParams;
   // После «Забыли пароль?» → новый пароль (src/app/auth/actions.ts, updatePassword).
   const passwordNotice =
@@ -52,7 +52,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
           ownerOnlyNotice={error === "owner"}
           recent={recent}
           reviewCount={reviewResult.count ?? 0}
-          newOrders={ordersResult.count ?? 0}
+          newOrders={modules.includes("catalog") ? (ordersResult.count ?? 0) : 0}
           mySales={
             mine
               ? { date: today, today: mine.sold, todayCount: mine.count, owed: owed?.total ?? 0, currency: shopCurrency }
@@ -188,7 +188,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
         }
         pendingClaims={claims.count ?? 0}
         reviewCount={reviewResult.count ?? 0}
-        newOrders={ordersResult.count ?? 0}
+        newOrders={modules.includes("catalog") ? (ordersResult.count ?? 0) : 0}
         recent={recent}
       />
     </>

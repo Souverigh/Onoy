@@ -3938,3 +3938,54 @@ test("catalog orders: a customer orders by the catalog link, prices come from st
     ["catalog_order.submitted", "catalog_order.submitted", "catalog_order.accepted", "catalog_order.sold", "catalog_order.dismissed", "catalog_order.restored"],
   );
 });
+
+test("business profile: existing shops stay untouched, only the owner sets the type, every change is logged", async () => {
+  const seller = "44444444-4444-4444-8444-444444444444";
+  await owner();
+  // Миграция только добавила пустые колонки — у всех магазинов null, как было.
+  const before = (await db.query("select count(*)::int as n from organizations where business_type is not null or module_overrides is not null")).rows[0].n;
+  assert.equal(before, 0);
+  const sales = (await db.query("select count(*)::int as n from sales where organization_id=$1", [orgA])).rows[0].n;
+
+  // Продавец, чужой и аноним — нельзя.
+  await user(seller);
+  await assert.rejects(db.query("select set_business_profile($1,'restaurant',null)", [orgA]), /owner_required/);
+  await user(b);
+  await assert.rejects(db.query("select set_business_profile($1,'restaurant',null)", [orgA]), /owner_required/);
+  await owner();
+  await db.exec("SET ROLE anon;");
+  await assert.rejects(db.query("select set_business_profile($1,'restaurant',null)", [orgA]), /permission denied/);
+  await owner();
+  // Напрямую колонку не поменять даже владельцу.
+  await user(a);
+  await assert.rejects(db.query("update organizations set business_type='restaurant' where id=$1", [orgA]), /permission denied/);
+
+  // Мусор — отказ.
+  await assert.rejects(db.query("select set_business_profile($1,'Ресторан',null)", [orgA]), /invalid_business_type/);
+  await assert.rejects(db.query("select set_business_profile($1,'restaurant',array['catalog'])", [orgA]), /invalid_modules/);
+  await assert.rejects(db.query("select set_business_profile($1,'restaurant',array['+catalog',null])", [orgA]), /invalid_modules/);
+
+  // Владелец: вид и поправки; пустой список поправок хранится как null.
+  await db.query("select set_business_profile($1,'restaurant',array['+catalog','-stock'])", [orgA]);
+  let row = (await db.query("select business_type,module_overrides from organizations where id=$1", [orgA])).rows[0];
+  assert.deepEqual([row.business_type, row.module_overrides], ["restaurant", ["+catalog", "-stock"]]);
+  await db.query("select set_business_profile($1,'shop','{}')", [orgA]);
+  row = (await db.query("select business_type,module_overrides from organizations where id=$1", [orgA])).rows[0];
+  assert.deepEqual([row.business_type, row.module_overrides], ["shop", null]);
+  await db.query("select set_business_profile($1,null,null)", [orgA]);
+
+  await owner();
+  // Чужой магазин и записи не тронуты.
+  row = (await db.query("select business_type,module_overrides from organizations where id=$1", [orgB])).rows[0];
+  assert.deepEqual([row.business_type, row.module_overrides], [null, null]);
+  assert.equal((await db.query("select count(*)::int as n from sales where organization_id=$1", [orgA])).rows[0].n, sales);
+  const log = (
+    await db.query("select actor_id,metadata from audit_events where organization_id=$1 and action='organization.business_profile' order by created_at", [orgA])
+  ).rows;
+  assert.equal(log.length, 3);
+  assert.equal(log[0].actor_id, a);
+  assert.deepEqual(log[0].metadata, {
+    from: { type: null, modules: null },
+    to: { type: "restaurant", modules: ["+catalog", "-stock"] },
+  });
+});

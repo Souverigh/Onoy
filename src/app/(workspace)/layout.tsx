@@ -40,6 +40,8 @@ export default async function Layout({
       claimsCount={claims.count ?? 0}
       ordersCount={orders.count ?? 0}
       isOwner={ctx.isOwner}
+      business={ctx.business}
+      modules={ctx.modules}
     >
       {sub.kind === "blocked" && (
         <p className="form-error shop-blocked" role="alert">

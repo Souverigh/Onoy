@@ -7,6 +7,7 @@ import { getUserContext } from "@/lib/context";
 import { cookies, headers } from "next/headers";
 import { EXPIRED_COOKIE } from "@/lib/session-timeout";
 import { storedPhone } from "@/lib/contacts";
+import { DEFAULT_BUSINESS, isBusinessType } from "@/lib/business";
 /** Куда вернуть после входа: только страница приглашения, иначе главная. */
 function nextPath(form: FormData) {
   const next = String(form.get("next") ?? "");
@@ -160,6 +161,12 @@ export async function createOrganization(form: FormData) {
   if (seller.error) {
     console.error("createOrganization: seller not set", seller.error);
     await db.from("organizations").update({ phone }).eq("id", data);
+  }
+  // Вид бизнеса — разделы под него (src/lib/business.ts); не вышло — будет «Магазин».
+  const type = String(form.get("business_type") ?? "");
+  if (isBusinessType(type) && type !== DEFAULT_BUSINESS) {
+    const profile = await db.rpc("set_business_profile", { p_org: data, p_type: type, p_overrides: [] });
+    if (profile.error) console.error("createOrganization: business type not set", profile.error);
   }
   revalidatePath("/", "layout");
   redirect("/");

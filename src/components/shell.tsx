@@ -5,8 +5,10 @@ import { useEffect, useState } from "react";
 import { Icon, type IconName } from "./icon";
 import { InstallApp } from "./install-app";
 import { REPORT_TAB_KEY, reportTabHref } from "./report-tabs";
+import { DEFAULT_BUSINESS, MODULE_IDS, navLabel, type BusinessType, type ModuleId } from "@/lib/business";
 
-type NavItem = [string, string, IconName];
+/** Адрес, название, иконка и модуль (src/lib/business.ts), если раздел не из ядра. */
+type NavItem = [string, string, IconName, ModuleId?];
 
 // Склад — с 30.09.2026 (товары, остатки, продажа товарами); на телефоне — в «Ещё».
 const allNav: NavItem[] = [
@@ -14,12 +16,12 @@ const allNav: NavItem[] = [
   ["/customers", "Клиенты", "people"],
   ["/suppliers", "Поставщики", "truck"],
   ["/money", "Все записи", "wallet"],
-  ["/stock", "Склад", "box"],
+  ["/stock", "Склад", "box", "stock"],
   // Итог дня, отчёт за месяц и продавцы — вкладками одного раздела (report-tabs.tsx).
   ["/day", "Отчёты", "chart"],
   ["/claims", "Платежи", "check"],
   // Заказы клиентов из каталога (задача № 12) — видят все, продажу делает и продавец.
-  ["/orders", "Заказы", "cart"],
+  ["/orders", "Заказы", "cart", "catalog"],
   ["/documents", "Документы", "camera"],
   ["/settings", "Настройки", "settings"],
 ];
@@ -55,6 +57,8 @@ export function Shell({
   claimsCount = 0,
   ordersCount = 0,
   isOwner = true,
+  business = DEFAULT_BUSINESS,
+  modules = MODULE_IDS,
 }: {
   name: string;
   children: React.ReactNode;
@@ -66,6 +70,10 @@ export function Shell({
   /** Новые заказы из каталога — бейдж у «Заказов». */
   ordersCount?: number;
   isOwner?: boolean;
+  /** Вид бизнеса — названия разделов (у кафе «Склад» — «Продукты»). */
+  business?: BusinessType;
+  /** Включённые модули: разделы выключенных скрыты из меню, данные остаются. */
+  modules?: readonly ModuleId[];
 }) {
   const path = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -114,9 +122,10 @@ export function Shell({
     }
   }, [path]);
   // Продавцу отчёты не видны — у него вместо них «Мои продажи».
-  const nav = isOwner
-    ? allNav
-    : allNav.map((item): NavItem => (item[0] === "/day" ? ["/sellers", "Мои продажи", "chart"] : item));
+  const nav = (isOwner ? allNav : allNav.map((item): NavItem => (item[0] === "/day" ? ["/sellers", "Мои продажи", "chart"] : item)))
+    .filter(([, , , module]) => !module || modules.includes(module))
+    .map(([href, label, icon, module]): NavItem => [href, navLabel(business, href, label), icon, module]);
+  const ordersOn = modules.includes("catalog");
   const allowed = ([href]: NavItem) => isOwner || !OWNER_ONLY.has(href);
   const inPath = (href: string) => path === href || path.startsWith(href + "/");
   const link = (href: string) => (preview ? "/preview" : isOwner && href === "/day" ? reportsHref : href);
@@ -199,7 +208,7 @@ export function Shell({
             {!menuOpen &&
               (isOwner && claimsCount > 0 ? (
                 <span className="nav-badge">{claimsCount}</span>
-              ) : ordersCount > 0 ? (
+              ) : ordersOn && ordersCount > 0 ? (
                 <span className="nav-badge">{ordersCount}</span>
               ) : reviewCount > 0 ? (
                 <span className="nav-badge nav-badge-muted">{reviewCount}</span>
