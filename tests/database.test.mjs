@@ -32,7 +32,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 30);
+  assert.equal(rows.length, 31);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -4098,4 +4098,77 @@ test("catalog: products of a model carry the model and size, models come with th
   assert.equal(plain.model, null);
   assert.equal(plain.variant, null);
   assert.deepEqual(Object.keys(catalog).sort(), ["categories", "currency", "models", "products", "shop_name", "shop_phone"]);
+});
+
+test("push: each member subscribes own phone; only the server with the secret gets targets; orders to all, claims to owners", async () => {
+  const seller = "44444444-4444-4444-8444-444444444444";
+  const sub = (n) => [`https://push.example.com/${n}`, `key${n}`, `auth${n}`];
+  // Тестовый секрет вместо настоящего (в миграции — хеш секрета из Vercel).
+  await owner();
+  await db.query("update private.push_settings set secret_hash = encode(sha256(convert_to('test-secret','UTF8')),'hex')");
+
+  await user(a);
+  await db.query("select save_push_subscription($1,$2,$3,$4,'Chrome')", [orgA, ...sub(1)]);
+  await user(seller);
+  await db.query("select save_push_subscription($1,$2,$3,$4,null)", [orgA, ...sub(2)]);
+  await assert.rejects(db.query("select save_push_subscription($1,'http://x','k','a',null)", [orgA]), /invalid_subscription/);
+  // Видит только свои телефоны; напрямую в таблицу не написать.
+  assert.deepEqual((await db.query("select endpoint from push_subscriptions")).rows.map((r) => r.endpoint), [sub(2)[0]]);
+  await assert.rejects(db.query("insert into push_subscriptions(organization_id,user_id,endpoint,p256dh,auth) values ($1,$2,'https://x','k','a')", [orgA, seller]), /permission denied/);
+  // Чужой магазин — нельзя.
+  await user(b);
+  await assert.rejects(db.query("select save_push_subscription($1,$2,$3,$4,null)", [orgA, ...sub(3)]), /not_a_member/);
+
+  // Без секрета — никому (и вошедшему тоже).
+  await owner();
+  const order = (await db.query("select id from catalog_orders where organization_id=$1 and status='new' limit 1", [orgA])).rows[0].id;
+  await user(a);
+  await assert.rejects(db.query("select push_targets('wrong',$1,$2)", ["order", order]), /forbidden/);
+  await owner();
+  await db.exec("SET ROLE anon;");
+  await assert.rejects(db.query("select push_targets(null,$1,$2)", ["order", order]), /forbidden/);
+  const forOrder = (await db.query("select push_targets('test-secret','order',$1) as t", [order])).rows[0].t;
+  assert.deepEqual(forOrder.targets.map((t) => t.endpoint).sort(), [sub(1)[0], sub(2)[0]]);
+  assert.equal(forOrder.kind, "order");
+  assert.ok(Number(forOrder.total) > 0);
+
+  // Заявка «Я оплатил» — только владельцу.
+  await owner();
+  const claim = (await db.query("select id from payments where organization_id=$1 and status='pending' limit 1", [orgA])).rows[0]?.id;
+  assert.ok(claim, "a pending claim exists from the claims test");
+  if (claim) {
+    await db.exec("SET ROLE anon;");
+    const forClaim = (await db.query("select push_targets('test-secret','claim',$1) as t", [claim])).rows[0].t;
+    assert.deepEqual(forClaim.targets.map((t) => t.endpoint), [sub(1)[0]]);
+    await owner();
+  }
+  // Уже обработанное или чужое — пусто.
+  await db.exec("SET ROLE anon;");
+  assert.equal((await db.query("select push_targets('test-secret','order',$1) as t", ["00000000-0000-4000-8000-000000000000"])).rows[0].t, null);
+  await assert.rejects(db.query("select push_targets('test-secret','other',$1)", [order]), /invalid_kind/);
+
+  // Отключённый продавец уведомлений не получает.
+  await owner();
+  await db.query("update organization_members set disabled_at=now() where organization_id=$1 and user_id=$2", [orgA, seller]);
+  await db.exec("SET ROLE anon;");
+  assert.deepEqual(
+    (await db.query("select push_targets('test-secret','order',$1) as t", [order])).rows[0].t.targets.map((t) => t.endpoint),
+    [sub(1)[0]],
+  );
+  // Сервис ответил «подписки нет» — убираем; выключить свою — сам сотрудник.
+  await db.query("select drop_push_subscription('test-secret',$1)", [sub(2)[0]]);
+  await owner();
+  await db.query("update organization_members set disabled_at=null where organization_id=$1 and user_id=$2", [orgA, seller]);
+  await user(seller);
+  await db.query("select delete_push_subscription($1)", [sub(1)[0]]);
+  await owner();
+  assert.deepEqual((await db.query("select endpoint from push_subscriptions")).rows.map((r) => r.endpoint), [sub(1)[0]], "a member cannot remove another's phone");
+  await user(a);
+  await db.query("select delete_push_subscription($1)", [sub(1)[0]]);
+  await owner();
+  assert.equal((await db.query("select count(*)::int as n from push_subscriptions")).rows[0].n, 0);
+  assert.deepEqual(
+    (await db.query("select action from audit_events where action like 'push.%' order by created_at, action")).rows.map((r) => r.action),
+    ["push.subscribed", "push.subscribed", "push.expired", "push.unsubscribed"],
+  );
 });

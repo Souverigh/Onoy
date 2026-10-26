@@ -3,8 +3,8 @@ import { BRAND_GREEN, SITE_DESCRIPTION, SITE_NAME } from "@/lib/site";
 
 /**
  * Установка Depter на телефон как приложения (кнопка — src/components/install-app.tsx).
- * Service worker нет намеренно: Chrome для установки его не требует, а кэш
- * страниц с долгами показал бы устаревшие суммы.
+ * Service worker (public/sw.js) — только для push-уведомлений: страниц он не
+ * кеширует намеренно — кэш страниц с долгами показал бы устаревшие суммы.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {

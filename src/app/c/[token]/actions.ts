@@ -8,6 +8,7 @@ import { documentMimeType } from "@/lib/pages";
 import { noteClaimReceipt, recognizeClaimReceipt, type ClaimReceipt } from "@/lib/adre/recognize";
 import { isCurrency, ratePair, type Currency } from "@/lib/currency";
 import { officialRates } from "@/lib/fx";
+import { notifyShop } from "@/lib/push";
 
 export async function submitClaim(form: FormData) {
   const token = String(form.get("token") ?? "");
@@ -79,6 +80,8 @@ export async function submitClaim(form: FormData) {
   // Номер перевода с квитанции — после ответа клиенту: если он уже есть в
   // оплате магазина, заявка помечается «Дубликат» (видят продавец и владелец).
   const paymentId = typeof result.data === "string" ? result.data : null;
+  // Владельцу — push «Клиент оплатил» (после ответа клиенту).
+  if (paymentId) after(() => notifyShop("claim", paymentId));
   if (paymentId && documentId && buffer) {
     const photoBuffer = buffer;
     after(() => noteClaimReceipt({ anon, token, paymentId, photo: photoBuffer, mimeType, receipt }));

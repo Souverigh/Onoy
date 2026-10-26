@@ -1,6 +1,8 @@
 "use server";
 
+import { after } from "next/server";
 import { createAnonClient } from "@/lib/supabase/server";
+import { notifyShop } from "@/lib/push";
 import { normalizePhone } from "@/lib/contacts";
 import { clientOrders, MY_ORDERS_LIMIT, type ClientOrder } from "@/lib/client-orders";
 
@@ -54,7 +56,10 @@ export async function submitCatalogOrder(input: OrderInput): Promise<OrderResult
     console.error("submitCatalogOrder failed", { message });
     return { error: "save" };
   }
-  return { ok: true, id: String(result.data) };
+  const id = String(result.data);
+  // Магазину — push «Новый заказ» (после ответа: клиенту не ждать).
+  after(() => notifyShop("order", id));
+  return { ok: true, id };
 }
 
 /**

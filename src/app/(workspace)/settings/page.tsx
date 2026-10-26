@@ -9,6 +9,7 @@ import { Submit } from "@/components/submit";
 import { NoAutofillInput } from "@/components/no-autofill-input";
 import { changeEmail, changePassword, updateBusiness, updateShop } from "./actions";
 import { BUSINESS_TYPES, MODULES, MODULE_IDS, PRESETS } from "@/lib/business";
+import { PushSettings } from "@/components/push-settings";
 import { EXPORT_TABLES } from "@/lib/export-data";
 import { DEFAULT_MESSAGE_TEMPLATE, MESSAGE_LINK_LINES, MESSAGE_PLACEHOLDERS, MESSAGE_TEMPLATE_MAX } from "@/lib/invoice-message";
 
@@ -126,6 +127,7 @@ export default async function Settings({
     { id: "shop", label: "Магазин" },
     { id: "pay", label: "Реквизиты" },
     { id: "documents", label: "Накладные" },
+    { id: "notifications", label: "Уведомления" },
     ...(isOwner
       ? [
           { id: "business", label: "Вид бизнеса" },
@@ -362,6 +364,15 @@ export default async function Settings({
               <Submit>Сохранить изменения</Submit>
             </div>
           </form>
+
+          {/* Push-уведомления на этот телефон (src/lib/push.ts) — каждому сотруднику. */}
+          <section className="panel settings-card" id="notifications">
+            <header>
+              <h2>Уведомления</h2>
+              <p className="muted">На этот телефон или компьютер.</p>
+            </header>
+            <PushSettings isOwner={isOwner} />
+          </section>
 
           {/* Вид бизнеса и модули (src/lib/business.ts) — отдельной формой, только владельцу. */}
           {isOwner && (

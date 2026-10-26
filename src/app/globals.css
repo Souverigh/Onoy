@@ -11394,3 +11394,27 @@ form .variant-qty,
   font-size: 14px;
   font-weight: 600;
 }
+/* Настройки → «Уведомления» (push-settings.tsx). */
+.push-settings > .muted {
+  margin: 0 0 12px;
+}
+.push-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.push-on {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--success-bg);
+  color: var(--success-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.push-note {
+  margin: 10px 0 0;
+}
