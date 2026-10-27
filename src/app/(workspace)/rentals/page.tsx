@@ -3,13 +3,10 @@ import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
 import { money } from "@/lib/format";
 import { bishkekDate } from "@/lib/day-summary";
-import { dayMonth } from "@/lib/promise";
-import { waPhone } from "@/lib/share";
 import { Icon } from "@/components/icon";
-import { ConfirmButton } from "@/components/confirm-button";
+import { RentalRowItem } from "@/components/rental-row";
 import { RENTAL_COLUMNS, type RentalRow } from "@/lib/rental-data";
-import { collateralText, overdueDays, rentalReminder, rentalTotal } from "@/lib/rentals";
-import { returnRental } from "./actions";
+import { overdueDays } from "@/lib/rentals";
 
 /**
  * Прокат (модуль rental): «На руках» — сверху просроченные, потом по дню
@@ -67,79 +64,9 @@ export default async function RentalsPage({ searchParams }: { searchParams: Prom
       <section className="panel">
         {rows.length ? (
           <ul className="rental-list">
-            {rows.map((r) => {
-              const out = r.rental_items.filter((i) => !i.returned_at);
-              const things = (returned ? r.rental_items : out).sort((a, b) => a.n - b.n).map((i) => i.products?.name ?? "Вещь");
-              const lateDays = returned ? 0 : overdueDays(r.due_on, today);
-              const total = rentalTotal(r.rental_items.map((i) => Number(i.price_per_day)), r.days);
-              const collateral = collateralText(r.collateral_kind, r.collateral_note);
-              const phone = !returned && r.customers?.phone ? waPhone(r.customers.phone) : "";
-              return (
-                <li key={r.id} className={`op-list-item${lateDays ? " rental-late" : ""}`}>
-                  <Link className="op-list-main" href={`/rentals/${r.id}`}>
-                    <strong>{r.customers?.name ?? "Клиент"}</strong>
-                  </Link>
-                  <span className={`op-list-amount${lateDays ? " warning" : ""}`}>
-                    {returned
-                      ? `вернули ${dayMonth(bishkekDate(r.returned_at!))}`
-                      : lateDays
-                        ? `просрочено ${lateDays} дн.`
-                        : r.due_on === today
-                          ? "вернуть сегодня"
-                          : `до ${dayMonth(r.due_on)}`}
-                  </span>
-                  <span className="op-list-meta muted">
-                    {things.join(", ")}
-                    {` · ${money(total.toFixed(2), currency)}`}
-                    {r.payment && !r.payment.reversed_at && `, оплатил ${money(r.payment.amount, currency)}`}
-                    {collateral && ` · ${collateral}`}
-                    {r.deposit && !r.deposit_returned_at && ` · залог ${money(r.deposit, currency)}`}
-                  </span>
-                  {!returned && (
-                    <span className="rental-row-actions">
-                      {phone && (
-                        <a
-                          className="icon-action icon-action-whatsapp"
-                          href={`https://wa.me/${phone}?text=${encodeURIComponent(rentalReminder(organizationName, things, dayMonth(r.due_on), lateDays > 0))}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label={`Напомнить ${r.customers?.name ?? ""} в WhatsApp`}
-                          title="Напомнить в WhatsApp"
-                        >
-                          <Icon name="chat" />
-                        </a>
-                      )}
-                      {/* Просрочено — в выдачу: там доплата за лишние дни. В срок — сразу, с подтверждением. */}
-                      {lateDays ? (
-                        <Link className="button" href={`/rentals/${r.id}#return`}>
-                          Вернул →
-                        </Link>
-                      ) : (
-                        <form action={returnRental}>
-                          <input type="hidden" name="id" value={r.id} />
-                          <input type="hidden" name="deposit_back" value="1" />
-                          <ConfirmButton
-                            className="button"
-                            message={`${r.customers?.name ?? "Клиент"} вернул всё?`}
-                            text={[
-                              things.join(", "),
-                              collateral && `Отдайте залог: ${collateral}.`,
-                              r.deposit && !r.deposit_returned_at && `Залог ${money(r.deposit, currency)} вернётся из кассы.`,
-                            ]
-                              .filter(Boolean)
-                              .join(" ")}
-                            confirmLabel="Да, вернул"
-                            cancelLabel="Нет"
-                          >
-                            Вернул
-                          </ConfirmButton>
-                        </form>
-                      )}
-                    </span>
-                  )}
-                </li>
-              );
-            })}
+            {rows.map((r) => (
+              <RentalRowItem key={r.id} r={r} today={today} currency={currency} shopName={organizationName} />
+            ))}
           </ul>
         ) : (
           <p className="muted">

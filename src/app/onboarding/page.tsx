@@ -1,7 +1,8 @@
 import { getUserContext } from "@/lib/context";
 import { createOrganization } from "../auth/actions";
 import { Submit } from "@/components/submit";
-import { BUSINESS_TYPES, DEFAULT_BUSINESS, PRESETS } from "@/lib/business";
+import { cookies } from "next/headers";
+import { BUSINESS_COOKIE, BUSINESS_TYPES, DEFAULT_BUSINESS, PRESETS, isBusinessType } from "@/lib/business";
 export default async function Onboarding({
   searchParams,
 }: {
@@ -9,6 +10,9 @@ export default async function Onboarding({
 }) {
   await getUserContext();
   const { error } = await searchParams;
+  // Пришли по адресу вида (/start/prokat) — он уже выбран.
+  const chosen = (await cookies()).get(BUSINESS_COOKIE)?.value;
+  const business = isBusinessType(chosen) ? chosen : DEFAULT_BUSINESS;
   return (
     <main className="center">
       <section className="panel onboarding">
@@ -34,7 +38,7 @@ export default async function Onboarding({
           </label>
           <label>
             Чем вы занимаетесь
-            <select name="business_type" defaultValue={DEFAULT_BUSINESS}>
+            <select name="business_type" defaultValue={business}>
               {BUSINESS_TYPES.map((type) => (
                 <option key={type} value={type}>
                   {PRESETS[type].label}

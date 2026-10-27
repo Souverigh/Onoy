@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { word } from "@/lib/business";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
@@ -56,7 +57,7 @@ export default async function NewOperation({
   if (!["purchase", "sale", "payment"].includes(params.type ?? ""))
     notFound();
   const kind = params.type as Operation;
-  const { db, organizationId, currency: shopCurrency, isOwner, modules } = await getContext();
+  const { db, organizationId, currency: shopCurrency, isOwner, modules, business } = await getContext();
   // «Склад» выключен — без вкладки «Товары со склада»; начатый черновик товарами всё же открываем.
   const stockOn = modules.includes("stock");
   // «Клиент принёс деньги» / «Я заплатил поставщику» (задача 17).
@@ -356,7 +357,7 @@ export default async function NewOperation({
         : customers.length > 0 || suppliers.length > 0;
   const title =
     kind === "purchase"
-      ? "Товар от поставщика"
+      ? word(business, "purchase")
       : kind === "sale"
         ? "Продажа"
         : fixedDirection === "incoming"

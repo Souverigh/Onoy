@@ -49,7 +49,44 @@ export type Preset = {
   variantAxes?: readonly VariantAxisKey[];
   /** «Новый товар» сразу открывает форму с размерами и цветами (если модуль включён). */
   newProduct?: "model";
+  /**
+   * Кнопки на главной по порядку: первые две — крупные, остальные — строкой
+   * ниже. Кнопка модуля, который выключен, пропускается. Нет — как у магазина.
+   */
+  quickActions?: readonly QuickActionId[];
+  /** Главная кнопка внизу на телефоне (между «Клиентами» и «Отчётами»); нет — «Продажа». */
+  mainAction?: QuickActionId;
+  /** Свои слова вместо обычных (WORDS): «Закупка продуктов» у кафе. */
+  words?: Partial<Record<WordKey, string>>;
+  /** Адрес регистрации сразу под этот вид: depter.kg/start/<slug>. */
+  slug: string;
 };
+
+/**
+ * Кнопки главной и нижней панели. Ядро — у всех; кнопка модуля — только
+ * когда модуль включён (иначе её нет, а главная кнопка — «Продажа»).
+ */
+export const QUICK_ACTIONS = {
+  sales: { href: "/sales", label: "Продажи" },
+  sale: { href: "/money/new?type=sale", label: "Продажа" },
+  purchases: { href: "/purchases", word: "purchase" },
+  payment_in: { href: "/money/new?type=payment&direction=incoming", label: "Клиент принёс деньги" },
+  payment_out: { href: "/money/new?type=payment&direction=outgoing", label: "Я заплатил поставщику" },
+  expense: { href: "/money/expense", label: "Расход" },
+  rental_issue: { href: "/rentals/new", label: "Выдать", module: "rental" },
+  rentals: { href: "/rentals", label: "На руках", module: "rental" },
+} as const satisfies Record<string, { href: string; label?: string; word?: WordKey; module?: ModuleId }>;
+
+export type QuickActionId = keyof typeof QUICK_ACTIONS;
+
+/** Слова, которые вид бизнеса может назвать по-своему. */
+export const WORDS = {
+  purchase: "Товар от поставщика",
+} as const;
+
+export type WordKey = keyof typeof WORDS;
+
+const DEFAULT_QUICK: readonly QuickActionId[] = ["sales", "purchases", "payment_in", "payment_out", "expense"];
 
 /** Чем различаются товары одной модели и что подсказать к выбору. */
 export const VARIANT_AXES = {
@@ -77,17 +114,28 @@ export const VARIANT_AXES = {
 export type VariantAxisKey = keyof typeof VARIANT_AXES;
 
 export const PRESETS = {
-  shop: { label: "Магазин", modules: ["stock", "catalog"] },
-  grocery: { label: "Продуктовый магазин", modules: ["stock", "catalog"] },
-  clothing: { label: "Одежда и обувь", modules: ["stock", "catalog", "variants"], newProduct: "model" },
+  shop: { label: "Магазин", modules: ["stock", "catalog"], slug: "magazin" },
+  grocery: { label: "Продуктовый магазин", modules: ["stock", "catalog"], slug: "produkty" },
+  clothing: { label: "Одежда и обувь", modules: ["stock", "catalog", "variants"], newProduct: "model", slug: "odezhda" },
+  // Прокат: главное — выдать и что на руках; продажа и закупки — в меню, не на виду.
   clothing_rental: {
     label: "Прокат одежды",
     modules: ["stock", "catalog", "variants", "rental"],
     navLabels: { "/stock": "Вещи" },
     newProduct: "model",
+    quickActions: ["rental_issue", "rentals", "payment_in", "expense"],
+    mainAction: "rental_issue",
+    words: { purchase: "Покупка вещей" },
+    slug: "prokat",
   },
-  restaurant: { label: "Кафе, ресторан", modules: ["stock"], navLabels: { "/stock": "Продукты" } },
-  other: { label: "Другое", modules: ["stock", "catalog"] },
+  restaurant: {
+    label: "Кафе, ресторан",
+    modules: ["stock"],
+    navLabels: { "/stock": "Продукты" },
+    words: { purchase: "Закупка продуктов" },
+    slug: "kafe",
+  },
+  other: { label: "Другое", modules: ["stock", "catalog"], slug: "drugoe" },
 } as const satisfies Record<string, Preset>;
 
 export type BusinessType = keyof typeof PRESETS;
@@ -132,3 +180,43 @@ export const variantAxes = (type: BusinessType): readonly VariantAxisKey[] =>
 /** Новый товар этого магазина — сразу модель с размерами и цветами. */
 export const startsWithModel = (type: BusinessType, modules: readonly ModuleId[]) =>
   (PRESETS[type] as Preset).newProduct === "model" && modules.includes("variants");
+
+/** Своё слово вида бизнеса; null — у вида его нет. */
+export const ownWord = (type: BusinessType, key: WordKey): string | null => (PRESETS[type] as Preset).words?.[key] ?? null;
+
+/** Слово для вида бизнеса: своё или обычное. */
+export const word = (type: BusinessType, key: WordKey): string => ownWord(type, key) ?? WORDS[key];
+
+export type QuickAction = { id: QuickActionId; href: string; label: string };
+
+const action = (type: BusinessType, id: QuickActionId): QuickAction => {
+  const a: { href: string; label?: string; word?: WordKey } = QUICK_ACTIONS[id];
+  return { id, href: a.href, label: a.word ? word(type, a.word) : (a.label ?? id) };
+};
+const usable = (id: QuickActionId, modules: readonly ModuleId[]) => {
+  const m = (QUICK_ACTIONS[id] as { module?: ModuleId }).module;
+  return !m || modules.includes(m);
+};
+
+/**
+ * Кнопки главной: вида бизнеса без выключенных модулей. Крупные (первые две)
+ * вида выключены — главная как у магазина, а не «Расход» крупной кнопкой.
+ */
+export function quickActions(type: BusinessType, modules: readonly ModuleId[]): QuickAction[] {
+  const own = (PRESETS[type] as Preset).quickActions ?? DEFAULT_QUICK;
+  const list = own.slice(0, 2).every((id) => usable(id, modules)) ? own.filter((id) => usable(id, modules)) : DEFAULT_QUICK;
+  return list.map((id) => action(type, id));
+}
+
+/** Главная кнопка внизу: вида бизнеса, если её модуль включён; иначе «Продажа». */
+export function mainAction(type: BusinessType, modules: readonly ModuleId[]): QuickAction {
+  const id = (PRESETS[type] as Preset).mainAction;
+  return action(type, id && usable(id, modules) ? id : "sale");
+}
+
+/** Вид по адресу регистрации (/start/prokat); незнакомый — null. */
+export const businessBySlug = (slug: string): BusinessType | null =>
+  BUSINESS_TYPES.find((t) => (PRESETS[t] as Preset).slug === slug) ?? null;
+
+/** Кука: вид бизнеса, выбранный адресом регистрации, — до создания магазина. */
+export const BUSINESS_COOKIE = "depter_business";

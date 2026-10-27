@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { word } from "@/lib/business";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
@@ -65,7 +66,7 @@ export default async function ProductPage({
   const { id } = await params;
   const { error, saved, stocked, restored, mode, merged, unmerged } = await searchParams;
   if (!/^[a-f0-9-]{36}$/i.test(id)) notFound();
-  const { db, organizationId, currency, isOwner } = await getContext();
+  const { db, organizationId, currency, isOwner, business } = await getContext();
   const [productResult, movementsResult, returnsResult, photoResult, categoryData] = await Promise.all([
     db
       .from("product_balances")
@@ -275,7 +276,7 @@ export default async function ProductPage({
         </div>
         <div className="stock-receive">
           <Link className="button primary" href="/money/new?type=purchase&mode=items">
-            + Товар от поставщика
+            + {word(business, "purchase")}
           </Link>
           <small className="muted">Поставщик, количество и цена закупки - долг поставщику и остаток сразу.</small>
         </div>

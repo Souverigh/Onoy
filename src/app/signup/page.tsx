@@ -1,15 +1,18 @@
 import Link from "next/link";
 import { signUp } from "../auth/actions";
 import { Submit } from "@/components/submit";
+import { PRESETS, isBusinessType } from "@/lib/business";
 
 // Регистрация владельца: аккаунт → /onboarding (название магазина + код доступа).
-export default async function SignUp({ searchParams }: { searchParams: Promise<{ error?: string; check?: string }> }) {
-  const { error, check } = await searchParams;
+// ?type= — пришли по адресу вида бизнеса (/start/prokat): магазин создастся этим видом.
+export default async function SignUp({ searchParams }: { searchParams: Promise<{ error?: string; check?: string; type?: string }> }) {
+  const { error, check, type } = await searchParams;
+  const business = isBusinessType(type) ? type : null;
   return (
     <main className="auth">
       <section className="auth-form">
         <div className="auth-card">
-          <span className="eyebrow">НОВЫЙ МАГАЗИН</span>
+          <span className="eyebrow">{business ? PRESETS[business].label.toUpperCase() : "НОВЫЙ МАГАЗИН"}</span>
           <h2>Регистрация</h2>
           <p className="muted">
             Для владельца магазина. Понадобится код доступа от Depter. Продавцу регистрироваться здесь не нужно -
@@ -30,6 +33,7 @@ export default async function SignUp({ searchParams }: { searchParams: Promise<{
             </p>
           )}
           <form action={signUp}>
+            {business && <input type="hidden" name="business_type" value={business} />}
             <label>
               Email
               <input name="email" type="email" autoComplete="email" required maxLength={254} />

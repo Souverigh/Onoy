@@ -7,6 +7,8 @@ import { getContext } from "@/lib/context";
 import { isDirectory } from "@/lib/validation";
 import { directoryMeta, type Entry } from "@/lib/directory";
 import { EntryForm } from "@/components/entry-form";
+import { RentalRowItem } from "@/components/rental-row";
+import { RENTAL_COLUMNS, type RentalRow } from "@/lib/rental-data";
 import { debtMoney, money, originalAmountText, phoneText, quantity } from "@/lib/format";
 import { partyCurrency } from "@/lib/currency";
 import { creditLimitExceeded } from "@/lib/credit-limit";
@@ -63,7 +65,7 @@ export default async function EntryPage({
 }) {
   const { kind, id } = await params;
   if (!isDirectory(kind)) notFound();
-  const { db, organizationId, organizationName, isOwner, currency: shopCurrency } = await getContext();
+  const { db, organizationId, organizationName, isOwner, currency: shopCurrency, modules } = await getContext();
   const { error, saved, linked, revoked, reversed, promised, adjusted, archived, restored, merged, unmerged, rid, added, dup, name: draftName, phone: draftPhone, add_phone: addPhone } =
     await searchParams;
   const isParty = kind === "customers" || kind === "suppliers";
@@ -185,8 +187,24 @@ export default async function EntryPage({
   let activeLink: ShareLink | undefined;
   let origin = "";
   let aging: Aging | null = null;
+  // Прокат: что у клиента на руках сейчас («Сейчас у него» над историей).
+  let rentals: RentalRow[] = [];
   if (entry && kind === "customers") {
-    const [agingResult, links] = await Promise.all([agingRequest, linksRequest]);
+    const [agingResult, links, rentalResult] = await Promise.all([
+      agingRequest,
+      linksRequest,
+      modules.includes("rental")
+        ? db
+            .from("rentals")
+            .select(RENTAL_COLUMNS)
+            .eq("organization_id", organizationId)
+            .eq("customer_id", entry.id)
+            .is("returned_at", null)
+            .is("reversed_at", null)
+            .order("due_on")
+        : null,
+    ]);
+    rentals = (rentalResult?.data ?? []) as unknown as RentalRow[];
     aging = (agingResult.data as Aging | null) ?? null;
     activeLink = (links.data ?? [])[0] as ShareLink | undefined;
     const h = await headers();
@@ -667,6 +685,25 @@ export default async function EntryPage({
       {entry && isParty ? (
         <div className="party-layout">
           <div className="party-main">
+            {kind === "customers" && modules.includes("rental") && (
+              <section className="panel">
+                <div className="section-title">
+                  <h2>{rentals.length ? `Сейчас у него · ${rentals.length}` : "Прокат"}</h2>
+                  <Link className="button" href={`/rentals/new?party=${entry.id}`}>
+                    + Выдать
+                  </Link>
+                </div>
+                {rentals.length ? (
+                  <ul className="rental-list">
+                    {rentals.map((r) => (
+                      <RentalRowItem key={r.id} r={r} today={today} currency={shopCurrency} shopName={organizationName} byThings />
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted">Сейчас ничего не взял.</p>
+                )}
+              </section>
+            )}
             <section className="panel">
               <div className="section-title party-history-title">
                 <h2>История</h2>

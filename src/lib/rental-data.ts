@@ -51,3 +51,18 @@ export async function onHand(
   }
   return out;
 }
+
+/** Для главной: сколько выдач просрочено и сколько вернуть сегодня (день по Бишкеку). */
+export async function rentalsDue(db: SupabaseClient, organizationId: string, today: string): Promise<{ late: number; today: number }> {
+  const { data, error } = await db
+    .from("rentals")
+    .select("due_on")
+    .eq("organization_id", organizationId)
+    .is("returned_at", null)
+    .is("reversed_at", null)
+    .lte("due_on", today)
+    .range(0, 4999);
+  if (error) return { late: 0, today: 0 };
+  const rows = (data ?? []) as { due_on: string }[];
+  return { late: rows.filter((r) => r.due_on < today).length, today: rows.filter((r) => r.due_on === today).length };
+}

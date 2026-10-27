@@ -9,6 +9,10 @@ import {
   moduleOverrides,
   navLabel,
   resolveModules,
+  quickActions,
+  mainAction,
+  word,
+  businessBySlug,
 } from "../src/lib/business.ts";
 
 test("business: a shop without a type (every shop before the migration) keeps every section and its names", () => {
@@ -70,4 +74,31 @@ test("business: clothing starts a new product with sizes and colors, other shops
   // Магазин включил размеры сам — главным остаётся обычный товар.
   assert.equal(startsWithModel("shop", resolveModules("shop", ["+variants"])), false);
   assert.equal(startsWithModel(businessType(null), resolveModules(null, null)), false);
+});
+
+test("business: home buttons and the main button follow the type, a switched-off module falls back to the shop", () => {
+  const ids = (list) => list.map((a) => a.id);
+  assert.deepEqual(ids(quickActions("shop", ["stock", "catalog"])), ["sales", "purchases", "payment_in", "payment_out", "expense"]);
+  assert.equal(mainAction("shop", ["stock"]).label, "Продажа");
+  const rental = resolveModules("clothing_rental", null);
+  assert.deepEqual(ids(quickActions("clothing_rental", rental)).slice(0, 2), ["rental_issue", "rentals"]);
+  assert.deepEqual(mainAction("clothing_rental", rental), { id: "rental_issue", href: "/rentals/new", label: "Выдать" });
+  // Прокат выключили — главная как у магазина, внизу «Продажа».
+  const off = resolveModules("clothing_rental", ["-rental"]);
+  assert.deepEqual(ids(quickActions("clothing_rental", off)).slice(0, 2), ["sales", "purchases"]);
+  assert.equal(mainAction("clothing_rental", off).id, "sale");
+});
+
+test("business: own words where the type has them, the usual word elsewhere", () => {
+  assert.equal(word("restaurant", "purchase"), "Закупка продуктов");
+  assert.equal(word("shop", "purchase"), "Товар от поставщика");
+  assert.equal(quickActions("restaurant", ["stock"]).find((a) => a.id === "purchases").label, "Закупка продуктов");
+});
+
+test("business: every type has its own sign-up address", () => {
+  const slugs = BUSINESS_TYPES.map((t) => PRESETS[t].slug);
+  assert.equal(new Set(slugs).size, slugs.length);
+  for (const slug of slugs) assert.match(slug, /^[a-z]{2,20}$/);
+  assert.equal(businessBySlug("prokat"), "clothing_rental");
+  assert.equal(businessBySlug("../admin"), null);
 });

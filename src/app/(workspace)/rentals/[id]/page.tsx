@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
-import { money, phoneText } from "@/lib/format";
+import { debtMoney, money, phoneText } from "@/lib/format";
 import { bishkekDate } from "@/lib/day-summary";
 import { dayMonth } from "@/lib/promise";
 import { waPhone } from "@/lib/share";
@@ -10,7 +10,7 @@ import { Submit } from "@/components/submit";
 import { RentalReturn } from "@/components/rental-return";
 import { Icon } from "@/components/icon";
 import { RENTAL_COLUMNS, type RentalRow } from "@/lib/rental-data";
-import { collateralText, daysWord, extraCharge, overdueDays, rentalReminder, rentalTotal } from "@/lib/rentals";
+import { collateralText, daysWord, extraCharge, overdueDays, rentalReminder, rentalTotal, unpaidOf } from "@/lib/rentals";
 import { returnDeposit, returnRental, reverseRental } from "../actions";
 
 const ERRORS: Record<string, string> = {
@@ -42,16 +42,34 @@ export default async function RentalPage({
   const r = data as unknown as RentalRow | null;
   if (!r) notFound();
   const saleIds = [r.sale_id, r.extra_sale_id].filter((s): s is string => Boolean(s));
-  const [sales, members] = await Promise.all([
+  // Долг клиента один (магазин и прокат вместе), деньги гасят сначала старое:
+  // оплачен ли прокат — из общего долга и его продаж в долг (unpaidOf).
+  const [sales, members, balance, credit] = await Promise.all([
     saleIds.length
       ? db.from("sales").select("id,total,paid_immediately").eq("organization_id", organizationId).in("id", saleIds)
       : Promise.resolve({ data: [] as { id: string; total: string; paid_immediately: boolean }[] }),
     memberLabels(db, organizationId),
+    db.from("customer_balances").select("balance").eq("organization_id", organizationId).eq("id", r.customer_id).maybeSingle(),
+    db
+      .from("sales")
+      .select("id,total")
+      .eq("organization_id", organizationId)
+      .eq("customer_id", r.customer_id)
+      .eq("status", "posted")
+      .eq("paid_immediately", false)
+      .is("reversed_at", null)
+      .order("occurred_at", { ascending: false })
+      .order("created_at", { ascending: false })
+      .range(0, 999),
   ]);
+  const debtNow = Number(balance.data?.balance ?? 0);
+  const creditSales = ((credit.data ?? []) as { id: string; total: string }[]).map((c) => ({ id: c.id, total: Number(c.total) }));
+  const unpaid = (sid: string | null) => (sid ? unpaidOf(sid, debtNow, creditSales) : 0);
+  /** «· оплачено» / «· не оплачено 1 000 сом» — по общему долгу клиента. */
+  const payState = (s: { id: string; paid_immediately: boolean }) =>
+    s.paid_immediately ? " · оплатил сразу" : unpaid(s.id) > 0 ? ` · не оплачено ${money(unpaid(s.id).toFixed(2), currency)}` : " · оплачено";
   const saleOf = (sid: string | null) => (sales.data ?? []).find((s) => s.id === sid);
   const sale = saleOf(r.sale_id);
-  // Частичная оплата: внесённая сразу часть (отменённая не считается).
-  const part = r.payment && !r.payment.reversed_at ? Number(r.payment.amount) : 0;
   const extra = saleOf(r.extra_sale_id);
 
   const today = bishkekDate();
@@ -153,23 +171,22 @@ export default async function RentalPage({
             ) : (
               money(rentalTotal(items.map((i) => Number(i.price_per_day)), r.days).toFixed(2), currency)
             )}
-            {sale
-              ? sale.paid_immediately
-                ? " · оплатил сразу"
-                : part
-                  ? ` · оплатил ${money(part.toFixed(2), currency)}, в долг ${money((Number(sale.total) - part).toFixed(2), currency)}`
-                  : " · в долг"
-              : " · бесплатно"}
+            {sale ? payState(sale) : " · бесплатно"}
           </dd>
           {extra && (
             <>
               <dt>Доплата</dt>
               <dd>
                 <Link href={`/money/send/${extra.id}`}>{money(extra.total, currency)}</Link>
-                {extra.paid_immediately ? " · оплатил сразу" : " · в долг"}
+                {payState(extra)}
               </dd>
             </>
           )}
+          <dt>Долг клиента сейчас</dt>
+          <dd>
+            <Link href={`/customers/${r.customer_id}`}>{debtMoney(debtNow.toFixed(2), currency)}</Link>
+            <small className="muted"> · один на магазин и прокат, деньги гасят сначала старый долг</small>
+          </dd>
           <dt>Залог</dt>
           <dd>{collateral ?? "без документа"}</dd>
           {deposit && (

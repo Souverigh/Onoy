@@ -60,3 +60,20 @@ export function daysWord(n: number): string {
 export function rentalReminder(shopName: string, things: readonly string[], due: string, late: boolean): string {
   return `Здравствуйте! Магазин «${shopName}»: напоминаем вернуть ${things.join(", ")} ${late ? `- срок был ${due}` : `до ${due}`}. Спасибо!`;
 }
+
+/**
+ * Сколько из продажи ещё не оплачено, если деньги клиента гасят сначала
+ * старый долг (как в тетради): не оплачены самые новые продажи в долг на
+ * сумму долга. `creditSales` — продажи клиента в долг от новых к старым,
+ * `balance` — его долг сейчас. Нет такой продажи — 0.
+ */
+export function unpaidOf(saleId: string, balance: number, creditSales: readonly { id: string; total: number }[]): number {
+  let left = Math.max(balance, 0);
+  for (const s of creditSales) {
+    const unpaid = Math.min(s.total, left);
+    if (s.id === saleId) return Math.round(unpaid * 100) / 100;
+    left -= unpaid;
+    if (left <= 0) return 0;
+  }
+  return 0;
+}

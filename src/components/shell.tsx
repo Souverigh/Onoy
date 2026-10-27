@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Icon, type IconName } from "./icon";
 import { InstallApp } from "./install-app";
 import { REPORT_TAB_KEY, reportTabHref } from "./report-tabs";
-import { DEFAULT_BUSINESS, MODULE_IDS, navLabel, type BusinessType, type ModuleId } from "@/lib/business";
+import { DEFAULT_BUSINESS, MODULE_IDS, mainAction, navLabel, type BusinessType, type ModuleId } from "@/lib/business";
 import { newestNews, unreadNews, type NewsEntry } from "@/lib/changelog";
 import { WhatsNewDialog, readNewsSeen, saveNewsSeen } from "./whats-new";
 
@@ -152,6 +152,7 @@ export function Shell({
     .filter(([, , , module]) => !module || modules.includes(module))
     .map(([href, label, icon, module]): NavItem => [href, navLabel(business, href, label), icon, module]);
   const ordersOn = modules.includes("catalog");
+  const main = mainAction(business, modules);
   const allowed = ([href]: NavItem) => isOwner || !OWNER_ONLY.has(href);
   const inPath = (href: string) => path === href || path.startsWith(href + "/");
   const link = (href: string) => (preview ? "/preview" : isOwner && href === "/day" ? reportsHref : href);
@@ -212,9 +213,10 @@ export function Shell({
               <span>{label}</span>
             </Link>
           ))}
-          <Link href={link("/money/new?type=sale")} className="nav-primary">
+          {/* Главная кнопка — под вид бизнеса: у магазина «Продажа», у проката «Выдать». */}
+          <Link href={link(main.href)} className="nav-primary">
             <Icon name="plus" />
-            <span>Продажа</span>
+            <span>{main.label}</span>
           </Link>
           {bottom.slice(2).map(([href, label, icon]) => (
             <Link href={link(href)} key={href} className={active(href) ? "active" : ""}>

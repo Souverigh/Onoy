@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { quickActions, DEFAULT_BUSINESS, MODULE_IDS, type QuickAction } from "@/lib/business";
 import { debtMoney, money } from "@/lib/format";
 import type { RecentRecord } from "@/lib/recent";
 
@@ -49,6 +50,8 @@ export function Dashboard({
   pendingClaims = 0,
   reviewCount = 0,
   newOrders = 0,
+  rentals = { late: 0, today: 0 },
+  actions = quickActions(DEFAULT_BUSINESS, MODULE_IDS),
   recent = [],
   mySales,
 }: {
@@ -69,6 +72,10 @@ export function Dashboard({
   reviewCount?: number;
   /** Новые заказы клиентов из каталога (задача № 12). */
   newOrders?: number;
+  /** Прокат: выдачи с просроченным возвратом и те, что вернуть сегодня. */
+  rentals?: { late: number; today: number };
+  /** Кнопки под вид бизнеса (quickActions): первые две крупные, остальные строкой ниже. */
+  actions?: QuickAction[];
   recent?: RecentRecord[];
   /** Продавец: его продажи за сегодня и сколько должны его клиенты. */
   mySales?: { date: string; today: number; todayCount: number; owed: number; currency: string };
@@ -123,24 +130,15 @@ export function Dashboard({
           </Link>
         </section>
       )}
-      {/* «Продажи» и «Товар от поставщика» открывают список записей с черновиками,
-          новая запись — кнопкой «+» сверху списка. */}
+      {/* Кнопки — под вид бизнеса (src/lib/business.ts): у магазина «Продажи» и
+          «Товар от поставщика» (списки с черновиками, новая запись — «+» сверху),
+          у проката — «Выдать» и «На руках». */}
       <section className="quick-actions" aria-label="Добавить запись">
-        <Link className="quick-action" href={href("/sales")}>
-          Продажи
-        </Link>
-        <Link className="quick-action" href={href("/purchases")}>
-          Товар от поставщика
-        </Link>
-        <Link className="quick-action secondary-action" href={href("/money/new?type=payment&direction=incoming")}>
-          Клиент принёс деньги
-        </Link>
-        <Link className="quick-action secondary-action" href={href("/money/new?type=payment&direction=outgoing")}>
-          Я заплатил поставщику
-        </Link>
-        <Link className="quick-action secondary-action" href={href("/money/expense")}>
-          Расход
-        </Link>
+        {actions.map((a, i) => (
+          <Link key={a.id} className={i < 2 ? "quick-action" : "quick-action secondary-action"} href={href(a.href)}>
+            {a.label}
+          </Link>
+        ))}
       </section>
       {!staff && pendingClaims > 0 && (
         <Link className="notice claims-notice" href={href("/claims")}>
@@ -150,6 +148,14 @@ export function Dashboard({
       {newOrders > 0 && (
         <Link className="notice claims-notice" href={href("/orders")}>
           Заказы из каталога ждут продажи: {newOrders} →
+        </Link>
+      )}
+      {(rentals.late > 0 || rentals.today > 0) && (
+        <Link className={rentals.late > 0 ? "notice claims-notice" : "notice"} href={href("/rentals")}>
+          Прокат: {[rentals.late > 0 && `просрочено ${rentals.late}`, rentals.today > 0 && `вернуть сегодня ${rentals.today}`]
+            .filter(Boolean)
+            .join(" · ")}{" "}
+          →
         </Link>
       )}
       {reviewCount > 0 && (

@@ -8,12 +8,14 @@ import { dayMonth } from "@/lib/promise";
 import { reminderMessage } from "@/lib/reminder";
 import { waPhone } from "@/lib/share";
 import { reviewDocumentsCount } from "@/lib/review-documents";
+import { rentalsDue } from "@/lib/rental-data";
+import { quickActions } from "@/lib/business";
 
 /** Сколько клиентов показываем в «Кому напомнить сегодня». */
 const REMIND_LIMIT = 6;
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ error?: string; password?: string }> }) {
-  const { db, organizationId, organizationName, isOwner, user, currency: shopCurrency, modules } = await getContext();
+  const { db, organizationId, organizationName, isOwner, user, currency: shopCurrency, modules, business } = await getContext();
   const { error, password } = await searchParams;
   // После «Забыли пароль?» → новый пароль (src/app/auth/actions.ts, updatePassword).
   const passwordNotice =
@@ -23,6 +25,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
       </p>
     ) : null;
   const review = reviewDocumentsCount(db, organizationId);
+  // Прокат: просроченные и «вернуть сегодня» — и владельцу, и продавцу.
+  const rentalCounts = modules.includes("rental") ? rentalsDue(db, organizationId, bishkekDate()) : Promise.resolve({ late: 0, today: 0 });
   // Необработанные заказы из каталога (задача № 12): новые и начатые — и владельцу, и продавцу.
   const orders = db
     .from("catalog_orders")
@@ -50,6 +54,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
           recent={recent}
           reviewCount={reviewResult.count ?? 0}
           newOrders={modules.includes("catalog") ? (ordersResult.count ?? 0) : 0}
+          rentals={await rentalCounts}
+          actions={quickActions(business, modules)}
           mySales={
             mine
               ? { date: today, today: mine.sold, todayCount: mine.count, owed: owed?.total ?? 0, currency: shopCurrency }
@@ -186,6 +192,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
         pendingClaims={claims.count ?? 0}
         reviewCount={reviewResult.count ?? 0}
         newOrders={modules.includes("catalog") ? (ordersResult.count ?? 0) : 0}
+          rentals={await rentalCounts}
+          actions={quickActions(business, modules)}
         recent={recent}
       />
     </>

@@ -7,7 +7,7 @@ import { getUserContext } from "@/lib/context";
 import { cookies, headers } from "next/headers";
 import { EXPIRED_COOKIE } from "@/lib/session-timeout";
 import { storedPhone } from "@/lib/contacts";
-import { DEFAULT_BUSINESS, isBusinessType } from "@/lib/business";
+import { BUSINESS_COOKIE, DEFAULT_BUSINESS, isBusinessType } from "@/lib/business";
 /** Куда вернуть после входа: только страница приглашения, иначе главная. */
 function nextPath(form: FormData) {
   const next = String(form.get("next") ?? "");
@@ -64,6 +64,11 @@ export async function signUp(form: FormData) {
   if (!email || email.length > 254 || password.length < 6 || password.length > 1024)
     redirect("/signup?error=invalid");
   if (form.get("accept") !== "1") redirect("/signup?error=consent");
+  // Пришли по адресу вида бизнеса (/start/prokat) — запоминаем до создания магазина
+  // (и после подтверждения email на этом же телефоне).
+  const business = String(form.get("business_type") ?? "");
+  if (isBusinessType(business))
+    (await cookies()).set(BUSINESS_COOKIE, business, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 30 });
   const db = await createClient();
   const { data, error } = await db.auth.signUp({
     email,
@@ -168,6 +173,7 @@ export async function createOrganization(form: FormData) {
     const profile = await db.rpc("set_business_profile", { p_org: data, p_type: type, p_overrides: [] });
     if (profile.error) console.error("createOrganization: business type not set", profile.error);
   }
+  (await cookies()).delete(BUSINESS_COOKIE);
   revalidatePath("/", "layout");
   redirect("/");
 }

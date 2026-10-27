@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { navLabel } from "@/lib/business";
+import { navLabel, word } from "@/lib/business";
 import { onHand } from "@/lib/rental-data";
 import { dayMonth } from "@/lib/promise";
 import { Fragment } from "react";
@@ -300,7 +300,7 @@ export default async function StockPage({
             </Link>
           )}
           <Link className="button" href="/money/new?type=purchase&mode=items">
-            + Товар от поставщика
+            + {word(business, "purchase")}
           </Link>
           <Link className="button primary" href="/stock/new">
             <Icon name="plus" />

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ownWord } from "@/lib/business";
 import { deleteDraft } from "@/app/(workspace)/drafts/actions";
 import { ConfirmButton } from "./confirm-button";
 import { getContext } from "@/lib/context";
@@ -50,7 +51,9 @@ export async function RecordsPage({
   searchParams: Promise<JournalParams>;
 }) {
   const params = await searchParams;
-  const { db, organizationId, isOwner, user, currency: shopCurrency } = await getContext();
+  const { db, organizationId, isOwner, user, currency: shopCurrency, business } = await getContext();
+  // Своё слово вида бизнеса («Закупка продуктов» у кафе) вместо «Приход».
+  const purchaseWord = ownWord(business, "purchase") ?? "Приход";
   const sale = kind === "sale";
   const base = sale ? "/sales" : "/purchases";
   const today = bishkekDate();
@@ -115,14 +118,14 @@ export async function RecordsPage({
     <>
       <div className="page-heading">
         <div>
-          <h1>{sale ? "Продажи" : "Приход"}</h1>
+          <h1>{sale ? "Продажи" : purchaseWord}</h1>
           <p className="muted">
             {sale ? "Все продажи клиентам: в долг и за наличные." : "Товар от поставщиков: что и когда пришло."}
           </p>
         </div>
         <div className="page-heading-actions">
           <Link className="button primary" href={newHref}>
-            + {sale ? "Продажа" : "Приход"}
+            + {sale ? "Продажа" : purchaseWord}
           </Link>
         </div>
       </div>
