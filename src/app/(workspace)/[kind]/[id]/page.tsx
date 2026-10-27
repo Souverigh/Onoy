@@ -58,12 +58,13 @@ export default async function EntryPage({
     dup?: string;
     name?: string;
     phone?: string;
+    add_phone?: string;
   }>;
 }) {
   const { kind, id } = await params;
   if (!isDirectory(kind)) notFound();
   const { db, organizationId, organizationName, isOwner, currency: shopCurrency } = await getContext();
-  const { error, saved, linked, revoked, reversed, promised, adjusted, archived, restored, merged, unmerged, rid, added, dup, name: draftName, phone: draftPhone } =
+  const { error, saved, linked, revoked, reversed, promised, adjusted, archived, restored, merged, unmerged, rid, added, dup, name: draftName, phone: draftPhone, add_phone: addPhone } =
     await searchParams;
   const isParty = kind === "customers" || kind === "suppliers";
   const known = id !== "new";
@@ -434,6 +435,12 @@ export default async function EntryPage({
     entry?.phone && reminderText
       ? `https://wa.me/${waPhone(entry.phone)}?text=${encodeURIComponent(reminderText)}`
       : undefined;
+  // Номера может не быть в WhatsApp, а проверить это заранее нельзя: тот же
+  // текст — SMS-кой из «Ещё». «?&body=» понимают и iPhone, и Android.
+  const smsHref =
+    entry?.phone && reminderText && waPhone(entry.phone)
+      ? `sms:+${waPhone(entry.phone)}?&body=${encodeURIComponent(reminderText)}`
+      : undefined;
   // Подпись к балансу словами, без минуса: плюс — долг, минус — аванс.
   const balanceLabel =
     reminderBalance > 0
@@ -468,7 +475,10 @@ export default async function EntryPage({
                   {phoneText(entry.phone)}
                 </a>
               ) : (
-                <span className="muted party-hero-phone">Телефон не указан</span>
+                // Без номера не напомнить в WhatsApp — сразу ведём к полю телефона.
+                <Link className="party-hero-phone" href={`/${kind}/${entry.id}?add_phone=1#party-data`}>
+                  Вписать телефон{kind === "customers" ? " - чтобы напоминать в WhatsApp" : ""}
+                </Link>
               )}
               {entry.notes && <p className="muted party-hero-notes">{entry.notes}</p>}
             </div>
@@ -535,6 +545,9 @@ export default async function EntryPage({
                   <Icon name="more" />
                 </summary>
                 <div className="more-menu-list">
+                  {smsHref && (
+                    <a href={smsHref}>{reminderBalance > 0 ? "Напомнить по SMS" : "Написать SMS"}</a>
+                  )}
                   <Link href={`/${kind}/${entry.id}/statement`}>Акт сверки</Link>
                   {isOwner && <Link href={`/money/adjustment?party=${entry.id}`}>Скидка / возврат</Link>}
                 </div>
@@ -889,7 +902,7 @@ export default async function EntryPage({
                 )}
               </section>
             )}
-            <details className="panel party-fold" open={Boolean(formError)}>
+            <details id="party-data" className="panel party-fold" open={Boolean(formError) || Boolean(addPhone)}>
               <summary>
                 <span>
                   <strong>Данные {kind === "customers" ? "клиента" : "поставщика"}</strong>
@@ -898,7 +911,13 @@ export default async function EntryPage({
                   </small>
                 </span>
               </summary>
-              <EntryForm kind={kind} entry={entry} shopCurrency={shopCurrency} error={formError ? error : undefined} />
+              <EntryForm
+                kind={kind}
+                entry={entry}
+                shopCurrency={shopCurrency}
+                error={formError ? error : undefined}
+                focusPhone={Boolean(addPhone) && !entry.phone}
+              />
             </details>
             {manage && <PartyManage {...manage} />}
           </aside>

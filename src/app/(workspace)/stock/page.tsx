@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { navLabel } from "@/lib/business";
 import { Fragment } from "react";
 import { getContext } from "@/lib/context";
 import { money, quantity, decimalLessThan } from "@/lib/format";
@@ -72,7 +73,10 @@ export default async function StockPage({
   const wide = filter === "low" || filter === "nocost";
   const query = q.trim().slice(0, 100);
   const current = Math.max(1, Math.min(1000, parseInt(page) || 1));
-  const { db, organizationId, currency, isOwner } = await getContext();
+  const { db, organizationId, currency, isOwner, business, modules } = await getContext();
+  // Название — как пункт меню («Продукты» у кафе, «Вещи» у проката); каталог — только с модулем.
+  const stockLabel = navLabel(business, "/stock", "Склад");
+  const catalogOn = isOwner && modules.includes("catalog");
   // Категории (миграция 20261023100000): отбор, подпись в строке и подсказка.
   // Категории и модели с размерами (собрать их товары в одну строку) — параллельно.
   const [{ categories, products: named, hints }, { variants, models }] = await Promise.all([
@@ -139,8 +143,10 @@ export default async function StockPage({
     summaryResult && !summaryResult.error ? (summaryResult.data as unknown as (StockValueRow & { min_stock: string })[]) : null;
   const summary = summaryRows ? stockValue(summaryRows, currency) : null;
   const lowCount = summaryRows ? summaryRows.filter(isLow).length : 0;
+  // Итоги склада — целыми: «2 765 842,4 сом» читается как ошибка, копейки тут не нужны.
+  const whole = (value: string | number) => String(Math.round(Number(value)));
   const costLines = summary
-    ? [currency, ...CURRENCIES.filter((c) => c !== currency)].filter((c) => summary.cost[c]).map((c) => money(summary.cost[c]!, c))
+    ? [currency, ...CURRENCIES.filter((c) => c !== currency)].filter((c) => summary.cost[c]).map((c) => money(whole(summary.cost[c]!), c))
     : [];
   const shopOnly = summary ? CURRENCIES.every((c) => c === currency || !summary.cost[c]) : false;
   // Наценка — только когда всё в валюте магазина и у всех есть обе цены: иначе она врёт.
@@ -212,7 +218,8 @@ export default async function StockPage({
       })()}
       {isLow(row) && filter !== "archive" && (
         <span className="op-list-meta warning stock-low-tag">
-          {decimalLessThan("0", row.stock) ? "мало" : "нет на складе"}
+          {/* Минус — продали больше, чем было записано: «нет на складе» тут непонятно. */}
+          {decimalLessThan("0", row.stock) ? "мало" : decimalLessThan(row.stock, "0") ? "продано больше, чем было" : "нет на складе"}
         </span>
       )}
     </li>
@@ -252,13 +259,13 @@ export default async function StockPage({
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">СКЛАД</span>
+          {stockLabel === "Склад" && <span className="eyebrow">СКЛАД</span>}
           <h1>
-            Товары <span className="count">{total}</span>
+            {stockLabel === "Склад" ? "Товары" : stockLabel} <span className="count">{total}</span>
           </h1>
           <p className="muted">Остатки, цены и коды. Товар от поставщика прибавляет остаток, продажа - списывает.</p>
           {/* Телефон: кнопки в шапке скрыты — каталог отдельной строкой. */}
-          {isOwner && (
+          {catalogOn && (
             <Link className="stock-catalog-mobile" href="/stock/catalog">
               <span>
                 <strong>Каталог для клиентов</strong>
@@ -269,7 +276,7 @@ export default async function StockPage({
           )}
         </div>
         <div className="heading-actions stock-heading-actions">
-          {isOwner && (
+          {catalogOn && (
             <Link className="button" href="/stock/catalog">
               Каталог для клиентов
             </Link>
@@ -334,10 +341,10 @@ export default async function StockPage({
                   : ""}
               </InfoTip>
             </span>
-            <strong>{money(summary.sale, currency)}</strong>
+            <strong>{money(whole(summary.sale), currency)}</strong>
             <small className="muted">
               {markup !== null
-                ? `наценка ${markup < 0 ? "−" : ""}${money(Math.abs(markup).toFixed(2), currency)}`
+                ? `наценка ${markup < 0 ? "−" : ""}${money(whole(Math.abs(markup)), currency)}`
                 : "по ценам продажи"}
             </small>
           </article>
@@ -450,6 +457,7 @@ export default async function StockPage({
         )}
       </section>
       {/* Телефон: кнопки внизу, над нижней панелью — под большим пальцем. */}
+      <div className="bottom-actions-spacer" aria-hidden="true" />
       <div className="stock-bottom-actions">
         {isOwner && (
           <Link className="button" href="/stock/import">

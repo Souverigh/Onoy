@@ -103,9 +103,10 @@ export default async function ReverseOperation({
           {back && <input type="hidden" name="back" value={back} />}
           <fieldset className="reason-choices">
             <legend>Почему отменяем?</legend>
-            {REVERSAL_REASONS.map((reason, i) => (
+            {/* Ничего не выбрано заранее: иначе запишется не та причина. */}
+            {REVERSAL_REASONS.map((reason) => (
               <label key={reason} className="reason-choice">
-                <input type="radio" name="reason" value={reason} defaultChecked={i === 0} />
+                <input type="radio" name="reason" value={reason} />
                 {reason}
               </label>
             ))}

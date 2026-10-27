@@ -3,6 +3,7 @@ import { getContext } from "@/lib/context";
 import { Icon } from "@/components/icon";
 import { expenseCategoryLabel } from "@/lib/expenses";
 import { DeleteWithUndo } from "@/components/delete-with-undo";
+import { recognitionStuck } from "@/lib/document-status";
 
 type DocRow = {
   id: string;
@@ -47,6 +48,7 @@ const roleLabel = { customer: "клиент", supplier: "поставщик", ex
 function statusOf(doc: DocRow, links: Links) {
   if (links.reversed.has(doc.id)) return { label: "Отменена", className: "tag" };
   if (!links.linked.has(doc.id) && doc.status !== "processing") return { label: "Без записи", className: "tag" };
+  if (recognitionStuck(doc)) return { label: "Не прочиталось", className: "tag reversed-tag" };
   return statusLabel[doc.status] ?? statusLabel.uploaded;
 }
 

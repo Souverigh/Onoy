@@ -778,13 +778,14 @@ export function CatalogView({
           </div>
         </div>
       )}
-      {/* Depter: свой каталог для магазина; подсказка сама на пару секунд (просьба пользователя 23.10.2026). */}
-      <ClientPromo
+      {/* Depter: свой каталог для магазина; подсказка сама на пару секунд (просьба пользователя 23.10.2026).
+          Раскрытый «Мой список» выше кружка — кружок прятал крестики «убрать», убираем его. */}
+      {!listOpen && <ClientPromo
         hint
         raised={picked.length > 0 || Boolean(undoClear)}
         label="Depter: такой же каталог для вашего магазина"
         text="Хотите такой же каталог с ценами для своего магазина? Клиенты выбирают товары и присылают заказ прямо в Depter. Напишите нам - поможем."
-      />
+      />}
       {ordersOpen && (
         <div className="catalog-zoom" role="dialog" aria-modal="true" aria-label="Мои заказы" onClick={() => setOrdersOpen(false)}>
           <div className="catalog-order" onClick={(e) => e.stopPropagation()}>
@@ -802,7 +803,7 @@ export function CatalogView({
             <div className="catalog-order" onClick={(e) => e.stopPropagation()}>
               <h2>Заказ отправлен</h2>
               <p className="muted">
-                {shopName} получил ваш список. Продавец свяжется с вами, чтобы подтвердить заказ и сумму. Что с заказом - в «Мои
+                Магазин «{shopName}» получил ваш список. Продавец свяжется с вами, чтобы подтвердить заказ и сумму. Что с заказом - в «Мои
                 заказы» над поиском.
               </p>
               <div className="catalog-zoom-actions">

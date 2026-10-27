@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireOwner } from "@/lib/context";
-import { money } from "@/lib/format";
+import { debtMoney, money } from "@/lib/format";
 import { CURRENCY_SIGN, type Currency } from "@/lib/currency";
 import { Submit } from "@/components/submit";
 import {
@@ -73,11 +73,12 @@ function PartyLists({ m, cur }: { m: DayMoney; cur: string }) {
 }
 
 /** «было → стало»; не изменилось — одна сумма. */
+/** Долг «утром → вечером»; минус — аванс словом, как на главной, а не «-8 229,99». */
 function FromTo({ from, to, cur }: { from: number; to: number; cur: string }) {
   return (
     <strong>
-      {from !== to && <span className="muted day-debt-from">{money(from, cur)} → </span>}
-      {money(to, cur)}
+      {from !== to && <span className="muted day-debt-from">{debtMoney(from, cur)} → </span>}
+      {debtMoney(to, cur)}
     </strong>
   );
 }
@@ -132,7 +133,7 @@ function CashCard({
     <section className={`panel day-cash${closure ? " day-cash-closed" : ""}`}>
       <div className="day-cash-head">
         <span className="label-with-tip">
-          В кассе должно быть
+          Наличных в кассе по записям
           <InfoTip>
             Наличные: утром было, плюс пришло наличными (продажи и оплаты клиентов), минус наличные поставщикам и
             расходы, минус что забрали из кассы и плюс что положили. Переводы в кассу не входят.

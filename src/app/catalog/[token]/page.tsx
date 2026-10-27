@@ -45,6 +45,7 @@ export default async function CatalogPage({ params }: { params: Promise<{ token:
         </section>
       </main>
     );
+  const cards = new Set(catalog.products.map((p) => p.model ?? p.id)).size;
   const phone = catalog.shop_phone;
   const digits = phone ? normalizePhone(phone).replace(/\D/g, "") : "";
   return (
@@ -53,7 +54,8 @@ export default async function CatalogPage({ params }: { params: Promise<{ token:
         <div>
           <h1>{catalog.shop_name}</h1>
           <p className="muted">
-            Каталог · {catalog.products.length} {goodsWord(catalog.products.length)}
+            {/* Модель с размерами — одна карточка, считаем её одним товаром. */}
+            Каталог · {cards} {goodsWord(cards)}
           </p>
         </div>
         {digits && (

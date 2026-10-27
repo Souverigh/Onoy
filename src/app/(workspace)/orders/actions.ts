@@ -135,3 +135,17 @@ export async function setOrderDismissed(form: FormData) {
   revalidatePath("/", "layout");
   redirect(dismissed ? `/orders?dismissed=${id}` : `/orders/${id}`);
 }
+
+/** Продажу по заказу отменили до того, как это стало делать само, — заказ снова «Новый». */
+export async function reopenOrder(form: FormData) {
+  const id = String(form.get("id") ?? "");
+  if (!uuidPattern.test(id)) redirect("/orders");
+  const { db, organizationId } = await getContext();
+  const result = await db.rpc("reopen_catalog_order", { p_org: organizationId, p_id: id });
+  if (result.error) {
+    console.error("reopenOrder failed", { message: result.error.message });
+    redirect(`/orders/${id}?error=${result.error.message.includes("order_handled") ? "handled" : "save"}`);
+  }
+  revalidatePath("/", "layout");
+  redirect(`/orders/${id}`);
+}

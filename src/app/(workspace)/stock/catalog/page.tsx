@@ -34,7 +34,7 @@ export default async function CatalogSettings({
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
   const active = link.data && !link.data.revoked_at ? (link.data.token as string) : null;
   const url = active ? `${origin}/catalog/${active}` : null;
-  const shareText = url ? `Каталог ${organizationName}: цены на товары. Выберите нужное и отправьте нам список в WhatsApp.\n${url}` : "";
+  const shareText = url ? `Каталог ${organizationName}: цены на товары. Выберите нужное и нажмите «Отправить заказ» - заказ придёт нам сразу.\n${url}` : "";
 
   return (
     <>
@@ -45,8 +45,8 @@ export default async function CatalogSettings({
         <div>
           <h1>Каталог для клиентов</h1>
           <p className="muted">
-            Одна ссылка: клиенты открывают её с телефона без входа, ищут товар, видят цену и отправляют вам список в
-            WhatsApp.
+            Одна ссылка: клиенты открывают её с телефона без входа, ищут товар, видят цену и отправляют заказ
+            кнопкой «Отправить заказ» - он приходит в «Заказы».
           </p>
         </div>
       </div>

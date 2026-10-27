@@ -30,6 +30,7 @@ import { normalizePhone, phoneKey } from "@/lib/contacts";
 import { isCurrency, rateInput, type Currency } from "@/lib/currency";
 import { partPaymentOf } from "@/lib/part-payment";
 import { redoTarget } from "@/lib/redo";
+import { restoreAsDraft } from "@/app/(workspace)/drafts/actions";
 import { noteInput, saveRecordNote } from "@/lib/record-note";
 import { correctionOf } from "@/lib/record-maker";
 
@@ -1081,6 +1082,24 @@ export async function undoRecent(form: FormData) {
   }
   revalidatePath("/", "layout");
   if (kind === "expense") redirect("/money/expense?undone=1");
+  // Товарами со склада (без фото) — те же товары, количество, цены и оплата
+  // черновиком, как «Открыть как черновик»; форма по фото их не переносит.
+  if (kind === "sale" || kind === "purchase") {
+    const [record, items] = await Promise.all([
+      db.from(kind === "sale" ? "sales" : "purchases").select("document_id").eq("organization_id", organizationId).eq("id", id).maybeSingle(),
+      db
+        .from(kind === "sale" ? "sale_items" : "purchase_items")
+        .select("product_id", { count: "exact", head: true })
+        .eq("organization_id", organizationId)
+        .eq(kind === "sale" ? "sale_id" : "purchase_id", id),
+    ]);
+    if (record.data && !record.data.document_id && (items.count ?? 0) > 0) {
+      const restore = new FormData();
+      restore.set("id", id);
+      restore.set("kind", kind);
+      await restoreAsDraft(restore);
+    }
+  }
   redirect(`${await redoTarget(db, organizationId, kind as Operation, id)}&undone=1`);
 }
 

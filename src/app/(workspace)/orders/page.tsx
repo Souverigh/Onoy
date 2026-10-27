@@ -4,13 +4,14 @@ import { money, phoneText } from "@/lib/format";
 import { normalizePhone } from "@/lib/contacts";
 import { memberLabels } from "@/lib/members";
 import { linkedCustomers, matchOrder, ORDER_COLUMNS, phoneBook, type CatalogOrder, type OrderMatch } from "@/lib/catalog-orders";
+import { navLabel } from "@/lib/business";
 import { setOrderDismissed } from "./actions";
 import { goodsCount, ORDER_ERRORS, orderDateTime } from "./order-text";
 
 /** Метка покупателя в списке: знаем ли его. */
 function matchTag(match: OrderMatch) {
   if (match.kind === "one") return <span className="tag green">Клиент магазина</span>;
-  if (match.kind === "many") return <span className="tag green">Несколько клиентов</span>;
+  if (match.kind === "many") return <span className="tag green">Номер у нескольких клиентов - выберите в заказе</span>;
   return <span className="tag">Новый покупатель</span>;
 }
 
@@ -26,7 +27,8 @@ export default async function OrdersPage({
   searchParams: Promise<{ error?: string; dismissed?: string }>;
 }) {
   const { error, dismissed } = await searchParams;
-  const { db, organizationId, currency, user } = await getContext();
+  const { db, organizationId, currency, user, business, modules } = await getContext();
+  const stockLabel = navLabel(business, "/stock", "Склад");
   const [openResult, doneResult, members] = await Promise.all([
     db
       .from("catalog_orders")
@@ -66,7 +68,7 @@ export default async function OrdersPage({
         o.status === "new" ? (
           <span className="tag green">Новый</span>
         ) : o.status === "accepted" ? (
-          <span className="tag">Оформляет {who(o.handled_by)}</span>
+          <span className="tag">{who(o.handled_by) === "вы" ? "Вы начали продажу" : `Продажу начал(а) ${who(o.handled_by) || "продавец"}`}</span>
         ) : o.status === "sold" ? (
           <span className="tag green">Продан</span>
         ) : (
@@ -158,8 +160,19 @@ export default async function OrdersPage({
           table(rows(open))
         ) : (
           <p className="muted">
-            Новых заказов нет. Ссылку на каталог для клиентов можно включить на{" "}
-            <Link href="/stock/catalog">«Склад → Каталог для клиентов»</Link>.
+            Новых заказов нет.{" "}
+            {modules.includes("stock") ? (
+              <>
+                Ссылку на каталог для клиентов можно включить на{" "}
+                <Link href="/stock/catalog">«{stockLabel} → Каталог для клиентов»</Link>.
+              </>
+            ) : (
+              // Каталог показывает товары склада: без «Склада» ссылку не включить.
+              <>
+                Каталог показывает товары со склада - чтобы его включить, включите «Склад» в{" "}
+                <Link href="/settings#business">Настройках</Link>.
+              </>
+            )}
           </p>
         )}
       </section>

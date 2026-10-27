@@ -240,7 +240,7 @@ export function dayReportDoc(shopName: string, summary: DaySummary, closed: bool
     ...(summary.drawer ? [line("Утром в кассе", summary.drawer.opening)] : []),
     line("Наличными пришло", net.income),
     line("Наличными поставщикам", net.paid),
-    line("В кассе должно быть", summary.drawer?.expected ?? net.left),
+    line("Наличных в кассе по записям", summary.drawer?.expected ?? net.left),
     ...(summary.counted != null ? [line("В кассе по факту", summary.counted)] : []),
     ...(summary.drawer?.carried != null ? [line("Осталось в кассе на завтра", summary.drawer.carried)] : []),
     ...(summary.foreign ?? []).flatMap((f) =>

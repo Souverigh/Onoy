@@ -217,8 +217,6 @@ export default async function SendSalePage({
             // Латиница без пробелов: Chrome на Android отклоняет share() с
             // кириллицей, пробелами и «..» в имени файла.
             fileName={`nakladnaya-${fileDate}.png`}
-            // Ссылка на накладную в тексте — сразу в чат клиента.
-            chatFirst={checked && Boolean(token)}
             pending={pending}
           >
             {imageUrl && (

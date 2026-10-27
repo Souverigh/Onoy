@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 import { getContext, getUserContext, requireOwner } from "@/lib/context";
 import { storedPhone } from "@/lib/contacts";
 import { templateInput } from "@/lib/invoice-message";
-import { businessType, isBusinessType, isModuleId, moduleOverrides } from "@/lib/business";
+import { isBusinessType, isModuleId, moduleOverrides } from "@/lib/business";
 
 /** Картинка QR для оплаты — в data URL до ~300 КБ (колонка pay_qr_image). */
 async function qrImage(file: File): Promise<string | null> {
@@ -120,12 +120,13 @@ export async function updateBusiness(form: FormData) {
   const { db, organizationId } = await requireOwner();
   const type = String(form.get("business_type") ?? "");
   if (!isBusinessType(type)) redirect("/settings?business=failed#business");
-  const changed = businessType(String(form.get("previous_type") ?? "")) !== type;
+  // Переключатели в форме уже встали по новому виду (BusinessFields) —
+  // сохраняем ровно то, что видел владелец.
   const chosen = form.getAll("modules").map(String).filter(isModuleId);
   const { error } = await db.rpc("set_business_profile", {
     p_org: organizationId,
     p_type: type,
-    p_overrides: changed ? [] : moduleOverrides(type, chosen),
+    p_overrides: moduleOverrides(type, chosen),
   });
   if (error) {
     console.error("updateBusiness", { message: error.message });

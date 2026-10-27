@@ -18,7 +18,7 @@ import {
 } from "@/lib/catalog-orders";
 import { ConfirmButton } from "@/components/confirm-button";
 import { Submit } from "@/components/submit";
-import { makeSaleFromOrder, setOrderDismissed } from "../actions";
+import { makeSaleFromOrder, reopenOrder, setOrderDismissed } from "../actions";
 import { ORDER_ERRORS, orderDateTime, qtyText } from "../order-text";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -64,7 +64,7 @@ export default async function OrderPage({
   const order = result.data as CatalogOrder | null;
   if (!order) notFound();
 
-  const [book, linked, members, myDraft] = await Promise.all([
+  const [book, linked, members, myDraft, soldSale] = await Promise.all([
     order.buyer_phone && !order.customer_id ? phoneBook(db, organizationId) : new Map(),
     linkedCustomers(db, organizationId, order.customer_id ? [order.customer_id] : []),
     memberLabels(db, organizationId),
@@ -72,7 +72,12 @@ export default async function OrderPage({
     order.status === "accepted" && order.draft_id
       ? db.from("record_drafts").select("id").eq("organization_id", organizationId).eq("id", order.draft_id).maybeSingle()
       : null,
+    // Продан, а продажу потом отменили — заказ можно вернуть в новые.
+    order.status === "sold" && order.sale_id
+      ? db.from("sales").select("reversed_at").eq("organization_id", organizationId).eq("id", order.sale_id).maybeSingle()
+      : null,
   ]);
+  const saleReversed = Boolean(soldSale?.data?.reversed_at);
   const match = matchOrder(order, book, linked);
   const cards = await customerCards(db, organizationId, matchCustomers(match).map((c) => c.id));
   const phone = order.buyer_phone ? normalizePhone(order.buyer_phone) : "";
@@ -112,7 +117,19 @@ export default async function OrderPage({
         </p>
       )}
 
-      {order.status === "sold" && (
+      {order.status === "sold" && saleReversed && (
+        <form className="notice orders-undo" action={reopenOrder}>
+          <span>
+            Продажа по заказу отменена.{" "}
+            {order.sale_id && <Link href={`/money/send/${order.sale_id}`}>Открыть продажу →</Link>}
+          </span>
+          <input type="hidden" name="id" value={order.id} />
+          <button type="submit" className="text-button">
+            Вернуть в новые
+          </button>
+        </form>
+      )}
+      {order.status === "sold" && !saleReversed && (
         <p className="notice success" role="status">
           Продан{order.handled_by ? ` (${who(order.handled_by)})` : ""}.{" "}
           {order.sale_id && <Link href={`/money/send/${order.sale_id}`}>Открыть продажу →</Link>}
@@ -155,7 +172,7 @@ export default async function OrderPage({
               <tr>
                 <th>Товар</th>
                 <th>Кол-во</th>
-                <th>Цена</th>
+                <th className="order-price-col">Цена</th>
                 <th>Сумма</th>
               </tr>
             </thead>
@@ -165,15 +182,18 @@ export default async function OrderPage({
                   <td>{i.name}</td>
                   <td>
                     {qtyText(i.qty)} {i.unit}
+                    {/* Телефон: цена под количеством, отдельной колонки нет. */}
+                    <small className="order-price-under muted">× {money(i.price, currency)}</small>
                   </td>
-                  <td>{money(i.price, currency)}</td>
+                  <td className="order-price-col">{money(i.price, currency)}</td>
                   <td>{money((Math.round(Number(i.qty) * Number(i.price) * 100) / 100).toFixed(2), currency)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={3}>Итого</td>
+                <td colSpan={2}>Итого</td>
+                <td className="order-price-col" />
                 <td>{money(order.total, currency)}</td>
               </tr>
             </tfoot>

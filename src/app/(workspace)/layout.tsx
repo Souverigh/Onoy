@@ -1,4 +1,5 @@
 import { getContext } from "@/lib/context";
+import { reviewDocumentsCount } from "@/lib/review-documents";
 import { Shell } from "@/components/shell";
 import { subscriptionState } from "@/lib/subscription";
 import { bishkekDate } from "@/lib/day-summary";
@@ -17,11 +18,7 @@ export default async function Layout({
   // каталога (новые и начатые, ещё не проданные) и
   // накладные с расхождением.
   const [review, claims, orders] = await Promise.all([
-    ctx.db
-      .from("documents")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", ctx.organizationId)
-      .in("status", ["review", "failed"]),
+    reviewDocumentsCount(ctx.db, ctx.organizationId),
     ctx.isOwner
       ? ctx.db
           .from("payments")

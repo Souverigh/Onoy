@@ -56,7 +56,9 @@ export default async function NewOperation({
   if (!["purchase", "sale", "payment"].includes(params.type ?? ""))
     notFound();
   const kind = params.type as Operation;
-  const { db, organizationId, currency: shopCurrency, isOwner } = await getContext();
+  const { db, organizationId, currency: shopCurrency, isOwner, modules } = await getContext();
+  // «Склад» выключен — без вкладки «Товары со склада»; начатый черновик товарами всё же открываем.
+  const stockOn = modules.includes("stock");
   // «Клиент принёс деньги» / «Я заплатил поставщику» (задача 17).
   const fixedDirection =
     kind === "payment" && (params.direction === "incoming" || params.direction === "outgoing")
@@ -81,9 +83,9 @@ export default async function NewOperation({
     ? { id: draftResult.data.id, kind: kind as Draft["kind"], data: draftData(draftResult.data.data), updated_at: draftResult.data.updated_at }
     : undefined;
   const wantedMode =
-    draftParam || params.mode === "items"
+    draftParam || (stockOn && params.mode === "items")
       ? "items"
-      : params.mode === "photo"
+      : !stockOn || params.mode === "photo"
         ? "photo"
         : remembered === "items"
           ? "items"
@@ -376,7 +378,7 @@ export default async function NewOperation({
           <h1>{title}</h1>
         </div>
       </div>
-      {itemsKind && !params.documentId && needsParty && (
+      {itemsKind && stockOn && !params.documentId && needsParty && (
         <ModeTabs
           kind={kind as "sale" | "purchase"}
           selected={saleMode}

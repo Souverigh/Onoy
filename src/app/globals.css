@@ -1199,6 +1199,38 @@ td small {
   width: 22px;
   height: 22px;
 }
+/* Причина отмены записи: обычный список, кружок слева от текста. Без
+   своих правил общий стиль полей растягивал кружки во всю ширину. */
+.reason-choices {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.reason-choices legend {
+  margin-bottom: 8px;
+  padding: 0;
+}
+form label.reason-choice {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  font-size: 15px;
+  cursor: pointer;
+}
+.reason-choice input[type="radio"] {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  accent-color: var(--green);
+}
 .cash-toggle {
   flex-direction: row !important;
   align-items: center;
@@ -2572,6 +2604,29 @@ tr.line-mismatch {
   .doc-list-mobile {
     display: block;
   }
+}
+/* «Продавцы» на телефоне: карточка вместо широкой таблицы. */
+.seller-cards {
+  display: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+@media (max-width: 560px) {
+  .seller-table {
+    display: none;
+  }
+  .seller-cards {
+    display: block;
+  }
+}
+.seller-cards li + li {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 2px solid var(--line);
+}
+.seller-card-who {
+  margin: 0 0 2px;
 }
 .doc-list-mobile li + li {
   border-top: 1px solid var(--line);
@@ -5692,7 +5747,8 @@ tr.row-link:has(a[data-pending]) {
 /* «Склад» на телефоне: «Из Excel» и «+ Товар» — внизу, над нижней панелью.
    Так же «Клиенты» и «Поставщики»: «Из тетради» и «+ Добавить». */
 .stock-bottom-actions,
-.directory-bottom-actions {
+.directory-bottom-actions,
+.bottom-actions-spacer {
   display: none;
 }
 @media (max-width: 560px) {
@@ -5721,8 +5777,12 @@ tr.row-link:has(a[data-pending]) {
   .directory-bottom-actions > :only-child {
     grid-column: 1 / -1;
   }
-  .content:has(.stock-bottom-actions, .directory-bottom-actions) {
-    padding-bottom: calc(var(--bottom-nav) + 24px + 70px);
+  /* Место под кнопками в самом списке, а не через :has() — его понимают не
+     все телефоны, и последняя строка уходила под кнопки. Высота — кнопка с
+     отступами панели и вырез iPhone снизу. */
+  .bottom-actions-spacer {
+    display: block;
+    height: calc(var(--control-height) + 21px + env(safe-area-inset-bottom));
   }
 }
 
@@ -7073,6 +7133,28 @@ tr.row-link:has(a[data-pending]) {
     max-width: none;
   }
 }
+/* Телефон: три списка в ряд обрезались до «Вс…» — по одному в строку,
+   подпись слева, список справа. */
+@media (max-width: 560px) {
+  .nav-selects {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .nav-select {
+    flex: none;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+  }
+  .nav-select-label {
+    flex: none;
+    width: 96px;
+  }
+  .nav-select select {
+    flex: 1;
+    min-width: 0;
+  }
+}
 
 /* Витрина склада: плитка «Проверить» — ссылки на списки, а не сумма. */
 .stock-tile-check a {
@@ -7286,6 +7368,22 @@ form label.order-choice:has(input:checked),
 }
 .order-table tfoot td {
   font-weight: 700;
+}
+.order-price-under {
+  display: none;
+}
+/* Телефон: четыре колонки не влезали, «Сумма» обрезалась — цена уходит под
+   количество, название товара переносится. */
+@media (max-width: 560px) {
+  .order-table .order-price-col {
+    display: none;
+  }
+  .order-price-under {
+    display: block;
+  }
+  .order-table td:first-child {
+    white-space: normal;
+  }
 }
 .order-note {
   margin: 12px 0 0;
@@ -8768,6 +8866,10 @@ form label.order-choice:has(input:checked),
   .statement-table td {
     padding: 10px 6px;
     font-size: 14px;
+  }
+  /* Длинное название операции переносится, иначе «Остаток» уезжает вбок. */
+  .statement-table td:not(.num) {
+    white-space: normal;
   }
   .statement-table small.narrow-only.statement-date {
     display: block;

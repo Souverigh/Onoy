@@ -7,6 +7,7 @@ import { expenseCategoryLabel } from "@/lib/expenses";
 import { money } from "@/lib/format";
 import { documentPages, signedPhotoUrl } from "@/lib/storage";
 import { DocumentPhotos } from "@/components/document-photos";
+import { recognitionStuck } from "@/lib/document-status";
 import { retryRecognition, confirmDocument, updateLine, saveAlias, addLine } from "../actions";
 import { DeleteWithUndo } from "@/components/delete-with-undo";
 import { bestMatches, lineProduct, similarity } from "@/lib/match";
@@ -249,6 +250,8 @@ export default async function DocumentDetail({
 
   // Фото без записи (задачи 14, 29): ни продажи, ни товара, ни оплаты, ни расхода.
   const orphan = !purchaseResult.data && !saleResult.data && !expenseResult.data && !paymentResult.data;
+  // Только что нажали «Распознать сейчас» — даём дочитать, не «Не прочиталось».
+  const stuck = recognitionStuck(doc) && !params2.retried;
 
   // Расход: сумма в записи — третья сторона сверки с чеком.
   let expense: { id: string; amount: string; currency: string; category: string; note: string | null } | null = null;
@@ -488,7 +491,7 @@ export default async function DocumentDetail({
                 ? "tag"
                 : doc.status === "digitized"
                   ? "tag green"
-                  : doc.status === "review" || doc.status === "failed"
+                  : doc.status === "review" || doc.status === "failed" || stuck
                     ? "tag reversed-tag"
                     : "tag"
             }
@@ -497,7 +500,9 @@ export default async function DocumentDetail({
               ? "Отменена"
               : orphan
                 ? "Без записи"
-                : doc.status === "uploaded"
+                : stuck
+                  ? "Не прочиталось"
+                  : doc.status === "uploaded"
                   ? "Читаем фото"
                   : doc.status === "processing"
                     ? "Читаем фото…"
@@ -513,7 +518,7 @@ export default async function DocumentDetail({
               <> · прочитан {when(extraction.created_at)}</>
             )}
           </span>
-          {(doc.status === "failed" || doc.status === "uploaded") && doc.kind && !orphan && (
+          {(doc.status === "failed" || doc.status === "uploaded" || stuck) && doc.kind && !orphan && (
             <form action={retryRecognition} className="doc-status-retry">
               <input type="hidden" name="id" value={doc.id} />
               <input type="hidden" name="kind" value={doc.kind} />
@@ -521,7 +526,7 @@ export default async function DocumentDetail({
                 <input type="hidden" name="declared_total" value={declaredTotal} />
               )}
               <button className="button" type="submit">
-                {doc.status === "failed" ? "Повторить распознавание" : "Распознать сейчас"}
+                {doc.status === "failed" || stuck ? "Повторить распознавание" : "Распознать сейчас"}
               </button>
             </form>
           )}

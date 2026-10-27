@@ -8,7 +8,7 @@ import { StaffPanel, type Invite, type Member } from "@/components/staff-panel";
 import { Submit } from "@/components/submit";
 import { NoAutofillInput } from "@/components/no-autofill-input";
 import { changeEmail, changePassword, updateBusiness, updateShop } from "./actions";
-import { BUSINESS_TYPES, MODULES, MODULE_IDS, PRESETS } from "@/lib/business";
+import { BusinessFields } from "@/components/business-fields";
 import { PushSettings } from "@/components/push-settings";
 import { EXPORT_TABLES } from "@/lib/export-data";
 import { DEFAULT_MESSAGE_TEMPLATE, MESSAGE_LINK_LINES, MESSAGE_PLACEHOLDERS, MESSAGE_TEMPLATE_MAX } from "@/lib/invoice-message";
@@ -392,27 +392,7 @@ export default async function Settings({
                     Не удалось сохранить. Обновите страницу и попробуйте ещё раз.
                   </p>
                 )}
-                <label>
-                  Чем вы занимаетесь
-                  <select name="business_type" defaultValue={business}>
-                    {BUSINESS_TYPES.map((type) => (
-                      <option key={type} value={type}>
-                        {PRESETS[type].label}
-                      </option>
-                    ))}
-                  </select>
-                  <small className="muted">Сменили вид - разделы встанут по нему, ниже их можно поправить.</small>
-                </label>
-                <input type="hidden" name="previous_type" value={business} />
-                {MODULE_IDS.map((id) => (
-                  <label className="setting-switch" key={id}>
-                    <span>
-                      <strong>{MODULES[id].label}</strong>
-                      <small className="muted">{MODULES[id].description}</small>
-                    </span>
-                    <input type="checkbox" role="switch" name="modules" value={id} defaultChecked={modules.includes(id)} />
-                  </label>
-                ))}
+                <BusinessFields business={business} modules={modules} />
                 <small className="muted settings-hint">
                   Выключенный раздел только скрыт из меню - всё, что в нём записано, сохраняется и вернётся, если
                   включить.

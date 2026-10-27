@@ -11,6 +11,7 @@ export function EntryForm({
   error,
   shopCurrency,
   draft,
+  focusPhone = false,
 }: {
   kind: Directory;
   entry?: Entry;
@@ -18,6 +19,8 @@ export function EntryForm({
   shopCurrency: Currency;
   /** Новый, после «Похоже, это Айбек» (задача 24): введённое и «всё равно создать». */
   draft?: { name: string; phone: string };
+  /** Пришли за телефоном («Вписать телефон») — курсор сразу в поле. */
+  focusPhone?: boolean;
 }) {
   const sign = CURRENCY_SIGN[partyCurrency(entry, shopCurrency)];
   return (
@@ -100,6 +103,7 @@ export function EntryForm({
                 type="tel"
                 autoComplete="tel"
                 maxLength={40}
+                autoFocus={focusPhone}
                 defaultValue={entry?.phone ?? draft?.phone ?? ""}
               />
               {!entry && <ContactFill />}

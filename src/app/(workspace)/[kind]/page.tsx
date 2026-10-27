@@ -388,6 +388,7 @@ export default async function DirectoryPage({
         </div>
       </section>
       {/* На телефоне кнопки — внизу, над нижней панелью: под большим пальцем и не теснят заголовок. */}
+      <div className="bottom-actions-spacer" aria-hidden="true" />
       <div className="directory-bottom-actions">
         {kind !== "products" && (
           <Link className="button" href={`/import?kind=${kind}`}>

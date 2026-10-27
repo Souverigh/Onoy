@@ -65,7 +65,7 @@ export function Dashboard({
   /** Продано и собрано за сегодня (для кнопки «Итог дня»). */
   today?: { sold: number; collected: number; expenses: number; currency: string };
   pendingClaims?: number;
-  /** Накладные с расхождением или ошибкой распознавания — «незавершённые». */
+  /** Накладные с записью, где сумма не сошлась или фото не прочиталось. */
   reviewCount?: number;
   /** Новые заказы клиентов из каталога (задача № 12). */
   newOrders?: number;
@@ -123,11 +123,11 @@ export function Dashboard({
           </Link>
         </section>
       )}
-      {/* «Продажа» и «Товар от поставщика» открывают список записей с черновиками,
+      {/* «Продажи» и «Товар от поставщика» открывают список записей с черновиками,
           новая запись — кнопкой «+» сверху списка. */}
       <section className="quick-actions" aria-label="Добавить запись">
         <Link className="quick-action" href={href("/sales")}>
-          Продажа
+          Продажи
         </Link>
         <Link className="quick-action" href={href("/purchases")}>
           Товар от поставщика
@@ -154,8 +154,7 @@ export function Dashboard({
       )}
       {reviewCount > 0 && (
         <Link className="notice" href={href("/documents")}>
-          Проверить накладные: {reviewCount} {plural(reviewCount, "накладная", "накладные", "накладных")} с
-          расхождением или ошибкой →
+          Проверьте сумму: {reviewCount} {plural(reviewCount, "накладная", "накладные", "накладных")} →
         </Link>
       )}
       {!staff && reminders.length > 0 && (
@@ -180,8 +179,9 @@ export function Dashboard({
                     Напомнить
                   </a>
                 ) : (
-                  <Link className="button" href={href(`/customers/${r.id}`)}>
-                    Напомнить
+                  // Нет телефона — нечем напомнить: ведём вписать номер.
+                  <Link className="button" href={href(`/customers/${r.id}?add_phone=1#party-data`)}>
+                    Вписать телефон
                   </Link>
                 )}
               </li>

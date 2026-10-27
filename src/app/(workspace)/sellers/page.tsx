@@ -100,7 +100,42 @@ export default async function Sellers({
         </div>
         <p className="muted day-date">{title}</p>
         <section className="panel">
-          <div className="table-wrap">
+          {/* Телефон: шесть колонок не влезают — каждый продавец карточкой. */}
+          <ul className="seller-cards">
+            {rows.map((r) => (
+              <li key={r.id ?? "none"}>
+                <p className="seller-card-who">
+                  {r.id ? <Link href={query({ id: r.id, offset, date: day })}>{r.name}</Link> : <strong>{r.name}</strong>}
+                  <small className="muted">
+                    {" "}
+                    · {r.role === "owner" ? "владелец" : r.role === "staff" ? "продавец" : "нет в магазине"} · продаж {r.count}, клиентов{" "}
+                    {r.customers}
+                  </small>
+                </p>
+                <div className="day-line">
+                  <span>Продано</span>
+                  <strong>
+                    {money(r.sold, cur)}
+                    <ForeignSums items={r.foreign} pick="sold" />
+                  </strong>
+                </div>
+                <div className="day-line">
+                  <span>Собрано</span>
+                  <strong>
+                    {money(r.collected, cur)}
+                    <ForeignSums items={r.foreign} pick="collected" />
+                  </strong>
+                </div>
+                <div className="day-line">
+                  <span>Должны клиенты</span>
+                  <strong>
+                    {r.id ? <Link href={`${query({ id: r.id, offset, date: day })}#debts`}>{debtMoney(owed.get(r.id) ?? 0, cur)}</Link> : "-"}
+                  </strong>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="table-wrap seller-table">
             <table>
               <thead>
                 <tr>

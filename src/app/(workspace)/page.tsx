@@ -7,6 +7,7 @@ import { recentRecords } from "@/lib/recent";
 import { dayMonth } from "@/lib/promise";
 import { reminderMessage } from "@/lib/reminder";
 import { waPhone } from "@/lib/share";
+import { reviewDocumentsCount } from "@/lib/review-documents";
 
 /** Сколько клиентов показываем в «Кому напомнить сегодня». */
 const REMIND_LIMIT = 6;
@@ -21,11 +22,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
         Пароль изменён. Вход на других устройствах закрыт - там нужно войти с новым паролем.
       </p>
     ) : null;
-  const review = db
-    .from("documents")
-    .select("id", { count: "exact", head: true })
-    .eq("organization_id", organizationId)
-    .in("status", ["review", "failed"]);
+  const review = reviewDocumentsCount(db, organizationId);
   // Необработанные заказы из каталога (задача № 12): новые и начатые — и владельцу, и продавцу.
   const orders = db
     .from("catalog_orders")

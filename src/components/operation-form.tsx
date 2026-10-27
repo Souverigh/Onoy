@@ -1628,7 +1628,11 @@ export function OperationForm({
                       : `Это накладная от вашего магазина${verdict.counterparty ? ` покупателю «${verdict.counterparty}»` : ""} - похоже на продажу, а не товар от поставщика.`}
                   </p>
                 ) : (
-                  <p>{OTHER_DOCUMENT_TEXT[verdict.reason]}</p>
+                  <p>
+                    {verdict.reason === "statement" && kind === "sale"
+                      ? "Похоже, это список долгов по датам - страница тетради или акт сверки, а не накладная. Долги из тетради переносят один раз, кнопкой ниже."
+                      : OTHER_DOCUMENT_TEXT[verdict.reason]}
+                  </p>
                 )}
                 <div className="simple-operation-actions">
                   {verdict.reason === "direction" && (
@@ -1658,7 +1662,8 @@ export function OperationForm({
                       {switching ? "Открываем…" : "Записать как оплату"}
                     </button>
                   )}
-                  {verdict.reason === "notebook" && (
+                  {/* Тетрадь по датам распознание иногда считает выпиской — переносить её так же. */}
+                  {(verdict.reason === "notebook" || (verdict.reason === "statement" && kind === "sale")) && (
                     <Link className="button primary" href={`/import?kind=${kind === "purchase" ? "suppliers" : "customers"}`}>
                       Перенести долги из тетради
                     </Link>

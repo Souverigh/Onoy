@@ -18,6 +18,9 @@ const SIGN: Record<string, string> = { KGS: "сом", USD: "$", RUB: "₽" };
 const sum = (n: number, currency = "KGS") =>
   `${new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n)} ${SIGN[currency] ?? currency}`;
 
+/** Долг: минус — аванс словом, как на экране. */
+const debt = (n: number, currency = "KGS") => (n < 0 ? `аванс ${sum(-n, currency)}` : sum(n, currency));
+
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
     <View style={styles.row}>
@@ -51,13 +54,13 @@ function MoneyBlock({ m, cur, title }: { m: DayMoney; cur: string; title?: strin
           <Row label="Переводом" value={sum(m.collected.transfer, cur)} />
 
           <Text style={styles.title}>Долги клиентов</Text>
-          <Row label="Было утром" value={sum(m.receivable.morning, cur)} />
-          <Row label="Стало вечером" value={sum(m.receivable.evening, cur)} strong />
+          <Row label="Было утром" value={debt(m.receivable.morning, cur)} />
+          <Row label="Стало вечером" value={debt(m.receivable.evening, cur)} strong />
 
           <Text style={styles.title}>Поставщики</Text>
           <Row label="Товар от поставщиков за день" value={sum(m.suppliers.purchased, cur)} />
           <Row label="Оплачено поставщикам" value={sum(m.suppliers.paid, cur)} />
-          <Row label="Долг на конец дня" value={sum(m.suppliers.evening, cur)} strong />
+          <Row label="Долг на конец дня" value={debt(m.suppliers.evening, cur)} strong />
 
           {m.creditByCustomer.length > 0 && (
             <>
@@ -101,7 +104,7 @@ function ExpensesBlock({ s }: { s: DaySummary }) {
       <Row label="Расходы" value={`− ${sum(net.expenses, cur)}`} />
       {s.drawer && s.drawer.movesOut > 0 && <Row label="Забрали из кассы" value={`− ${sum(s.drawer.movesOut, cur)}`} />}
       {s.drawer && s.drawer.movesIn > 0 && <Row label="Положили в кассу" value={`+ ${sum(s.drawer.movesIn, cur)}`} />}
-      <Row label="В кассе должно быть наличных" value={sum(s.drawer?.expected ?? net.left, cur)} strong />
+      <Row label="Наличных в кассе по записям" value={sum(s.drawer?.expected ?? net.left, cur)} strong />
       {s.counted != null && <Row label="В кассе по факту" value={sum(s.counted, cur)} />}
       {s.drawer?.carried != null && (
         <>
