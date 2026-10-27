@@ -31,6 +31,8 @@ const allNav: NavItem[] = [
   ["/news", "Что нового", "spark"],
   ["/settings", "Настройки", "settings"],
 ];
+/** Вид магазина, который продавец видел в прошлый раз (строка «Владелец изменил вид»). */
+const FACE_KEY = "depter-business-seen";
 /** Разделы только для владельца (итоги, заявки клиентов). */
 const OWNER_ONLY = new Set(["/day", "/claims"]);
 /** Страницы раздела «Отчёты» — пункт меню подсвечен на любой из них. */
@@ -102,6 +104,28 @@ export function Shell({
   const closeNews = () => {
     saveNewsSeen(newestNews(news));
     setUnread([]);
+  };
+  // Продавцу: владелец сменил вид магазина (другая главная кнопка, разделы) —
+  // одной строкой на главной. Прежний вид — в браузере продавца.
+  const face = `${business}|${modules.join(",")}`;
+  const [faceChanged, setFaceChanged] = useState(false);
+  useEffect(() => {
+    if (preview || isOwner) return;
+    try {
+      const seen = localStorage.getItem(FACE_KEY);
+      if (seen === null) localStorage.setItem(FACE_KEY, face);
+      else setFaceChanged(seen !== face);
+    } catch {
+      // Приватный режим — без строки, не страшно.
+    }
+  }, [face, isOwner, preview]);
+  const closeFace = () => {
+    try {
+      localStorage.setItem(FACE_KEY, face);
+    } catch {
+      // Не сохранилось — строка покажется ещё раз.
+    }
+    setFaceChanged(false);
   };
   // Переход по ссылке или Esc закрывают меню.
   useEffect(() => setMenuOpen(false), [path]);
@@ -283,6 +307,16 @@ export function Shell({
         <main className="content">
           {/* Предложение поставить значок на телефон — только на главной, можно скрыть. */}
           {!preview && path === "/" && <InstallApp variant="banner" />}
+          {!preview && path === "/" && faceChanged && (
+            <p className="notice business-restore" role="status">
+              <span>
+                Владелец изменил вид магазина: главная кнопка теперь «{main.label}», разделы в меню могли поменяться.
+              </span>
+              <button type="button" className="text-button" onClick={closeFace}>
+                Понятно
+              </button>
+            </p>
+          )}
           {/* После обновления — один раз окном; «Понятно» — до следующего. */}
           {!preview && path === "/" && unread.length > 0 && <WhatsNewDialog entries={unread} onClose={closeNews} />}
           {children}

@@ -6,6 +6,8 @@ import { getContext, getUserContext, requireOwner } from "@/lib/context";
 import { storedPhone } from "@/lib/contacts";
 import { templateInput } from "@/lib/invoice-message";
 import { isBusinessType, isModuleId, moduleOverrides } from "@/lib/business";
+import { lastBusinessChange } from "@/lib/business-history";
+import { refreshCatalogToken } from "@/lib/catalog-cache";
 
 /** Картинка QR для оплаты — в data URL до ~300 КБ (колонка pay_qr_image). */
 async function qrImage(file: File): Promise<string | null> {
@@ -118,6 +120,7 @@ export async function updateShop(form: FormData) {
  */
 export async function updateBusiness(form: FormData) {
   const { db, organizationId } = await requireOwner();
+  const { modules: before } = await getContext();
   const type = String(form.get("business_type") ?? "");
   if (!isBusinessType(type)) redirect("/settings?business=failed#business");
   // Переключатели в форме уже встали по новому виду (BusinessFields) —
@@ -132,8 +135,36 @@ export async function updateBusiness(form: FormData) {
     console.error("updateBusiness", { message: error.message });
     redirect("/settings?business=failed#business");
   }
+  // Выключили каталог — закрываем ссылку: иначе клиенты заказывают, а «Заказы» скрыты.
+  if (before.includes("catalog") && !chosen.includes("catalog")) await closeCatalogLink(db, organizationId);
   revalidatePath("/", "layout");
   redirect("/settings?business=saved#business");
+}
+
+type Db = Awaited<ReturnType<typeof requireOwner>>["db"];
+
+async function closeCatalogLink(db: Db, organizationId: string) {
+  const link = await db.from("catalog_links").select("token,revoked_at").eq("organization_id", organizationId).maybeSingle();
+  if (!link.data || link.data.revoked_at) return;
+  const closed = await db.rpc("close_catalog_link", { p_org: organizationId });
+  if (closed.error) console.error("updateBusiness: catalog link not closed", { message: closed.error.message });
+  else refreshCatalogToken(link.data.token as string);
+}
+
+/** «Вернуть прежний вид» — в течение суток после смены. */
+export async function restoreBusiness() {
+  const { db, organizationId } = await requireOwner();
+  const { modules: before } = await getContext();
+  const last = await lastBusinessChange(db, organizationId);
+  if (!last) redirect("/settings?business=failed#business");
+  const { error } = await db.rpc("set_business_profile", { p_org: organizationId, p_type: last.type, p_overrides: last.overrides });
+  if (error) {
+    console.error("restoreBusiness", { message: error.message });
+    redirect("/settings?business=failed#business");
+  }
+  if (before.includes("catalog") && !last.modules.includes("catalog")) await closeCatalogLink(db, organizationId);
+  revalidatePath("/", "layout");
+  redirect(`/settings?business=restored${!before.includes("catalog") && last.modules.includes("catalog") ? "_catalog" : ""}#business`);
 }
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

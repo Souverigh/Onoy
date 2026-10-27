@@ -25,8 +25,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
       </p>
     ) : null;
   const review = reviewDocumentsCount(db, organizationId);
-  // Прокат: просроченные и «вернуть сегодня» — и владельцу, и продавцу.
-  const rentalCounts = modules.includes("rental") ? rentalsDue(db, organizationId, bishkekDate()) : Promise.resolve({ late: 0, today: 0 });
+  // Прокат: просроченные и «вернуть сегодня» — и владельцу, и продавцу. И когда
+  // прокат выключили, а вещи ещё на руках: напоминание остаётся, пока не вернут.
+  const rentalCounts = rentalsDue(db, organizationId, bishkekDate());
   // Необработанные заказы из каталога (задача № 12): новые и начатые — и владельцу, и продавцу.
   const orders = db
     .from("catalog_orders")

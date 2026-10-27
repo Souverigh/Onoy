@@ -16,7 +16,6 @@ import { overdueDays } from "@/lib/rentals";
 export default async function RentalsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const { tab } = await searchParams;
   const { db, organizationId, organizationName, currency, modules } = await getContext();
-  if (!modules.includes("rental")) notFound();
   const returned = tab === "returned";
   let request = db.from("rentals").select(RENTAL_COLUMNS).eq("organization_id", organizationId).is("reversed_at", null);
   request = returned
@@ -25,6 +24,8 @@ export default async function RentalsPage({ searchParams }: { searchParams: Prom
   const { data, error } = await request;
   if (error) console.error("RentalsPage failed", { message: error.message });
   const rows = (data ?? []) as unknown as RentalRow[];
+  // Прокат выключен — список открывается, только пока есть что вернуть (напоминание на главной).
+  if (!modules.includes("rental") && (returned || !rows.length)) notFound();
   const today = bishkekDate();
   const late = rows.filter((r) => !returned && overdueDays(r.due_on, today) > 0).length;
   const dueToday = rows.filter((r) => !returned && r.due_on === today).length;

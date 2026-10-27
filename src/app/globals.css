@@ -11694,3 +11694,18 @@ form label.rental-picked-price {
   grid-template-columns: 96px minmax(0, 1fr);
   gap: 12px;
 }
+/* Вид бизнеса: «Вернуть прежний вид» и строка продавцу — текст и кнопка в ряд. */
+.business-restore {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+.business-change-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  text-align: left;
+}

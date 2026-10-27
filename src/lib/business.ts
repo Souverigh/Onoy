@@ -220,3 +220,49 @@ export const businessBySlug = (slug: string): BusinessType | null =>
 
 /** Кука: вид бизнеса, выбранный адресом регистрации, — до создания магазина. */
 export const BUSINESS_COOKIE = "depter_business";
+
+/** Что сейчас живо в магазине — чтобы предупредить цифрами, а не общими словами. */
+export type ShopStats = {
+  /** Вещей на руках у клиентов (прокат). */
+  rentalsOut: number;
+  /** Залогов деньгами в кассе, ещё не возвращённых (текстом, «4 000 сом»), или null. */
+  deposits: string | null;
+  /** Ссылка на каталог открыта. */
+  catalogOpen: boolean;
+  /** Заказов из каталога, ещё не проданных. */
+  openOrders: number;
+};
+
+/**
+ * Что изменится при смене вида бизнеса или разделов (просьба пользователя
+ * 26.10.2026: не менять молча). Пусто — менять нечего опасного, окна не нужно.
+ */
+export function businessChangeWarnings(
+  from: { type: BusinessType; modules: readonly ModuleId[] },
+  to: { type: BusinessType; modules: readonly ModuleId[] },
+  stats: ShopStats,
+): string[] {
+  const off = from.modules.filter((m) => !to.modules.includes(m));
+  const out: string[] = [];
+  for (const m of off) {
+    if (m === "rental")
+      out.push(
+        stats.rentalsOut > 0
+          ? `Скроется «${MODULES.rental.label}»: сейчас на руках ${stats.rentalsOut} шт.${stats.deposits ? `, залоги ${stats.deposits}` : ""}. Пока всё не вернут, на главной останется напоминание.`
+          : `Скроется «${MODULES.rental.label}».`,
+      );
+    else if (m === "catalog")
+      out.push(
+        stats.catalogOpen
+          ? `Скроются «Заказы», ссылку на каталог закроем - клиенты больше не смогут заказать.${stats.openOrders > 0 ? ` Не обработано заказов: ${stats.openOrders}.` : ""}`
+          : "Скроются «Каталог» и «Заказы».",
+      );
+    else if (m === "stock") out.push("Скроется «Склад»: продажа и приход товарами со склада будут недоступны.");
+    else if (m === "variants") out.push("Скроются размеры и цвета: товары останутся, но каждый размер - отдельным товаром.");
+  }
+  const before = mainAction(from.type, from.modules);
+  const after = mainAction(to.type, to.modules);
+  if (before.id !== after.id) out.push(`Главная кнопка внизу станет «${after.label}» вместо «${before.label}».`);
+  if (from.type !== to.type && !out.length) out.push(`Вид станет «${PRESETS[to.type].label}»: названия разделов и кнопки на главной подстроятся под него.`);
+  return out;
+}

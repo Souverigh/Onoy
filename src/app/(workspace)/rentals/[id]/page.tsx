@@ -36,8 +36,7 @@ export default async function RentalPage({
   const { id } = await params;
   const q = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const { db, organizationId, organizationName, currency, isOwner, modules } = await getContext();
-  if (!modules.includes("rental")) notFound();
+  const { db, organizationId, organizationName, currency, isOwner } = await getContext();
   const { data } = await db.from("rentals").select(RENTAL_COLUMNS).eq("organization_id", organizationId).eq("id", id).maybeSingle();
   const r = data as unknown as RentalRow | null;
   if (!r) notFound();

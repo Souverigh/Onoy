@@ -7,7 +7,8 @@ import { getContext } from "@/lib/context";
 import { StaffPanel, type Invite, type Member } from "@/components/staff-panel";
 import { Submit } from "@/components/submit";
 import { NoAutofillInput } from "@/components/no-autofill-input";
-import { changeEmail, changePassword, updateBusiness, updateShop } from "./actions";
+import { changeEmail, changePassword, restoreBusiness, updateBusiness, updateShop } from "./actions";
+import { lastBusinessChange, shopStats } from "@/lib/business-history";
 import { BusinessFields } from "@/components/business-fields";
 import { PushSettings } from "@/components/push-settings";
 import { EXPORT_TABLES } from "@/lib/export-data";
@@ -43,6 +44,10 @@ export default async function Settings({
 }) {
   const { db, organizationId, organizationName, user, isOwner, plan, paidUntil, currency, business, modules } = await getContext();
   const { saved, error, staff, account, to, business: businessStatus } = await searchParams;
+  // Окно «Что изменится» и «Вернуть прежний вид» — только владельцу.
+  const [stats, lastChange] = isOwner
+    ? await Promise.all([shopStats(db, organizationId, currency), lastBusinessChange(db, organizationId)])
+    : [null, null];
   // Сотрудники и приглашения — только владельцу (RLS тоже не отдаст продавцу).
   let members: Member[] = [];
   let invites: Invite[] = [];
@@ -387,19 +392,26 @@ export default async function Settings({
                     Сохранено.
                   </p>
                 )}
+                {businessStatus?.startsWith("restored") && (
+                  <p className="notice success" role="status">
+                    Прежний вид вернули.
+                    {businessStatus === "restored_catalog" && " Каталог снова включён - ссылку для клиентов откройте в «Склад → Каталог для клиентов»."}
+                  </p>
+                )}
                 {businessStatus === "failed" && (
                   <p className="form-error" role="alert">
                     Не удалось сохранить. Обновите страницу и попробуйте ещё раз.
                   </p>
                 )}
-                <BusinessFields business={business} modules={modules} />
-                <small className="muted settings-hint">
-                  Выключенный раздел только скрыт из меню - всё, что в нём записано, сохраняется и вернётся, если
-                  включить.
-                </small>
-                <div className="settings-save">
-                  <Submit>Сохранить</Submit>
-                </div>
+                {lastChange && (
+                  <div className="notice business-restore">
+                    <span>Вид изменён в последние сутки. Было: «{lastChange.label}».</span>
+                    <button type="submit" className="text-button" formAction={restoreBusiness}>
+                      Вернуть прежний вид
+                    </button>
+                  </div>
+                )}
+                <BusinessFields business={business} modules={modules} stats={stats!} />
               </section>
             </form>
           )}
