@@ -66,3 +66,16 @@ export async function rentalsDue(db: SupabaseClient, organizationId: string, tod
   const rows = (data ?? []) as { due_on: string }[];
   return { late: rows.filter((r) => r.due_on < today).length, today: rows.filter((r) => r.due_on === today).length };
 }
+
+/** Выдача, за которую эта продажа (плата или доплата); нет или отменена — null. */
+export async function rentalOfSale(db: SupabaseClient, organizationId: string, saleId: string): Promise<string | null> {
+  const { data, error } = await db
+    .from("rentals")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .or(`sale_id.eq.${saleId},extra_sale_id.eq.${saleId}`)
+    .is("reversed_at", null)
+    .limit(1)
+    .maybeSingle();
+  return error || !data ? null : (data.id as string);
+}

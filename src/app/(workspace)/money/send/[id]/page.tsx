@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { rentalOfSale } from "@/lib/rental-data";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
@@ -136,7 +137,9 @@ export default async function SendSalePage({
   const back = `/customers/${customer.id}`;
   const debtBefore = Math.round((balance - (sale.paid_immediately ? 0 : Number(sale.total))) * 100) / 100;
   const imageUrl = checked ? `/money/send/${sale.id}/image` : null;
-  const canUndo = sale.created_by === user.id && Date.now() - Date.parse(sale.created_at) < UNDO_MS;
+  // Плата за прокат отменяется только вместе с выдачей (база не даст иначе).
+  const rental = await rentalOfSale(db, organizationId, sale.id);
+  const canUndo = !rental && sale.created_by === user.id && Date.now() - Date.parse(sale.created_at) < UNDO_MS;
   const fileDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bishkek" }).format(new Date(sale.occurred_at));
 
   return (
@@ -160,6 +163,12 @@ export default async function SendSalePage({
           {originalAmountText(sale) && <span className="muted"> ({originalAmountText(sale)})</span>}
         </p>
         {sale.note && <p className="muted sale-done-note">Комментарий: {sale.note}</p>}
+        {rental && !sale.reversed_at && (
+          <p className="notice">
+            Это плата за прокат. Отменить её можно только вместе с выдачей.{" "}
+            <Link href={`/rentals/${rental}`}>Открыть выдачу →</Link>
+          </p>
+        )}
         {done && !sale.reversed_at && (
           <p className="muted sale-done-debt">
             Долг клиента: {debtMoney(debtBefore.toFixed(2), cur)} → <strong>{debtMoney(balance.toFixed(2), cur)}</strong>

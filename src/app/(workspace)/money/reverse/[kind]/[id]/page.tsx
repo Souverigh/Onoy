@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { rentalOfSale } from "@/lib/rental-data";
 import { notFound } from "next/navigation";
 import { requireOwner } from "@/lib/context";
 import { money } from "@/lib/format";
@@ -71,6 +72,30 @@ export default async function ReverseOperation({
           created_by: (data.created_by as string | null) ?? null,
         })
       : null;
+
+  // Плата за прокат — только вместе с выдачей: там «Отменить выдачу».
+  const rental = kind === "sale" ? await rentalOfSale(db, organizationId, id) : null;
+  if (rental)
+    return (
+      <>
+        <Link className="back-link" href={back ?? "/money"}>
+          ← {back ? "Назад" : "Все записи"}
+        </Link>
+        <section className="panel simple-operation-panel">
+          <h1>Это плата за прокат</h1>
+          <p>
+            {party} · {money(String(data[meta.amountField]), partyCur ?? shopCurrency)}
+          </p>
+          <p className="operation-hint">
+            Отдельно её не отменить: деньги отменятся, а вещи останутся «на руках». Откройте выдачу и нажмите «Отменить
+            выдачу» - отменятся и деньги, и залог.
+          </p>
+          <Link className="button primary" href={`/rentals/${rental}`}>
+            Открыть выдачу
+          </Link>
+        </section>
+      </>
+    );
 
   return (
     <>

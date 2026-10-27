@@ -4219,6 +4219,19 @@ test("rentals: a thing goes out once, payment is a plain sale, deposit is a cash
   );
   // Вернули — можно выдать снова; продавцу отменять нельзя, владельцу — да, и всё вместе с ней.
   const again = (await issue(k(3), JSON.stringify([{ product: suit, price: "1000" }]), "2000", "")).rows[0].id;
+  // Продажу проката мимо проката не отменить и не «отменить - ошиблись».
+  const againSale = (await db.query("select sale_id from rentals where id=$1", [again])).rows[0].sale_id;
+  await assert.rejects(db.query("select reverse_sale($1,$2,'ошибка')", [orgA, againSale]), /rental_sale/);
+  await assert.rejects(db.query("select undo_recent($1,'sale',$2)", [orgA, againSale]), /rental_sale/);
+  await assert.rejects(db.query("select undo_recent($1,'sale',$2)", [orgA, closed.extra_sale_id]), /rental_sale|undo_expired/);
+  // Клиенту с долгом в другой валюте прокат не выдать.
+  await owner();
+  const dollar = (await db.query("insert into customers(organization_id,name,currency) values ($1,'Прокат в долларах','USD') returning id", [orgA])).rows[0].id;
+  await user(a);
+  await assert.rejects(
+    db.query("select issue_rental($1,$2,$3::jsonb,1,'100',true,'none',null,null,null,$4)", [orgA, dollar, JSON.stringify([{ product: shirt, price: "100" }]), k(8)]),
+    /rental_currency/,
+  );
   await assert.rejects(db.query("select reverse_rental($1,$2,'ошиблись')", [orgB, again]), /owner_only/);
   await db.query("select reverse_rental($1,$2,'не тот клиент')", [orgA, again]);
   const reversed = (await db.query("select r.reversed_at, s.reversed_at as sale_reversed from rentals r join sales s on s.id=r.sale_id where r.id=$1", [again])).rows[0];

@@ -66,7 +66,15 @@ export async function issueRental(_: RentalState, form: FormData): Promise<Renta
   if (result.error || !result.data) {
     console.error("issueRental failed", { message: result.error?.message });
     const message = result.error?.message ?? "";
-    return { error: message.includes("item_busy") ? "busy" : message.includes("invalid_customer") ? "party" : "save" };
+    return {
+      error: message.includes("item_busy")
+        ? "busy"
+        : message.includes("rental_currency")
+          ? "currency"
+          : message.includes("invalid_customer")
+            ? "party"
+            : "save",
+    };
   }
   revalidatePath("/", "layout");
   redirect(`/rentals/${result.data}?issued=1`);
