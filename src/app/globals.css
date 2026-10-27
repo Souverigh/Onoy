@@ -11520,3 +11520,174 @@ form .variant-qty,
 .push-note {
   margin: 10px 0 0;
 }
+
+/* --- Прокат (модуль rental, 26.10.2026) -------------------------------- */
+/* Список «На руках» / «Вернули»: строка как в «Последних операциях»,
+   справа — WhatsApp и «Вернул» (поверх растянутой ссылки строки). */
+.rental-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.rental-list li + li {
+  border-top: 1px solid var(--line);
+}
+.rental-list .op-list-meta {
+  grid-column: 1 / -1;
+  display: block;
+  min-height: 0;
+}
+.rental-row-actions {
+  position: relative;
+  z-index: 1;
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.rental-row-actions form {
+  margin: 0;
+}
+.rental-row-actions .button {
+  min-height: 40px;
+  padding: 0 16px;
+}
+.rental-late .op-list-main strong {
+  color: var(--danger-ink);
+}
+.rental-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+/* Форма «Выдать». */
+.rental-things,
+.rental-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.rental-things-label,
+.rental-field-label {
+  font-weight: 600;
+}
+/* Пилюли переносятся, если не влезают (залог — пять вариантов). */
+.method-pills.rental-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-self: flex-start;
+  max-width: 100%;
+}
+.method-pills.rental-pills button {
+  padding: 0 14px;
+}
+.rental-days-input {
+  max-width: 160px;
+}
+/* Вещи карточками: название, под ним кнопки размеров с ценой за сутки. */
+.rental-catalog,
+.rental-picked,
+.rental-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.rental-catalog li {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.rental-catalog-name {
+  font-weight: 600;
+}
+.rental-sizes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.rental-size {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 40px;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rental-size small {
+  color: var(--muted);
+  font-weight: 400;
+}
+.rental-size:hover {
+  border-color: var(--green-border);
+  background: var(--green-wash);
+}
+.rental-size.picked {
+  border-color: var(--green-border);
+  background: var(--green-soft);
+  color: var(--green);
+}
+/* Выбранные — сверху, с ценой за сутки (можно поправить) и «убрать». */
+.rental-picked {
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--green-wash);
+}
+.rental-picked li,
+.rental-items li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+}
+.rental-picked li + li,
+.rental-items li + li {
+  border-top: 1px solid var(--line);
+}
+.rental-picked-name,
+.rental-items li > span {
+  flex: 1;
+  min-width: 0;
+}
+form label.rental-picked-price {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.rental-picked-price input {
+  width: 90px;
+  min-height: 40px;
+  text-align: right;
+}
+/* Возврат: доплата одной строкой и пилюлями. */
+.rental-return h2 {
+  margin-bottom: 14px;
+}
+.rental-extra {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.rental-extra p {
+  margin: 0;
+}
+.rental-extra-input {
+  width: 120px;
+  min-height: 40px;
+}

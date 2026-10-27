@@ -324,15 +324,21 @@ export async function computeDaySummary(
       openingCash(db, organizationId, shopCurrency, date, foreign),
       cashMovesBetween(db, organizationId, shopCurrency, start, end),
     ]);
-    const movesIn = round(moves.filter((m) => m.direction === "in").reduce((t, m) => t + m.amount, 0));
-    const movesOut = round(moves.filter((m) => m.direction === "out").reduce((t, m) => t + m.amount, 0));
+    const total = (rental: boolean, direction: "in" | "out") =>
+      round(moves.filter((m) => Boolean(m.rental) === rental && m.direction === direction).reduce((t, m) => t + m.amount, 0));
+    const movesIn = total(false, "in");
+    const movesOut = total(false, "out");
+    const depositsIn = total(true, "in");
+    const depositsOut = total(true, "out");
     drawer = {
       opening: opening.amount,
       openingFrom: opening.from,
       movesIn,
       movesOut,
+      depositsIn,
+      depositsOut,
       moves,
-      expected: drawerExpected(opening.amount, box.left, movesIn, movesOut),
+      expected: drawerExpected(opening.amount, box.left, movesIn + depositsIn, movesOut + depositsOut),
     };
   } catch (error) {
     console.error("computeDaySummary: drawer failed", error);
@@ -766,7 +772,7 @@ async function cashMovesBetween(
 ): Promise<CashMove[]> {
   const { data, error } = await db
     .from("cash_moves")
-    .select("id,direction,amount,note,occurred_at")
+    .select("id,direction,amount,note,occurred_at,rental_id")
     .eq("organization_id", organizationId)
     .eq("currency", shopCurrency)
     .is("reversed_at", null)
@@ -775,12 +781,15 @@ async function cashMovesBetween(
     .order("occurred_at")
     .range(0, 4999);
   if (error) throw new Error(error.message);
-  return ((data ?? []) as { id: string; direction: "out" | "in"; amount: string; note: string | null; occurred_at: string }[]).map((m) => ({
+  return (
+    (data ?? []) as { id: string; direction: "out" | "in"; amount: string; note: string | null; occurred_at: string; rental_id: string | null }[]
+  ).map((m) => ({
     id: m.id,
     direction: m.direction,
     amount: Number(m.amount),
     note: m.note,
     at: m.occurred_at,
+    rental: Boolean(m.rental_id),
   }));
 }
 

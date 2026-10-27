@@ -60,6 +60,15 @@
   `.order-choice-mark`, имя и телефон `.order-choice-main` слева, долг
   `.order-choice-side` справа; выбранная — зелёная). Под списком главная
   кнопка и `.text-button` в одну строку (`.order-actions`).
+- Прокат (модуль `rental`) — список `ul.rental-list` из строк `.op-list-item`
+  (вещи и залог — `.op-list-meta` во всю ширину, «Вернул» и WhatsApp —
+  `.rental-row-actions`, просроченная — `.rental-late`); «Выдать» на телефоне —
+  внизу (`.directory-bottom-actions`). Форма — `RentalForm`: вещи карточками
+  `.rental-catalog` с кнопками размеров `.rental-size` (выбрано — `.picked`),
+  выбранные с ценой за сутки — `.rental-picked`; дни и залог — пилюли с
+  переносом `.method-pills.rental-pills`; залог деньгами и комментарий —
+  свёрнуты `.note-toggle`; итог, оплата и «Выдать» — `.sale-bar`. Возврат —
+  `RentalReturn` (доплата строкой и пилюлями). Расчёты — `lib/rentals.ts`.
 - Товар с размерами и цветами — `ModelForm` (`/stock/model/…`): выбор
   нескольких значений — `AxisPicker`, поле-кнопка `.axis-picker-button` с
   выбранным через запятую, по нажатию — `details.more-menu` с группами

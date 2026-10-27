@@ -136,7 +136,8 @@ function CashCard({
           Наличных в кассе по записям
           <InfoTip>
             Наличные: утром было, плюс пришло наличными (продажи и оплаты клиентов), минус наличные поставщикам и
-            расходы, минус что забрали из кассы и плюс что положили. Переводы в кассу не входят.
+            расходы, минус что забрали из кассы и плюс что положили, плюс залоги за прокат, пока их не вернули. Переводы в
+            кассу не входят.
           </InfoTip>
         </span>
         <strong className="day-cash-sum">{money(due, cur)}</strong>
@@ -179,6 +180,16 @@ function CashCard({
             <strong>+ {money(drawer.movesIn, cur)}</strong>
           </div>
         )}
+        {drawer && ((drawer.depositsIn ?? 0) > 0 || (drawer.depositsOut ?? 0) > 0) && (
+          <div className="day-line day-line-sub">
+            <span>Залоги за прокат</span>
+            <strong>
+              {(drawer.depositsIn ?? 0) > 0 && <>+ {money(drawer.depositsIn ?? 0, cur)}</>}
+              {(drawer.depositsIn ?? 0) > 0 && (drawer.depositsOut ?? 0) > 0 && " / "}
+              {(drawer.depositsOut ?? 0) > 0 && <>− {money(drawer.depositsOut ?? 0, cur)}</>}
+            </strong>
+          </div>
+        )}
         {net.transferIn != null && (net.transferIn > 0 || (net.transferOut ?? 0) > 0) && (
           <div className="day-line day-line-sub muted">
             <span>Переводом - не в кассе</span>
@@ -196,10 +207,12 @@ function CashCard({
             <li key={m.id}>
               <span className="muted">{clock(m.at)}</span>
               <span>
-                {m.direction === "out" ? "Забрали" : "Положили"} {money(m.amount, cur)}
-                {m.note && <span className="muted"> · {m.note}</span>}
+                {m.rental ? (m.direction === "out" ? "Вернули залог" : "Приняли залог") : m.direction === "out" ? "Забрали" : "Положили"}{" "}
+                {money(m.amount, cur)}
+                {m.note && !m.rental && <span className="muted"> · {m.note}</span>}
               </span>
-              {canMove && (
+              {/* Залог отменяется только вместе с выдачей («Прокат»), иначе касса и прокат разойдутся. */}
+              {canMove && !m.rental && (
                 <form action={reverseCashMove}>
                   <input type="hidden" name="id" value={m.id} />
                   <ConfirmButton

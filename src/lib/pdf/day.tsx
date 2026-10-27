@@ -104,6 +104,8 @@ function ExpensesBlock({ s }: { s: DaySummary }) {
       <Row label="Расходы" value={`− ${sum(net.expenses, cur)}`} />
       {s.drawer && s.drawer.movesOut > 0 && <Row label="Забрали из кассы" value={`− ${sum(s.drawer.movesOut, cur)}`} />}
       {s.drawer && s.drawer.movesIn > 0 && <Row label="Положили в кассу" value={`+ ${sum(s.drawer.movesIn, cur)}`} />}
+      {s.drawer && (s.drawer.depositsIn ?? 0) > 0 && <Row label="Приняли залоги за прокат" value={`+ ${sum(s.drawer.depositsIn ?? 0, cur)}`} />}
+      {s.drawer && (s.drawer.depositsOut ?? 0) > 0 && <Row label="Вернули залоги за прокат" value={`− ${sum(s.drawer.depositsOut ?? 0, cur)}`} />}
       <Row label="Наличных в кассе по записям" value={sum(s.drawer?.expected ?? net.left, cur)} strong />
       {s.counted != null && <Row label="В кассе по факту" value={sum(s.counted, cur)} />}
       {s.drawer?.carried != null && (

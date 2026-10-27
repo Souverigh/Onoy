@@ -40,7 +40,8 @@ test("business: owner overrides switch modules on and off, garbage is ignored", 
   assert.deepEqual(resolveModules("shop", ["-catalog"]), ["stock"]);
   assert.deepEqual(resolveModules("shop", ["-stock", "-catalog"]), []);
   assert.deepEqual(resolveModules("shop", ["+rocket", "catalog", "-", "-nothing"]), ["stock", "catalog"]);
-  assert.deepEqual(resolveModules("shop", ["+variants"]), MODULE_IDS);
+  assert.deepEqual(resolveModules("shop", ["+variants"]), ["stock", "catalog", "variants"]);
+  assert.deepEqual(resolveModules("clothing_rental", null), ["stock", "catalog", "variants", "rental"]);
   assert.deepEqual(resolveModules("clothing", null), ["stock", "catalog", "variants"]);
 });
 

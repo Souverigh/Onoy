@@ -32,7 +32,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 31);
+  assert.equal(rows.length, 33);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -4171,4 +4171,64 @@ test("push: each member subscribes own phone; only the server with the secret ge
     (await db.query("select action from audit_events where action like 'push.%' order by created_at, action")).rows.map((r) => r.action),
     ["push.subscribed", "push.subscribed", "push.expired", "push.unsubscribed"],
   );
+});
+
+test("rentals: a thing goes out once, payment is a plain sale, deposit is a cash move, late return adds extra days", async () => {
+  const k = (n) => `aaaaeeee-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
+  await owner();
+  const suit = (await db.query("insert into products(organization_id,name,sale_price) values ($1,'Прокат костюм 48',1000) returning id", [orgA])).rows[0].id;
+  const shirt = (await db.query("insert into products(organization_id,name,sale_price) values ($1,'Прокат рубашка 48',400) returning id", [orgA])).rows[0].id;
+  await db.query("insert into inventory_movements(organization_id,product_id,qty_delta,reason) values ($1,$2,1,'opening'),($1,$3,1,'opening')", [orgA, suit, shirt]);
+  const client = (await db.query("insert into customers(organization_id,name) values ($1,'Прокат Омаа') returning id", [orgA])).rows[0].id;
+  const items = JSON.stringify([{ product: suit, price: "1000" }, { product: shirt, price: "400" }]);
+  const issue = (key, list = items, amount = "2800", deposit = "2000") =>
+    db.query("select issue_rental($1,$2,$3::jsonb,2,$4,true,'passport','Медина',$5,null,$6) as id", [orgA, client, list, amount, deposit, key]);
+
+  await user(a);
+  await assert.rejects(issue(k(9), "[]"), /invalid_rental/);
+  const rental = (await issue(k(1))).rows[0].id;
+  assert.equal((await issue(k(1))).rows[0].id, rental);
+  // Костюм на руках — второй раз не выдать.
+  await assert.rejects(issue(k(2), JSON.stringify([{ product: suit, price: "1000" }])), /item_busy/);
+  const row = (await db.query("select * from rentals where id=$1", [rental])).rows[0];
+  assert.equal(row.collateral_note, "Медина");
+  assert.equal(row.deposit, "2000.00");
+  const sale = (await db.query("select total,paid_immediately,note,reversed_at from sales where id=$1", [row.sale_id])).rows[0];
+  assert.deepEqual([sale.total, sale.paid_immediately, sale.reversed_at], ["2800.00", true, null]);
+  assert.match(sale.note, /Прокат на 2 дн\.: Прокат костюм 48, Прокат рубашка 48/);
+  // Склад прокат не списывает; залог — в кассе с пометкой выдачи.
+  assert.equal(Number((await db.query("select stock from product_balances where id=$1", [suit])).rows[0].stock), 1);
+  assert.deepEqual(
+    (await db.query("select direction,amount from cash_moves where rental_id=$1", [rental])).rows,
+    [{ direction: "in", amount: "2000.00" }],
+  );
+
+  // Вернули рубашку — выдача ещё открыта; потом костюм с доплатой и залогом обратно.
+  const shirtLine = (await db.query("select id from rental_items where rental_id=$1 and product_id=$2", [rental, shirt])).rows[0].id;
+  assert.equal((await db.query("select return_rental($1,$2,$3::uuid[],null,null,null) as done", [orgA, rental, [shirtLine]])).rows[0].done, false);
+  assert.equal((await db.query("select return_rental($1,$2,null,'1400',false,true) as done", [orgA, rental])).rows[0].done, true);
+  const closed = (await db.query("select returned_at,extra_sale_id,deposit_returned_at from rentals where id=$1", [rental])).rows[0];
+  assert.ok(closed.returned_at && closed.deposit_returned_at);
+  assert.deepEqual(
+    Object.values((await db.query("select total,paid_immediately from sales where id=$1", [closed.extra_sale_id])).rows[0]),
+    ["1400.00", false],
+  );
+  assert.deepEqual(
+    (await db.query("select direction,amount from cash_moves where rental_id=$1 order by direction", [rental])).rows.map(Object.values),
+    [["in", "2000.00"], ["out", "2000.00"]],
+  );
+  // Вернули — можно выдать снова; продавцу отменять нельзя, владельцу — да, и всё вместе с ней.
+  const again = (await issue(k(3), JSON.stringify([{ product: suit, price: "1000" }]), "2000", "")).rows[0].id;
+  await assert.rejects(db.query("select reverse_rental($1,$2,'ошиблись')", [orgB, again]), /owner_only/);
+  await db.query("select reverse_rental($1,$2,'не тот клиент')", [orgA, again]);
+  const reversed = (await db.query("select r.reversed_at, s.reversed_at as sale_reversed from rentals r join sales s on s.id=r.sale_id where r.id=$1", [again])).rows[0];
+  assert.ok(reversed.reversed_at && reversed.sale_reversed);
+  assert.equal((await db.query("select count(*)::int as n from rental_items where rental_id=$1 and returned_at is null", [again])).rows[0].n, 0);
+
+  // Чужой магазин ничего не видит и не выдаёт.
+  await user(b);
+  assert.equal((await db.query("select * from rentals")).rows.length, 0);
+  await assert.rejects(issue(k(4)), /not_a_member/);
+  await assert.rejects(db.query("insert into rentals(organization_id,customer_id,days,due_on,collateral_kind,idempotency_key) values ($1,$2,1,current_date,'none',$3)", [orgA, client, k(5)]), /permission denied/);
+  await owner();
 });

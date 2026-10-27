@@ -86,7 +86,15 @@ export function cashbox(input: {
 }
 
 /** «Забрал из кассы» / «Положил в кассу» (cash_moves). */
-export type CashMove = { id: string; direction: "out" | "in"; amount: number; note: string | null; at: string };
+export type CashMove = {
+  id: string;
+  direction: "out" | "in";
+  amount: number;
+  note: string | null;
+  at: string;
+  /** Залог за прокат (cash_moves.rental_id): отдельной строкой «Залоги», отменяется только с выдачей. */
+  rental?: boolean;
+};
 
 /**
  * Касса как в 1С, но просто (17.10.2026): утром было + пришло наличными −
@@ -98,8 +106,12 @@ export type Drawer = {
   opening: number;
   /** День, с закрытия которого взят остаток; null — закрытых дней не было (утро = 0). */
   openingFrom: string | null;
+  /** «Положил» / «Забрал» — без залогов проката. */
   movesIn: number;
   movesOut: number;
+  /** Залоги за прокат: приняли / вернули (в снимках до 02.11.2026 их нет). */
+  depositsIn?: number;
+  depositsOut?: number;
   moves: CashMove[];
   /** Должно быть в кассе. */
   expected: number;

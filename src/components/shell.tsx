@@ -19,6 +19,8 @@ const allNav: NavItem[] = [
   ["/suppliers", "Поставщики", "truck"],
   ["/money", "Все записи", "wallet"],
   ["/stock", "Склад", "box", "stock"],
+  // Прокат (модуль rental): что на руках, выдача и возврат.
+  ["/rentals", "Прокат", "calendar", "rental"],
   // Итог дня, отчёт за месяц и продавцы — вкладками одного раздела (report-tabs.tsx).
   ["/day", "Отчёты", "chart"],
   ["/claims", "Заявки", "check"],

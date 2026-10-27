@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { navLabel } from "@/lib/business";
+import { onHand } from "@/lib/rental-data";
+import { dayMonth } from "@/lib/promise";
 import { Fragment } from "react";
 import { getContext } from "@/lib/context";
 import { money, quantity, decimalLessThan } from "@/lib/format";
@@ -79,10 +81,16 @@ export default async function StockPage({
   const catalogOn = isOwner && modules.includes("catalog");
   // Категории (миграция 20261023100000): отбор, подпись в строке и подсказка.
   // Категории и модели с размерами (собрать их товары в одну строку) — параллельно.
-  const [{ categories, products: named, hints }, { variants, models }] = await Promise.all([
+  // Прокат: что сейчас на руках — «на руках до 28 октября · Айбек» у вещи.
+  const [{ categories, products: named, hints }, { variants, models }, out] = await Promise.all([
     loadCategories(db, organizationId),
     loadVariants(db, organizationId),
+    modules.includes("rental") ? onHand(db, organizationId) : Promise.resolve(new Map<string, { count: number; due: string; who: string }>()),
   ]);
+  const outText = (id: string) => {
+    const o = out.get(id);
+    return o ? ` · на руках${o.count > 1 ? ` ${o.count} шт.` : ""} до ${dayMonth(o.due)}${o.who ? ` · ${o.who}` : ""}` : "";
+  };
   const category =
     rawCategory === "none" || categories.some((c) => c.id === rawCategory) ? (rawCategory as string) : null;
 
@@ -203,6 +211,7 @@ export default async function StockPage({
           Number(row.purchase_price) > 0 &&
           ` · на складе на ${money(lineValue(row.stock, row.purchase_price), row.purchase_currency ?? currency)}`}
         {sort === "popular" && ` · продаж за 90 дн.: ${row.sold_count ?? 0}`}
+        {outText(row.id)}
         {sort === "received" && (row.last_received_at ? ` · приход ${shortDate(row.last_received_at)}` : " · приходов не было")}
         {row.category_id && categoryLabel(categories, row.category_id) && ` · ${categoryLabel(categories, row.category_id)}`}
       </span>
@@ -249,6 +258,7 @@ export default async function StockPage({
           {sorted.map((row) => (
             <Link key={row.id} href={`/stock/${row.id}`} className={isLow(row) && filter !== "archive" ? "stock-variant low" : "stock-variant"}>
               {variantLabel(model.axes, variants[row.id]?.attrs)} <b>{quantity(row.stock)}</b>
+              {out.has(row.id) && <small> · на руках</small>}
             </Link>
           ))}
         </span>

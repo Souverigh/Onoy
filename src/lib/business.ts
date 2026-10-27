@@ -21,6 +21,11 @@ export const MODULES = {
     label: "Размеры и цвета",
     description: "Товар-модель с размерами и цветами: у каждого свой остаток.",
   },
+  // Выдача вещей со склада на дни под залог (src/lib/rentals.ts).
+  rental: {
+    label: "Прокат",
+    description: "Выдача вещей на несколько дней под залог: что на руках, до какого дня, возврат.",
+  },
 } as const;
 
 export type ModuleId = keyof typeof MODULES;
@@ -77,7 +82,7 @@ export const PRESETS = {
   clothing: { label: "Одежда и обувь", modules: ["stock", "catalog", "variants"], newProduct: "model" },
   clothing_rental: {
     label: "Прокат одежды",
-    modules: ["stock", "catalog", "variants"],
+    modules: ["stock", "catalog", "variants", "rental"],
     navLabels: { "/stock": "Вещи" },
     newProduct: "model",
   },
