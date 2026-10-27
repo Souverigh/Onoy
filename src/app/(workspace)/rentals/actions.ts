@@ -39,6 +39,10 @@ export async function issueRental(_: RentalState, form: FormData): Promise<Renta
   const total = amount(form.get("amount"));
   const deposit = amount(form.get("deposit"));
   if (total == null || deposit == null) return { error: "amount" };
+  // «Частично»: продажа в долг на всё, часть — оплатой сразу; часть меньше суммы.
+  const pay = String(form.get("pay") ?? "paid");
+  const part = pay === "part" ? amount(form.get("paid_now")) : null;
+  if (pay === "part" && (part == null || !(Number(part) > 0) || Number(part) >= Number(total))) return { error: "part" };
   const kind = String(form.get("collateral_kind") ?? "");
   if (!isCollateralKind(kind)) return { error: "collateral" };
   const key = String(form.get("idempotency_key") ?? "");
@@ -51,12 +55,13 @@ export async function issueRental(_: RentalState, form: FormData): Promise<Renta
     p_items: items,
     p_days: days,
     p_amount: total,
-    p_paid: form.get("paid") === "true",
+    p_paid: pay === "paid",
     p_collateral_kind: kind,
     p_collateral_note: String(form.get("collateral_note") ?? "").trim().slice(0, 100) || null,
     p_deposit: Number(deposit) > 0 ? deposit : null,
     p_note: String(form.get("note") ?? "").trim().slice(0, 500) || null,
     p_idempotency_key: key,
+    ...(part ? { p_paid_now: part } : {}),
   });
   if (result.error || !result.data) {
     console.error("issueRental failed", { message: result.error?.message });

@@ -50,6 +50,8 @@ export default async function RentalPage({
   ]);
   const saleOf = (sid: string | null) => (sales.data ?? []).find((s) => s.id === sid);
   const sale = saleOf(r.sale_id);
+  // Частичная оплата: внесённая сразу часть (отменённая не считается).
+  const part = r.payment && !r.payment.reversed_at ? Number(r.payment.amount) : 0;
   const extra = saleOf(r.extra_sale_id);
 
   const today = bishkekDate();
@@ -151,7 +153,13 @@ export default async function RentalPage({
             ) : (
               money(rentalTotal(items.map((i) => Number(i.price_per_day)), r.days).toFixed(2), currency)
             )}
-            {sale ? (sale.paid_immediately ? " · оплатил сразу" : " · в долг") : " · бесплатно"}
+            {sale
+              ? sale.paid_immediately
+                ? " · оплатил сразу"
+                : part
+                  ? ` · оплатил ${money(part.toFixed(2), currency)}, в долг ${money((Number(sale.total) - part).toFixed(2), currency)}`
+                  : " · в долг"
+              : " · бесплатно"}
           </dd>
           {extra && (
             <>

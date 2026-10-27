@@ -11691,3 +11691,9 @@ form label.rental-picked-price {
   width: 120px;
   min-height: 40px;
 }
+/* «Оплатил / Частично / В долг» в панели выдачи: на телефоне три в ряд. */
+@media (max-width: 560px) {
+  .sale-bar-pay .method-pills.rental-pay {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

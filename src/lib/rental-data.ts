@@ -18,12 +18,14 @@ export type RentalRow = {
   reversed_at: string | null;
   reversal_comment: string | null;
   created_by: string | null;
+  /** Часть, оплаченная сразу (частичная оплата). */
+  payment: { amount: string; reversed_at: string | null } | null;
   customers: { name: string; phone: string | null } | null;
   rental_items: { id: string; n: number; product_id: string; price_per_day: string; returned_at: string | null; products: { name: string } | null }[];
 };
 
 export const RENTAL_COLUMNS =
-  "id,customer_id,issued_at,days,due_on,sale_id,extra_sale_id,collateral_kind,collateral_note,deposit,deposit_returned_at,note,returned_at,reversed_at,reversal_comment,created_by,customers(name,phone),rental_items(id,n,product_id,price_per_day,returned_at,products(name))";
+  "id,customer_id,issued_at,days,due_on,sale_id,extra_sale_id,collateral_kind,collateral_note,deposit,deposit_returned_at,note,returned_at,reversed_at,reversal_comment,created_by,payment:payments(amount,reversed_at),customers(name,phone),rental_items(id,n,product_id,price_per_day,returned_at,products(name))";
 
 /** Вещи на руках: товар → до какого дня и у кого (самая ранняя выдача). */
 export async function onHand(

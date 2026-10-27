@@ -4225,6 +4225,26 @@ test("rentals: a thing goes out once, payment is a plain sale, deposit is a cash
   assert.ok(reversed.reversed_at && reversed.sale_reversed);
   assert.equal((await db.query("select count(*)::int as n from rental_items where rental_id=$1 and returned_at is null", [again])).rows[0].n, 0);
 
+  // Частично: продажа на всё в долг и оплата наличными на часть; отмена — обе.
+  const partKey = k(6);
+  await assert.rejects(
+    db.query("select issue_rental($1,$2,$3::jsonb,1,'1000',false,'none',null,null,null,$4,'1000') as id", [orgA, client, JSON.stringify([{ product: shirt, price: "1000" }]), k(7)]),
+    /invalid_rental/,
+  );
+  const part = (
+    await db.query("select issue_rental($1,$2,$3::jsonb,2,'2000',false,'passport',null,null,null,$4,'1000') as id", [
+      orgA, client, JSON.stringify([{ product: shirt, price: "1000" }]), partKey,
+    ])
+  ).rows[0].id;
+  const partRow = (await db.query("select sale_id,payment_id from rentals where id=$1", [part])).rows[0];
+  assert.deepEqual(Object.values((await db.query("select total,paid_immediately from sales where id=$1", [partRow.sale_id])).rows[0]), ["2000.00", false]);
+  assert.deepEqual(
+    Object.values((await db.query("select amount,method,note,direction from payments where id=$1", [partRow.payment_id])).rows[0]),
+    ["1000.00", "cash", "Прокат: часть оплаты", "incoming"],
+  );
+  await db.query("select reverse_rental($1,$2,'ошиблись')", [orgA, part]);
+  assert.ok((await db.query("select reversed_at from payments where id=$1", [partRow.payment_id])).rows[0].reversed_at);
+
   // Чужой магазин ничего не видит и не выдаёт.
   await user(b);
   assert.equal((await db.query("select * from rentals")).rows.length, 0);

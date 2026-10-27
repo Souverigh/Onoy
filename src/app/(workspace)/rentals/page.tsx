@@ -91,6 +91,7 @@ export default async function RentalsPage({ searchParams }: { searchParams: Prom
                   <span className="op-list-meta muted">
                     {things.join(", ")}
                     {` · ${money(total.toFixed(2), currency)}`}
+                    {r.payment && !r.payment.reversed_at && `, оплатил ${money(r.payment.amount, currency)}`}
                     {collateral && ` · ${collateral}`}
                     {r.deposit && !r.deposit_returned_at && ` · залог ${money(r.deposit, currency)}`}
                   </span>

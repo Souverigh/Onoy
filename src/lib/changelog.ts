@@ -24,6 +24,14 @@ export type NewsEntry = {
 
 export const CHANGELOG: readonly NewsEntry[] = [
   {
+    n: 12,
+    date: "2026-10-26",
+    title: "Прокат: оплата частью",
+    text: "При выдаче можно выбрать «Частично» и вписать, сколько клиент отдал сейчас - остальное запишется ему в долг.",
+    link: { href: "/rentals/new", label: "Выдать" },
+    module: "rental",
+  },
+  {
     n: 11,
     date: "2026-10-26",
     title: "Прокат: выдача и возврат",

@@ -21,6 +21,7 @@ const ERROR_TEXT: Record<string, string> = {
   items: "Выберите хотя бы одну вещь.",
   days: "Срок - от 1 до 365 дней.",
   amount: "Проверьте сумму и залог - только цифры.",
+  part: "Сколько отдал сейчас - больше нуля и меньше всей суммы. Всю сумму - это «Оплатил».",
   collateral: "Выберите, что оставили в залог.",
   busy: "Одну из вещей только что выдали - обновите страницу и выберите другую.",
   save: "Не получилось записать. Проверьте связь и нажмите ещё раз.",
@@ -62,7 +63,9 @@ export function RentalForm({
   const [days, setDays] = useState(1);
   const [ownDays, setOwnDays] = useState<string | null>(null);
   const [amountText, setAmountText] = useState<string | null>(null);
-  const [paid, setPaid] = useState(true);
+  // Оплата: всё сразу, часть сразу (остальное в долг) или всё в долг.
+  const [pay, setPay] = useState<"paid" | "part" | "debt">("paid");
+  const [paidNow, setPaidNow] = useState("");
   const [collateral, setCollateral] = useState<CollateralKind>("passport");
   const [depositOpen, setDepositOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
@@ -335,6 +338,22 @@ export function RentalForm({
         </button>
       )}
 
+      {pay === "part" && (
+        <label>
+          Сколько отдал сейчас
+          <input
+            name="paid_now"
+            inputMode="decimal"
+            autoFocus
+            placeholder="Например: 1 000"
+            value={paidNow}
+            onChange={(e) => setPaidNow(e.target.value)}
+          />
+          {parse(paidNow) > 0 && parse(paidNow) < total && (
+            <small className="muted">В долг останется {money((total - parse(paidNow)).toFixed(2), shopCurrency)}.</small>
+          )}
+        </label>
+      )}
       {error && error !== "party" && error !== "items" && (
         <p ref={errorRef} className="form-error" role="alert">
           {ERROR_TEXT[error] ?? ERROR_TEXT.save}
@@ -343,14 +362,19 @@ export function RentalForm({
       {/* Итог, оплата и «Выдать» прилипают к низу экрана — как в продаже. */}
       <div className="sale-bar">
         <div className="sale-bar-pay">
-          {paid && <input type="hidden" name="paid" value="true" />}
-          <span className="method-pills" role="group" aria-label="Оплата">
-            <button type="button" className={paid ? "active" : ""} aria-pressed={paid} onClick={() => setPaid(true)}>
-              Оплатил
-            </button>
-            <button type="button" className={paid ? "" : "active"} aria-pressed={!paid} onClick={() => setPaid(false)}>
-              В долг
-            </button>
+          <input type="hidden" name="pay" value={pay} />
+          <span className="method-pills rental-pay" role="group" aria-label="Оплата">
+            {(
+              [
+                ["paid", "Оплатил"],
+                ["part", "Частично"],
+                ["debt", "В долг"],
+              ] as const
+            ).map(([value, text]) => (
+              <button key={value} type="button" className={pay === value ? "active" : ""} aria-pressed={pay === value} onClick={() => setPay(value)}>
+                {text}
+              </button>
+            ))}
           </span>
         </div>
         <div className="sale-bar-total">
@@ -358,6 +382,9 @@ export function RentalForm({
             {picked.length} шт. · {daysWord(days)}
           </span>
           <strong>{money(total.toFixed(2), shopCurrency)}</strong>
+          {pay === "part" && parse(paidNow) > 0 && parse(paidNow) < total && (
+            <small className="muted">в долг {money((total - parse(paidNow)).toFixed(2), shopCurrency)}</small>
+          )}
         </div>
         <Submit pending={saving}>Выдать</Submit>
       </div>
