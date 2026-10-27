@@ -8,7 +8,7 @@ import { NewCustomerInline } from "./new-customer-inline";
 import { Submit } from "./submit";
 import { Icon } from "./icon";
 import { money } from "@/lib/format";
-import { COLLATERAL_KINDS, COLLATERAL_LABEL, DAY_CHOICES, MAX_DAYS, daysWord, rentalTotal, type CollateralKind } from "@/lib/rentals";
+import { COLLATERAL_KINDS, COLLATERAL_LABEL, MAX_DAYS, daysWord, rentalTotal, type CollateralKind } from "@/lib/rentals";
 import type { Currency } from "@/lib/currency";
 
 /** Вещь склада для выдачи: цена за сутки — цена продажи; free — сколько не на руках; size — размер у модели. */
@@ -21,14 +21,14 @@ const ERROR_TEXT: Record<string, string> = {
   items: "Выберите хотя бы одну вещь.",
   days: "Срок - от 1 до 365 дней.",
   amount: "Проверьте сумму и залог - только цифры.",
-  part: "Сколько отдал сейчас - больше нуля и меньше всей суммы. Всю сумму - это «Оплатил».",
+  part: "«Оплатил сейчас» - не больше суммы за прокат.",
   collateral: "Выберите, что оставили в залог.",
   busy: "Одну из вещей только что выдали - обновите страницу и выберите другую.",
   save: "Не получилось записать. Проверьте связь и нажмите ещё раз.",
 };
 
-/** Без поиска показываем столько карточек; остальное — поиском или «Показать все». */
-const FIRST_GROUPS = 24;
+/** Сколько карточек показать по поиску. */
+const FOUND_LIMIT = 12;
 
 /** «2800.5» → «2800,5» — как в полях формы. */
 const asInput = (n: number) => String(Math.round(n * 100) / 100).replace(".", ",");
@@ -57,15 +57,14 @@ export function RentalForm({
   const [party, setParty] = useState(initialParty);
   const [newCustomer, setNewCustomer] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [showAll, setShowAll] = useState(false);
   // Выбранные вещи: id товара и цена за сутки (строкой, как в поле).
   const [picked, setPicked] = useState<{ id: string; price: string }[]>([]);
-  const [days, setDays] = useState(1);
-  const [ownDays, setOwnDays] = useState<string | null>(null);
+  const [daysText, setDaysText] = useState("1");
   const [amountText, setAmountText] = useState<string | null>(null);
-  // Оплата: всё сразу, часть сразу (остальное в долг) или всё в долг.
-  const [pay, setPay] = useState<"paid" | "part" | "debt">("paid");
-  const [paidNow, setPaidNow] = useState("");
+  // «Оплатил» — сколько отдал сейчас (пока не правили — вся сумма); меньше
+  // суммы — частичная оплата, остаток в долг. «В долг» — ничего сразу.
+  const [debt, setDebt] = useState(false);
+  const [paidText, setPaidText] = useState<string | null>(null);
   const [collateral, setCollateral] = useState<CollateralKind>("passport");
   const [depositOpen, setDepositOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
@@ -87,13 +86,16 @@ export function RentalForm({
   const byId = useMemo(() => new Map(groups.flatMap((g) => g.things.map((t) => [t.id, { ...t, group: g.name }] as const))), [groups]);
   const chosenCount = (id: string) => picked.filter((p) => p.id === id).length;
   const q = query.trim().toLowerCase();
+  // Список — только по поиску: без него на экране лишь поле (просьба пользователя 26.10.2026).
   const shown = q
-    ? groups.filter((g) => g.name.toLowerCase().includes(q) || g.things.some((t) => t.size?.toLowerCase() === q))
-    : showAll
-      ? groups
-      : groups.slice(0, FIRST_GROUPS);
+    ? groups.filter((g) => g.name.toLowerCase().includes(q) || g.things.some((t) => t.size?.toLowerCase() === q)).slice(0, FOUND_LIMIT)
+    : [];
+  const days = Math.min(Math.max(Math.floor(Number(daysText)) || 1, 1), MAX_DAYS);
   const autoTotal = rentalTotal(picked.map((p) => parse(p.price)), days);
   const total = amountText == null ? autoTotal : parse(amountText);
+  const paid = debt ? 0 : paidText == null ? total : parse(paidText);
+  const pay = paid <= 0 ? "debt" : paid >= total ? "paid" : "part";
+  const owed = Math.max(Math.round((total - paid) * 100) / 100, 0);
   const label = (id: string) => {
     const t = byId.get(id);
     return t ? (t.size ? `${t.group}, ${t.size}` : t.name) : "Вещь";
@@ -108,7 +110,7 @@ export function RentalForm({
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const fail = !party ? "party" : !picked.length ? "items" : null;
+    const fail = !party ? "party" : !picked.length ? "items" : !debt && paid > total ? "part" : null;
     if (fail) return setLocalError(fail);
     setLocalError(null);
     const form = new FormData(e.currentTarget);
@@ -191,18 +193,16 @@ export function RentalForm({
             ))}
           </ul>
         )}
-        {groups.length > 6 && (
-          <input
-            className="rental-search"
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Найти вещь или размер…"
-            aria-label="Найти вещь"
-            autoComplete="off"
-          />
-        )}
-        <ul className="rental-catalog">
+        <input
+          className="rental-search"
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Найти вещь или размер…"
+          aria-label="Найти вещь"
+          autoComplete="off"
+        />
+        {shown.length > 0 && <ul className="rental-catalog">
           {shown.map((g) => (
             <li key={g.key}>
               <span className="rental-catalog-name">{g.name}</span>
@@ -226,13 +226,8 @@ export function RentalForm({
               </span>
             </li>
           ))}
-        </ul>
+        </ul>}
         {q && !shown.length && <p className="muted">Свободных вещей с таким названием нет.</p>}
-        {!q && !showAll && groups.length > FIRST_GROUPS && (
-          <button type="button" className="text-button" onClick={() => setShowAll(true)}>
-            Показать все ({groups.length})
-          </button>
-        )}
         {error === "items" && (
           <p className="form-error" role="alert">
             {ERROR_TEXT.items}
@@ -240,60 +235,35 @@ export function RentalForm({
         )}
       </div>
 
-      <div className="rental-field">
-        <span className="rental-field-label">На сколько дней</span>
-        <span className="method-pills rental-pills" role="group" aria-label="На сколько дней">
-          {DAY_CHOICES.map((d) => (
-            <button
-              key={d}
-              type="button"
-              className={ownDays == null && days === d ? "active" : ""}
-              aria-pressed={ownDays == null && days === d}
-              onClick={() => {
-                setDays(d);
-                setOwnDays(null);
-              }}
-            >
-              {d}
-            </button>
-          ))}
-          <button
-            type="button"
-            className={ownDays != null ? "active" : ""}
-            aria-pressed={ownDays != null}
-            onClick={() => setOwnDays(ownDays ?? "")}
-          >
-            Другое
-          </button>
-        </span>
-        {ownDays != null && (
+      <div className="rental-sum-row">
+        <label>
+          Дней
           <input
-            className="rental-days-input"
             inputMode="numeric"
-            autoFocus
-            placeholder="Сколько дней"
-            aria-label="Сколько дней"
-            value={ownDays}
-            onChange={(e) => {
-              const v = e.target.value.replace(/\D/g, "").slice(0, 3);
-              setOwnDays(v);
-              const n = Number(v);
-              if (n >= 1 && n <= MAX_DAYS) setDays(n);
-            }}
+            value={daysText}
+            onChange={(e) => setDaysText(e.target.value.replace(/\D/g, "").slice(0, 3))}
+            onBlur={() => setDaysText(String(days))}
+            aria-label="На сколько дней"
           />
-        )}
+        </label>
+        <label>
+          Сумма за {daysWord(days)}
+          <input name="amount" inputMode="decimal" value={amountText ?? asInput(autoTotal)} onChange={(e) => setAmountText(e.target.value)} />
+        </label>
       </div>
       <input type="hidden" name="days" value={days} />
-
-      <label>
-        Сумма за {daysWord(days)}
-        <input name="amount" inputMode="decimal" value={amountText ?? asInput(autoTotal)} onChange={(e) => setAmountText(e.target.value)} />
-        {amountText != null && parse(amountText) !== autoTotal && (
-          <button type="button" className="text-button" onClick={() => setAmountText(null)}>
-            Вернуть по ценам: {money(autoTotal.toFixed(2), shopCurrency)}
-          </button>
-        )}
-      </label>
+      {amountText != null && parse(amountText) !== autoTotal && (
+        <button type="button" className="text-button note-toggle" onClick={() => setAmountText(null)}>
+          Вернуть по ценам: {money(autoTotal.toFixed(2), shopCurrency)}
+        </button>
+      )}
+      {!debt && (
+        <label>
+          Оплатил сейчас
+          <input inputMode="decimal" value={paidText ?? asInput(total)} onChange={(e) => setPaidText(e.target.value)} />
+          {owed > 0 && <small className="muted">Остальное - {money(owed.toFixed(2), shopCurrency)} - запишется клиенту в долг.</small>}
+        </label>
+      )}
 
       <div className="rental-field">
         <span className="rental-field-label">Залог</span>
@@ -338,22 +308,6 @@ export function RentalForm({
         </button>
       )}
 
-      {pay === "part" && (
-        <label>
-          Сколько отдал сейчас
-          <input
-            name="paid_now"
-            inputMode="decimal"
-            autoFocus
-            placeholder="Например: 1 000"
-            value={paidNow}
-            onChange={(e) => setPaidNow(e.target.value)}
-          />
-          {parse(paidNow) > 0 && parse(paidNow) < total && (
-            <small className="muted">В долг останется {money((total - parse(paidNow)).toFixed(2), shopCurrency)}.</small>
-          )}
-        </label>
-      )}
       {error && error !== "party" && error !== "items" && (
         <p ref={errorRef} className="form-error" role="alert">
           {ERROR_TEXT[error] ?? ERROR_TEXT.save}
@@ -363,18 +317,14 @@ export function RentalForm({
       <div className="sale-bar">
         <div className="sale-bar-pay">
           <input type="hidden" name="pay" value={pay} />
-          <span className="method-pills rental-pay" role="group" aria-label="Оплата">
-            {(
-              [
-                ["paid", "Оплатил"],
-                ["part", "Частично"],
-                ["debt", "В долг"],
-              ] as const
-            ).map(([value, text]) => (
-              <button key={value} type="button" className={pay === value ? "active" : ""} aria-pressed={pay === value} onClick={() => setPay(value)}>
-                {text}
-              </button>
-            ))}
+          {pay === "part" && <input type="hidden" name="paid_now" value={String(paid)} />}
+          <span className="method-pills" role="group" aria-label="Оплата">
+            <button type="button" className={debt ? "" : "active"} aria-pressed={!debt} onClick={() => setDebt(false)}>
+              Оплатил
+            </button>
+            <button type="button" className={debt ? "active" : ""} aria-pressed={debt} onClick={() => setDebt(true)}>
+              В долг
+            </button>
           </span>
         </div>
         <div className="sale-bar-total">
@@ -382,9 +332,7 @@ export function RentalForm({
             {picked.length} шт. · {daysWord(days)}
           </span>
           <strong>{money(total.toFixed(2), shopCurrency)}</strong>
-          {pay === "part" && parse(paidNow) > 0 && parse(paidNow) < total && (
-            <small className="muted">в долг {money((total - parse(paidNow)).toFixed(2), shopCurrency)}</small>
-          )}
+          {pay === "part" && <small className="muted">в долг {money(owed.toFixed(2), shopCurrency)}</small>}
         </div>
         <Submit pending={saving}>Выдать</Submit>
       </div>

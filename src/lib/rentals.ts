@@ -25,9 +25,6 @@ export function collateralText(kind: string, note: string | null): string | null
   return note ? `${COLLATERAL_LABEL[kind]} · ${note}` : COLLATERAL_LABEL[kind];
 }
 
-/** Дни на выбор кнопками; любое другое — своим числом. */
-export const DAY_CHOICES = [1, 2, 3, 7] as const;
-
 export const MAX_DAYS = 365;
 
 const round = (n: number) => Math.round(n * 100) / 100;
