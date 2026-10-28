@@ -2,6 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { changeSignupEmail, resendSignup, verifySignup } from "../../auth/actions";
 import { Submit } from "@/components/submit";
+import { SignupIntro } from "@/components/signup-intro";
 import { SIGNUP_EMAIL_COOKIE } from "@/lib/signup";
 
 /**
@@ -19,6 +20,7 @@ export default async function VerifySignup({
   const email = (await cookies()).get(SIGNUP_EMAIL_COOKIE)?.value ?? "";
   return (
     <main className="auth">
+      <SignupIntro step={2} />
       <section className="auth-form">
         <div className="auth-card">
           <span className="eyebrow">ШАГ 2 ИЗ 3</span>

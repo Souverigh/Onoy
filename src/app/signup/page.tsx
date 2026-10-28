@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { signUp } from "../auth/actions";
 import { Submit } from "@/components/submit";
+import { SignupIntro } from "@/components/signup-intro";
 import { PRESETS, isBusinessType } from "@/lib/business";
 import { GoogleButton, googleSignInEnabled } from "@/components/google-button";
 
@@ -12,6 +13,7 @@ export default async function SignUp({ searchParams }: { searchParams: Promise<{
   const business = isBusinessType(type) ? type : null;
   return (
     <main className="auth">
+      <SignupIntro step={1} />
       <section className="auth-form">
         <div className="auth-card">
           <span className="eyebrow">{business ? PRESETS[business].label.toUpperCase() : "НОВЫЙ МАГАЗИН"}</span>

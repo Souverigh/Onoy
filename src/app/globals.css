@@ -11928,3 +11928,69 @@ form label.rental-picked-price {
   flex: 1;
   border-top: 1px solid var(--line);
 }
+
+/* Страницы регистрации: слева шаги (src/components/signup-intro.tsx), справа форма.
+   Страница только с формой («Забыли пароль?», приглашение) — форма по центру. */
+.auth:not(:has(.auth-intro)) {
+  grid-template-columns: 1fr;
+}
+.signup-intro h1 {
+  max-width: 460px;
+}
+.signup-steps {
+  list-style: none;
+  padding: 0;
+  margin: 28px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.signup-steps li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--faint);
+  font-size: 16px;
+}
+.signup-steps li span {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid var(--faint);
+  font-weight: 700;
+  font-size: 14px;
+}
+.signup-steps li.current {
+  color: white;
+  font-weight: 600;
+}
+.signup-steps li.current span {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.signup-steps li.done span {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+@media (max-width: 900px) {
+  .signup-intro {
+    padding: 20px 26px;
+    gap: 12px;
+    min-height: 0;
+    justify-content: flex-start;
+  }
+  .signup-intro h1 {
+    font-size: 24px;
+    margin: 0;
+  }
+  .signup-intro .eyebrow,
+  .signup-intro .signup-steps,
+  .signup-intro p,
+  .signup-intro > small {
+    display: none;
+  }
+}
