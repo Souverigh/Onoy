@@ -55,9 +55,9 @@ function Icon({ name, size = 26 }: { name: ActionIcon; size?: number }) {
 }
 
 /**
- * Главный экран (задачи 17, 20, 33): сначала долги, сразу под ними — что
- * ждёт ответа («Требуют внимания»), потом кнопки, «Кому напомнить сегодня»,
- * итог дня, поиск и последние записи. Незакрытые дни — только в «Итоге дня». Продавцу — без
+ * Главный экран (задачи 17, 20, 33): шапка (день, итог дня, поиск), долги,
+ * сразу под ними — что ждёт ответа («Требуют внимания»), кнопки, внизу рядом
+ * «Кому напомнить сегодня» и последние записи. Незакрытые дни — только в «Итоге дня». Продавцу — без
  * сумм магазина (роли, п. 45).
  */
 export function Dashboard({
@@ -110,6 +110,10 @@ export function Dashboard({
       new Date(iso),
     );
   const main = summary?.debts[0];
+  const day = new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", weekday: "long", day: "numeric", month: "long" }).format(
+    new Date(),
+  );
+  const dayTitle = day.charAt(0).toUpperCase() + day.slice(1);
   const expense = actions.find((a) => a.side === "shop");
   const first = actions.find((a) => a !== expense);
   const groups = (
@@ -148,6 +152,33 @@ export function Dashboard({
           Этот раздел доступен только владельцу магазина.
         </p>
       )}
+      {/* Шапка: день и итог дня одной строкой, поиск клиента справа (на телефоне —
+          значок, поиск открывается в «Клиентах»). */}
+      <header className="home-head">
+        <div>
+          <h1>{dayTitle}</h1>
+          {!staff && today ? (
+            <Link className="home-today" href={href("/day")}>
+              Сегодня: продано {money(today.sold, today.currency)} · собрано {money(today.collected, today.currency)}
+              {today.expenses > 0 && <> · расходы {money(today.expenses, today.currency)}</>}
+              <span className="home-today-go"> · Итог дня →</span>
+            </Link>
+          ) : null}
+        </div>
+        <form className="search dashboard-search home-search" action={href("/customers")}>
+          <label htmlFor="dashboard-search" className="sr-only">
+            Найти клиента
+          </label>
+          <input id="dashboard-search" name="q" placeholder="Имя или телефон клиента" maxLength={100} />
+          <button className="button">Найти</button>
+        </form>
+        <Link className="home-search-icon" href={href("/customers")} aria-label="Найти клиента">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="6.5" />
+            <path d="m16 16 4.5 4.5" />
+          </svg>
+        </Link>
+      </header>
       {intro}
       {!staff && summary && (
         <section className="debt-cards" aria-label="Долги">
@@ -240,89 +271,73 @@ export function Dashboard({
           </Link>
         )}
       </section>
-      {!staff && reminders.length > 0 && (
-        <section className="panel remind-today" aria-label="Кому напомнить сегодня">
-          <div className="section-title">
-            <h2>Кому напомнить сегодня</h2>
-            <Link className="text-button" href={href("/customers?overdue=30")}>
-              Все просроченные →
-            </Link>
-          </div>
-          <ul className="remind-list">
-            {reminders.map((r) => (
-              <li key={r.id}>
-                <Link className="remind-who" href={href(`/customers/${r.id}`)}>
-                  <strong>{r.name}</strong>
-                  <small className="muted">
-                    {debtMoney(r.balance, r.currency)} · {r.reason}
-                  </small>
-                </Link>
-                {r.waHref ? (
-                  <a className="button whatsapp" href={r.waHref} target="_blank" rel="noreferrer">
-                    Напомнить
-                  </a>
-                ) : (
-                  // Нет телефона — нечем напомнить: ведём вписать номер.
-                  <Link className="button" href={href(`/customers/${r.id}?add_phone=1#party-data`)}>
-                    Вписать телефон
+      {/* Внизу рядом: кому напомнить (деньги) и последние записи; на телефоне — друг под другом. */}
+      <div className="home-bottom">
+        {!staff && reminders.length > 0 && (
+          <section className="panel remind-today" aria-label="Кому напомнить сегодня">
+            <div className="section-title">
+              <h2>Кому напомнить сегодня</h2>
+              <Link className="text-button" href={href("/customers?overdue=30")}>
+                Все просроченные →
+              </Link>
+            </div>
+            <ul className="remind-list">
+              {reminders.map((r) => (
+                <li key={r.id}>
+                  <Link className="remind-who" href={href(`/customers/${r.id}`)}>
+                    <strong>{r.name}</strong>
+                    <small className="muted">
+                      {debtMoney(r.balance, r.currency)} · {r.reason}
+                    </small>
                   </Link>
-                )}
-              </li>
-            ))}
-          </ul>
-          {remindersMore > 0 && (
-            <p className="muted">
-              И ещё {remindersMore} {plural(remindersMore, "клиент", "клиента", "клиентов")}.
-            </p>
-          )}
-        </section>
-      )}
-      {!staff && today && (
-        <Link className="dashboard-day" href={href("/day")}>
-          <span>
-            <strong>Итог дня</strong>
-            <small className="muted">
-              продано {money(today.sold, today.currency)} · собрано {money(today.collected, today.currency)}
-              {today.expenses > 0 && <> · расходы {money(today.expenses, today.currency)}</>}
-            </small>
-          </span>
-          <span aria-hidden="true">→</span>
-        </Link>
-      )}
-      <form className="search dashboard-search" action={href("/customers")}>
-        <label htmlFor="dashboard-search" className="sr-only">
-          Найти клиента
-        </label>
-        <input id="dashboard-search" name="q" placeholder="Имя или телефон клиента…" maxLength={100} />
-        <button className="button">Найти</button>
-      </form>
-      {recent.length > 0 && (
-        <section className="panel dashboard-recent">
-          <div className="section-title">
-            <h2>Последние записи</h2>
-            <Link className="button" href={href("/money")}>
-              Все записи
-            </Link>
-          </div>
-          <ul className="recent-list">
-            {recent.map((r) => (
-              <li key={r.key} className={r.reversed ? "reversed-row" : ""}>
-                <span>
-                  <strong>
-                    {r.label}
-                    {r.reversed && " · "}
-                    {r.reversed && <span className="tag reversed-tag">отменена</span>}
-                  </strong>
-                  <small className="muted">
-                    {r.partyHref ? <Link href={href(r.partyHref)}>{r.party}</Link> : r.party} · {time(r.at)}
-                  </small>
-                </span>
-                <strong className="nowrap">{money(r.amount, r.currency)}</strong>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+                  {r.waHref ? (
+                    <a className="button whatsapp" href={r.waHref} target="_blank" rel="noreferrer">
+                      Напомнить
+                    </a>
+                  ) : (
+                    // Нет телефона — нечем напомнить: ведём вписать номер.
+                    <Link className="button" href={href(`/customers/${r.id}?add_phone=1#party-data`)}>
+                      Вписать телефон
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {remindersMore > 0 && (
+              <p className="muted">
+                И ещё {remindersMore} {plural(remindersMore, "клиент", "клиента", "клиентов")}.
+              </p>
+            )}
+          </section>
+        )}
+        {recent.length > 0 && (
+          <section className="panel dashboard-recent">
+            <div className="section-title">
+              <h2>Последние записи</h2>
+              <Link className="text-button" href={href("/money")}>
+                Все записи →
+              </Link>
+            </div>
+            <ul className="recent-list">
+              {recent.map((r) => (
+                <li key={r.key} className={r.reversed ? "reversed-row" : ""}>
+                  <span>
+                    <strong>
+                      {r.label}
+                      {r.reversed && " · "}
+                      {r.reversed && <span className="tag reversed-tag">отменена</span>}
+                    </strong>
+                    <small className="muted">
+                      {r.partyHref ? <Link href={href(r.partyHref)}>{r.party}</Link> : r.party} · {time(r.at)}
+                    </small>
+                  </span>
+                  <strong className="nowrap">{money(r.amount, r.currency)}</strong>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
     </div>
   );
 }

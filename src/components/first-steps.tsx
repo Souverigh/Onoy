@@ -26,7 +26,7 @@ const TOUR = [
     text: "Кнопки под ваш вид бизнеса: записать продажу, принять деньги от клиента, расход.",
   },
   {
-    selector: ".dashboard-search",
+    selector: ".home-search, .home-search-icon",
     title: "Поиск клиента",
     text: "Имя или телефон - и сразу его долг, история и кнопка напомнить.",
   },
@@ -43,12 +43,15 @@ const visible = (el: Element | null): el is HTMLElement => {
   return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden";
 };
 
+/** Первое видимое место по селектору: на телефоне и компьютере оно бывает разным (поле поиска или значок). */
+const find = (selector: string) => [...document.querySelectorAll(selector)].find(visible) ?? null;
+
 /** Отступ подсветки вокруг места и подсказки от краёв экрана. */
 const PAD = 8;
 const EDGE = 16;
 
 function Tour({ onClose }: { onClose: () => void }) {
-  const [steps] = useState(() => TOUR.filter((s) => visible(document.querySelector(s.selector))));
+  const [steps] = useState(() => TOUR.filter((s) => find(s.selector)));
   const [i, setI] = useState(0);
   const [box, setBox] = useState<DOMRect | null>(null);
   const [cardHeight, setCardHeight] = useState(0);
@@ -56,15 +59,15 @@ function Tour({ onClose }: { onClose: () => void }) {
   const step = steps[i];
 
   const measure = useCallback(() => {
-    const el = step && document.querySelector(step.selector);
-    setBox(visible(el) ? el.getBoundingClientRect() : null);
+    const el = step && find(step.selector);
+    setBox(el ? el.getBoundingClientRect() : null);
   }, [step]);
 
   // Место не видно целиком — листаем так, чтобы оно было вверху экрана, а под
   // ним осталось место для подсказки. Повторяем чуть позже: страница могла сдвинуться.
   const show = useCallback(() => {
-    const el = step && document.querySelector(step.selector);
-    if (!visible(el)) return;
+    const el = step && find(step.selector);
+    if (!el) return;
     const r = el.getBoundingClientRect();
     if (r.top < EDGE * 4 || r.bottom > window.innerHeight - EDGE)
       window.scrollTo({ top: window.scrollY + r.top - EDGE * 5, behavior: "instant" as ScrollBehavior });

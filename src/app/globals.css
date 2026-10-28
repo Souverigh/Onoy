@@ -1053,7 +1053,7 @@ td small {
 
 /* Главный экран: две цифры долга, три кнопки — см. ТЗ §7. */
 .simple-dashboard {
-  max-width: 640px;
+  max-width: 960px;
   margin: 0 auto;
   padding: 12px 0 40px;
 }
@@ -1278,6 +1278,81 @@ td small {
 }
 .simple-dashboard .muted {
   color: var(--ink-soft);
+}
+/* Шапка главной: день и итог дня слева, поиск клиента справа; на телефоне
+   вместо поля — значок (поиск — в «Клиентах»). */
+.home-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.home-head h1 {
+  margin: 0;
+  font-size: 26px;
+}
+.home-today {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+.home-today-go {
+  color: var(--green);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.home-today:hover .home-today-go {
+  text-decoration: underline;
+}
+.home-search {
+  flex: 0 1 420px;
+}
+.home-search-icon {
+  display: none;
+}
+/* Низ главной: «Кому напомнить» шире, «Последние записи» рядом; один блок — во всю ширину. */
+.home-bottom {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 14px;
+  align-items: start;
+}
+.home-bottom:has(> :only-child) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.home-bottom:empty {
+  display: none;
+}
+.home-bottom > .panel {
+  margin: 0;
+}
+@media (max-width: 900px) {
+  .home-bottom {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 560px) {
+  .home-head h1 {
+    font-size: 22px;
+  }
+  .home-today {
+    font-size: 13px;
+  }
+  .home-head .home-search {
+    display: none;
+  }
+  .home-search-icon {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--button-border);
+    border-radius: var(--radius);
+    background: white;
+    color: var(--ink);
+  }
 }
 /* Расстояния между блоками главной задаёт сетка (gap), свои отступы не нужны. */
 .simple-dashboard > .debt-cards,
