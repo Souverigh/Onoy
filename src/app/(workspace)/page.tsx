@@ -10,12 +10,15 @@ import { waPhone } from "@/lib/share";
 import { reviewDocumentsCount } from "@/lib/review-documents";
 import { rentalsDue } from "@/lib/rental-data";
 import { quickActions } from "@/lib/business";
+import { firstSteps } from "@/lib/first-steps";
+import { FirstSteps } from "@/components/first-steps";
 
 /** Сколько клиентов показываем в «Кому напомнить сегодня». */
 const REMIND_LIMIT = 6;
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ error?: string; password?: string }> }) {
-  const { db, organizationId, organizationName, isOwner, user, currency: shopCurrency, modules, business } = await getContext();
+  const { db, organizationId, organizationName, isOwner, user, currency: shopCurrency, modules, business, shopCreatedAt } =
+    await getContext();
   const { error, password } = await searchParams;
   // После «Забыли пароль?» → новый пароль (src/app/auth/actions.ts, updatePassword).
   const passwordNotice =
@@ -67,6 +70,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
     );
   }
   const today = bishkekDate();
+  // Новый магазин: «Первые шаги» и тур по главной — только владельцу.
+  const steps = firstSteps(db, organizationId, business, modules, shopCreatedAt).catch(() => null);
   const [customerBalances, supplierBalances, late, history, claims, reviewResult, recent, ordersResult] = await Promise.all([
     // Долги — по валютам: доллары Хороза со сомами не складываем.
     db
@@ -178,10 +183,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
   });
 
   const todayRow = history[0]; // за 1 день — одна строка, сегодня
+  const newShopSteps = await steps;
   return (
     <>
       {passwordNotice}
       <Dashboard
+        intro={newShopSteps && <FirstSteps steps={newShopSteps} shopId={organizationId} />}
         summary={{ debts: debtTotals } satisfies Summary}
         reminders={reminders}
         remindersMore={candidates.length - shown.length}

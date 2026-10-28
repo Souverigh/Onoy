@@ -54,6 +54,7 @@ export function Dashboard({
   actions = quickActions(DEFAULT_BUSINESS, MODULE_IDS),
   recent = [],
   mySales,
+  intro,
 }: {
   summary: Summary | null;
   preview?: boolean;
@@ -79,6 +80,8 @@ export function Dashboard({
   recent?: RecentRecord[];
   /** Продавец: его продажи за сегодня и сколько должны его клиенты. */
   mySales?: { date: string; today: number; todayCount: number; owed: number; currency: string };
+  /** Новый магазин: «Первые шаги» — над карточками долгов. */
+  intro?: React.ReactNode;
 }) {
   const href = (url: string) => (preview ? "/preview" : url);
   const time = (iso: string) =>
@@ -93,6 +96,7 @@ export function Dashboard({
           Этот раздел доступен только владельцу магазина.
         </p>
       )}
+      {intro}
       {!staff && summary && (
         <section className="debt-cards" aria-label="Долги">
           <Link className="debt-card" href={href("/customers")}>

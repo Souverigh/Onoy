@@ -40,6 +40,7 @@
   --warning-border: #f0dfb8; /* предупреждение: рамка */
   --warning-ink: #a4762f; /* предупреждение: текст */
   --warning-strong: #e0a800; /* предупреждение: полоса/обводка */
+  --tour-shade: rgba(16, 28, 24, 0.62); /* затемнение вокруг подсказки тура */
 }
 * {
   box-sizing: border-box;
@@ -11772,4 +11773,135 @@ form label.rental-picked-price {
   font-weight: 600;
   color: inherit;
   text-decoration: underline;
+}
+
+/* «Первые шаги» нового магазина и тур по главной (src/components/first-steps.tsx). */
+.first-steps {
+  margin-bottom: 18px;
+}
+.first-steps-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--neutral-soft);
+  margin: 12px 0 6px;
+  overflow: hidden;
+}
+.first-steps-bar span {
+  display: block;
+  height: 100%;
+  background: var(--green);
+  transition: width 0.3s;
+}
+.first-steps-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+}
+.first-steps-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.first-steps-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--control-border);
+  color: white;
+  font-size: 14px;
+  font-weight: 700;
+}
+.first-steps-list li.done .first-steps-mark {
+  background: var(--green);
+  border-color: var(--green);
+}
+.first-steps-list li.next .first-steps-mark {
+  border-color: var(--green);
+}
+.first-steps-list li.done strong {
+  color: var(--muted);
+  font-weight: 500;
+  text-decoration: line-through;
+}
+.first-steps-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.first-steps-text small {
+  font-size: 13px;
+  line-height: 1.45;
+}
+.first-steps .install-app-button,
+.first-steps > .button {
+  margin-top: 10px;
+}
+.first-steps-foot {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.first-steps-foot .text-button:first-child {
+  color: var(--green);
+  font-weight: 600;
+  padding-left: 0;
+}
+@media (max-width: 560px) {
+  .first-steps-list li {
+    flex-wrap: wrap;
+  }
+  .first-steps-list li .button {
+    margin-left: 38px;
+  }
+}
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+.tour-spot {
+  position: fixed;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 0 9999px var(--tour-shade);
+  pointer-events: none;
+}
+.tour:not(:has(.tour-spot)) {
+  background: var(--tour-shade);
+}
+.tour-card {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - 32px));
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: 0 12px 40px var(--tour-shade);
+}
+.tour-card h2 {
+  font-size: 18px;
+  margin: 0 0 6px;
+}
+.tour-card p {
+  margin: 0 0 16px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+.tour-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+.tour-actions .text-button {
+  margin-right: auto;
+  padding-left: 0;
 }
