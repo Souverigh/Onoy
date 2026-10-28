@@ -12006,15 +12006,36 @@ form label.rental-picked-price {
   text-decoration: underline;
 }
 
-/* «Первые шаги» нового магазина и тур по главной (src/components/first-steps.tsx). */
+/* «Первые шаги» нового магазина и тур по главной (src/components/first-steps.tsx).
+   Как на главной: белая карточка, следующий шаг — тёмная плитка (как главная
+   кнопка), остальные — строки (как «Записать расход»). */
 .first-steps {
-  margin-bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+.first-steps-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.first-steps-head h2 {
+  margin: 0;
+  font-size: 19px;
+}
+.first-steps-head span {
+  font-size: 14px;
+  color: var(--ink-soft);
 }
 .first-steps-bar {
   height: 6px;
   border-radius: 3px;
   background: var(--neutral-soft);
-  margin: 12px 0 6px;
   overflow: hidden;
 }
 .first-steps-bar span {
@@ -12023,111 +12044,115 @@ form label.rental-picked-price {
   background: var(--green);
   transition: width 0.3s;
 }
-.first-steps-list {
-  list-style: none;
-  padding: 0;
-  margin: 0 0 8px;
-}
-.first-steps-list li {
+.first-steps-next {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--line);
-}
-.first-steps-list li:last-child {
-  border-bottom: 0;
-}
-.first-steps-list li.next {
-  padding: 16px 0;
-}
-/* Ещё не начатый шаг — вся строка нажимается, стрелка справа. */
-.first-steps-list li:has(.first-steps-row) {
-  padding: 0;
-}
-.first-steps-row {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 52px;
-  color: var(--ink);
-}
-.first-steps-row strong {
-  flex: 1;
-  font-weight: 500;
-}
-.first-steps-go {
-  color: var(--muted);
-  font-size: 22px;
-  line-height: 1;
-}
-.first-steps-row:hover strong {
-  color: var(--green);
-}
-.first-steps-mark {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  border: 2px solid var(--control-border);
-  color: white;
-  font-size: 14px;
-  font-weight: 700;
-}
-.first-steps-list li.done .first-steps-mark {
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: var(--radius);
   background: var(--green);
-  border-color: var(--green);
+  color: white;
 }
-.first-steps-list li.next .first-steps-mark {
-  border-color: var(--green);
+.first-steps-next:hover {
+  background: var(--green-hover);
 }
-.first-steps-list li.done strong {
-  color: var(--muted);
-  font-weight: 500;
-  text-decoration: line-through;
+.first-steps-next svg {
+  flex: none;
 }
-.first-steps-text {
+.first-steps-next-text {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
 }
-.first-steps-text small {
+.first-steps-next-text small {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.first-steps-next-text strong {
+  font-size: 17px;
+}
+.first-steps-next-text span {
   font-size: 13px;
   line-height: 1.45;
+  color: var(--accent);
 }
-.first-steps .install-app-button,
-.first-steps > .button {
-  margin-top: 10px;
+.first-steps-go {
+  font-size: 22px;
+}
+.first-steps-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.first-steps-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+}
+.first-steps-row svg {
+  flex: none;
+  color: var(--green);
+}
+.first-steps-row strong {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+}
+.first-steps-row .first-steps-go {
+  color: var(--ink-soft);
+}
+.first-steps-row:hover {
+  border-color: var(--green-border);
+}
+.first-steps-list li.done {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 0 16px;
+}
+.first-steps-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--green);
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+}
+.first-steps-list li.done strong {
+  color: var(--ink-soft);
+  font-weight: 500;
+  text-decoration: line-through;
+}
+.first-steps .install-app-button {
+  align-self: flex-start;
 }
 .first-steps-foot {
   display: flex;
   justify-content: space-between;
   flex-wrap: wrap;
-  margin-top: 6px;
 }
 .first-steps-foot .text-button:first-child {
   color: var(--green);
   font-weight: 600;
   padding-left: 0;
-}
-/* Телефон: кнопка следующего шага — под текстом, во всю ширину. */
-@media (max-width: 560px) {
-  .first-steps-list li.next {
-    flex-wrap: wrap;
-    align-items: flex-start;
-  }
-  .first-steps-list li.next .first-steps-text {
-    flex-basis: calc(100% - 38px);
-  }
-  .first-steps-list li.next .button {
-    width: calc(100% - 38px);
-    margin-left: 38px;
-  }
 }
 .tour {
   position: fixed;

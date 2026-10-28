@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import type { FirstStep } from "@/lib/first-steps";
 import { InstallApp } from "./install-app";
+import { Icon } from "./action-icon";
 
 /**
  * Тур по главной: подсвечивает часть экрана и объясняет её. Элемента нет или он
@@ -11,7 +12,7 @@ import { InstallApp } from "./install-app";
  */
 const TOUR = [
   {
-    selector: ".first-steps-list li.next",
+    selector: ".first-steps-next",
     title: "С чего начать",
     text: "Начните с этого шага. Галочка поставится сама, когда дело будет сделано, - и откроется следующий.",
   },
@@ -21,9 +22,19 @@ const TOUR = [
     text: "Слева - сколько должны вам клиенты, справа - сколько вы должны поставщикам. Нажмите на карточку - откроется список.",
   },
   {
+    selector: ".attention",
+    title: "Требуют внимания",
+    text: "Здесь появляется то, что ждёт ответа: оплаты от клиентов, заказы, накладные. Нет блока - значит, всё в порядке.",
+  },
+  {
     selector: ".quick-actions",
-    title: "Каждый день - отсюда",
-    text: "Кнопки под ваш вид бизнеса: записать продажу, принять деньги от клиента, расход.",
+    title: "Что произошло?",
+    text: "Каждый день - отсюда: с клиентами слева, с поставщиками справа. Тёмная кнопка - главная.",
+  },
+  {
+    selector: ".remind-today",
+    title: "Кому напомнить",
+    text: "Кто обещал заплатить сегодня или давно должен. Одна кнопка - и напоминание уходит в WhatsApp.",
   },
   {
     selector: ".home-search, .home-search-icon",
@@ -182,57 +193,55 @@ export function FirstSteps({ steps, shopId }: { steps: FirstStep[]; shopId: stri
   if (hidden) return null;
   const done = steps.filter((s) => s.done).length;
   const next = steps.find((s) => !s.done);
+  // Как на главной: следующий шаг — тёмной плиткой (как главная кнопка), остальные —
+  // строками; сделанные — с галочкой, зачёркнуты.
   return (
-    <section className="panel first-steps" aria-label="Первые шаги">
-      <div className="section-title">
-        <h2>Первые шаги</h2>
-        <span className="muted">
+    <section className="first-steps" aria-labelledby="first-steps-title">
+      <div className="first-steps-head">
+        <h2 id="first-steps-title">Первые шаги</h2>
+        <span>
           {done} из {steps.length}
         </span>
       </div>
       <div className="first-steps-bar" aria-hidden="true">
         <span style={{ width: `${(done / steps.length) * 100}%` }} />
       </div>
+      {next && (
+        <Link className="first-steps-next" href={next.href}>
+          <Icon name={next.icon} />
+          <span className="first-steps-next-text">
+            <small>Шаг {steps.indexOf(next) + 1}</small>
+            <strong>{next.title}</strong>
+            <span>{next.text}</span>
+          </span>
+          <span className="first-steps-go" aria-hidden="true">
+            ›
+          </span>
+        </Link>
+      )}
       <ol className="first-steps-list">
-        {steps.map((s) => {
-          const mark = (
-            <span className="first-steps-mark" aria-hidden="true">
-              {s.done ? "✓" : ""}
-            </span>
-          );
-          // Сделано — зачёркнуто; следующий — с пояснением и кнопкой; остальные — строка-ссылка.
-          if (s.done)
-            return (
+        {steps
+          .filter((s) => s !== next)
+          .map((s) =>
+            s.done ? (
               <li key={s.id} className="done">
-                {mark}
+                <span className="first-steps-mark" aria-hidden="true">
+                  ✓
+                </span>
                 <strong>{s.title}</strong>
               </li>
-            );
-          if (s === next)
-            return (
-              <li key={s.id} className="next">
-                {mark}
-                <span className="first-steps-text">
+            ) : (
+              <li key={s.id}>
+                <Link className="first-steps-row" href={s.href}>
+                  <Icon name={s.icon} size={20} />
                   <strong>{s.title}</strong>
-                  <small className="muted">{s.text}</small>
-                </span>
-                <Link className="button primary" href={s.href}>
-                  {s.button}
+                  <span className="first-steps-go" aria-hidden="true">
+                    ›
+                  </span>
                 </Link>
               </li>
-            );
-          return (
-            <li key={s.id}>
-              <Link className="first-steps-row" href={s.href}>
-                {mark}
-                <strong>{s.title}</strong>
-                <span className="first-steps-go" aria-hidden="true">
-                  ›
-                </span>
-              </Link>
-            </li>
-          );
-        })}
+            ),
+          )}
       </ol>
       <InstallApp variant="button" />
       <div className="first-steps-foot">

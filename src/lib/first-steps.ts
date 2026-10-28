@@ -1,13 +1,14 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { mainAction, type BusinessType, type ModuleId } from "./business";
+import type { IconName } from "@/components/action-icon";
 
 /**
  * «Первые шаги» на главной нового магазина (просьба пользователя 27.10.2026):
  * что сделать в первые дни, с кнопкой «куда нажать». Отметка «сделано» — по
  * данным магазина, не по нажатиям. Показываем первый месяц, пока не всё сделано.
  */
-export type FirstStep = { id: string; title: string; text: string; href: string; button: string; done: boolean };
+export type FirstStep = { id: string; title: string; text: string; href: string; button: string; icon: IconName; done: boolean };
 
 /** Сколько дней после открытия магазина показывать шаги. */
 export const FIRST_STEPS_DAYS = 30;
@@ -40,6 +41,7 @@ export async function firstSteps(
       text: "Имя и телефон - по телефону потом напомните о долге в WhatsApp.",
       href: "/customers/new",
       button: "Добавить клиента",
+      icon: "cash-in",
       done: customers > 0,
     },
     {
@@ -48,6 +50,7 @@ export async function firstSteps(
       text: "Сфотографируйте страницу тетради - Depter сам запишет, кто сколько должен.",
       href: "/import",
       button: "Перенести тетрадь",
+      icon: "camera",
       done: openings > 0,
     },
     {
@@ -58,6 +61,7 @@ export async function firstSteps(
         : "В долг или за наличные - долг клиента посчитается сам, накладную можно отправить в WhatsApp.",
       href: main.href,
       button: main.label,
+      icon: main.icon,
       done: sales > 0 || rentals > 0,
     },
     {
@@ -66,6 +70,7 @@ export async function firstSteps(
       text: "Если за прилавком не только вы: у продавца будет свой вход, а вы увидите, кто что записал.",
       href: "/settings#staff",
       button: "Пригласить",
+      icon: "users",
       done: members > 1 || invites > 0,
     },
   ];
