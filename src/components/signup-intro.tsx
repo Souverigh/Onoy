@@ -6,7 +6,7 @@ const STEPS = ["Email и пароль", "Код из письма", "Назва�
  * Левая половина страниц регистрации (как витрина у входа): что будет и на каком
  * шаге человек. На телефоне — только логотип и заголовок, форма сразу ниже.
  */
-export function SignupIntro({ step }: { step: 1 | 2 }) {
+export function SignupIntro({ step }: { step: 1 | 2 | 3 }) {
   return (
     <section className="auth-intro signup-intro">
       <a className="brand" href="/login">

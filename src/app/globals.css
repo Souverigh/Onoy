@@ -11754,17 +11754,6 @@ form label.rental-picked-price {
 .auth-card form + form small {
   margin-top: 12px;
 }
-.onboarding .eyebrow {
-  margin-bottom: 4px;
-}
-.onboarding-code {
-  margin-bottom: 18px;
-}
-.onboarding-code summary {
-  color: var(--ink-soft);
-  font-size: 14px;
-  margin-bottom: 12px;
-}
 .onboarding-logout small {
   display: block;
   margin-top: 20px;
@@ -11999,4 +11988,12 @@ form label.rental-picked-price {
 }
 .auth-card .google-form + .consent-note {
   margin-top: 10px;
+}
+/* «Ваш магазин» (шаг 3): шире обычной карточки входа, поля в две колонки. */
+.auth-card.onboarding-card {
+  max-width: 560px;
+}
+.onboarding-card .form-grid label small {
+  margin-top: 0;
+  font-size: 12px;
 }

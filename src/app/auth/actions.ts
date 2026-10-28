@@ -229,11 +229,8 @@ export async function createOrganization(form: FormData) {
   const { db } = await getUserContext();
   const name = String(form.get("name") ?? "").trim();
   const key = String(form.get("key") ?? "");
-  const code = String(form.get("code") ?? "").trim();
   if (!name || name.length > 120 || !/^[-0-9a-f]{36}$/i.test(key))
     redirect("/onboarding?error=invalid");
-  // Код от Depter — по желанию (пилот без срока); без кода — бесплатный месяц.
-  if (code.length > 40) redirect("/onboarding?error=code");
   // Шаг первого входа (задача 35): имя продавца и телефон — для накладных.
   const sellerName = String(form.get("seller_name") ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
   const phone = storedPhone(String(form.get("phone") ?? ""));
@@ -248,7 +245,8 @@ export async function createOrganization(form: FormData) {
   const { data, error } = await db.rpc("create_organization", {
     org_name: name,
     request_key: key,
-    signup_code: code,
+    // Без кода — бесплатный месяц (open_signup). Пилот без срока — дату стирает админ.
+    signup_code: "",
   });
   if (error || !data) redirect(`/onboarding?error=${error?.message.includes("invalid_code") ? "code" : "save"}`);
   // Базовая валюта (ТЗ §14.3: задаётся при регистрации) — пока записей нет,
