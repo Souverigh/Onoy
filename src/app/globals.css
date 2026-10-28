@@ -11905,3 +11905,26 @@ form label.rental-picked-price {
   margin-right: auto;
   padding-left: 0;
 }
+
+/* Вход через Google (src/components/google-button.tsx). */
+.google-form {
+  margin-top: 14px;
+}
+.auth-card .google-button {
+  gap: 10px;
+  font-weight: 600;
+}
+.auth-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.auth-or::before,
+.auth-or::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--line);
+}

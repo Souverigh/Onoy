@@ -20,7 +20,11 @@ export default async function Onboarding({
   // Пришли по адресу вида (/start/prokat) — он уже выбран: в куке на этом
   // телефоне или в аккаунте, если письмо открыли на другом.
   const chosen = (await cookies()).get(BUSINESS_COOKIE)?.value;
-  const meta = (await db.auth.getClaims()).data?.claims?.user_metadata as { business_type?: unknown } | undefined;
+  const meta = (await db.auth.getClaims()).data?.claims?.user_metadata as
+    | { business_type?: unknown; terms_version?: unknown }
+    | undefined;
+  // Вход через Google обходит галочку регистрации — спрашиваем согласие здесь.
+  const needsConsent = !meta?.terms_version;
   const business = isBusinessType(chosen)
     ? chosen
     : isBusinessType(meta?.business_type)
@@ -92,9 +96,27 @@ export default async function Onboarding({
               />
             </label>
           </details>
+          {needsConsent && (
+            <label className="consent">
+              <input type="checkbox" name="accept" value="1" required />
+              <span>
+                Принимаю{" "}
+                <a href="/terms" target="_blank" rel="noreferrer">
+                  Пользовательское соглашение
+                </a>{" "}
+                и{" "}
+                <a href="/privacy" target="_blank" rel="noreferrer">
+                  Политику конфиденциальности
+                </a>
+                , согласен на обработку персональных данных
+              </span>
+            </label>
+          )}
           {error && (
             <p role="alert" className="form-error">
-              {error === "code"
+              {error === "consent"
+                ? "Чтобы открыть магазин, примите Пользовательское соглашение и Политику конфиденциальности."
+                : error === "code"
                 ? "Код не подошёл или уже использован. Сотрите его - магазин откроется и без кода."
                 : error === "seller"
                   ? "Впишите ваше имя и телефон - они нужны для накладных."

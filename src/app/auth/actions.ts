@@ -110,6 +110,29 @@ export async function signUp(form: FormData) {
   redirect("/onboarding");
 }
 
+/**
+ * Вход и регистрация через Google (включается GOOGLE_SIGNIN=1, см.
+ * components/google-button.tsx). Google возвращает на /auth/confirm?code=…,
+ * оттуда — на главную: есть магазин — в него, нет — на /onboarding. Тот же
+ * email, что уже зарегистрирован паролем, Supabase связывает с аккаунтом сам.
+ */
+export async function signInWithGoogle(form: FormData) {
+  if (!configured() || process.env.GOOGLE_SIGNIN !== "1") redirect("/login");
+  const business = String(form.get("business_type") ?? "");
+  if (isBusinessType(business))
+    (await cookies()).set(BUSINESS_COOKIE, business, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 30 });
+  const db = await createClient();
+  const { data, error } = await db.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: `${await siteOrigin()}/auth/confirm?next=/`, queryParams: { prompt: "select_account" } },
+  });
+  if (error || !data.url) {
+    console.warn("signInWithGoogle:", error?.message);
+    redirect("/login?error=google");
+  }
+  redirect(data.url);
+}
+
 /** Код из письма регистрации — то же, что ссылка, но без перехода из почты. */
 export async function verifySignup(form: FormData) {
   if (!configured()) redirect("/login?error=setup");
@@ -215,6 +238,13 @@ export async function createOrganization(form: FormData) {
   const sellerName = String(form.get("seller_name") ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
   const phone = storedPhone(String(form.get("phone") ?? ""));
   if (!sellerName || !phone || phone.length > 40) redirect("/onboarding?error=seller");
+  // Пришёл через Google — согласие с документами ещё не записано: галочка на этой странице.
+  const meta = (await db.auth.getClaims()).data?.claims?.user_metadata as { terms_version?: unknown } | undefined;
+  if (!meta?.terms_version) {
+    if (form.get("accept") !== "1") redirect("/onboarding?error=consent");
+    const consent = await db.auth.updateUser({ data: consentRecord() });
+    if (consent.error) console.error("createOrganization: consent not saved", consent.error.message);
+  }
   const { data, error } = await db.rpc("create_organization", {
     org_name: name,
     request_key: key,

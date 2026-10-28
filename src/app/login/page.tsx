@@ -11,6 +11,7 @@ import { InstallApp } from "@/components/install-app";
 import { sendFeedback } from "./actions";
 import { DEPTER_PHONE } from "@/components/contact-links";
 import { PRICE_KGS } from "@/lib/subscription";
+import { GoogleButton } from "@/components/google-button";
 import { OPEN_GRAPH_BASE, SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL } from "@/lib/site";
 
 // Витрина — единственная страница для поисковиков (src/app/robots.ts).
@@ -160,6 +161,10 @@ export default async function Login({
                     Этот email уже зарегистрирован - войдите с паролем. Не помните пароль - нажмите «Забыли
                     пароль?».
                   </p>
+                ) : error === "google" ? (
+                  <p role="alert" className="form-error">
+                    Не удалось войти через Google. Попробуйте ещё раз или войдите по email и паролю.
+                  </p>
                 ) : error === "link" ? (
                   <p role="alert" className="form-error">
                     Ссылка из письма устарела или уже открыта. Если email
@@ -177,6 +182,7 @@ export default async function Login({
                   <Link href="/privacy">Политику конфиденциальности</Link>.
                 </small>
               </form>
+              <GoogleButton />
               <a className="button landing-signup-wide" href="/signup">
                 Зарегистрировать магазин - месяц бесплатно
               </a>

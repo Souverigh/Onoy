@@ -2,6 +2,7 @@ import Link from "next/link";
 import { signUp } from "../auth/actions";
 import { Submit } from "@/components/submit";
 import { PRESETS, isBusinessType } from "@/lib/business";
+import { GoogleButton, googleSignInEnabled } from "@/components/google-button";
 
 // Регистрация владельца: email и пароль → код из письма (/signup/verify) →
 // /onboarding (магазин и вид бизнеса). Первый месяц бесплатно.
@@ -31,6 +32,16 @@ export default async function SignUp({ searchParams }: { searchParams: Promise<{
                     ? "Слишком много попыток. Подождите несколько минут и попробуйте снова."
                     : "Не удалось создать аккаунт. Проверьте email; пароль - не короче 6 символов."}
             </p>
+          )}
+          {googleSignInEnabled() && (
+            <>
+              <GoogleButton business={business ?? undefined} label="Продолжить с Google" />
+              <small className="muted">
+                Продолжая, вы принимаете <Link href="/terms">Пользовательское соглашение</Link> и{" "}
+                <Link href="/privacy">Политику конфиденциальности</Link>.
+              </small>
+              <p className="auth-or">или по email</p>
+            </>
           )}
           <form action={signUp}>
             {business && <input type="hidden" name="business_type" value={business} />}

@@ -4,7 +4,8 @@ import { createClient, configured } from "@/lib/supabase/server";
 
 /** Куда можно вернуть после ссылки из письма — только свои страницы. */
 function allowedNext(next: string | null) {
-  return next === "/reset-password" ||
+  return next === "/" ||
+    next === "/reset-password" ||
     next === "/onboarding" ||
     next === "/settings" ||
     /^\/join\/[a-f0-9]{32}$/i.test(next ?? "")
@@ -18,7 +19,8 @@ const OTP_TYPES = new Set<EmailOtpType>(["recovery", "signup", "email", "email_c
  * Ссылка из письма Supabase: сброс пароля, подтверждение регистрации или
  * нового email (next=/settings — смена в настройках). Два вида:
  * - стандартный шаблон: Supabase проверяет ссылку сам и присылает сюда ?code=
- *   (PKCE — работает только в том же браузере, где просили письмо);
+ *   (PKCE — работает только в том же браузере, где просили письмо); так же
+ *   возвращает вход через Google (next=/);
  * - свой шаблон со ссылкой
  *   {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password
  *   (для «Confirm signup» — type=email&next=/onboarding)
@@ -37,7 +39,10 @@ export async function GET(request: NextRequest) {
   const fail = NextResponse.redirect(
     next === "/settings"
       ? settings("link")
-      : new URL(next === "/reset-password" ? "/forgot?error=link" : "/login?error=link", url.origin),
+      : new URL(
+          next === "/reset-password" ? "/forgot?error=link" : next === "/" ? "/login?error=google" : "/login?error=link",
+          url.origin,
+        ),
   );
   if (!configured()) return fail;
   const code = url.searchParams.get("code");
