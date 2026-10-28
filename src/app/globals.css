@@ -1430,8 +1430,12 @@ td small {
 .home-bottom .recent-list li {
   padding: 10px 0;
 }
-/* Телефон: карточка долга целиком — ссылка, подпись «Клиенты →» не нужна. */
+/* Телефон: карточка долга целиком — ссылка, подпись «Клиенты →» не нужна;
+   подпись короткая («Мне должны» / «Я должен»), чтобы суммы стояли вровень. */
 @media (max-width: 560px) {
+  .debt-who {
+    display: none;
+  }
   .simple-dashboard .debt-card {
     padding: 14px;
   }
@@ -6277,9 +6281,11 @@ tr.row-link:has(a[data-pending]) {
   .action-groups.single .action-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  /* Плитки вровень: значок сверху, под название — место на две строки,
+     подпись — сразу под ним, у всех плиток на одной высоте. */
   .action-tile {
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 6px;
     min-height: 112px;
     padding: 14px 8px;
@@ -6289,7 +6295,12 @@ tr.row-link:has(a[data-pending]) {
     align-items: center;
   }
   .action-text strong {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.5em;
     font-size: 15px;
+    line-height: 1.25;
   }
   .action-text small {
     font-size: 12px;

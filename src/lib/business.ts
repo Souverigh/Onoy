@@ -77,7 +77,7 @@ export type ActionIcon = "cart" | "box" | "cash-in" | "card" | "receipt" | "hang
 export const QUICK_ACTIONS = {
   sales: { href: "/sales", label: "Продажи", side: "customers", hint: "За наличные или в долг", icon: "cart" },
   sale: { href: "/money/new?type=sale", label: "Продажа", side: "customers", hint: "За наличные или в долг", icon: "cart" },
-  purchases: { href: "/purchases", word: "purchase", side: "suppliers", hint: "От поставщика, можно по фото", icon: "box" },
+  purchases: { href: "/purchases", word: "purchase", side: "suppliers", hint: "От поставщика, по фото", icon: "box" },
   payment_in: {
     href: "/money/new?type=payment&direction=incoming",
     label: "Клиент принёс деньги",

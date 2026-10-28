@@ -163,7 +163,9 @@ export function Dashboard({
       {!staff && summary && (
         <section className="debt-cards" aria-label="Долги">
           <Link className="debt-card" href={href("/customers")}>
-            <span>Мне должны клиенты</span>
+            <span>
+              Мне должны<span className="debt-who"> клиенты</span>
+            </span>
             <strong>{debtMoney(main?.receivable ?? 0, main?.currency)}</strong>
             {summary.debts.slice(1).filter((d) => d.receivable !== 0).map((d) => (
               <small key={d.currency} className="debt-extra">{extraDebt(d.receivable, d.currency)}</small>
@@ -171,7 +173,9 @@ export function Dashboard({
             <small>Клиенты →</small>
           </Link>
           <Link className="debt-card supplier-debt" href={href("/suppliers")}>
-            <span>Я должен поставщикам</span>
+            <span>
+              Я должен<span className="debt-who"> поставщикам</span>
+            </span>
             <strong>{debtMoney(main?.payable ?? 0, main?.currency)}</strong>
             {summary.debts.slice(1).filter((d) => d.payable !== 0).map((d) => (
               <small key={d.currency} className="debt-extra">{extraDebt(d.payable, d.currency)}</small>
