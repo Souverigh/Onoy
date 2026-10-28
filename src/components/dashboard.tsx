@@ -34,9 +34,9 @@ function extraDebt(value: number, currency: string) {
 }
 
 /**
- * Главный экран (задачи 17, 20, 33): сначала долги и кнопки, потом то, что
- * ждёт ответа (заявки, накладные), «Кому напомнить сегодня», итог дня, поиск
- * и последние записи. Незакрытые дни — только в «Итоге дня». Продавцу — без
+ * Главный экран (задачи 17, 20, 33): сначала долги, сразу под ними — что
+ * ждёт ответа («Требуют внимания»), потом кнопки, «Кому напомнить сегодня»,
+ * итог дня, поиск и последние записи. Незакрытые дни — только в «Итоге дня». Продавцу — без
  * сумм магазина (роли, п. 45).
  */
 export function Dashboard({
@@ -75,7 +75,7 @@ export function Dashboard({
   newOrders?: number;
   /** Прокат: выдачи с просроченным возвратом и те, что вернуть сегодня. */
   rentals?: { late: number; today: number };
-  /** Кнопки под вид бизнеса (quickActions): первые две крупные, остальные строкой ниже. */
+  /** Кнопки под вид бизнеса (quickActions): первые две крупные, остальные строкой ниже, расход — тонкой строкой. */
   actions?: QuickAction[];
   recent?: RecentRecord[];
   /** Продавец: его продажи за сегодня и сколько должны его клиенты. */
@@ -89,6 +89,31 @@ export function Dashboard({
       new Date(iso),
     );
   const main = summary?.debts[0];
+  const expense = actions.find((a) => a.id === "expense");
+  const rest = actions.filter((a) => a !== expense);
+  const big = rest.slice(0, 2);
+  const more = rest.slice(2);
+  const attention: { href: string; text: string; urgent?: boolean }[] = [];
+  if (!staff && pendingClaims > 0)
+    attention.push({
+      href: "/claims",
+      text: `Ждут подтверждения: ${pendingClaims} ${plural(pendingClaims, "оплата", "оплаты", "оплат")}`,
+      urgent: true,
+    });
+  if (newOrders > 0) attention.push({ href: "/orders", text: `Заказы из каталога ждут продажи: ${newOrders}`, urgent: true });
+  if (rentals.late > 0 || rentals.today > 0)
+    attention.push({
+      href: "/rentals",
+      text: `Прокат: ${[rentals.late > 0 && `просрочено ${rentals.late}`, rentals.today > 0 && `вернуть сегодня ${rentals.today}`]
+        .filter(Boolean)
+        .join(" · ")}`,
+      urgent: rentals.late > 0,
+    });
+  if (reviewCount > 0)
+    attention.push({
+      href: "/documents",
+      text: `Проверьте сумму: ${reviewCount} ${plural(reviewCount, "накладная", "накладные", "накладных")}`,
+    });
   return (
     <div className="simple-dashboard">
       {ownerOnlyNotice && (
@@ -134,39 +159,54 @@ export function Dashboard({
           </Link>
         </section>
       )}
+      {/* Всё, что ждёт ответа, — одним жёлтым блоком сразу под долгами: по строке
+          на каждое дело, каждая ведёт на свою страницу. */}
+      {attention.length > 0 && (
+        <section className="attention" aria-labelledby="attention-title">
+          <h2 id="attention-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" />
+              <path d="M10 20.5a2.2 2.2 0 0 0 4 0" />
+            </svg>
+            Требуют внимания
+          </h2>
+          {attention.map((a) => (
+            <Link key={a.href} className={a.urgent ? "attention-row urgent" : "attention-row"} href={href(a.href)}>
+              <span>{a.text}</span>
+              <span aria-hidden="true">›</span>
+            </Link>
+          ))}
+        </section>
+      )}
       {/* Кнопки — под вид бизнеса (src/lib/business.ts): у магазина «Продажи» и
           «Товар от поставщика» (списки с черновиками, новая запись — «+» сверху),
-          у проката — «Выдать» и «На руках». */}
+          у проката — «Выдать» и «На руках». Тёмная — только первая, главная;
+          расход — тонкой строкой ниже: его записывают реже. */}
       <section className="quick-actions" aria-label="Добавить запись">
-        {actions.map((a, i) => (
-          <Link key={a.id} className={i < 2 ? "quick-action" : "quick-action secondary-action"} href={href(a.href)}>
-            {a.label}
+        <div className="quick-actions-row">
+          {big.map((a, i) => (
+            <Link key={a.id} className={i === 0 ? "quick-action" : "quick-action next-action"} href={href(a.href)}>
+              {a.label}
+            </Link>
+          ))}
+        </div>
+        {more.length > 0 && (
+          <div className="quick-actions-row">
+            {more.map((a) => (
+              <Link key={a.id} className="quick-action secondary-action" href={href(a.href)}>
+                {a.label}
+              </Link>
+            ))}
+          </div>
+        )}
+        {expense && (
+          <Link className="quick-expense" href={href(expense.href)}>
+            <strong>Записать расход</strong>
+            <small>аренда, зарплата, свет</small>
+            <span aria-hidden="true">›</span>
           </Link>
-        ))}
+        )}
       </section>
-      {!staff && pendingClaims > 0 && (
-        <Link className="notice claims-notice" href={href("/claims")}>
-          Ждут подтверждения: {pendingClaims} {plural(pendingClaims, "оплата", "оплаты", "оплат")} →
-        </Link>
-      )}
-      {newOrders > 0 && (
-        <Link className="notice claims-notice" href={href("/orders")}>
-          Заказы из каталога ждут продажи: {newOrders} →
-        </Link>
-      )}
-      {(rentals.late > 0 || rentals.today > 0) && (
-        <Link className={rentals.late > 0 ? "notice claims-notice" : "notice"} href={href("/rentals")}>
-          Прокат: {[rentals.late > 0 && `просрочено ${rentals.late}`, rentals.today > 0 && `вернуть сегодня ${rentals.today}`]
-            .filter(Boolean)
-            .join(" · ")}{" "}
-          →
-        </Link>
-      )}
-      {reviewCount > 0 && (
-        <Link className="notice" href={href("/documents")}>
-          Проверьте сумму: {reviewCount} {plural(reviewCount, "накладная", "накладные", "накладных")} →
-        </Link>
-      )}
       {!staff && reminders.length > 0 && (
         <section className="panel remind-today" aria-label="Кому напомнить сегодня">
           <div className="section-title">

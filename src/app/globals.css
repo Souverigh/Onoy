@@ -1085,7 +1085,7 @@ td small {
   text-align: center;
 }
 .debt-card span {
-  color: var(--muted);
+  color: var(--ink-soft);
   font-size: 15px;
 }
 .debt-card strong {
@@ -1097,19 +1097,24 @@ td small {
   color: #8a4b2a;
 }
 .debt-card small {
-  color: var(--muted);
+  color: var(--ink-soft);
   font-size: 13px;
 }
+/* Кнопки главной: ряд из двух крупных (первая — тёмная, главная), ряд
+   остальных, расход — тонкой строкой. */
 .quick-actions {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
-@media (max-width: 560px) {
-  .quick-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.quick-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.quick-actions-row > .quick-action {
+  flex: 1 1 0;
+  min-width: calc(33.333% - 7px);
 }
 .quick-action {
   display: flex;
@@ -1124,13 +1129,88 @@ td small {
   min-height: 64px;
   text-align: center;
 }
+.quick-action.next-action {
+  background: white;
+  color: var(--green);
+  border: 1px solid var(--green-border);
+}
 .quick-action.secondary-action {
   background: white;
   color: var(--green);
   border: 1px solid var(--line);
+  font-size: 16px;
 }
 .quick-action:hover {
   opacity: 0.92;
+}
+.quick-expense {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 16px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+}
+.quick-expense strong {
+  font-weight: 600;
+  font-size: 15px;
+}
+.quick-expense small {
+  flex: 1;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+.quick-expense span {
+  color: var(--ink-soft);
+  font-size: 22px;
+}
+.quick-expense:hover {
+  border-color: var(--green-border);
+}
+/* «Требуют внимания»: всё, что ждёт ответа, одним блоком под долгами. */
+.attention {
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-lg);
+  padding: 12px 16px 4px;
+}
+.attention h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: var(--notice-ink);
+}
+.attention-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  border-top: 1px solid var(--warning-border);
+  color: var(--notice-ink);
+  font-size: 15px;
+}
+.attention-row.urgent {
+  font-weight: 600;
+}
+.attention-row span:last-child {
+  font-size: 22px;
+}
+.attention-row:hover span:first-child {
+  text-decoration: underline;
+}
+.simple-dashboard .muted {
+  color: var(--ink-soft);
+}
+/* Расстояния между блоками главной задаёт сетка (gap), свои отступы не нужны. */
+.simple-dashboard > .debt-cards,
+.simple-dashboard > .remind-today {
+  margin-bottom: 0;
 }
 .simple-dashboard-history {
   display: block;
@@ -5939,29 +6019,13 @@ tr.row-link:has(a[data-pending]) {
 
 /* ===== Задачи 05.10 ===== */
 
-/* Главная: две основные кнопки сверху, три — ниже (задача 17). */
-.quick-actions {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-}
-.quick-action {
-  grid-column: span 3;
-}
-.quick-action.secondary-action {
-  grid-column: span 2;
-  font-size: 16px;
-}
+/* Главная на телефоне: по две кнопки в ряд, у расхода пояснение прячется. */
 @media (max-width: 560px) {
-  .quick-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .quick-actions-row > .quick-action {
+    min-width: calc(50% - 5px);
   }
-  .quick-action,
-  .quick-action.secondary-action {
-    grid-column: span 1;
-  }
-  .quick-action.secondary-action:last-child {
-    grid-column: 1 / -1;
-    min-height: 52px;
-    padding: 12px 10px;
+  .quick-expense small {
+    visibility: hidden;
   }
 }
 
