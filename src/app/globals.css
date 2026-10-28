@@ -11994,3 +11994,9 @@ form label.rental-picked-price {
     display: none;
   }
 }
+.auth-or + .google-form {
+  margin-top: 0;
+}
+.auth-card .google-form + .consent-note {
+  margin-top: 10px;
+}

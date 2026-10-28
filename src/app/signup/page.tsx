@@ -21,9 +21,6 @@ export default async function SignUp({ searchParams }: { searchParams: Promise<{
           <p className="muted">
             Первый месяц бесплатно, без карты и без звонков. Пришлём код на почту - и вы в своём магазине.
           </p>
-          <p className="muted">
-            Вы продавец? Регистрироваться не нужно - откройте ссылку-приглашение от владельца.
-          </p>
           {error && (
             <p className="form-error" role="alert">
               {error === "disabled"
@@ -34,16 +31,6 @@ export default async function SignUp({ searchParams }: { searchParams: Promise<{
                     ? "Слишком много попыток. Подождите несколько минут и попробуйте снова."
                     : "Не удалось создать аккаунт. Проверьте email; пароль - не короче 6 символов."}
             </p>
-          )}
-          {googleSignInEnabled() && (
-            <>
-              <GoogleButton business={business ?? undefined} label="Продолжить с Google" />
-              <small className="muted">
-                Продолжая, вы принимаете <Link href="/terms">Пользовательское соглашение</Link> и{" "}
-                <Link href="/privacy">Политику конфиденциальности</Link>.
-              </small>
-              <p className="auth-or">или по email</p>
-            </>
           )}
           <form action={signUp}>
             {business && <input type="hidden" name="business_type" value={business} />}
@@ -71,6 +58,16 @@ export default async function SignUp({ searchParams }: { searchParams: Promise<{
             </label>
             <Submit>Получить код на почту</Submit>
           </form>
+          {googleSignInEnabled() && (
+            <>
+              <p className="auth-or">или</p>
+              <GoogleButton business={business ?? undefined} label="Продолжить с Google" />
+              <small className="muted consent-note">
+                Продолжая через Google, вы принимаете <Link href="/terms">Пользовательское соглашение</Link> и{" "}
+                <Link href="/privacy">Политику конфиденциальности</Link>.
+              </small>
+            </>
+          )}
           <small className="muted">
             Уже есть аккаунт? <Link href="/login">Войти</Link>
           </small>
