@@ -57,6 +57,7 @@ export default async function Layout({
       modules={ctx.modules}
       news={newsFor(CHANGELOG, ctx.isOwner, ctx.modules)}
       shopCreatedAt={ctx.shopCreatedAt}
+      paidUntil={ctx.paidUntil}
     >
       {sub.kind === "blocked" && (
         <p className="form-error shop-blocked" role="alert">

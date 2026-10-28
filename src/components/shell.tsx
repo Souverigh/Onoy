@@ -31,6 +31,15 @@ const allNav: NavItem[] = [
   ["/news", "Что нового", "spark"],
   ["/settings", "Настройки", "settings"],
 ];
+/**
+ * Меню на компьютере — тремя частями: сверху работа на каждый день, ниже —
+ * «Ждут ответа» (со счётчиками), внизу — «Что нового» и «Настройки».
+ */
+const WAITING = new Set(["/claims", "/orders", "/documents"]);
+const FOOTER = new Set(["/news", "/settings"]);
+/** «27 ноября» — дата подписки внизу меню. */
+const dayMonthLong = (d: string) =>
+  new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long" }).format(new Date(`${d}T12:00:00+06:00`));
 /** Вид магазина, который продавец видел в прошлый раз (строка «Владелец изменил вид»). */
 const FACE_KEY = "depter-business-seen";
 /** Разделы только для владельца (итоги, заявки клиентов). */
@@ -69,6 +78,7 @@ export function Shell({
   modules = MODULE_IDS,
   news = [],
   shopCreatedAt = null,
+  paidUntil = null,
 }: {
   name: string;
   children: React.ReactNode;
@@ -87,6 +97,8 @@ export function Shell({
   /** «Что нового» для этого человека (роль, модули) и когда открыт магазин. */
   news?: NewsEntry[];
   shopCreatedAt?: string | null;
+  /** Подписка оплачена до (владельцу — строкой внизу меню); null — без срока. */
+  paidUntil?: string | null;
 }) {
   const path = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -197,6 +209,15 @@ export function Shell({
       <span className="nav-badge nav-badge-muted">{unread.length}</span>
     ) : null;
 
+  const navLink = ([href, label, icon]: NavItem) => (
+    <Link href={link(href)} key={href} className={active(href) ? "active" : ""}>
+      <Icon name={icon} />
+      <span>{label}</span>
+      {badge(href)}
+    </Link>
+  );
+  const waiting = nav.filter(allowed).filter(([href]) => WAITING.has(href));
+
   // Внизу у продавца вместо «Итога дня» (итоги — у владельца) — «Поставщики».
   const bottom: NavItem[] = isOwner
     ? [["/", "Главная", "home"], ["/customers", "Клиенты", "people"], ["/day", "Отчёты", "chart"]]
@@ -222,13 +243,16 @@ export function Shell({
           </div>
         </div>
         <nav aria-label="Основная навигация" className="nav-full">
-          {nav.filter(allowed).map(([href, label, icon]) => (
-            <Link href={link(href)} key={href} className={active(href) ? "active" : ""}>
-              <Icon name={icon} />
-              <span>{label}</span>
-              {badge(href)}
-            </Link>
-          ))}
+          {nav
+            .filter(allowed)
+            .filter(([href]) => !WAITING.has(href) && !FOOTER.has(href))
+            .map(navLink)}
+          {waiting.length > 0 && (
+            <>
+              <span className="nav-group">Ждут ответа</span>
+              {waiting.map(navLink)}
+            </>
+          )}
         </nav>
         <nav aria-label="Основная навигация" className="nav-compact">
           {bottom.slice(0, 2).map(([href, label, icon]) => (
@@ -271,10 +295,10 @@ export function Shell({
               ) : null)}
           </button>
         </nav>
-        <div className="sidebar-bottom">
-          <div className="status-dot" />
-          Пилотная версия<span>Depter / 0.4</span>
-        </div>
+        <nav aria-label="Настройки" className="nav-full nav-foot">
+          {nav.filter(allowed).filter(([href]) => FOOTER.has(href)).map(navLink)}
+          {isOwner && paidUntil && <span className="sidebar-plan">Подписка до {dayMonthLong(paidUntil)}</span>}
+        </nav>
       </aside>
       <div className="workspace">
         <header className="topbar">

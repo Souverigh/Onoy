@@ -227,29 +227,55 @@ small {
   top: 4px;
   right: 2px;
 }
-.sidebar-bottom {
-  margin-top: auto;
-  color: var(--muted);
+/* Меню: «Ждут ответа» — подписью над группой; внизу «Что нового», «Настройки»
+   и срок подписки (src/components/shell.tsx). */
+.nav-group {
+  margin: 14px 0 2px;
+  padding: 0 15px;
   font-size: 11px;
-  padding: 22px 14px 0;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--ink-soft);
 }
-.sidebar-bottom > span {
-  display: block;
-  flex-basis: 100%;
-  color: #a0aaa4;
-  padding-top: 3px;
+.sidebar nav.nav-foot {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
 }
-.status-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #77a35d;
-  flex-shrink: 0;
+.sidebar-plan {
+  padding: 6px 15px 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+/* Меню длинное (12 пунктов): плотнее, а на низком экране — с прокруткой. */
+.sidebar {
+  overflow-y: auto;
+}
+.sidebar nav.nav-full {
+  gap: 2px;
+}
+.sidebar nav.nav-full a {
+  min-height: 44px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.sidebar .store {
+  margin: 28px 0 18px;
+}
+/* Узкое меню из значков: вместо подписи «Ждут ответа» — линия, срок подписки скрыт. */
+@media (max-width: 1100px) {
+  .sidebar nav span.nav-group {
+    display: block;
+    height: 1px;
+    margin: 8px 6px;
+    padding: 0;
+    font-size: 0;
+    background: var(--line);
+  }
+  .sidebar-plan {
+    display: none;
+  }
 }
 .workspace {
   margin-left: 234px;
@@ -2568,6 +2594,13 @@ div.photo-field {
 .party-fold.party-manage[open] {
   display: grid;
 }
+/* Компьютер и планшет: магазин виден в карточке меню, раздел — в заголовке
+   страницы, верхняя полоса не нужна; на телефоне она остаётся. */
+@media (min-width: 561px) {
+  .topbar {
+    display: none;
+  }
+}
 @media (max-width: 1100px) {
   .party-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -3360,8 +3393,7 @@ tr.line-mismatch {
   }
   .sidebar .brand span,
   .store,
-  .sidebar nav span,
-  .sidebar-bottom {
+  .sidebar nav span {
     display: none;
   }
   .sidebar nav {
