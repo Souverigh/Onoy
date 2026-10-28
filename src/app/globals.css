@@ -1053,7 +1053,7 @@ td small {
 
 /* Главный экран: две цифры долга, три кнопки — см. ТЗ §7. */
 .simple-dashboard {
-  max-width: 960px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 12px 0 40px;
 }
@@ -1283,9 +1283,10 @@ td small {
    вместо поля — значок (поиск — в «Клиентах»). */
 .home-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 12px 20px;
 }
 .home-head h1 {
   margin: 0;
@@ -1307,6 +1308,7 @@ td small {
 }
 .home-search {
   flex: 0 1 420px;
+  min-width: 300px;
 }
 .home-search-icon {
   display: none;
@@ -1324,6 +1326,13 @@ td small {
 .home-bottom:empty {
   display: none;
 }
+/* Узкая колонка: «Клиенты →» своей строкой справа, чтобы не наезжать на сумму. */
+@media (max-width: 900px) {
+  .simple-dashboard .debt-card > small:last-child {
+    position: static;
+    align-self: flex-end;
+  }
+}
 .home-bottom > .panel {
   margin: 0;
 }
@@ -1333,6 +1342,9 @@ td small {
   }
 }
 @media (max-width: 560px) {
+  .home-head {
+    flex-wrap: nowrap;
+  }
   .home-head h1 {
     font-size: 22px;
   }
@@ -1352,6 +1364,60 @@ td small {
     border-radius: var(--radius);
     background: white;
     color: var(--ink);
+  }
+}
+/* Главная во всю ширину рабочей области (как в макете): карточки долгов —
+   текст слева, ссылка в правом нижнем углу; блоки плотнее. */
+.simple-dashboard .debt-card {
+  position: relative;
+  text-align: left;
+  padding: 18px 24px;
+  gap: 4px;
+}
+.simple-dashboard .debt-card strong {
+  font-size: 34px;
+}
+.simple-dashboard .debt-card > small:last-child {
+  position: absolute;
+  right: 24px;
+  bottom: 18px;
+  font-weight: 600;
+  color: var(--green);
+}
+.simple-dashboard .debt-card.supplier-debt > small:last-child {
+  color: var(--danger-ink);
+}
+.simple-dashboard .attention {
+  padding: 8px 16px 0;
+}
+.simple-dashboard .attention-row {
+  min-height: 40px;
+}
+.simple-dashboard .quick-expense {
+  align-self: flex-start;
+  min-width: 360px;
+}
+.home-bottom > .panel {
+  padding: 16px 20px;
+}
+.home-bottom .remind-list li,
+.home-bottom .recent-list li {
+  padding: 10px 0;
+}
+/* Телефон: карточка долга целиком — ссылка, подпись «Клиенты →» не нужна. */
+@media (max-width: 560px) {
+  .simple-dashboard .debt-card {
+    padding: 14px;
+  }
+  .simple-dashboard .debt-card strong {
+    font-size: 21px;
+  }
+  .simple-dashboard .debt-card > small:last-child {
+    display: none;
+  }
+  .simple-dashboard .quick-expense {
+    align-self: stretch;
+    min-width: 0;
   }
 }
 /* Расстояния между блоками главной задаёт сетка (gap), свои отступы не нужны. */
