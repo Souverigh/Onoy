@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { FirstStep } from "@/lib/first-steps";
 import { InstallApp } from "./install-app";
@@ -10,6 +10,11 @@ import { InstallApp } from "./install-app";
  * скрыт (на телефоне другое меню) — шаг пропускается.
  */
 const TOUR = [
+  {
+    selector: ".first-steps-list li.next",
+    title: "С чего начать",
+    text: "Начните с этого шага. Галочка поставится сама, когда дело будет сделано, - и откроется следующий.",
+  },
   {
     selector: ".debt-cards",
     title: "Кто сколько должен",
@@ -21,19 +26,14 @@ const TOUR = [
     text: "Кнопки под ваш вид бизнеса: записать продажу, принять деньги от клиента, расход.",
   },
   {
-    selector: ".nav-primary",
-    title: "Главная кнопка",
-    text: "Она всегда под рукой, на любой странице.",
-  },
-  {
     selector: ".dashboard-search",
     title: "Поиск клиента",
     text: "Имя или телефон - и сразу его долг, история и кнопка напомнить.",
   },
   {
-    selector: ".first-steps",
-    title: "С чего начать",
-    text: "Отмечайте первые шаги - галочка ставится сама, когда дело сделано.",
+    selector: ".nav-primary",
+    title: "Главная кнопка",
+    text: "Она всегда под рукой, на любой странице.",
   },
 ] as const;
 
@@ -43,10 +43,16 @@ const visible = (el: Element | null): el is HTMLElement => {
   return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden";
 };
 
+/** Отступ подсветки вокруг места и подсказки от краёв экрана. */
+const PAD = 8;
+const EDGE = 16;
+
 function Tour({ onClose }: { onClose: () => void }) {
-  const steps = TOUR.filter((s) => visible(document.querySelector(s.selector)));
+  const [steps] = useState(() => TOUR.filter((s) => visible(document.querySelector(s.selector))));
   const [i, setI] = useState(0);
   const [box, setBox] = useState<DOMRect | null>(null);
+  const [cardHeight, setCardHeight] = useState(0);
+  const card = useRef<HTMLDivElement>(null);
   const step = steps[i];
 
   const measure = useCallback(() => {
@@ -54,18 +60,27 @@ function Tour({ onClose }: { onClose: () => void }) {
     setBox(visible(el) ? el.getBoundingClientRect() : null);
   }, [step]);
 
-  useLayoutEffect(() => {
+  // Место не видно целиком — листаем так, чтобы оно было вверху экрана, а под
+  // ним осталось место для подсказки. Повторяем чуть позже: страница могла сдвинуться.
+  const show = useCallback(() => {
     const el = step && document.querySelector(step.selector);
     if (!visible(el)) return;
-    // Листаем, только если место не видно целиком: меньше прыжков.
     const r = el.getBoundingClientRect();
-    if (r.top < 0 || r.bottom > window.innerHeight)
-      el.scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior });
+    if (r.top < EDGE * 4 || r.bottom > window.innerHeight - EDGE)
+      window.scrollTo({ top: window.scrollY + r.top - EDGE * 5, behavior: "instant" as ScrollBehavior });
     measure();
-    // Страница могла ещё доскролливаться — меряем и на следующем кадре.
-    const frame = requestAnimationFrame(measure);
-    return () => cancelAnimationFrame(frame);
   }, [step, measure]);
+
+  useLayoutEffect(() => {
+    show();
+    const later = setTimeout(show, 350);
+    return () => clearTimeout(later);
+  }, [show]);
+
+  useLayoutEffect(() => {
+    const h = card.current?.offsetHeight ?? 0;
+    if (h !== cardHeight) setCardHeight(h);
+  });
 
   useEffect(() => {
     const keys = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -85,28 +100,26 @@ function Tour({ onClose }: { onClose: () => void }) {
 
   if (!step) return null;
   const last = i === steps.length - 1;
-  // Карточка с пояснением — под подсвеченным местом или над ним, где больше места.
-  const below = !box || box.top + box.height / 2 < window.innerHeight / 2;
-  const pad = 8;
+  // Подсказка — под местом, если влезает, иначе над ним; не влезает нигде — внизу
+  // экрана. Всегда целиком на экране.
+  const height = window.innerHeight;
+  const top = !box
+    ? (height - cardHeight) / 2
+    : height - box.bottom >= cardHeight + EDGE * 2
+      ? box.bottom + EDGE
+      : box.top >= cardHeight + EDGE * 2
+        ? box.top - EDGE - cardHeight
+        : height - cardHeight - EDGE;
   // В body: внутри карточки «fixed» считался бы от неё, и подсветка съезжала.
   return createPortal(
     <div className="tour" role="dialog" aria-modal="true" aria-labelledby="tour-title">
       {box && (
         <div
           className="tour-spot"
-          style={{ top: box.top - pad, left: box.left - pad, width: box.width + pad * 2, height: box.height + pad * 2 }}
+          style={{ top: box.top - PAD, left: box.left - PAD, width: box.width + PAD * 2, height: box.height + PAD * 2 }}
         />
       )}
-      <div
-        className="tour-card"
-        style={
-          box
-            ? below
-              ? { top: Math.min(box.bottom + pad * 2, window.innerHeight - 220) }
-              : { top: Math.max(box.top - pad * 2, 0), transform: "translate(-50%, -100%)" }
-            : { top: "30%" }
-        }
-      >
+      <div ref={card} className="tour-card" style={{ top: Math.max(EDGE, Math.min(top, height - cardHeight - EDGE)) }}>
         <span className="eyebrow">
           {i + 1} из {steps.length}
         </span>
@@ -150,7 +163,10 @@ export function FirstSteps({ steps, shopId }: { steps: FirstStep[]; shopId: stri
       seen = localStorage.getItem(tourKey) === "1";
     } catch {}
     setHidden(wasHidden);
-    if (!wasHidden && !seen) setTour(true);
+    // Сам тур — чуть позже, когда страница встанет на место.
+    if (wasHidden || seen) return;
+    const start = setTimeout(() => setTour(true), 600);
+    return () => clearTimeout(start);
   }, [hideKey, tourKey]);
 
   const closeTour = useCallback(() => {
@@ -175,22 +191,45 @@ export function FirstSteps({ steps, shopId }: { steps: FirstStep[]; shopId: stri
         <span style={{ width: `${(done / steps.length) * 100}%` }} />
       </div>
       <ol className="first-steps-list">
-        {steps.map((s) => (
-          <li key={s.id} className={s.done ? "done" : s === next ? "next" : undefined}>
+        {steps.map((s) => {
+          const mark = (
             <span className="first-steps-mark" aria-hidden="true">
               {s.done ? "✓" : ""}
             </span>
-            <span className="first-steps-text">
-              <strong>{s.title}</strong>
-              {!s.done && <small className="muted">{s.text}</small>}
-            </span>
-            {!s.done && (
-              <Link className={s === next ? "button primary" : "button"} href={s.href}>
-                {s.button}
+          );
+          // Сделано — зачёркнуто; следующий — с пояснением и кнопкой; остальные — строка-ссылка.
+          if (s.done)
+            return (
+              <li key={s.id} className="done">
+                {mark}
+                <strong>{s.title}</strong>
+              </li>
+            );
+          if (s === next)
+            return (
+              <li key={s.id} className="next">
+                {mark}
+                <span className="first-steps-text">
+                  <strong>{s.title}</strong>
+                  <small className="muted">{s.text}</small>
+                </span>
+                <Link className="button primary" href={s.href}>
+                  {s.button}
+                </Link>
+              </li>
+            );
+          return (
+            <li key={s.id}>
+              <Link className="first-steps-row" href={s.href}>
+                {mark}
+                <strong>{s.title}</strong>
+                <span className="first-steps-go" aria-hidden="true">
+                  ›
+                </span>
               </Link>
-            )}
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ol>
       <InstallApp variant="button" />
       <div className="first-steps-foot">

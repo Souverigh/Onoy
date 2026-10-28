@@ -11793,6 +11793,36 @@ form label.rental-picked-price {
   padding: 12px 0;
   border-bottom: 1px solid var(--line);
 }
+.first-steps-list li:last-child {
+  border-bottom: 0;
+}
+.first-steps-list li.next {
+  padding: 16px 0;
+}
+/* Ещё не начатый шаг — вся строка нажимается, стрелка справа. */
+.first-steps-list li:has(.first-steps-row) {
+  padding: 0;
+}
+.first-steps-row {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  color: var(--ink);
+}
+.first-steps-row strong {
+  flex: 1;
+  font-weight: 500;
+}
+.first-steps-go {
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+}
+.first-steps-row:hover strong {
+  color: var(--green);
+}
 .first-steps-mark {
   flex: none;
   display: grid;
@@ -11843,11 +11873,17 @@ form label.rental-picked-price {
   font-weight: 600;
   padding-left: 0;
 }
+/* Телефон: кнопка следующего шага — под текстом, во всю ширину. */
 @media (max-width: 560px) {
-  .first-steps-list li {
+  .first-steps-list li.next {
     flex-wrap: wrap;
+    align-items: flex-start;
   }
-  .first-steps-list li .button {
+  .first-steps-list li.next .first-steps-text {
+    flex-basis: calc(100% - 38px);
+  }
+  .first-steps-list li.next .button {
+    width: calc(100% - 38px);
     margin-left: 38px;
   }
 }
