@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { quickActions, DEFAULT_BUSINESS, MODULE_IDS, type QuickAction } from "@/lib/business";
+import { quickActions, DEFAULT_BUSINESS, MODULE_IDS, type ActionIcon, type QuickAction } from "@/lib/business";
 import { debtMoney, money } from "@/lib/format";
 import type { RecentRecord } from "@/lib/recent";
 
@@ -31,6 +31,27 @@ export function plural(n: number, one: string, few: string, many: string) {
 /** Другая валюта под главной суммой: «+ 55 816,76 $» или «аванс 3 229,99 ₽». */
 function extraDebt(value: number, currency: string) {
   return value < 0 ? debtMoney(value, currency) : `+ ${money(value, currency)}`;
+}
+
+/** Значки кнопок главной: контур, цвет — от текста кнопки. */
+const ICON_PATHS: Record<ActionIcon, string[]> = {
+  cart: ["M3 4h2.5l2 11h10.5l2-7.5H6.5", "M9 19h.01", "M17 19h.01"],
+  box: ["m12 3 8 4.5v9L12 21l-8-4.5v-9z", "m4 7.5 8 4.5 8-4.5M12 12v9"],
+  "cash-in": ["M9 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z", "M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5", "M18.5 8v6M15.5 11h6"],
+  card: ["M5 5.5h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2z", "M3 10h18M7 15h4"],
+  receipt: ["M6 3.5h12v17l-3-2-3 2-3-2-3 2z", "M9 9h6M9 12.5h6"],
+  hanger: ["M12 7.5a2 2 0 1 1 2-2", "M12 7.5v1.5L3.5 15.5a1.2 1.2 0 0 0 .7 2.2h15.6a1.2 1.2 0 0 0 .7-2.2L12 9"],
+  clock: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M12 7v5l3 2"],
+};
+
+function Icon({ name, size = 26 }: { name: ActionIcon; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {ICON_PATHS[name].map((d) => (
+        <path key={d} d={d} />
+      ))}
+    </svg>
+  );
 }
 
 /**
@@ -75,7 +96,7 @@ export function Dashboard({
   newOrders?: number;
   /** Прокат: выдачи с просроченным возвратом и те, что вернуть сегодня. */
   rentals?: { late: number; today: number };
-  /** Кнопки под вид бизнеса (quickActions): первые две крупные, остальные строкой ниже, расход — тонкой строкой. */
+  /** Кнопки под вид бизнеса (quickActions): блоками по клиентам и поставщикам, расход — тонкой строкой. */
   actions?: QuickAction[];
   recent?: RecentRecord[];
   /** Продавец: его продажи за сегодня и сколько должны его клиенты. */
@@ -89,10 +110,16 @@ export function Dashboard({
       new Date(iso),
     );
   const main = summary?.debts[0];
-  const expense = actions.find((a) => a.id === "expense");
-  const rest = actions.filter((a) => a !== expense);
-  const big = rest.slice(0, 2);
-  const more = rest.slice(2);
+  const expense = actions.find((a) => a.side === "shop");
+  const first = actions.find((a) => a !== expense);
+  const groups = (
+    [
+      { side: "customers", title: "С клиентами" },
+      { side: "suppliers", title: "С поставщиками" },
+    ] as const
+  )
+    .map((g) => ({ ...g, items: actions.filter((a) => a.side === g.side) }))
+    .filter((g) => g.items.length > 0);
   const attention: { href: string; text: string; urgent?: boolean }[] = [];
   if (!staff && pendingClaims > 0)
     attention.push({
@@ -178,31 +205,37 @@ export function Dashboard({
           ))}
         </section>
       )}
-      {/* Кнопки — под вид бизнеса (src/lib/business.ts): у магазина «Продажи» и
-          «Товар от поставщика» (списки с черновиками, новая запись — «+» сверху),
-          у проката — «Выдать» и «На руках». Тёмная — только первая, главная;
-          расход — тонкой строкой ниже: его записывают реже. */}
-      <section className="quick-actions" aria-label="Добавить запись">
-        <div className="quick-actions-row">
-          {big.map((a, i) => (
-            <Link key={a.id} className={i === 0 ? "quick-action" : "quick-action next-action"} href={href(a.href)}>
-              {a.label}
-            </Link>
+      {/* Кнопки — под вид бизнеса (src/lib/business.ts), блоками «С клиентами» и
+          «С поставщиками» (QUICK_ACTIONS.side). Тёмная — только первая, главная;
+          блока без кнопок нет (у проката — только клиенты); расход — тонкой строкой. */}
+      <section className="quick-actions" aria-label="Что произошло?">
+        <h2 className="quick-actions-title">Что произошло?</h2>
+        <div className={groups.length > 1 ? "action-groups" : "action-groups single"}>
+          {groups.map((g) => (
+            <div key={g.side} className={`action-group ${g.side}`}>
+              <h3>{g.title}</h3>
+              <div className="action-list">
+                {g.items.map((a) => (
+                  <Link key={a.id} className={a === first ? "action-tile main" : "action-tile"} href={href(a.href)}>
+                    <Icon name={a.icon} />
+                    <span className="action-text">
+                      <strong>{a.label}</strong>
+                      <small>{a.hint}</small>
+                    </span>
+                    <span className="action-go" aria-hidden="true">
+                      ›
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
-        {more.length > 0 && (
-          <div className="quick-actions-row">
-            {more.map((a) => (
-              <Link key={a.id} className="quick-action secondary-action" href={href(a.href)}>
-                {a.label}
-              </Link>
-            ))}
-          </div>
-        )}
         {expense && (
           <Link className="quick-expense" href={href(expense.href)}>
+            <Icon name={expense.icon} size={20} />
             <strong>Записать расход</strong>
-            <small>аренда, зарплата, свет</small>
+            <small>{expense.hint.toLowerCase()}</small>
             <span aria-hidden="true">›</span>
           </Link>
         )}

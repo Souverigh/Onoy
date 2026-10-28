@@ -50,8 +50,9 @@ export type Preset = {
   /** «Новый товар» сразу открывает форму с размерами и цветами (если модуль включён). */
   newProduct?: "model";
   /**
-   * Кнопки на главной по порядку: первые две — крупные, остальные — строкой
-   * ниже. Кнопка модуля, который выключен, пропускается. Нет — как у магазина.
+   * Кнопки на главной по порядку: первая — главная (тёмная), дальше каждая в
+   * свой блок по QUICK_ACTIONS.side. Кнопка модуля, который выключен,
+   * пропускается. Нет — как у магазина.
    */
   quickActions?: readonly QuickActionId[];
   /** Главная кнопка внизу на телефоне (между «Клиентами» и «Отчётами»); нет — «Продажа». */
@@ -62,20 +63,49 @@ export type Preset = {
   slug: string;
 };
 
+/** С кем дело: на главной кнопки собраны в блоки «С клиентами» и «С поставщиками»; расход — свой, строкой ниже. */
+export type ActionSide = "customers" | "suppliers" | "shop";
+
+/** Значок кнопки на главной (рисует components/dashboard.tsx). */
+export type ActionIcon = "cart" | "box" | "cash-in" | "card" | "receipt" | "hanger" | "clock";
+
 /**
  * Кнопки главной и нижней панели. Ядро — у всех; кнопка модуля — только
  * когда модуль включён (иначе её нет, а главная кнопка — «Продажа»).
+ * hint — подпись под названием на главной.
  */
 export const QUICK_ACTIONS = {
-  sales: { href: "/sales", label: "Продажи" },
-  sale: { href: "/money/new?type=sale", label: "Продажа" },
-  purchases: { href: "/purchases", word: "purchase" },
-  payment_in: { href: "/money/new?type=payment&direction=incoming", label: "Клиент принёс деньги" },
-  payment_out: { href: "/money/new?type=payment&direction=outgoing", label: "Я заплатил поставщику" },
-  expense: { href: "/money/expense", label: "Расход" },
-  rental_issue: { href: "/rentals/new", label: "Выдать", module: "rental" },
-  rentals: { href: "/rentals", label: "На руках", module: "rental" },
-} as const satisfies Record<string, { href: string; label?: string; word?: WordKey; module?: ModuleId }>;
+  sales: { href: "/sales", label: "Продажи", side: "customers", hint: "За наличные или в долг", icon: "cart" },
+  sale: { href: "/money/new?type=sale", label: "Продажа", side: "customers", hint: "За наличные или в долг", icon: "cart" },
+  purchases: { href: "/purchases", word: "purchase", side: "suppliers", hint: "От поставщика, можно по фото", icon: "box" },
+  payment_in: {
+    href: "/money/new?type=payment&direction=incoming",
+    label: "Клиент принёс деньги",
+    side: "customers",
+    hint: "Оплата долга или аванс",
+    icon: "cash-in",
+  },
+  payment_out: {
+    href: "/money/new?type=payment&direction=outgoing",
+    label: "Я заплатил поставщику",
+    side: "suppliers",
+    hint: "Оплата долга или аванс",
+    icon: "card",
+  },
+  expense: { href: "/money/expense", label: "Расход", side: "shop", hint: "Аренда, зарплата, свет", icon: "receipt" },
+  rental_issue: {
+    href: "/rentals/new",
+    label: "Выдать",
+    module: "rental",
+    side: "customers",
+    hint: "Вещи клиенту на несколько дней",
+    icon: "hanger",
+  },
+  rentals: { href: "/rentals", label: "На руках", module: "rental", side: "customers", hint: "У кого что и до какого дня", icon: "clock" },
+} as const satisfies Record<
+  string,
+  { href: string; label?: string; word?: WordKey; module?: ModuleId; side: ActionSide; hint: string; icon: ActionIcon }
+>;
 
 export type QuickActionId = keyof typeof QUICK_ACTIONS;
 
@@ -187,11 +217,18 @@ export const ownWord = (type: BusinessType, key: WordKey): string | null => (PRE
 /** Слово для вида бизнеса: своё или обычное. */
 export const word = (type: BusinessType, key: WordKey): string => ownWord(type, key) ?? WORDS[key];
 
-export type QuickAction = { id: QuickActionId; href: string; label: string };
+export type QuickAction = {
+  id: QuickActionId;
+  href: string;
+  label: string;
+  side: ActionSide;
+  hint: string;
+  icon: ActionIcon;
+};
 
 const action = (type: BusinessType, id: QuickActionId): QuickAction => {
-  const a: { href: string; label?: string; word?: WordKey } = QUICK_ACTIONS[id];
-  return { id, href: a.href, label: a.word ? word(type, a.word) : (a.label ?? id) };
+  const a: { href: string; label?: string; word?: WordKey; side: ActionSide; hint: string; icon: ActionIcon } = QUICK_ACTIONS[id];
+  return { id, href: a.href, label: a.word ? word(type, a.word) : (a.label ?? id), side: a.side, hint: a.hint, icon: a.icon };
 };
 const usable = (id: QuickActionId, modules: readonly ModuleId[]) => {
   const m = (QUICK_ACTIONS[id] as { module?: ModuleId }).module;

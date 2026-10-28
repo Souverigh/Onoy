@@ -82,7 +82,19 @@ test("business: home buttons and the main button follow the type, a switched-off
   assert.equal(mainAction("shop", ["stock"]).label, "Продажа");
   const rental = resolveModules("clothing_rental", null);
   assert.deepEqual(ids(quickActions("clothing_rental", rental)).slice(0, 2), ["rental_issue", "rentals"]);
-  assert.deepEqual(mainAction("clothing_rental", rental), { id: "rental_issue", href: "/rentals/new", label: "Выдать" });
+  assert.deepEqual(mainAction("clothing_rental", rental), {
+    id: "rental_issue",
+    href: "/rentals/new",
+    label: "Выдать",
+    side: "customers",
+    hint: "Вещи клиенту на несколько дней",
+    icon: "hanger",
+  });
+  // Блоки главной: у магазина есть и клиенты, и поставщики, у проката — только клиенты; расход — один, свой.
+  const sides = (list) => [...new Set(list.map((a) => a.side))].sort();
+  assert.deepEqual(sides(quickActions("shop", ["stock", "catalog"])), ["customers", "shop", "suppliers"]);
+  assert.deepEqual(sides(quickActions("clothing_rental", rental)), ["customers", "shop"]);
+  assert.equal(quickActions("shop", ["stock"]).filter((a) => a.side === "shop").length, 1);
   // Прокат выключили — главная как у магазина, внизу «Продажа».
   const off = resolveModules("clothing_rental", ["-rental"]);
   assert.deepEqual(ids(quickActions("clothing_rental", off)).slice(0, 2), ["sales", "purchases"]);
