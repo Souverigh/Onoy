@@ -17,7 +17,8 @@ const date = (iso: string) =>
     new Date(iso),
   );
 
-// Коды доступа: без кода новый магазин не создать (миграция shop_signup_codes).
+// Коды Depter: по желанию. С кодом магазин — пилот без срока оплаты, без кода —
+// бесплатный месяц (миграция open_signup).
 export default async function AdminCodes({
   searchParams,
 }: {
@@ -32,7 +33,7 @@ export default async function AdminCodes({
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;
   const newCode = created && /^[0-9A-F]{10}$/.test(created) ? created : null;
   const message = newCode
-    ? `Здравствуйте! Ваш код для подключения магазина к Depter: ${newCode}. Зарегистрируйтесь на ${origin}/signup и введите код при создании магазина.`
+    ? `Здравствуйте! Ваш код для подключения магазина к Depter: ${newCode}. Зарегистрируйтесь на ${origin}/signup и при создании магазина нажмите «Есть код от Depter?».`
     : "";
 
   return (
@@ -40,7 +41,10 @@ export default async function AdminCodes({
       <div className="page-heading">
         <div>
           <h1>Коды доступа</h1>
-          <p className="muted">Один код - один новый магазин. Продавцам код не нужен: их приглашает владелец.</p>
+          <p className="muted">
+            Регистрация открыта и без кода: новый магазин получает бесплатный месяц. Код - для пилотных
+            магазинов без срока оплаты. Один код - один магазин.
+          </p>
         </div>
       </div>
       {newCode && (

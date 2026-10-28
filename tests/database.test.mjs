@@ -1823,15 +1823,25 @@ test("staff roles: invite link, seller can sell but not reverse/discount/close d
   await assert.rejects(db.query("select commit_sale($1,$2,'1.00',false,'abababab-0000-4000-8000-000000000003')", [orgA, customer]), /not_a_member/);
 });
 
-test("create_organization: a new shop needs an unused signup code; retries and old shops don't", async () => {
+test("create_organization: without a code — a free month; a given code must be unused and means no end date", async () => {
   await owner();
   const code = (await db.query("insert into private.shop_signup_codes(note) values ('тест') returning code")).rows[0].code;
   assert.match(code, /^[0-9A-F]{10}$/);
-  await user(b);
-  await assert.rejects(
-    db.query("select create_organization('Без кода','cccccccc-0000-4000-8000-000000000001','')"),
-    /invalid_code/,
+  const fresh = "3a3a3a3a-3333-4333-8333-333333333333";
+  await db.query("insert into auth.users(id) values ($1)", [fresh]);
+  await user(fresh);
+  const trial = (
+    await db.query("select create_organization('Без кода','cccccccc-0000-4000-8000-000000000001','') as id")
+  ).rows[0].id;
+  await owner();
+  const { rows: trialRows } = await db.query(
+    `select paid_until = ((now() at time zone 'Asia/Bishkek')::date + interval '1 month')::date as month,
+       (select metadata->>'trial' from audit_events where entity_id=o.id and action='organization.created') as trial
+     from organizations o where id=$1`,
+    [trial],
   );
+  assert.deepEqual(trialRows[0], { month: true, trial: "true" });
+  await user(b);
   await assert.rejects(
     db.query("select create_organization('Чужой код','cccccccc-0000-4000-8000-000000000002','CODEA00001')"),
     /invalid_code/, // уже погашен магазином A
@@ -1851,6 +1861,7 @@ test("create_organization: a new shop needs an unused signup code; retries and o
   await assert.rejects(db.query("select * from private.shop_signup_codes"), /permission denied/);
   await owner();
   assert.equal((await db.query("select organization_id from private.shop_signup_codes where code=$1", [code])).rows[0].organization_id, id);
+  assert.equal((await db.query("select paid_until from organizations where id=$1", [id])).rows[0].paid_until, null);
 });
 
 test("platform admin: codes, shop overview without money data, plan, block stops writes and the client page", async () => {

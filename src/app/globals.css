@@ -8403,8 +8403,10 @@ form label.order-choice:has(input:checked),
 .legal-links a {
   color: inherit;
 }
-.consent {
+.consent,
+form label.consent {
   display: flex;
+  flex-direction: row;
   align-items: flex-start;
   gap: 10px;
   margin: 4px 0 16px;
@@ -11708,4 +11710,66 @@ form label.rental-picked-price {
   margin: 0;
   padding-left: 18px;
   text-align: left;
+}
+
+/* ===== Открытая регистрация (27.10) ===== */
+/* Вверху витрины: логотип слева, «Регистрация» справа — заметно и на телефоне. */
+.landing-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.landing-signup {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--ink);
+  font-weight: 700;
+}
+.landing-signup:hover {
+  background: var(--accent);
+  filter: brightness(0.94);
+}
+.auth-card .landing-signup-wide {
+  margin-top: 14px;
+  border-color: var(--green);
+  color: var(--green);
+  font-weight: 600;
+}
+.auth-card .landing-signup-wide:hover {
+  background: var(--green-wash);
+}
+/* Кнопка-ссылка внутри строки текста («отправьте код ещё раз», «выйдите»). */
+.auth-card small .text-button,
+.onboarding-logout .text-button {
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  font-size: inherit;
+  color: var(--green);
+  text-decoration: underline;
+}
+.auth-card form + form small {
+  margin-top: 12px;
+}
+.onboarding .eyebrow {
+  margin-bottom: 4px;
+}
+.onboarding-code {
+  margin-bottom: 18px;
+}
+.onboarding-code summary {
+  color: var(--ink-soft);
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+.onboarding-logout small {
+  display: block;
+  margin-top: 20px;
+}
+.renew-link {
+  font-weight: 600;
+  color: inherit;
+  text-decoration: underline;
 }

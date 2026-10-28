@@ -8,6 +8,7 @@ import { cookies, headers } from "next/headers";
 import { EXPIRED_COOKIE } from "@/lib/session-timeout";
 import { storedPhone } from "@/lib/contacts";
 import { BUSINESS_COOKIE, DEFAULT_BUSINESS, isBusinessType } from "@/lib/business";
+import { SIGNUP_EMAIL_COOKIE } from "@/lib/signup";
 /** Куда вернуть после входа: только страница приглашения, иначе главная. */
 function nextPath(form: FormData) {
   const next = String(form.get("next") ?? "");
@@ -33,6 +34,11 @@ export async function login(form: FormData) {
     redirect(failed);
   const db = await createClient();
   const { error } = await db.auth.signInWithPassword({ email, password });
+  // Зарегистрировался, но не подтвердил email — к вводу кода из письма.
+  if (error?.code === "email_not_confirmed" && next === "/") {
+    await rememberSignupEmail(email);
+    redirect("/signup/verify?state=unconfirmed");
+  }
   if (error) redirect(failed);
   // Пояснение «вышли по бездействию» больше не нужно.
   (await cookies()).delete(EXPIRED_COOKIE);
@@ -48,15 +54,26 @@ export async function login(form: FormData) {
   redirect(next);
 }
 
-/**
- * Регистрация нового владельца магазина. Магазин он создаст на /onboarding —
- * только с кодом доступа от Depter. Нужна включённая регистрация в Supabase.
- */
 /** Согласие с документами при регистрации: какая редакция и когда — в данных аккаунта (Supabase Auth). */
 function consentRecord() {
   return { terms_version: LEGAL.version, terms_accepted_at: new Date().toISOString() };
 }
 
+/** Email, на который ждём код: страница кода берёт его отсюда, а не из адреса. */
+async function rememberSignupEmail(email: string) {
+  (await cookies()).set(SIGNUP_EMAIL_COOKIE, email, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24,
+  });
+}
+
+/**
+ * Регистрация владельца: email и пароль → письмо с кодом и ссылкой
+ * (/signup/verify) → магазин на /onboarding. Кода доступа больше нет: новый
+ * магазин получает бесплатный месяц (миграция open_signup).
+ */
 export async function signUp(form: FormData) {
   if (!configured()) redirect("/login?error=setup");
   const email = String(form.get("email") ?? "").trim(),
@@ -64,8 +81,8 @@ export async function signUp(form: FormData) {
   if (!email || email.length > 254 || password.length < 6 || password.length > 1024)
     redirect("/signup?error=invalid");
   if (form.get("accept") !== "1") redirect("/signup?error=consent");
-  // Пришли по адресу вида бизнеса (/start/prokat) — запоминаем до создания магазина
-  // (и после подтверждения email на этом же телефоне).
+  // Пришли по адресу вида бизнеса (/start/prokat) — запоминаем до создания магазина:
+  // в куке (этот телефон) и в аккаунте (письмо открыли на другом).
   const business = String(form.get("business_type") ?? "");
   if (isBusinessType(business))
     (await cookies()).set(BUSINESS_COOKIE, business, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 30 });
@@ -73,13 +90,67 @@ export async function signUp(form: FormData) {
   const { data, error } = await db.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/onboarding`, data: consentRecord() },
+    options: {
+      emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/onboarding`,
+      data: { ...consentRecord(), ...(isBusinessType(business) ? { business_type: business } : {}) },
+    },
   });
-  if (error)
+  if (error) {
+    if (error.status === 429) redirect("/signup?error=rate");
     redirect(`/signup?error=${error.message.toLowerCase().includes("disabled") ? "disabled" : "invalid"}`);
-  if (!data.session) redirect("/signup?check=email");
+  }
+  // Такой email уже подтверждён — Supabase не говорит прямо, но не даёт
+  // ни одного способа входа (identities пуст). Отправляем ко входу.
+  if (data.user && data.user.identities?.length === 0) redirect("/login?error=exists");
+  if (!data.session) {
+    await rememberSignupEmail(email);
+    redirect("/signup/verify");
+  }
   revalidatePath("/", "layout");
   redirect("/onboarding");
+}
+
+/** Код из письма регистрации — то же, что ссылка, но без перехода из почты. */
+export async function verifySignup(form: FormData) {
+  if (!configured()) redirect("/login?error=setup");
+  const store = await cookies();
+  const email = String(form.get("email") ?? store.get(SIGNUP_EMAIL_COOKIE)?.value ?? "").trim();
+  const token = String(form.get("code") ?? "").replace(/\s+/g, "");
+  if (!email || email.length > 254) redirect("/signup/verify?error=email");
+  if (!/^\d{6,10}$/.test(token)) redirect("/signup/verify?error=code");
+  const db = await createClient();
+  const { error } = await db.auth.verifyOtp({ email, token, type: "email" });
+  if (error) {
+    console.warn("verifySignup:", error.status, error.message);
+    redirect(`/signup/verify?error=${error.status === 429 ? "rate" : "code"}`);
+  }
+  store.delete(SIGNUP_EMAIL_COOKIE);
+  revalidatePath("/", "layout");
+  redirect("/onboarding");
+}
+
+/** «Отправить код ещё раз». У Supabase лимит писем — тогда просим подождать. */
+export async function resendSignup(form: FormData) {
+  if (!configured()) redirect("/login?error=setup");
+  const store = await cookies();
+  const email = String(form.get("email") ?? store.get(SIGNUP_EMAIL_COOKIE)?.value ?? "").trim();
+  if (!email || email.length > 254 || !email.includes("@")) redirect("/signup/verify?error=email");
+  await rememberSignupEmail(email);
+  const db = await createClient();
+  const { error } = await db.auth.resend({
+    type: "signup",
+    email,
+    options: { emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/onboarding` },
+  });
+  if (error?.status === 429) redirect("/signup/verify?error=rate");
+  if (error) console.warn("resendSignup:", error.status, error.message);
+  redirect("/signup/verify?sent=1");
+}
+
+/** Другой email на странице кода: забываем прежний и — к регистрации заново. */
+export async function changeSignupEmail() {
+  (await cookies()).delete(SIGNUP_EMAIL_COOKIE);
+  redirect("/signup");
 }
 
 /**
@@ -138,12 +209,12 @@ export async function createOrganization(form: FormData) {
   const code = String(form.get("code") ?? "").trim();
   if (!name || name.length > 120 || !/^[-0-9a-f]{36}$/i.test(key))
     redirect("/onboarding?error=invalid");
-  if (!code || code.length > 40) redirect("/onboarding?error=code");
+  // Код от Depter — по желанию (пилот без срока); без кода — бесплатный месяц.
+  if (code.length > 40) redirect("/onboarding?error=code");
   // Шаг первого входа (задача 35): имя продавца и телефон — для накладных.
   const sellerName = String(form.get("seller_name") ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
   const phone = storedPhone(String(form.get("phone") ?? ""));
   if (!sellerName || !phone || phone.length > 40) redirect("/onboarding?error=seller");
-  // Новый магазин — только с кодом доступа от Depter (см. миграцию shop_signup_codes).
   const { data, error } = await db.rpc("create_organization", {
     org_name: name,
     request_key: key,

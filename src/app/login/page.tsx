@@ -10,6 +10,7 @@ import { ContactLinks } from "@/components/contact-links";
 import { InstallApp } from "@/components/install-app";
 import { sendFeedback } from "./actions";
 import { DEPTER_PHONE } from "@/components/contact-links";
+import { PRICE_KGS } from "@/lib/subscription";
 import { OPEN_GRAPH_BASE, SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL } from "@/lib/site";
 
 // Витрина — единственная страница для поисковиков (src/app/robots.ts).
@@ -84,11 +85,18 @@ export default async function Login({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <section className="auth-intro">
-        <a className="brand" href="/">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-inverted.svg" alt="" className="brand-logo" />
-          Depter<span>учёт долгов без лишнего</span>
-        </a>
+        <div className="landing-top">
+          <a className="brand" href="/">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo-inverted.svg" alt="" className="brand-logo" />
+            Depter<span>учёт долгов без лишнего</span>
+          </a>
+          {ready && (
+            <a className="button landing-signup" href="/signup">
+              Регистрация
+            </a>
+          )}
+        </div>
         <div>
           <span className="eyebrow">ДЛЯ ВАШЕГО МАГАЗИНА</span>
           <h1>
@@ -147,7 +155,12 @@ export default async function Login({
                 <Link className="forgot-link" href="/forgot">
                   Забыли пароль?
                 </Link>
-                {error === "link" ? (
+                {error === "exists" ? (
+                  <p role="alert" className="notice">
+                    Этот email уже зарегистрирован - войдите с паролем. Не помните пароль - нажмите «Забыли
+                    пароль?».
+                  </p>
+                ) : error === "link" ? (
                   <p role="alert" className="form-error">
                     Ссылка из письма устарела или уже открыта. Если email
                     подтверждён - просто войдите.
@@ -164,10 +177,10 @@ export default async function Login({
                   <Link href="/privacy">Политику конфиденциальности</Link>.
                 </small>
               </form>
-              <small className="muted">
-                Новый магазин? <a href="/signup">Зарегистрироваться</a> - понадобится код доступа от Depter.
-                Продавцы входят по ссылке-приглашению от владельца.
-              </small>
+              <a className="button landing-signup-wide" href="/signup">
+                Зарегистрировать магазин - месяц бесплатно
+              </a>
+              <small className="muted">Продавцы входят по ссылке-приглашению от владельца.</small>
               <InstallApp variant="button" />
             </>
           )}
@@ -191,10 +204,14 @@ export default async function Login({
 
         <h2>Как подключить магазин</h2>
         <ol className="landing-steps">
-          <li>Напишите нам в Telegram или WhatsApp либо оставьте заявку ниже.</li>
-          <li>Мы расскажем о тарифах и выдадим код доступа.</li>
-          <li>Зарегистрируйтесь - старую тетрадь поможем перенести по фото.</li>
+          <li>Нажмите «Регистрация»: email и пароль.</li>
+          <li>Введите код из письма.</li>
+          <li>Впишите название магазина и выберите, чем занимаетесь, - Depter сразу настроится под вас.</li>
         </ol>
+        <p className="landing-lead">
+          Первый месяц бесплатно, дальше {PRICE_KGS.toLocaleString("ru-RU")} сом в месяц. Старую тетрадь можно
+          перенести по фото. Вопросы - пишите в Telegram или WhatsApp.
+        </p>
         <ContactLinks showPhone />
 
         <h2 id="feedback">Оставить заявку или вопрос</h2>

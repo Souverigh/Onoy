@@ -1,31 +1,43 @@
 import { getUserContext } from "@/lib/context";
-import { createOrganization } from "../auth/actions";
+import { createOrganization, logout } from "../auth/actions";
 import { Submit } from "@/components/submit";
+import { FormDraft } from "@/components/form-draft";
 import { cookies } from "next/headers";
 import { BUSINESS_COOKIE, BUSINESS_TYPES, DEFAULT_BUSINESS, PRESETS, isBusinessType } from "@/lib/business";
+
+/** Поля, которые помним в браузере, пока магазин не открыт (ушёл — вернулся — всё на месте). */
+const DRAFT_FIELDS = ["name", "business_type", "seller_name", "phone", "currency"];
+
+// Третий шаг регистрации: магазин и вид бизнеса. Сюда же ведёт любой вход
+// аккаунта без магазина (getContext), так что бросить и вернуться можно когда угодно.
 export default async function Onboarding({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  await getUserContext();
+  const { db, user } = await getUserContext();
   const { error } = await searchParams;
-  // Пришли по адресу вида (/start/prokat) — он уже выбран.
+  // Пришли по адресу вида (/start/prokat) — он уже выбран: в куке на этом
+  // телефоне или в аккаунте, если письмо открыли на другом.
   const chosen = (await cookies()).get(BUSINESS_COOKIE)?.value;
-  const business = isBusinessType(chosen) ? chosen : DEFAULT_BUSINESS;
+  const meta = (await db.auth.getClaims()).data?.claims?.user_metadata as { business_type?: unknown } | undefined;
+  const business = isBusinessType(chosen)
+    ? chosen
+    : isBusinessType(meta?.business_type)
+      ? meta.business_type
+      : DEFAULT_BUSINESS;
   return (
     <main className="center">
       <section className="panel onboarding">
         <div className="brand">Depter</div>
+        <span className="eyebrow">ШАГ 3 ИЗ 3</span>
         <h1>Ваш магазин</h1>
         <p className="muted">
-          Название, имя продавца и телефон - они будут на накладных клиентам. Клиентов и поставщиков можно
-          добавить следующим шагом.
+          Название, имя и телефон будут на накладных клиентам. Первый месяц - бесплатно, всё можно поменять в
+          Настройках.
         </p>
-        <p className="muted">
-          Продавцу магазина здесь ничего создавать не нужно - откройте ссылку-приглашение от владельца.
-        </p>
-        <form action={createOrganization}>
+        <form action={createOrganization} id="onboarding-form">
+          <FormDraft formId="onboarding-form" storageKey={`depter-onboarding-${user.id}`} fields={DRAFT_FIELDS} />
           <input type="hidden" name="key" value={crypto.randomUUID()} />
           <label>
             Название магазина
@@ -45,10 +57,10 @@ export default async function Onboarding({
                 </option>
               ))}
             </select>
-            <small className="muted">Под это подстроим разделы. Поменять можно в Настройках.</small>
+            <small className="muted">Под это сразу настроим разделы и главные кнопки.</small>
           </label>
           <label>
-            Имя продавца
+            Ваше имя
             <input name="seller_name" placeholder="Например, Маликнур" required maxLength={80} autoComplete="name" />
             <small className="muted">Пишется на накладной в строке «Продавец».</small>
           </label>
@@ -67,28 +79,38 @@ export default async function Onboarding({
               В ней считаются итоги. Поставщику или клиенту в долларах можно задать свою валюту.
             </small>
           </label>
-          <label>
-            Код доступа
-            <input
-              name="code"
-              required
-              maxLength={40}
-              autoComplete="off"
-              autoCapitalize="characters"
-              placeholder="Например, 7F3A9C21B0"
-            />
-            <small className="muted">Код выдаёт Depter при подключении магазина.</small>
-          </label>
+          <details className="onboarding-code" open={error === "code"}>
+            <summary>Есть код от Depter?</summary>
+            <label>
+              Код
+              <input
+                name="code"
+                maxLength={40}
+                autoComplete="off"
+                autoCapitalize="characters"
+                placeholder="Например, 7F3A9C21B0"
+              />
+            </label>
+          </details>
           {error && (
             <p role="alert" className="form-error">
               {error === "code"
-                ? "Код доступа не подошёл или уже использован. Попросите новый у Depter."
+                ? "Код не подошёл или уже использован. Сотрите его - магазин откроется и без кода."
                 : error === "seller"
-                  ? "Впишите имя продавца и телефон - они нужны для накладных."
-                  : "Не удалось создать магазин. Проверьте название и подключение базы."}
+                  ? "Впишите ваше имя и телефон - они нужны для накладных."
+                  : "Не удалось создать магазин. Проверьте название и попробуйте ещё раз."}
             </p>
           )}
-          <Submit>Открыть магазин</Submit>
+          <Submit>Войти в магазин</Submit>
+        </form>
+        <form action={logout} className="onboarding-logout">
+          <small className="muted">
+            {user.email ? `Вы вошли как ${user.email}. ` : ""}Вы продавец? Откройте ссылку-приглашение от владельца
+            или{" "}
+            <button type="submit" className="text-button">
+              выйдите
+            </button>
+          </small>
         </form>
       </section>
     </main>

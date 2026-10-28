@@ -3,10 +3,11 @@ import { signUp } from "../auth/actions";
 import { Submit } from "@/components/submit";
 import { PRESETS, isBusinessType } from "@/lib/business";
 
-// Регистрация владельца: аккаунт → /onboarding (название магазина + код доступа).
+// Регистрация владельца: email и пароль → код из письма (/signup/verify) →
+// /onboarding (магазин и вид бизнеса). Первый месяц бесплатно.
 // ?type= — пришли по адресу вида бизнеса (/start/prokat): магазин создастся этим видом.
-export default async function SignUp({ searchParams }: { searchParams: Promise<{ error?: string; check?: string; type?: string }> }) {
-  const { error, check, type } = await searchParams;
+export default async function SignUp({ searchParams }: { searchParams: Promise<{ error?: string; type?: string }> }) {
+  const { error, type } = await searchParams;
   const business = isBusinessType(type) ? type : null;
   return (
     <main className="auth">
@@ -15,21 +16,20 @@ export default async function SignUp({ searchParams }: { searchParams: Promise<{
           <span className="eyebrow">{business ? PRESETS[business].label.toUpperCase() : "НОВЫЙ МАГАЗИН"}</span>
           <h2>Регистрация</h2>
           <p className="muted">
-            Для владельца магазина. Понадобится код доступа от Depter. Продавцу регистрироваться здесь не нужно -
-            откройте ссылку-приглашение от владельца.
+            Первый месяц бесплатно, без карты и без звонков. Пришлём код на почту - и вы в своём магазине.
           </p>
-          {check === "email" && (
-            <p className="notice" role="status">
-              Мы отправили письмо - подтвердите email, затем войдите.
-            </p>
-          )}
+          <p className="muted">
+            Вы продавец? Регистрироваться не нужно - откройте ссылку-приглашение от владельца.
+          </p>
           {error && (
             <p className="form-error" role="alert">
               {error === "disabled"
                 ? "Регистрация сейчас выключена. Напишите в Depter."
                 : error === "consent"
                   ? "Чтобы создать аккаунт, примите Пользовательское соглашение и Политику конфиденциальности."
-                  : "Не удалось создать аккаунт. Проверьте email; пароль - не короче 6 символов."}
+                  : error === "rate"
+                    ? "Слишком много попыток. Подождите несколько минут и попробуйте снова."
+                    : "Не удалось создать аккаунт. Проверьте email; пароль - не короче 6 символов."}
             </p>
           )}
           <form action={signUp}>
@@ -56,7 +56,7 @@ export default async function SignUp({ searchParams }: { searchParams: Promise<{
                 , согласен на обработку персональных данных
               </span>
             </label>
-            <Submit>Создать аккаунт</Submit>
+            <Submit>Получить код на почту</Submit>
           </form>
           <small className="muted">
             Уже есть аккаунт? <Link href="/login">Войти</Link>
