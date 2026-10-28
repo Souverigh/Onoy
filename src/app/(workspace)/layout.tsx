@@ -1,7 +1,8 @@
 import { getContext } from "@/lib/context";
 import { reviewDocumentsCount } from "@/lib/review-documents";
 import { Shell } from "@/components/shell";
-import { subscriptionState } from "@/lib/subscription";
+import { PRICE_KGS, subscriptionState } from "@/lib/subscription";
+import { DEPTER_PHONE } from "@/components/contact-links";
 import { bishkekDate } from "@/lib/day-summary";
 import { CHANGELOG, newsFor } from "@/lib/changelog";
 export const dynamic = "force-dynamic";
@@ -14,6 +15,19 @@ export default async function Layout({
   const sub = subscriptionState(ctx.paidUntil, ctx.blocked?.reason, Boolean(ctx.blocked), bishkekDate());
   const date = (d: string) =>
     new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long" }).format(new Date(`${d}T12:00:00+06:00`));
+  // Продление — пока вручную: владелец пишет в WhatsApp, админ отмечает оплату.
+  const renew = (
+    <a
+      className="renew-link"
+      href={`https://wa.me/${DEPTER_PHONE.replace(/\D/g, "")}?text=${encodeURIComponent(
+        `Здравствуйте! Хочу продлить подписку Depter для магазина «${ctx.organizationName}».`,
+      )}`}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Продлить - {PRICE_KGS.toLocaleString("ru-RU")} сом в месяц, написать в WhatsApp
+    </a>
+  );
   // Бейджи: заявки клиентов (деньги, главный), необработанные заказы из
   // каталога (новые и начатые, ещё не проданные) и
   // накладные с расхождением.
@@ -54,18 +68,19 @@ export default async function Layout({
         <p className="form-error shop-blocked" role="alert">
           Подписка закончилась {date(sub.paidUntil)}, льготная неделя прошла - только просмотр. Данные
           сохранены, страница клиентов работает. Оплатите подписку, чтобы снова вносить записи.
+          {ctx.isOwner && <> {renew}</>}
         </p>
       )}
       {ctx.isOwner && sub.kind === "grace" && (
         <p className="notice claims-notice shop-blocked" role="status">
           Подписка закончилась {date(sub.paidUntil)}. Льготный период до {date(sub.graceUntil)} - потом только
-          просмотр.
+          просмотр. {renew}
         </p>
       )}
       {ctx.isOwner && sub.kind === "ending" && (
         <p className="notice shop-blocked" role="status">
           Подписка оплачена до {date(sub.paidUntil)}
-          {sub.daysLeft === 0 ? " - сегодня последний день" : ` - осталось ${sub.daysLeft} дн.`}.
+          {sub.daysLeft === 0 ? " - сегодня последний день" : ` - осталось ${sub.daysLeft} дн.`}. {renew}
         </p>
       )}
       {children}

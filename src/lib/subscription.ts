@@ -1,8 +1,9 @@
 /**
- * Состояние подписки магазина (ТЗ §13): за 5 дней до конца — напоминание,
+ * Состояние подписки магазина (ТЗ §13): за неделю до конца — напоминание,
  * после конца — 7 льготных дней, затем «только просмотр» (его же ставит
  * триггер в базе, private.shop_read_only). Блокировка админом — отдельно.
- * paid_until = null — оплата не отмечена (пилот), ограничений нет.
+ * paid_until = null — оплата не отмечена (пилот), ограничений нет. Новый
+ * магазин без кода получает бесплатный месяц (миграция open_signup).
  */
 export type SubscriptionState =
   | { kind: "ok" }
@@ -12,7 +13,9 @@ export type SubscriptionState =
   | { kind: "blocked"; reason: string };
 
 export const GRACE_DAYS = 7;
-export const REMIND_DAYS = 5;
+export const REMIND_DAYS = 7;
+/** Подписка на месяц, сом. Продлевает админ Depter, владелец пишет нам. */
+export const PRICE_KGS = 1000;
 
 const day = (d: string) => Date.parse(`${d}T00:00:00Z`) / 86400000;
 const plus = (d: string, n: number) => new Date((day(d) + n) * 86400000).toISOString().slice(0, 10);
