@@ -1841,6 +1841,12 @@ test("create_organization: without a code — a free month; a given code must be
     [trial],
   );
   assert.deepEqual(trialRows[0], { month: true, trial: "true" });
+  // Второй магазин без кода — нельзя (новый бесплатный месяц, а открыт был бы только первый).
+  await user(fresh);
+  await assert.rejects(
+    db.query("select create_organization('Ещё один','cccccccc-0000-4000-8000-000000000005','')"),
+    /shop_exists/,
+  );
   await user(b);
   await assert.rejects(
     db.query("select create_organization('Чужой код','cccccccc-0000-4000-8000-000000000002','CODEA00001')"),

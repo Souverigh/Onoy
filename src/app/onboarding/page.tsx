@@ -4,6 +4,7 @@ import { Submit } from "@/components/submit";
 import { FormDraft } from "@/components/form-draft";
 import { SignupIntro } from "@/components/signup-intro";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { BUSINESS_COOKIE, BUSINESS_TYPES, DEFAULT_BUSINESS, PRESETS, isBusinessType } from "@/lib/business";
 
 /** Поля, которые помним в браузере, пока магазин не открыт (ушёл — вернулся — всё на месте). */
@@ -17,6 +18,10 @@ export default async function Onboarding({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { db, user } = await getUserContext();
+  // Магазин уже есть (назад после создания, ссылка из письма ещё раз) — в него,
+  // а не в форму: повтор открыл бы второй магазин.
+  const member = await db.from("organization_members").select("organization_id").limit(1).maybeSingle();
+  if (member.data) redirect("/");
   const { error } = await searchParams;
   // Пришли по адресу вида (/start/prokat) — он уже выбран: в куке на этом
   // телефоне или в аккаунте, если письмо открыли на другом.

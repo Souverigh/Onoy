@@ -271,6 +271,8 @@ export async function createOrganization(form: FormData) {
     // Без кода — бесплатный месяц (open_signup). Пилот без срока — дату стирает админ.
     signup_code: "",
   });
+  // Магазин у аккаунта уже есть (форму отправили второй раз) — открываем его.
+  if (error?.message.includes("shop_exists")) redirect("/");
   if (error || !data) redirect(`/onboarding?error=${error?.message.includes("invalid_code") ? "code" : "save"}`);
   // Базовая валюта (ТЗ §14.3: задаётся при регистрации) — пока записей нет,
   // база её меняет; сом — по умолчанию.
