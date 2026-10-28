@@ -1,15 +1,28 @@
 import { signInWithGoogle } from "@/app/auth/actions";
 import { isBusinessType } from "@/lib/business";
+import { GoogleIdentityButton } from "./google-identity";
 
 /**
  * Вход через Google: кнопка видна, когда в Vercel задано GOOGLE_SIGNIN=1
  * (сначала Google включают в Supabase → Authentication → Providers). Новый
  * аккаунт попадает на /onboarding, старый — в свой магазин.
+ * Задан NEXT_PUBLIC_GOOGLE_CLIENT_ID (тот же Client ID, что в Supabase) — кнопка
+ * Google прямо на странице, и в окне Google виден depter.kg; нет — прежний
+ * переход через supabase.co.
  */
 export const googleSignInEnabled = () => process.env.GOOGLE_SIGNIN === "1";
 
 export function GoogleButton({ business, label = "Войти через Google" }: { business?: string; label?: string }) {
   if (!googleSignInEnabled()) return null;
+  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  if (clientId)
+    return (
+      <GoogleIdentityButton
+        clientId={clientId}
+        business={isBusinessType(business) ? business : undefined}
+        text={label === "Продолжить с Google" ? "continue_with" : "signin_with"}
+      />
+    );
   return (
     <form action={signInWithGoogle} className="google-form">
       {isBusinessType(business) && <input type="hidden" name="business_type" value={business} />}

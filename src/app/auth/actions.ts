@@ -133,6 +133,29 @@ export async function signInWithGoogle(form: FormData) {
   redirect(data.url);
 }
 
+/**
+ * Вход через кнопку Google на самом depter.kg (components/google-identity.tsx):
+ * Google отдаёт подтверждение входа (ID-токен) прямо странице, без перехода на
+ * supabase.co, — поэтому в окне Google виден depter.kg. Supabase проверяет
+ * токен (подпись, Client ID, nonce) и открывает сессию, как при обычном входе.
+ */
+export async function signInWithGoogleIdToken(token: string, nonce: string, business: string) {
+  if (!configured() || process.env.GOOGLE_SIGNIN !== "1") redirect("/login");
+  if (typeof token !== "string" || !token || token.length > 8192 || typeof nonce !== "string" || !/^[0-9a-f]{64}$/.test(nonce))
+    redirect("/login?error=google");
+  if (isBusinessType(business))
+    (await cookies()).set(BUSINESS_COOKIE, business, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 30 });
+  const db = await createClient();
+  const { error } = await db.auth.signInWithIdToken({ provider: "google", token, nonce });
+  if (error) {
+    console.warn("signInWithGoogleIdToken:", error.status, error.message);
+    redirect("/login?error=google");
+  }
+  (await cookies()).delete(EXPIRED_COOKIE);
+  revalidatePath("/", "layout");
+  redirect("/");
+}
+
 /** Код из письма регистрации — то же, что ссылка, но без перехода из почты. */
 export async function verifySignup(form: FormData) {
   if (!configured()) redirect("/login?error=setup");

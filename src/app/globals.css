@@ -12395,6 +12395,12 @@ form label.rental-picked-price {
     display: none;
   }
 }
+/* Кнопку рисует Google (google-identity.tsx) — держим ей место и ставим по центру. */
+.google-gis {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+}
 .auth-or + .google-form {
   margin-top: 0;
 }
