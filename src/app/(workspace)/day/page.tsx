@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireOwner } from "@/lib/context";
-import { debtMoney, money } from "@/lib/format";
+import { debtMoney, money, quantity } from "@/lib/format";
 import { CURRENCY_SIGN, type Currency } from "@/lib/currency";
 import { Submit } from "@/components/submit";
 import {
@@ -22,12 +22,19 @@ import { randomUUID } from "node:crypto";
 import { ConfirmButton } from "@/components/confirm-button";
 import { DayNav } from "@/components/day-nav";
 import { InfoTip } from "@/components/info-tip";
+import { Icon } from "@/components/icon";
 import { ReportTabs } from "@/components/report-tabs";
 import { DownloadMenu } from "@/components/download-menu";
 import { expenseCategoryLabel } from "@/lib/expenses";
 import { dayCorrections } from "@/lib/day-corrections";
 
 const HISTORY_DAYS = 14;
+
+const daysWord = (n: number) => {
+  const last = n % 10;
+  const teen = n % 100 >= 11 && n % 100 <= 14;
+  return `${n} ${!teen && last === 1 ? "день" : !teen && last >= 2 && last <= 4 ? "дня" : "дней"}`;
+};
 
 const dayName = (day: string) =>
   new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", day: "numeric", month: "long" }).format(
@@ -69,17 +76,6 @@ function PartyLists({ m, cur }: { m: DayMoney; cur: string }) {
         </details>
       )}
     </div>
-  );
-}
-
-/** «было → стало»; не изменилось — одна сумма. */
-/** Долг «утром → вечером»; минус — аванс словом, как на главной, а не «-8 229,99». */
-function FromTo({ from, to, cur }: { from: number; to: number; cur: string }) {
-  return (
-    <strong>
-      {from !== to && <span className="muted day-debt-from">{debtMoney(from, cur)} → </span>}
-      {debtMoney(to, cur)}
-    </strong>
   );
 }
 
@@ -132,74 +128,83 @@ function CashCard({
   return (
     <section className={`panel day-cash${closure ? " day-cash-closed" : ""}`}>
       <div className="day-cash-head">
-        <span className="label-with-tip">
-          Наличных в кассе по записям
+        <h2 className="label-with-tip day-card-title">
+          В кассе по записям
           <InfoTip>
             Наличные: утром было, плюс пришло наличными (продажи и оплаты клиентов), минус наличные поставщикам и
             расходы, минус что забрали из кассы и плюс что положили, плюс залоги за прокат, пока их не вернули. Переводы в
             кассу не входят.
           </InfoTip>
-        </span>
+        </h2>
         <strong className="day-cash-sum">{money(due, cur)}</strong>
       </div>
-      <div className="day-cash-lines">
-        {drawer && (
-          <div className="day-line day-line-sub day-cash-opening">
-            <span>
-              Утром в кассе
-              <small className="muted">
-                {drawer.openingFrom
-                  ? ` · осталось после ${dayName(drawer.openingFrom)}`
-                  : " · закрытого дня с остатком раньше не было"}
-              </small>
-            </span>
-            <strong>{money(drawer.opening, cur)}</strong>
-          </div>
-        )}
-        <div className="day-line day-line-sub">
-          <span>Пришло наличными</span>
-          <strong>+ {money(net.income, cur)}</strong>
-        </div>
-        <div className="day-line day-line-sub">
-          <span>Наличными поставщикам</span>
-          <strong>− {money(net.paid, cur)}</strong>
-        </div>
-        <div className="day-line day-line-sub">
-          <span>Расходы</span>
-          <strong>− {money(net.expenses, cur)}</strong>
-        </div>
-        {drawer && drawer.movesOut > 0 && (
+      {/* Расчёт по строкам: на компьютере открыт, на телефоне свёрнут в «Расчёт кассы ▼» (макет 29.10.2026). */}
+      <div className="day-cash-calc">
+        <input type="checkbox" id="day-cash-calc" className="day-cash-calc-toggle sr-only" />
+        <label htmlFor="day-cash-calc" className="day-cash-calc-summary">
+          Расчёт кассы
+        </label>
+        <div className="day-cash-lines">
+          {drawer && (
+            <div className="day-line day-line-sub day-cash-opening">
+              <span>
+                Утром в кассе
+                {drawer.openingFrom && <small className="muted"> · осталось после {dayName(drawer.openingFrom)}</small>}
+              </span>
+              <strong>{money(drawer.opening, cur)}</strong>
+            </div>
+          )}
           <div className="day-line day-line-sub">
-            <span>Забрали из кассы</span>
-            <strong>− {money(drawer.movesOut, cur)}</strong>
+            <span>Пришло наличными</span>
+            <strong>+ {money(net.income, cur)}</strong>
           </div>
-        )}
-        {drawer && drawer.movesIn > 0 && (
           <div className="day-line day-line-sub">
-            <span>Положили в кассу</span>
-            <strong>+ {money(drawer.movesIn, cur)}</strong>
+            <span>Наличными поставщикам</span>
+            <strong>− {money(net.paid, cur)}</strong>
           </div>
-        )}
-        {drawer && ((drawer.depositsIn ?? 0) > 0 || (drawer.depositsOut ?? 0) > 0) && (
           <div className="day-line day-line-sub">
-            <span>Залоги за прокат</span>
-            <strong>
-              {(drawer.depositsIn ?? 0) > 0 && <>+ {money(drawer.depositsIn ?? 0, cur)}</>}
-              {(drawer.depositsIn ?? 0) > 0 && (drawer.depositsOut ?? 0) > 0 && " / "}
-              {(drawer.depositsOut ?? 0) > 0 && <>− {money(drawer.depositsOut ?? 0, cur)}</>}
-            </strong>
+            <span>Расходы</span>
+            <strong>− {money(net.expenses, cur)}</strong>
           </div>
-        )}
-        {net.transferIn != null && (net.transferIn > 0 || (net.transferOut ?? 0) > 0) && (
-          <div className="day-line day-line-sub muted">
-            <span>Переводом - не в кассе</span>
-            <strong>
-              получено {money(net.transferIn, cur)}
-              {(net.transferOut ?? 0) > 0 && <> · отправлено {money(net.transferOut ?? 0, cur)}</>}
-            </strong>
-          </div>
-        )}
+          {drawer && drawer.movesOut > 0 && (
+            <div className="day-line day-line-sub">
+              <span>Забрали из кассы</span>
+              <strong>− {money(drawer.movesOut, cur)}</strong>
+            </div>
+          )}
+          {drawer && drawer.movesIn > 0 && (
+            <div className="day-line day-line-sub">
+              <span>Положили в кассу</span>
+              <strong>+ {money(drawer.movesIn, cur)}</strong>
+            </div>
+          )}
+          {drawer && ((drawer.depositsIn ?? 0) > 0 || (drawer.depositsOut ?? 0) > 0) && (
+            <div className="day-line day-line-sub">
+              <span>Залоги за прокат</span>
+              <strong>
+                {(drawer.depositsIn ?? 0) > 0 && <>+ {money(drawer.depositsIn ?? 0, cur)}</>}
+                {(drawer.depositsIn ?? 0) > 0 && (drawer.depositsOut ?? 0) > 0 && " / "}
+                {(drawer.depositsOut ?? 0) > 0 && <>− {money(drawer.depositsOut ?? 0, cur)}</>}
+              </strong>
+            </div>
+          )}
+          {net.transferIn != null && (net.transferIn > 0 || (net.transferOut ?? 0) > 0) && (
+            <div className="day-line day-line-sub muted">
+              <span>Переводом - не в кассе</span>
+              <strong>
+                получено {money(net.transferIn, cur)}
+                {(net.transferOut ?? 0) > 0 && <> · отправлено {money(net.transferOut ?? 0, cur)}</>}
+              </strong>
+            </div>
+          )}
+        </div>
       </div>
+      {canMove && drawer && !drawer.openingFrom && (
+        <p className="day-note">
+          <InfoTip>Если утром в кассе уже были деньги - запишите их через «Положил в кассу», и расчёт сойдётся.</InfoTip>
+          Начальный остаток ещё не указан
+        </p>
+      )}
 
       {drawer && drawer.moves.length > 0 && (
         <ul className="cash-moves">
@@ -233,9 +238,12 @@ function CashCard({
 
       {canMove && (
         <div className="cash-move-actions">
-          {(["out", "in"] as const).map((direction) => (
+          {(["in", "out"] as const).map((direction) => (
             <details key={direction} className="cash-move">
-              <summary className="button">{direction === "out" ? "Забрал из кассы" : "Положил в кассу"}</summary>
+              <summary className="button">
+                <Icon name={direction === "out" ? "minus" : "plus"} />
+                {direction === "out" ? "Забрал из кассы" : "Положил в кассу"}
+              </summary>
               <form action={addCashMove} className="cash-move-form">
                 <input type="hidden" name="direction" value={direction} />
                 <input type="hidden" name="idempotency_key" value={moveKeys[direction]} />
@@ -260,12 +268,6 @@ function CashCard({
           ))}
         </div>
       )}
-      {canMove && drawer && !drawer.openingFrom && (
-        <p className="muted day-cash-hint">
-          Если утром в кассе уже были деньги - запишите их через «Положил в кассу», и расчёт сойдётся.
-        </p>
-      )}
-
       {closure ? (
         <div className="day-cash-status">
           <span className="label-with-tip">
@@ -291,8 +293,9 @@ function CashCard({
           </a>
         </div>
       ) : dayIsEmpty(summary) && !(drawer && (drawer.opening || drawer.moves.length)) ? (
-        <p className="muted day-cash-status">
-          {isToday ? "Записей пока нет - закрывать нечего." : "В этот день записей нет."}
+        <p className="day-note">
+          <InfoTip>Закрыть день можно, когда за него есть продажи, оплаты, приход или расходы.</InfoTip>
+          За этот день записей нет - закрывать нечего.
         </p>
       ) : (
         <form action={closeDay} className="day-close-form">
@@ -327,143 +330,133 @@ function CashCard({
   );
 }
 
-/** Три плитки: продал, получил, расходы — каждая цифра один раз. */
-function DayTiles({ summary, date }: { summary: DaySummary; date: string }) {
+/** «За день» (макет 29.10.2026): продано, получено, расходы — одной карточкой. */
+function DayStats({ summary, date }: { summary: DaySummary; date: string }) {
   const cur = summary.currency ?? "KGS";
   const net = dayNet(summary);
   const transfer = net.transferIn ?? summary.collected.transfer;
   const cashIn = net.transferIn == null ? round(summary.sold.cash + summary.collected.cash) : net.income;
   const expenses = summary.expenses;
+  // Другие валюты считаются отдельно — строкой под суммой, не складываются.
+  const foreign = (pick: (m: DayMoney) => number) =>
+    (summary.foreign ?? [])
+      .filter((m) => pick(m) > 0)
+      .map((m) => money(pick(m), m.currency))
+      .join(" · ");
+  const foreignSold = foreign((m) => m.sold.total);
+  const foreignCollected = foreign((m) => m.collected.total);
   return (
-    <div className="day-tiles">
-      <section className="panel day-tile">
-        <span className="label-with-tip">
-          Продал
-          <InfoTip>
-            Накладных за день: {summary.sold.count}. Из суммы - в долг {money(summary.sold.credit, cur)}, сразу
-            наличными {money(summary.sold.cash, cur)}.
-          </InfoTip>
-        </span>
+    <section className="panel day-stats">
+      <h2 className="label-with-tip day-card-title">
+        За день
+        <InfoTip>
+          Продано - накладных за день: {summary.sold.count}, в долг и сразу наличными. Получено - наличные продажи и
+          оплаты долгов от клиентов, наличными и переводом. Расходы -{" "}
+          {expenses && expenses.byCategory.length > 0
+            ? `${expenses.byCategory.map((c) => `${expenseCategoryLabel(c.category)} ${money(c.amount, cur)}`).join("; ")}.`
+            : "за день не было."}
+        </InfoTip>
+      </h2>
+      <div className="day-stat">
+        <span>Продано</span>
         <strong>{money(summary.sold.total, cur)}</strong>
-        <small className="muted">в долг {money(summary.sold.credit, cur)}</small>
-      </section>
-      <section className="panel day-tile">
-        <span className="label-with-tip">
-          Получил
-          <InfoTip>Деньги за день: наличные продажи и оплаты долгов от клиентов - наличными и переводом.</InfoTip>
-        </span>
+        <small className="day-stat-sub">
+          В долг: {money(summary.sold.credit, cur)}
+          {foreignSold && <> · и {foreignSold}</>}
+        </small>
+      </div>
+      <div className="day-stat">
+        <span>Получено</span>
         <strong>{money(round(cashIn + transfer), cur)}</strong>
-        <small className="muted">
-          нал. {money(cashIn, cur)} · перев. {money(transfer, cur)}
+        <small className="day-stat-sub">
+          Наличные: {quantity(cashIn)} · Переводы: {quantity(transfer)}
+          {foreignCollected && <> · и {foreignCollected}</>}
         </small>
-      </section>
-      <section className="panel day-tile">
-        <span className="label-with-tip">
-          Расходы
-          <InfoTip>
-            {expenses && expenses.byCategory.length > 0
-              ? `${expenses.byCategory.map((c) => `${expenseCategoryLabel(c.category)} - ${money(c.amount, cur)}`).join("; ")}.`
-              : "Расходов за день не было."}
-          </InfoTip>
-        </span>
+      </div>
+      <div className="day-stat">
+        <span>Расходы</span>
         <strong>{money(net.expenses, cur)}</strong>
-        <small>
-          <Link href={`/money/expenses?month=${date.slice(0, 7)}`}>все расходы →</Link>
+        <small className="day-stat-sub">
+          <Link href={`/money/expenses?month=${date.slice(0, 7)}`}>Все расходы →</Link>
         </small>
-      </section>
-    </div>
-  );
-}
-
-/** Долги клиентов и поставщиков — строками «было → стало». */
-function DebtLines({ summary }: { summary: DaySummary }) {
-  const cur = summary.currency ?? "KGS";
-  const adjust = summary.adjustments;
-  return (
-    <section className="panel day-debts">
-      <div className="day-line">
-        <span className="label-with-tip">
-          Долг клиентов
-          <InfoTip>Сколько вам должны все клиенты: утром → вечером.</InfoTip>
-        </span>
-        <FromTo from={summary.receivable.morning} to={summary.receivable.evening} cur={cur} />
       </div>
-      <div className="day-line">
-        <span className="label-with-tip">
-          Мой долг поставщикам
-          <InfoTip>
-            <SupplierTip m={summary} cur={cur} />
-          </InfoTip>
-        </span>
-        <FromTo from={summary.suppliers.morning} to={summary.suppliers.evening} cur={cur} />
-      </div>
-      {adjust && (adjust.discount > 0 || adjust.return > 0) && (
-        <div className="day-line">
-          <span className="label-with-tip">
-            Скидки и возвраты
-            <InfoTip>Скидки и возвраты клиентам уменьшают долг, но это не деньги - в кассу не входят.</InfoTip>
-          </span>
-          <strong>
-            {[
-              adjust.discount > 0 ? `скидки ${money(adjust.discount, cur)}` : "",
-              adjust.return > 0 ? `возвраты ${money(adjust.return, cur)}` : "",
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </strong>
-        </div>
-      )}
     </section>
   );
 }
 
-/** Другая валюта (доллары Хороза) — одной карточкой, только ненулевые строки. */
-function ForeignPart({ m }: { m: DayMoney & { currency: string } }) {
-  const cur = m.currency;
-  const sign = CURRENCY_SIGN[cur as Currency] ?? cur;
-  const hasClients = Boolean(m.receivable.morning || m.receivable.evening);
-  const hasSuppliers = Boolean(m.suppliers.morning || m.suppliers.evening || m.suppliers.purchased || m.suppliers.paid);
-  const hasLists = m.creditByCustomer.length > 0 || m.paidByCustomer.length > 0;
-  if (!m.sold.total && !m.collected.total && !hasClients && !hasSuppliers && !hasLists) return null;
+/** Долг на конец дня: «Долг 500 сом», переплата — «Аванс 850 сом», ноль — прочерк. */
+function DebtCell({ value, cur }: { value: number; cur: string }) {
+  if (!value) return <span className="muted">-</span>;
+  return <>{value < 0 ? `Аванс ${money(-value, cur)}` : `Долг ${money(value, cur)}`}</>;
+}
+
+/** «Долги и авансы» (макет 29.10.2026): по валютам, клиенты и поставщики на конец дня. */
+function DebtTable({ summary }: { summary: DaySummary }) {
+  const cur = summary.currency ?? "KGS";
+  const adjust = summary.adjustments;
+  const rows: { cur: string; m: DayMoney }[] = [
+    { cur, m: summary },
+    ...(summary.foreign ?? [])
+      .filter((m) => m.receivable.morning || m.receivable.evening || m.suppliers.morning || m.suppliers.evening)
+      .map((m) => ({ cur: m.currency, m })),
+  ];
   return (
-    <>
-      <section className="panel day-debts">
-        <h2 className="day-foreign-title label-with-tip">
-          В {sign}
-          <InfoTip>Записи в {sign} считаются отдельно и не складываются с основными суммами.</InfoTip>
-        </h2>
-        {m.sold.total > 0 && (
-          <div className="day-line">
-            <span>Продал</span>
-            <strong>{money(m.sold.total, cur)}</strong>
-          </div>
-        )}
-        {m.collected.total > 0 && (
-          <div className="day-line">
-            <span>Получил</span>
-            <strong>{money(m.collected.total, cur)}</strong>
-          </div>
-        )}
-        {hasClients && (
-          <div className="day-line">
-            <span>Долг клиентов</span>
-            <FromTo from={m.receivable.morning} to={m.receivable.evening} cur={cur} />
-          </div>
-        )}
-        {hasSuppliers && (
-          <div className="day-line">
-            <span className="label-with-tip">
-              Мой долг поставщикам
-              <InfoTip>
-                <SupplierTip m={m} cur={cur} />
-              </InfoTip>
-            </span>
-            <FromTo from={m.suppliers.morning} to={m.suppliers.evening} cur={cur} />
-          </div>
-        )}
-      </section>
-      <PartyLists m={m} cur={cur} />
-    </>
+    <section className="panel day-debts">
+      <h2 className="label-with-tip day-card-title">
+        Долги и авансы
+        <InfoTip>На конец дня, по валютам: суммы в разных валютах не складываются. Аванс - заплатили вперёд.</InfoTip>
+      </h2>
+      <div className="table-wrap">
+        <table className="day-debt-table">
+          <thead>
+            <tr>
+              <th>Валюта</th>
+              <th>
+                <span className="label-with-tip">
+                  Клиенты
+                  <InfoTip>
+                    Сколько вам должны все клиенты: утром {debtMoney(summary.receivable.morning, cur)}, вечером{" "}
+                    {debtMoney(summary.receivable.evening, cur)}.
+                  </InfoTip>
+                </span>
+              </th>
+              <th>
+                <span className="label-with-tip">
+                  Поставщики
+                  <InfoTip>
+                    <SupplierTip m={summary} cur={cur} />
+                  </InfoTip>
+                </span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.cur}>
+                <td className="day-debt-currency">{CURRENCY_SIGN[row.cur as Currency] ?? row.cur}</td>
+                <td>
+                  <DebtCell value={row.m.receivable.evening} cur={row.cur} />
+                </td>
+                <td>
+                  <DebtCell value={row.m.suppliers.evening} cur={row.cur} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {adjust && (adjust.discount > 0 || adjust.return > 0) && (
+        <p className="day-note">
+          <InfoTip>Скидки и возвраты клиентам уменьшают долг, но это не деньги - в кассу не входят.</InfoTip>
+          {[
+            adjust.discount > 0 ? `Скидки ${money(adjust.discount, cur)}` : "",
+            adjust.return > 0 ? `возвраты ${money(adjust.return, cur)}` : "",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -551,19 +544,25 @@ export default async function DayClose({
     <>
       <ReportTabs current="day" />
       <div className="page-heading day-heading">
-        <h1 className="label-with-tip">
-          Итог дня
-          <InfoTip>Вечерняя сверка: сколько продали, сколько денег пришло и сколько наличных должно быть в кассе.</InfoTip>
-        </h1>
+        <div>
+          <h1 className="label-with-tip">
+            Итог дня
+            <InfoTip>Вечерняя сверка: сколько продали, сколько денег пришло и сколько наличных должно быть в кассе.</InfoTip>
+          </h1>
+          <p className="muted day-date">{dateLabel}</p>
+        </div>
         <DayNav
           date={date}
           today={today}
           prev={shift(-1)}
           next={shift(1)}
-          extra={<DownloadMenu href={isToday ? "/day/export" : `/day/export?date=${date}`} pdfHref={pdfHref} />}
+          // «29 октября»; день прошлого года — с годом, чтобы не спутать.
+          dateText={date.slice(0, 4) === today.slice(0, 4) ? dayShort : `${dayShort} ${date.slice(0, 4)}`}
+          extra={
+            <DownloadMenu href={isToday ? "/day/export" : `/day/export?date=${date}`} pdfHref={pdfHref} label="Скачать" />
+          }
         />
       </div>
-      <p className="muted day-date">{dateLabel}</p>
       {closed && (
         <p className="notice success" role="status">
           День закрыт. Итоги сохранены - PDF можно скачать и отправить.
@@ -597,42 +596,46 @@ export default async function DayClose({
 
       {(attentionDays.length > 0 || pendingCount > 0) && (
         <div className="notice claims-notice unclosed-days day-attention" role="status">
-          {attentionDays.length > 0 && (
-            <p className="label-with-tip">
-              <span>
-                Не закрыты:{" "}
+          <span className="day-attention-icon" aria-hidden="true">
+            !
+          </span>
+          <div>
+            {attentionDays.length > 0 && (
+              <p>
+                <strong>Не закрыты {daysWord(attentionDays.length)}:</strong>{" "}
                 {attentionDays.map((day, i) => (
                   <span key={day}>
                     {i > 0 && ", "}
                     <Link href={`/day?date=${day}`}>{dayName(day)}</Link>
                   </span>
                 ))}
-              </span>
-              <InfoTip>Дни с записями, которые не закрыли. Откройте каждый, проверьте и закройте.</InfoTip>
-            </p>
-          )}
-          {pendingCount > 0 && (
-            <p>
-              <Link href="/claims">Заявок ждут подтверждения: {pendingCount} →</Link>
-            </p>
-          )}
+              </p>
+            )}
+            {pendingCount > 0 && (
+              <p>
+                <Link href="/claims">Заявок ждут подтверждения: {pendingCount} →</Link>
+              </p>
+            )}
+          </div>
         </div>
       )}
 
-      <CashCard
-        summary={summary}
-        date={date}
-        isToday={isToday}
-        closure={Boolean(closure)}
-        closedTime={closure ? time(closure.closedAt) : null}
-        afterCount={afterCount}
-        pdfHref={pdfHref}
-        moveKeys={{ out: randomUUID(), in: randomUUID() }}
-      />
-      <DayTiles summary={summary} date={date} />
-      <DebtLines summary={summary} />
+      <div className="day-top">
+        <CashCard
+          summary={summary}
+          date={date}
+          isToday={isToday}
+          closure={Boolean(closure)}
+          closedTime={closure ? time(closure.closedAt) : null}
+          afterCount={afterCount}
+          pdfHref={pdfHref}
+          moveKeys={{ out: randomUUID(), in: randomUUID() }}
+        />
+        <DayStats summary={summary} date={date} />
+      </div>
+      <DebtTable summary={summary} />
       <PartyLists m={summary} cur={summary.currency ?? "KGS"} />
-      {summary.foreign?.map((part) => <ForeignPart key={part.currency} m={part} />)}
+      {summary.foreign?.map((part) => <PartyLists key={part.currency} m={part} cur={part.currency} />)}
 
       {/* По продавцам — когда в магазине работают сотрудники. */}
       {summary.bySeller?.some((s) => s.role === "staff") && (
@@ -739,32 +742,39 @@ export default async function DayClose({
               <tr>
                 <th>День</th>
                 <th>Продано</th>
-                <th>Собрано</th>
+                <th>Получено</th>
                 <th>Товар от поставщика</th>
                 <th>Расходы</th>
-                <th>Закрыт</th>
+                <th>Закрытие</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={row.date} className={row.date === date ? "day-history-current" : ""}>
                   <td className="card-title">
-                    <Link href={row.date === today ? "/day" : `/day?date=${row.date}`}>
-                      {row.date === today
-                        ? "Сегодня"
-                        : new Intl.DateTimeFormat("ru-RU", {
-                            timeZone: "Asia/Bishkek",
-                            day: "numeric",
-                            month: "short",
-                            weekday: "short",
-                          }).format(new Date(`${row.date}T12:00:00+06:00`))}
-                    </Link>
+                    <Link href={row.date === today ? "/day" : `/day?date=${row.date}`}>{dayName(row.date)}</Link>
                   </td>
                   <td data-label="Продано">{money(row.sold, shopCurrency)}</td>
-                  <td data-label="Собрано">{money(row.collected, shopCurrency)}</td>
+                  <td data-label="Получено">{money(row.collected, shopCurrency)}</td>
                   <td data-label="Товар от поставщика">{money(row.purchased, shopCurrency)}</td>
                   <td data-label="Расходы">{money(row.expenses, shopCurrency)}</td>
-                  <td data-label="Закрыт">{snapshots.has(row.date) ? "✓" : <span className="muted">-</span>}</td>
+                  <td data-label="Закрытие">
+                    {snapshots.has(row.date) ? (
+                      <span className="day-status-closed">✓ Закрыт</span>
+                    ) : row.sold ||
+                      row.collected ||
+                      row.purchased ||
+                      row.expenses ||
+                      unclosed.includes(row.date) ||
+                      // Открытый день — как у «Закрыть день»: оплаты поставщикам и $ / ₽ тоже записи.
+                      (row.date === date && !dayIsEmpty(summary)) ? (
+                      <span className={row.date === today ? undefined : "day-status-open"}>Не закрыт</span>
+                    ) : row.date === today ? (
+                      "Нет записей"
+                    ) : (
+                      <span className="muted">-</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

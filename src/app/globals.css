@@ -6715,13 +6715,13 @@ tr.row-link:has(a[data-pending]) {
 /* Итог дня: касса главной карточкой, три плитки, долги строками. */
 .day-heading {
   flex-wrap: wrap;
-  margin-bottom: 4px;
+  margin-bottom: 18px;
 }
 .day-heading h1 {
   margin-bottom: 0;
 }
-.day-date {
-  margin: 0 0 18px;
+.day-heading .day-date {
+  margin: 4px 0 0;
   font-size: 15px;
 }
 .day-nav {
@@ -6750,17 +6750,110 @@ tr.row-link:has(a[data-pending]) {
 .day-nav-arrow.disabled {
   opacity: 0.35;
 }
+/* «(!) Не закрыты 4 дня: 28 октября, …» — значок слева, дни ссылками. */
+.day-attention {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 18px;
+}
+.day-attention-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--warning-strong);
+  color: white;
+  font-size: 14px;
+  font-weight: 700;
+}
+.day-attention strong {
+  color: var(--ink);
+}
+.day-attention a {
+  font-weight: 400;
+}
 .day-attention p {
   margin: 0;
 }
 .day-attention p + p {
   margin-top: 8px;
 }
+/* Итог дня (макет 29.10.2026): касса и «За день» рядом, ниже долги таблицей. */
+.day-top {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 16px;
+}
+@media (max-width: 900px) {
+  .day-top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.day-card-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+}
 .day-cash {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  margin-bottom: 16px;
+}
+/* Строка-пояснение со значком: «Начальный остаток ещё не указан». */
+.day-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.day-note .info-tip-button {
+  width: 20px;
+  height: 20px;
+}
+/* Расчёт кассы: на компьютере строки видны, на телефоне — за «Расчёт кассы ▼». */
+.day-cash-calc-summary {
+  display: none;
+}
+@media (max-width: 560px) {
+  .day-cash-calc .day-cash-lines {
+    display: none;
+  }
+  .day-cash-calc-toggle:checked ~ .day-cash-lines {
+    display: flex;
+  }
+  .day-cash-calc-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-soft);
+    color: var(--ink);
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .day-cash-calc-summary::after {
+    content: "▼";
+    font-size: 11px;
+  }
+  .day-cash-calc-toggle:checked + .day-cash-calc-summary::after {
+    content: "▲";
+  }
+  .day-cash-calc-toggle:focus-visible + .day-cash-calc-summary {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
 }
 .day-cash-closed {
   background: #f4f9ef;
@@ -6768,19 +6861,15 @@ tr.row-link:has(a[data-pending]) {
 }
 .day-cash-head {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px 16px;
-  font-size: 16px;
-  font-weight: 600;
+  flex-direction: column;
+  gap: 6px;
 }
 .day-cash-sum {
-  font-size: 30px;
+  font-size: 32px;
+  line-height: 1.15;
   color: var(--green);
   white-space: nowrap;
 }
-.day-cash-from > summary,
 .day-fold > summary {
   cursor: pointer;
   color: var(--muted);
@@ -6790,9 +6879,6 @@ tr.row-link:has(a[data-pending]) {
 .day-fold > summary {
   color: var(--ink);
   font-size: 16px;
-}
-.day-cash-from[open] > summary {
-  margin-bottom: 6px;
 }
 .day-cash-status {
   display: flex;
@@ -6844,17 +6930,90 @@ tr.row-link:has(a[data-pending]) {
 .day-tile small {
   font-size: 13px;
 }
+/* «За день»: подпись, сумма зелёным, пояснение; на телефоне пояснение справа. */
+.day-stat {
+  display: grid;
+  gap: 2px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.day-stat:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.day-stat > span {
+  color: var(--ink-soft);
+  font-size: 15px;
+}
+.day-stat > strong {
+  color: var(--green);
+  font-size: 22px;
+  white-space: nowrap;
+}
+.day-stat-sub {
+  color: var(--muted);
+  font-size: 14px;
+}
+.day-stat-sub a {
+  color: var(--green);
+  font-weight: 600;
+  text-decoration: underline;
+}
+@media (max-width: 560px) {
+  .day-stat {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    column-gap: 12px;
+    padding: 10px 0;
+  }
+  .day-stat > span,
+  .day-stat > strong {
+    grid-column: 1;
+  }
+  .day-stat > strong {
+    font-size: 20px;
+  }
+  .day-stat-sub {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    align-self: end;
+    padding-bottom: 4px;
+    font-size: 13px;
+  }
+}
+/* «Долги и авансы»: валюта | клиенты | поставщики. */
 .day-debts {
-  padding-top: 8px;
-  padding-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   margin-bottom: 16px;
 }
-.day-debts .day-foreign-title {
-  padding: 10px 0 4px;
+.day-debt-table td {
+  padding: 11px 13px;
 }
-.day-debt-from {
-  font-weight: 500;
-  font-size: 15px;
+.day-debt-table tr:last-child td {
+  border-bottom: 0;
+}
+.day-debt-table .day-debt-currency {
+  width: 90px;
+  font-weight: 700;
+}
+@media (max-width: 560px) {
+  .day-debt-table th,
+  .day-debt-table td {
+    padding: 9px 6px;
+    font-size: 13px;
+  }
+  .day-debt-table .day-debt-currency {
+    width: 44px;
+  }
+}
+/* История: «Закрытие» словами. */
+.day-status-open {
+  color: var(--warning-ink);
+  font-weight: 600;
+}
+.day-status-closed {
+  color: var(--success-ink);
 }
 .day-lists {
   display: grid;
@@ -9121,9 +9280,41 @@ td.record-sum {
 .cash-move-form label {
   margin: 0;
 }
-.day-cash-hint {
-  margin: 8px 0 0;
-  font-size: 13px;
+.cash-move summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.cash-move summary svg {
+  width: 18px;
+  height: 18px;
+  color: var(--green);
+}
+/* На компьютере кнопки обычной ширины; открытая — во всю строку под формой. */
+@media (min-width: 900px) {
+  .cash-move {
+    flex: 0 1 220px;
+  }
+  .cash-move[open] {
+    flex-basis: 100%;
+  }
+}
+/* Телефон: «Положил» и «Забрал» рядом, открытая — во всю ширину. */
+@media (max-width: 560px) {
+  .cash-move {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .cash-move[open] {
+    flex-basis: 100%;
+  }
+  .cash-move summary {
+    gap: 6px;
+    padding-left: 8px;
+    padding-right: 8px;
+    font-size: 14px;
+  }
 }
 
 /* Частые товары над таблицей: подпись сверху, кнопки с «+», длинное название —
@@ -9520,6 +9711,27 @@ form label.consent {
 .download-menu .download-toggle svg {
   width: 20px;
   height: 20px;
+}
+/* «⬇ Скачать» в итоге дня; на телефоне — только иконка. */
+.download-menu .download-toggle.with-label {
+  width: auto;
+  gap: 8px;
+  padding: 0 16px;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+.download-menu .download-toggle.with-label svg {
+  color: var(--green);
+}
+@media (max-width: 560px) {
+  .download-menu .download-toggle.with-label {
+    width: 44px;
+    padding: 0;
+  }
+  .download-toggle .download-label {
+    display: none;
+  }
 }
 .download-menu .more-menu-list {
   left: auto;

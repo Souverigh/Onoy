@@ -49,6 +49,7 @@ export function DatePicker({
   min: minProp,
   max: maxProp,
   clearable = false,
+  text,
 }: {
   label?: string;
   value: string;
@@ -61,10 +62,12 @@ export function DatePicker({
   max?: string;
   /** Обычное поле: можно снова сделать «не выбрано». */
   clearable?: boolean;
+  /** Своя надпись на кнопке вместо даты («29 октября» в итоге дня). */
+  text?: string;
 }) {
   // Режим записи: пусто — сегодня. Обычное поле: пусто — не выбрано.
   const plain = emptyLabel !== undefined;
-  const shownText = value ? ruDate(value) : plain ? emptyLabel : "Сегодня";
+  const shownText = text ?? (value ? ruDate(value) : plain ? emptyLabel : "Сегодня");
   const [open, setOpen] = useState(false);
   // Сегодня считаем в браузере при открытии — без расхождения с сервером при отрисовке.
   const [today, setToday] = useState("");
@@ -161,7 +164,7 @@ export function DatePicker({
             onClick={toggle}
           >
             <Icon name="calendar" />
-            <strong className={!value && plain ? "date-picker-empty" : undefined}>{shownText}</strong>
+            <strong className={!value && plain && !text ? "date-picker-empty" : undefined}>{shownText}</strong>
             {/* Запись не за сегодня — видно сразу, чтобы не ошибиться днём. */}
             {value && !plain && <span className="date-picker-note">не сегодня</span>}
           </button>

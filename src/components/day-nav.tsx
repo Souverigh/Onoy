@@ -13,12 +13,15 @@ export function DayNav({
   prev,
   next,
   extra,
+  dateText,
 }: {
   date: string;
   today: string;
   prev: string;
   next: string;
   extra?: React.ReactNode;
+  /** Надпись на кнопке вместо «Сегодня» / «20.10.2026» — «29 октября». */
+  dateText?: string;
 }) {
   const router = useRouter();
   return (
@@ -32,6 +35,7 @@ export function DayNav({
         // Сегодня — словом «Сегодня», другой день — датой «20.10.2026».
         value={date === today ? "" : date}
         emptyLabel="Сегодня"
+        text={dateText}
         maxDaysBack={3650}
         onChange={(day) => router.push(day ? dayHref(day, today) : "/day")}
       />
