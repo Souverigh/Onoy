@@ -9645,6 +9645,15 @@ form label.consent {
   font-size: 16px;
   font-weight: 700;
 }
+/* «По чеку похоже, это:» — под полем клиента, слева, а не посередине над формой. */
+.payment-operation-form > .receipt-suggestions {
+  max-width: none;
+  margin: -6px 0 18px;
+}
+.receipt-suggestions .party-suggestion {
+  padding: 8px 12px;
+  font-size: 14px;
+}
 /* Подписи полей оплаты — одинаковые: «Поставщик», «Сумма оплаты», «Чек»… */
 .payment-operation-form .party-picker-label,
 .payment-operation-form > .amount-head,
@@ -9682,6 +9691,9 @@ form label.consent {
     margin-bottom: 18px;
   }
   .payment-operation-form > .amount-field {
+    grid-column: 2;
+  }
+  .payment-operation-form > .receipt-suggestions {
     grid-column: 2;
   }
   /* Строки «подпись | поле». */

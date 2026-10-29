@@ -1376,24 +1376,6 @@ export function OperationForm({
             </label>
           </fieldset>
         )}
-        {receiptSuggestions.length > 0 && (
-          <div className="party-suggestions">
-            <span className="muted">По чеку похоже, это:</span>
-            <div className="party-suggestions-list">
-              {receiptSuggestions.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className={`party-suggestion${selectedParty === s.id ? " active" : ""}`}
-                  onClick={() => setSelectedParty(s.id)}
-                >
-                  {s.name}
-                  {s.balance != null ? ` · ${money(s.balance, partyCurrency(s, shopCurrency))}` : ""}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
         {/* Клиент или поставщик — первым полем, как в продаже и приходе. */}
         {kind === "payment" && (
           // Дата и время оплаты — кнопкой справа вверху (макет 29.10.2026); нажали — поле.
@@ -1420,6 +1402,26 @@ export function OperationForm({
           </details>
         )}
         {kind === "payment" && <div className="party-date">{partySection}</div>}
+        {/* Кто это по чеку — прямо под полем клиента (поставщика), в его колонке.
+            Уже выбран самый похожий — подсказка не нужна. */}
+        {receiptSuggestions.length > 0 && selectedParty !== receiptSuggestions[0].id && (
+          <div className="party-suggestions receipt-suggestions">
+            <span className="muted">По чеку похоже, это:</span>
+            <div className="party-suggestions-list">
+              {receiptSuggestions.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`party-suggestion${selectedParty === s.id ? " active" : ""}`}
+                  onClick={() => setSelectedParty(s.id)}
+                >
+                  {s.name}
+                  {s.balance != null ? ` · ${money(s.balance, partyCurrency(s, shopCurrency))}` : ""}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {invoiceName && (
           <div className="party-suggestions">
             <span className="muted">
