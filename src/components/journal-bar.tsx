@@ -28,6 +28,7 @@ export function JournalBar({
   partyLabel,
   people,
   exportHref,
+  periodLabel,
 }: {
   base: string;
   filters: JournalFilters;
@@ -37,6 +38,8 @@ export function JournalBar({
   /** Кто внёс — только у владельца, когда в магазине больше одного человека. */
   people: { id: string; label: string }[];
   exportHref: string | null;
+  /** «Октябрь 2026» вместо «Месяц» (periodButtonLabel). */
+  periodLabel?: string | null;
 }) {
   const router = useRouter();
   const [q, setQ] = useState(filters.q);
@@ -70,14 +73,15 @@ export function JournalBar({
   const periodText =
     filters.period === "custom"
       ? `${filters.from ? ruDate(filters.from) : "…"} – ${filters.to ? ruDate(filters.to) : "…"}`
-      : PERIOD_LABELS[filters.period];
-  const statusLabel = statuses.find((s) => s.value === filters.status)?.label;
+      : (periodLabel ?? PERIOD_LABELS[filters.period]);
+  // «Отменённые» — вкладка над строкой (records-page), не отбор: ни метки, ни счёта.
+  const statusLabel = statuses.find((s) => s.value === filters.status && s.value !== "all")?.label;
   const personLabel = people.find((p) => p.id === filters.by)?.label;
-  const activeCount = (filters.status !== "all" ? 1 : 0) + (filters.by ? 1 : 0) + (filters.sort !== "date_desc" ? 1 : 0);
+  const activeCount = (statusLabel ? 1 : 0) + (filters.by ? 1 : 0) + (filters.sort !== "date_desc" ? 1 : 0);
   type Chip = { key: string; text: string; patch: Partial<JournalFilters> };
   const chips = ([
     filters.q ? { key: "q", text: `«${filters.q}»`, patch: { q: "" } } : null,
-    filters.status !== "all" ? { key: "status", text: statusLabel ?? "", patch: { status: "all" as const } } : null,
+    statusLabel ? { key: "status", text: statusLabel, patch: { status: "all" as const } } : null,
     filters.by ? { key: "by", text: `Внёс: ${personLabel ?? "…"}`, patch: { by: "" } } : null,
     filters.sort !== "date_desc" ? { key: "sort", text: SORT_LABELS[filters.sort], patch: { sort: "date_desc" as const } } : null,
   ] as (Chip | null)[]).filter((c): c is Chip => Boolean(c));
@@ -178,20 +182,24 @@ export function JournalBar({
           </button>
           {open === "filters" && (
             <div className="journal-panel journal-panel-right" role="dialog" aria-label="Фильтры">
-              <p className="journal-panel-title">Показать</p>
-              <div className="journal-segments">
-                {statuses.map((s) => (
-                  <button
-                    key={s.value}
-                    type="button"
-                    className={filters.status === s.value ? "selected" : ""}
-                    aria-pressed={filters.status === s.value}
-                    onClick={() => go({ status: s.value })}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
+              {statuses.length > 0 && (
+                <>
+                  <p className="journal-panel-title">Показать</p>
+                  <div className="journal-segments">
+                    {statuses.map((s) => (
+                      <button
+                        key={s.value}
+                        type="button"
+                        className={filters.status === s.value ? "selected" : ""}
+                        aria-pressed={filters.status === s.value}
+                        onClick={() => go({ status: s.value })}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
               {people.length > 0 && (
                 <>
                   <p className="journal-panel-title">Кто внёс</p>
@@ -230,8 +238,8 @@ export function JournalBar({
 
         {exportHref && (
           <a className="journal-drop-button journal-export" href={exportHref} download title="Скачать в Excel">
-            <span aria-hidden="true">⤓</span>
-            <span>Excel</span>
+            <Icon name="download" />
+            <span className="journal-export-label">Excel</span>
           </a>
         )}
       </div>
@@ -244,7 +252,7 @@ export function JournalBar({
             </button>
           ))}
           {chips.length > 1 && (
-            <Link className="text-button" href={journalHref(base, filters, { q: "", status: "all", by: "", sort: "date_desc" })}>
+            <Link className="text-button" href={journalHref(base, filters, { q: "", status: filters.status === "reversed" ? "reversed" : "all", by: "", sort: "date_desc" })}>
               Сбросить всё
             </Link>
           )}

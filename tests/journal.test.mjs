@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { journalHref, parseJournal, periodBounds, periodDays, periodText } from "../src/lib/journal-filters.ts";
+import { journalHref, parseJournal, periodBounds, periodButtonLabel, periodDays, periodText } from "../src/lib/journal-filters.ts";
+
+test("periodButtonLabel: this and last month by name, January rolls back a year; other periods keep their label", () => {
+  assert.equal(periodButtonLabel({ period: "month" }, "2026-10-28"), "Октябрь 2026");
+  assert.equal(periodButtonLabel({ period: "prev_month" }, "2026-01-15"), "Декабрь 2025");
+  assert.equal(periodButtonLabel({ period: "week" }, "2026-10-28"), null);
+});
 
 test("parseJournal: defaults to this month, newest first; garbage and foreign author ignored", () => {
   assert.deepEqual(parseJournal({}), {

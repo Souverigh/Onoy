@@ -24,14 +24,16 @@ export type JournalData = {
   rows: JournalRow[];
   hasMore: boolean;
   totals: JournalTotal[];
-  /** Действующих записей и отменённых — по всем отобранным, не только на странице. */
+  /** Действующих записей и отменённых — по всем отобранным, не только на странице;
+   *  без отбора «отменённые / действующие» — числа на вкладках видны с любой из них. */
   count: number;
   reversedCount: number;
   /** Итог посчитан не по всем записям (их больше лимита) — показываем «не меньше». */
   partial: boolean;
 };
 
-export const JOURNAL_PAGE = 50;
+// Продаж и прихода на странице (просьба пользователя 28.10.2026: последние 15, дальше — «Дальше →»).
+export const JOURNAL_PAGE = 15;
 const TOTALS_LIMIT = 10000;
 
 // «Кто внёс» — чья запись (maker_id): исправление владельцем остаётся за продавцом.
@@ -76,7 +78,7 @@ export async function journalData(
   }
   const { gte, lt } = periodBounds(periodDays(f, today));
 
-  const filtered = (select: string) => {
+  const filtered = (select: string, byStatus = true) => {
     let q = db
       .from(table)
       .select(select)
@@ -87,6 +89,7 @@ export async function journalData(
     if (lt) q = q.lt("occurred_at", lt);
     if (partyIds) q = q.in(partyColumn, partyIds);
     if (f.by) q = q.eq("maker_id", f.by);
+    if (!byStatus) return q;
     if (f.status === "reversed") q = q.not("reversed_at", "is", null);
     else if (f.status === "active") q = q.is("reversed_at", null);
     else if (f.status === "debt" && sale) q = q.is("reversed_at", null).eq("paid_immediately", false);
@@ -100,7 +103,7 @@ export async function journalData(
   const to = page === "all" ? TOTALS_LIMIT - 1 : from + JOURNAL_PAGE; // +1 строка — есть ли следующая страница
   const [rowsResult, totalsResult] = await Promise.all([
     filtered(SELECT[kind]).order(sortColumn, { ascending }).order("id").range(from, to),
-    page === "all" ? Promise.resolve({ data: null, error: null }) : filtered(TOTALS_SELECT[kind]).range(0, TOTALS_LIMIT - 1),
+    page === "all" ? Promise.resolve({ data: null, error: null }) : filtered(TOTALS_SELECT[kind], false).range(0, TOTALS_LIMIT - 1),
   ]);
   if (rowsResult.error) throw new Error(sale ? "Не удалось загрузить продажи" : "Не удалось загрузить приход");
   const all = (rowsResult.data ?? []) as unknown as JournalRow[];
@@ -120,6 +123,9 @@ export async function journalData(
       reversedCount += 1;
       continue;
     }
+    // «В долг» / «Наличными» — итог только по ним; отменённые посчитаны выше все.
+    if (sale && f.status === "debt" && r.paid_immediately) continue;
+    if (sale && f.status === "cash" && !r.paid_immediately) continue;
     count += 1;
     const currency = r.party?.currency ?? null;
     const t = byCurrency.get(currency) ?? { currency, sum: 0, debt: 0, cash: 0, count: 0 };

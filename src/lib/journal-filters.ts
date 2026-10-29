@@ -122,6 +122,14 @@ export function journalHref(base: string, f: JournalFilters, patch: Partial<Jour
   return text ? `${base}?${text}` : base;
 }
 
+/** Кнопка периода: «Октябрь 2026» вместо «Месяц» и «Прошлый месяц»; остальное — как в списке. */
+export function periodButtonLabel(f: Pick<JournalFilters, "period">, today: string): string | null {
+  if (f.period !== "month" && f.period !== "prev_month") return null;
+  const day = f.period === "month" ? today : addDays(`${today.slice(0, 7)}-01`, -1);
+  const month = new Intl.DateTimeFormat("ru-RU", { month: "long", timeZone: "UTC" }).format(new Date(toMs(day)));
+  return `${month.charAt(0).toUpperCase()}${month.slice(1)} ${day.slice(0, 4)}`;
+}
+
 /** «1–17 октября 2026» — подпись периода над итогами. */
 export function periodText(days: { from: string | null; to: string | null }): string {
   if (!days.from && !days.to) return "за всё время";
