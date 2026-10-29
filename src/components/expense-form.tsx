@@ -34,9 +34,10 @@ const dayText = (d: string) =>
   new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long" }).format(new Date(`${d}T12:00:00+06:00`));
 
 /**
- * Расход (вид — по макету 29.10.2026): день кнопкой справа вверху, «Заполнить
- * по чеку», сумма, «На что потратили?» списком, комментарий свёрнут, внизу —
- * итог и «Записать расход». Фото по желанию. Фото сразу распознаётся — пустые поля заполняются с
+ * Расход (вид — по макету 29.10.2026, сжат 28.10.2026): чек и день кнопкой в
+ * одну строку, под ними что вышло с чека, сумма, «На что потратили?» списком,
+ * комментарий свёрнут, внизу — итог и «Записать расход». На компьютере подписи
+ * слева, поля справа (как у оплаты). Фото по желанию. Фото сразу распознаётся — пустые поля заполняются с
  * чека. Отправка без перезагрузки — при ошибке всё введённое остаётся (как
  * в форме продажи, ТЗ §15.5).
  */
@@ -202,110 +203,120 @@ export function ExpenseForm({
   return (
     <form onSubmit={submit} className="simple-operation-form expense-form">
       <input type="hidden" name="idempotency_key" value={idempotencyKeyPinned} />
-      {/* День расхода — кнопкой справа вверху, как дата у оплаты; нажали — поле. */}
-      <details className="more-menu pay-date" open={localError === "date" || undefined}>
-        <summary className="pay-date-chip">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M4 6h16v15H4V6Zm0 5h16M8 3v5m8-5v5" />
-          </svg>
-          <span>{!dateValue || dateValue === today ? "Сегодня" : dayText(dateValue)}</span>
-          <span aria-hidden="true">▾</span>
-        </summary>
-        <div className="more-menu-list pay-date-panel">
-          <RuDateInput
-            label="Дата"
-            value={dateSeed}
-            onChange={(next) => {
-              dateTouched.current = true;
-              setDateValue(next);
-              if (localError === "date") setLocalError(null);
-            }}
-          />
+      {/* Верх: чек слева, день кнопкой справа; на телефоне без чека полоса
+          «Заполнить по чеку» уходит под день (row-reverse + перенос). */}
+      <div className="expense-head">
+        <details className="more-menu pay-date" open={localError === "date" || undefined}>
+          <summary className="pay-date-chip">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 6h16v15H4V6Zm0 5h16M8 3v5m8-5v5" />
+            </svg>
+            <span>{!dateValue || dateValue === today ? "Сегодня" : dayText(dateValue)}</span>
+            <span aria-hidden="true">▾</span>
+          </summary>
+          <div className="more-menu-list pay-date-panel">
+            <RuDateInput
+              label="Дата"
+              value={dateSeed}
+              onChange={(next) => {
+                dateTouched.current = true;
+                setDateValue(next);
+                if (localError === "date") setLocalError(null);
+              }}
+            />
+          </div>
+        </details>
+        <div className="photo-field expense-photo">
+          <span className="expense-label">Чек</span>
+          {pages.length === 0 ? (
+            // Одна кнопка-полоса: телефон сам предложит камеру, галерею или файлы.
+            <label className="expense-scan">
+              <span className="expense-scan-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 7h4l2-3h6l2 3h4v14H3V7Zm9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" />
+                </svg>
+              </span>
+              <span className="expense-scan-text">
+                <b>Заполнить по чеку</b>
+                <small>Необязательно · Сумма, дата и категория заполнятся автоматически</small>
+              </span>
+              <input type="file" accept={DOCUMENT_ACCEPT} multiple className="sr-only" onChange={addPages} />
+            </label>
+          ) : (
+            // Чек — маленькие миниатюры, рядом имя файла и «+ Добавить фото».
+            <div className="expense-file">
+              <ol className="page-thumbs">
+                {pages.map((file, i) => (
+                  <li key={`${i}-${file.name}-${file.lastModified}`} className="page-thumb">
+                    {isPdf(file) ? (
+                      <span className="page-thumb-pdf" title={file.name}>
+                        PDF
+                      </span>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      previews[i] && <img src={previews[i]} alt={`Фото ${i + 1}`} />
+                    )}
+                    {pages.length > 1 && <span className="page-thumb-n">{i + 1}</span>}
+                    <button
+                      type="button"
+                      className="page-thumb-remove"
+                      aria-label={`Убрать фото ${i + 1}`}
+                      onClick={() => void changePages(pages.filter((_, j) => j !== i))}
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ol>
+              <span className="expense-file-text">
+                <b>Чек</b>
+                <span className="muted">{pages.length === 1 ? pages[0].name : `файлов: ${pages.length}`}</span>
+                {pages.length < MAX_PAGES && (
+                  <label className="text-button expense-photo-more">
+                    + Добавить фото
+                    <input type="file" accept={DOCUMENT_ACCEPT} multiple className="sr-only" onChange={addPages} />
+                  </label>
+                )}
+              </span>
+            </div>
+          )}
         </div>
-      </details>
-      <div className="photo-field expense-photo">
-        {pages.length === 0 ? (
-          // Одна кнопка-полоса: телефон сам предложит камеру, галерею или файлы.
-          <label className="expense-scan">
-            <span className="expense-scan-icon" aria-hidden="true">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 7h4l2-3h6l2 3h4v14H3V7Zm9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" />
-              </svg>
-            </span>
-            <span className="expense-scan-text">
-              <b>Заполнить по чеку</b>
-              <small>Необязательно · Сумма, дата и категория заполнятся автоматически</small>
-            </span>
-            <input type="file" accept={DOCUMENT_ACCEPT} multiple className="sr-only" onChange={addPages} />
-          </label>
-        ) : (
-          <>
-            <span className="invoice-dropzone-title">
-              Чек<span className="muted"> · файлов: {pages.length}</span>
-            </span>
-            <ol className="page-thumbs">
-              {pages.map((file, i) => (
-                <li key={`${i}-${file.name}-${file.lastModified}`} className="page-thumb">
-                  {isPdf(file) ? (
-                    <span className="page-thumb-pdf" title={file.name}>
-                      PDF
-                      <small>{file.name}</small>
-                    </span>
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    previews[i] && <img src={previews[i]} alt={`Фото ${i + 1}`} />
-                  )}
-                  <span className="page-thumb-n">{i + 1}</span>
-                  <button
-                    type="button"
-                    className="page-thumb-remove"
-                    aria-label={`Убрать фото ${i + 1}`}
-                    onClick={() => void changePages(pages.filter((_, j) => j !== i))}
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ol>
-            {pages.length < MAX_PAGES && (
-              <label className="text-button expense-photo-more">
-                + Добавить ещё фото
-                <input type="file" accept={DOCUMENT_ACCEPT} multiple className="sr-only" onChange={addPages} />
-              </label>
-            )}
-          </>
-        )}
-        {checking && <p className="muted">Читаем чек…</p>}
-        {!checking && recognized && (
-          <p className="notice success" role="status">
-            С чека: {paperAmount !== null ? money(paperAmount, recognized.currency ?? "KGS") : "сумму не нашли"}
-            {check?.ok && check.date ? ` · ${dayText(check.date)}` : ""}
-            {recognized.vendor ? ` · ${recognized.vendor}` : ""}. Проверьте поля ниже.
-          </p>
-        )}
-        {!checking && check?.ok && check.result.document_class === "not_document" && (
-          <p className="notice">На фото не видно чека - заполните поля вручную.</p>
-        )}
-        {!checking && check && !check.ok && check.error === "recognition_failed" && (
-          <p className="notice">Чек прочитать не удалось - заполните поля вручную, фото сохранится.</p>
-        )}
-        {!checking && check && !check.ok && check.error === "photo_used" && (
-          <p className="form-error">{ERRORS.photo_used}</p>
-        )}
-        {!checking && check && !check.ok && check.error === "upload_failed" && (
-          <p className="form-error">{ERRORS.photo_upload}</p>
-        )}
-        {check?.duplicate && (
-          <p className="notice">Это фото уже приложено к другой записи - проверьте, не задвоилось ли.</p>
-        )}
-        {recognized && recognized.currency && recognized.currency !== currency && paperAmount !== null && (
-          <p className="notice">
-            Чек в {CURRENCY_SIGN[recognized.currency]} - введите сумму в {CURRENCY_SIGN[currency as Currency] ?? currency}.
-          </p>
-        )}
       </div>
+      {/* Что вышло с чека — сразу под ним, сообщения вплотную друг к другу. */}
+      {(checking || check || recognized) && (
+        <div className="expense-msgs">
+          {checking && <p className="muted">Читаем чек…</p>}
+          {!checking && recognized && (
+            <p className="notice success" role="status">
+              С чека: {paperAmount !== null ? money(paperAmount, recognized.currency ?? "KGS") : "сумму не нашли"}
+              {check?.ok && check.date ? ` · ${dayText(check.date)}` : ""}
+              {recognized.vendor ? ` · ${recognized.vendor}` : ""}. Проверьте поля ниже.
+            </p>
+          )}
+          {!checking && check?.ok && check.result.document_class === "not_document" && (
+            <p className="notice">На фото не видно чека - заполните поля вручную.</p>
+          )}
+          {!checking && check && !check.ok && check.error === "recognition_failed" && (
+            <p className="notice">Чек прочитать не удалось - заполните поля вручную, фото сохранится.</p>
+          )}
+          {!checking && check && !check.ok && check.error === "photo_used" && (
+            <p className="form-error">{ERRORS.photo_used}</p>
+          )}
+          {!checking && check && !check.ok && check.error === "upload_failed" && (
+            <p className="form-error">{ERRORS.photo_upload}</p>
+          )}
+          {check?.duplicate && (
+            <p className="notice">Это фото уже приложено к другой записи - проверьте, не задвоилось ли.</p>
+          )}
+          {recognized && recognized.currency && recognized.currency !== currency && paperAmount !== null && (
+            <p className="notice">
+              Чек в {CURRENCY_SIGN[recognized.currency]} - введите сумму в {CURRENCY_SIGN[currency as Currency] ?? currency}.
+            </p>
+          )}
+        </div>
+      )}
       <label className="amount-field">
-        Сумма расхода, {CURRENCY_SIGN[currency as Currency] ?? currency}
+        <span>Сумма расхода, {CURRENCY_SIGN[currency as Currency] ?? currency}</span>
         <input
           name="amount"
           inputMode="decimal"
@@ -318,7 +329,7 @@ export function ExpenseForm({
         />
       </label>
       {amountDiffers && paperAmount !== null && (
-        <p className="notice">
+        <p className="notice expense-amount-tip">
           На чеке {money(paperAmount, currency)}.{" "}
           <button type="button" className="text-button" onClick={() => setAmount(amountText(paperAmount))}>
             Подставить
@@ -326,7 +337,7 @@ export function ExpenseForm({
         </p>
       )}
       <label className="expense-category">
-        На что потратили?
+        <span>На что потратили?</span>
         <select
           name="category"
           required
