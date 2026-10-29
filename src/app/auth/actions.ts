@@ -34,7 +34,7 @@ export async function login(form: FormData) {
     redirect(failed);
   const db = await createClient();
   const { error } = await db.auth.signInWithPassword({ email, password });
-  // Зарегистрировался, но не подтвердил email — к вводу кода из письма.
+  // Зарегистрировался, но не подтвердил email — к странице «откройте ссылку из письма».
   if (error?.code === "email_not_confirmed" && next === "/") {
     await rememberSignupEmail(email);
     redirect("/signup/verify?state=unconfirmed");
@@ -59,7 +59,7 @@ function consentRecord() {
   return { terms_version: LEGAL.version, terms_accepted_at: new Date().toISOString() };
 }
 
-/** Email, на который ждём код: страница кода берёт его отсюда, а не из адреса. */
+/** Email, на который ушло письмо: страница /signup/verify берёт его отсюда, а не из адреса. */
 async function rememberSignupEmail(email: string) {
   (await cookies()).set(SIGNUP_EMAIL_COOKIE, email, {
     httpOnly: true,
@@ -70,8 +70,8 @@ async function rememberSignupEmail(email: string) {
 }
 
 /**
- * Регистрация владельца: email и пароль → письмо с кодом и ссылкой
- * (/signup/verify) → магазин на /onboarding. Кода доступа больше нет: новый
+ * Регистрация владельца: email и пароль → письмо со ссылкой
+ * (/signup/verify ждёт, пока её откроют) → магазин на /onboarding. Кода доступа больше нет: новый
  * магазин получает бесплатный месяц (миграция open_signup).
  */
 export async function signUp(form: FormData) {
@@ -156,26 +156,7 @@ export async function signInWithGoogleIdToken(token: string, nonce: string, busi
   redirect("/");
 }
 
-/** Код из письма регистрации — то же, что ссылка, но без перехода из почты. */
-export async function verifySignup(form: FormData) {
-  if (!configured()) redirect("/login?error=setup");
-  const store = await cookies();
-  const email = String(form.get("email") ?? store.get(SIGNUP_EMAIL_COOKIE)?.value ?? "").trim();
-  const token = String(form.get("code") ?? "").replace(/\s+/g, "");
-  if (!email || email.length > 254) redirect("/signup/verify?error=email");
-  if (!/^\d{6,10}$/.test(token)) redirect("/signup/verify?error=code");
-  const db = await createClient();
-  const { error } = await db.auth.verifyOtp({ email, token, type: "email" });
-  if (error) {
-    console.warn("verifySignup:", error.status, error.message);
-    redirect(`/signup/verify?error=${error.status === 429 ? "rate" : "code"}`);
-  }
-  store.delete(SIGNUP_EMAIL_COOKIE);
-  revalidatePath("/", "layout");
-  redirect("/onboarding");
-}
-
-/** «Отправить код ещё раз». У Supabase лимит писем — тогда просим подождать. */
+/** «Отправить письмо ещё раз». У Supabase лимит писем — тогда просим подождать. */
 export async function resendSignup(form: FormData) {
   if (!configured()) redirect("/login?error=setup");
   const store = await cookies();
@@ -193,7 +174,7 @@ export async function resendSignup(form: FormData) {
   redirect("/signup/verify?sent=1");
 }
 
-/** Другой email на странице кода: забываем прежний и — к регистрации заново. */
+/** Другой email на странице подтверждения: забываем прежний и — к регистрации заново. */
 export async function changeSignupEmail() {
   (await cookies()).delete(SIGNUP_EMAIL_COOKIE);
   redirect("/signup");

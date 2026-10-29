@@ -5,7 +5,7 @@ import { SignupIntro } from "@/components/signup-intro";
 import { PRESETS, isBusinessType } from "@/lib/business";
 import { GoogleButton, googleSignInEnabled } from "@/components/google-button";
 
-// Регистрация владельца: email и пароль → код из письма (/signup/verify) →
+// Регистрация владельца: email и пароль → ссылка из письма (/signup/verify) →
 // /onboarding (магазин и вид бизнеса). Первый месяц бесплатно.
 // ?type= — пришли по адресу вида бизнеса (/start/prokat): магазин создастся этим видом.
 export default async function SignUp({ searchParams }: { searchParams: Promise<{ error?: string; type?: string }> }) {
@@ -19,7 +19,7 @@ export default async function SignUp({ searchParams }: { searchParams: Promise<{
           <span className="eyebrow">{business ? PRESETS[business].label.toUpperCase() : "НОВЫЙ МАГАЗИН"}</span>
           <h2>Регистрация</h2>
           <p className="muted">
-            Первый месяц бесплатно, без карты и без звонков. Пришлём код на почту - и вы в своём магазине.
+            Первый месяц бесплатно, без карты и без звонков. Пришлём письмо со ссылкой - и вы в своём магазине.
           </p>
           {error && (
             <p className="form-error" role="alert">
@@ -56,7 +56,7 @@ export default async function SignUp({ searchParams }: { searchParams: Promise<{
                 , согласен на обработку персональных данных
               </span>
             </label>
-            <Submit>Получить код на почту</Submit>
+            <Submit>Зарегистрироваться</Submit>
           </form>
           {googleSignInEnabled() && (
             <>

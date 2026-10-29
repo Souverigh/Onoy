@@ -211,7 +211,7 @@ export default async function Login({
         <h2>Как подключить магазин</h2>
         <ol className="landing-steps">
           <li>Нажмите «Регистрация»: email и пароль.</li>
-          <li>Введите код из письма.</li>
+          <li>Нажмите ссылку в письме, чтобы подтвердить почту.</li>
           <li>Впишите название магазина и выберите, чем занимаетесь, - Depter сразу настроится под вас.</li>
         </ol>
         <p className="landing-lead">

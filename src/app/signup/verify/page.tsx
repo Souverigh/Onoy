@@ -1,15 +1,13 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { changeSignupEmail, resendSignup, verifySignup } from "../../auth/actions";
-import { Submit } from "@/components/submit";
+import { changeSignupEmail, resendSignup } from "../../auth/actions";
 import { SignupIntro } from "@/components/signup-intro";
 import { SIGNUP_EMAIL_COOKIE } from "@/lib/signup";
 
 /**
- * Второй шаг регистрации: код из письма. Ссылка из того же письма ведёт на
- * /auth/confirm и дальше сразу на /onboarding — код нужен, когда почту
- * открыли на другом устройстве или ссылка не открывается. Сюда же ведёт вход
- * с неподтверждённым email (state=unconfirmed).
+ * Второй шаг регистрации: подтвердить почту по ссылке из письма. Ссылка ведёт
+ * на /auth/confirm и дальше сразу на /onboarding — с любого устройства. Сюда же
+ * ведёт вход с неподтверждённым email (state=unconfirmed).
  */
 export default async function VerifySignup({
   searchParams,
@@ -24,19 +22,20 @@ export default async function VerifySignup({
       <section className="auth-form">
         <div className="auth-card">
           <span className="eyebrow">ШАГ 2 ИЗ 3</span>
-          <h2>Код из письма</h2>
+          <h2>Подтвердите почту</h2>
           {state === "unconfirmed" && (
             <p className="notice" role="status">
-              Почта ещё не подтверждена. Введите код из письма Depter или попросите новый.
+              Почта ещё не подтверждена. Нажмите ссылку в письме Depter или попросите новое письмо.
             </p>
           )}
           <p className="muted">
             {email ? (
               <>
-                Отправили письмо на <strong>{email}</strong>. Введите код из него или нажмите кнопку в письме.
+                Отправили письмо на <strong>{email}</strong>. Нажмите в нём ссылку - и вы перейдёте к созданию
+                магазина. Письмо можно открыть и на другом телефоне.
               </>
             ) : (
-              "Введите email, на который регистрировались, и код из письма Depter. Письма нет - войдите с email и паролем, и мы предложим отправить код ещё раз."
+              "Откройте письмо Depter и нажмите в нём ссылку. Письма нет - войдите с email и паролем, и мы предложим отправить его ещё раз."
             )}
           </p>
           {sent && !error && (
@@ -48,39 +47,15 @@ export default async function VerifySignup({
             <p className="form-error" role="alert">
               {error === "rate"
                 ? "Слишком много попыток. Подождите несколько минут и попробуйте снова."
-                : error === "email"
-                  ? "Впишите email, на который регистрировались."
-                  : "Код не подошёл или устарел. Проверьте цифры или попросите новый код."}
+                : "Впишите email, на который регистрировались."}
             </p>
           )}
-          <form action={verifySignup}>
-            {!email && (
-              <label>
-                Email
-                <input name="email" type="email" autoComplete="email" required maxLength={254} />
-              </label>
-            )}
-            <label>
-              Код
-              <input
-                name="code"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="[0-9 ]{6,12}"
-                required
-                maxLength={12}
-                placeholder="123456"
-                autoFocus={Boolean(email)}
-              />
-            </label>
-            <Submit>Подтвердить</Submit>
-          </form>
           {email && (
             <form action={resendSignup}>
               <small className="muted">
                 Письмо не пришло? Проверьте «Спам» или{" "}
                 <button type="submit" className="text-button">
-                  отправьте код ещё раз
+                  отправьте его ещё раз
                 </button>
               </small>
             </form>
