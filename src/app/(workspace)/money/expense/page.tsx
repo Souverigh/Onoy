@@ -13,25 +13,28 @@ export default async function ExpensePage({ searchParams }: { searchParams: Prom
   const minDate = new Date(Date.parse(`${today}T00:00:00Z`) - EXPENSE_MAX_AGE_DAYS * 86400000).toISOString().slice(0, 10);
   return (
     <>
-      <Link className="back-link" href="/">
-        ← Назад
-      </Link>
-      <div className="page-heading operation-page-heading">
+      {/* «← Назад» слева, «Все расходы →» справа одной строкой (макет 29.10.2026). */}
+      <div className="expense-top">
+        <Link className="back-link" href="/">
+          ← Назад
+        </Link>
+        {isOwner && (
+          <Link className="text-button" href="/money/expenses">
+            Все расходы →
+          </Link>
+        )}
+      </div>
+      <div className="page-heading operation-page-heading expense-heading">
         <div>
           <h1>Расход</h1>
         </div>
-        {isOwner && (
-          <Link className="button" href="/money/expenses">
-            Все расходы
-          </Link>
-        )}
       </div>
       {undone && (
         <p className="notice success" role="status">
           Прошлый расход отменён - введите заново.
         </p>
       )}
-      <section className="panel form-panel">
+      <section className="panel form-panel expense-panel">
         <ExpenseForm idempotencyKey={randomUUID()} today={today} minDate={minDate} currency={currency} />
       </section>
     </>

@@ -5394,43 +5394,112 @@ a.party-history-head:hover .party-history-what strong {
   opacity: 0.85;
 }
 
-/* Расход: категории кнопками-чипами. */
-.expense-categories {
+/* Расход (макет 29.10.2026): «← Назад» и «Все расходы →» одной строкой,
+   день — кнопкой справа вверху (.pay-date), «Заполнить по чеку» — полосой,
+   категория — списком, внизу итог и «Записать расход». */
+.expense-top {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  border: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
 }
-.expense-categories legend {
-  padding: 0;
-  margin-bottom: 6px;
-}
-form label.expense-chip {
-  flex-direction: row;
+.expense-top .back-link {
   margin-bottom: 0;
-  color: var(--ink);
 }
-.expense-categories {
-  margin-bottom: 18px;
+.expense-top .text-button {
+  color: var(--green);
+  font-weight: 600;
 }
-.expense-chip {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 8px 14px;
-  background: white;
+.expense-panel {
+  max-width: 860px;
+}
+.expense-form .amount-field input {
+  padding: 14px 18px;
+  font-size: 28px;
+  text-align: left;
+}
+.expense-scan {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--green-border);
+  border-radius: var(--radius-lg);
+  background: var(--green-soft);
   cursor: pointer;
-  font-size: 15px;
 }
-.expense-chip.active {
-  background: var(--green);
-  border-color: var(--green);
-  color: white;
+.expense-scan:hover {
+  background: var(--green-tint);
 }
-.expense-chip:has(input:focus-visible) {
-  outline: 2px solid var(--green);
+.expense-scan:has(input:focus-visible) {
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
+}
+.expense-scan-icon {
+  flex: none;
+  display: flex;
+  color: var(--green);
+}
+.expense-scan-text b {
+  display: block;
+  color: var(--ink);
+  font-size: 16px;
+}
+.expense-scan-text small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.expense-photo-more {
+  align-self: flex-start;
+}
+.expense-category select {
+  min-height: 48px;
+  font-size: 16px;
+}
+.expense-note {
+  margin-bottom: 4px;
+  padding-top: 0;
+  border-top: 0;
+}
+.expense-note input {
+  width: 100%;
+}
+.expense-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.expense-bar-total span {
+  display: block;
+  font-size: 14px;
+}
+.expense-bar-total strong {
+  font-size: 24px;
+}
+.expense-bar .button.primary {
+  min-width: 280px;
+}
+.expense-form .operation-hint {
+  margin: 12px 0 0;
+}
+@media (max-width: 560px) {
+  .expense-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .expense-bar .button.primary {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 /* Дата «дд.мм.гггг» и время «чч:мм» — формат КР (ru-date-input.tsx). */
