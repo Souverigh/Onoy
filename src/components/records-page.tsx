@@ -302,8 +302,7 @@ export async function RecordsPage({
             {tab === "records" && drafts.length > 0 && (
               <Link className="record-drafts-line" href={`${base}?tab=drafts`}>
                 <span>
-                  {drafts.length} {plural(drafts.length, "черновик не записан", "черновика не записаны", "черновиков не записаны")} - долг и
-                  склад от них не изменились
+                  {drafts.length} {plural(drafts.length, "черновик не записан", "черновика не записаны", "черновиков не записаны")}
                 </span>
                 <strong>Открыть черновики →</strong>
               </Link>
@@ -336,12 +335,6 @@ export async function RecordsPage({
                     </p>
                   )}
                 </div>
-                {journal.reversedCount > 0 && (
-                  <span className="record-totals-note">
-                    Отменённые ({journal.reversedCount})
-                    <br />в итог не входят
-                  </span>
-                )}
               </div>
             )}
             {tab === "reversed" && journal.reversedCount > 0 && (

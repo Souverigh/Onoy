@@ -8565,12 +8565,6 @@ form label.order-choice:has(input:checked),
   color: var(--ink-soft);
   font-size: 14px;
 }
-.record-totals-note {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: 13px;
-  text-align: right;
-}
 .record-reversed-note {
   margin: 0 0 12px;
   font-size: 14px;
@@ -8771,10 +8765,6 @@ td.record-sum {
   .record-totals-dot,
   .record-totals-and {
     display: none;
-  }
-  .record-totals-note {
-    margin-left: 0;
-    text-align: left;
   }
 }
 
