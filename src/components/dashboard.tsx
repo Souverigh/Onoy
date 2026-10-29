@@ -224,7 +224,6 @@ export function Dashboard({
           «С поставщиками» (QUICK_ACTIONS.side). Тёмная — только первая, главная;
           блока без кнопок нет (у проката — только клиенты); расход — тонкой строкой. */}
       <section className="quick-actions" aria-label="Что произошло?">
-        <h2 className="quick-actions-title">Что произошло?</h2>
         <div className={groups.length > 1 ? "action-groups" : "action-groups single"}>
           {groups.map((g) => (
             <div key={g.side} className={`action-group ${g.side}`}>

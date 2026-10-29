@@ -1134,10 +1134,6 @@ td small {
   flex-direction: column;
   gap: 10px;
 }
-.quick-actions-title {
-  margin: 6px 0 0;
-  font-size: 19px;
-}
 .action-groups {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

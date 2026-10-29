@@ -23,7 +23,7 @@ const allNav: NavItem[] = [
   ["/rentals", "Прокат", "calendar", "rental"],
   // Итог дня, отчёт за месяц и продавцы — вкладками одного раздела (report-tabs.tsx).
   ["/day", "Отчёты", "chart"],
-  ["/claims", "Заявки", "check"],
+  ["/claims", "Оплаты", "check"],
   // Заказы клиентов из каталога (задача № 12) — видят все, продажу делает и продавец.
   ["/orders", "Заказы", "cart", "catalog"],
   ["/documents", "Документы", "camera"],
@@ -282,7 +282,7 @@ export function Shell({
           >
             <Icon name={menuOpen ? "close" : "menu"} />
             <span>Ещё</span>
-            {/* «Заявки» и «Заказы» в меню — их бейджи главнее накладных. */}
+            {/* «Оплаты» (заявки) и «Заказы» в меню — их бейджи главнее накладных. */}
             {!menuOpen &&
               (isOwner && claimsCount > 0 ? (
                 <span className="nav-badge">{claimsCount}</span>
