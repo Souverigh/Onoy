@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { signUp } from "../auth/actions";
 import { Submit } from "@/components/submit";
+import { Turnstile } from "@/components/turnstile";
 import { SignupIntro } from "@/components/signup-intro";
 import { PRESETS, isBusinessType } from "@/lib/business";
 import { GoogleButton, googleSignInEnabled } from "@/components/google-button";
@@ -29,7 +30,9 @@ export default async function SignUp({ searchParams }: { searchParams: Promise<{
                   ? "Чтобы создать аккаунт, примите Пользовательское соглашение и Политику конфиденциальности."
                   : error === "rate"
                     ? "Слишком много попыток. Подождите несколько минут и попробуйте снова."
-                    : "Не удалось создать аккаунт. Проверьте email; пароль - не короче 6 символов."}
+                    : error === "captcha"
+                      ? "Не прошла проверка «я не робот». Подождите пару секунд и нажмите ещё раз."
+                      : "Не удалось создать аккаунт. Проверьте email; пароль - не короче 6 символов."}
             </p>
           )}
           <form action={signUp}>
@@ -56,6 +59,7 @@ export default async function SignUp({ searchParams }: { searchParams: Promise<{
                 , согласен на обработку персональных данных
               </span>
             </label>
+            <Turnstile />
             <Submit>Зарегистрироваться</Submit>
           </form>
           {googleSignInEnabled() && (

@@ -8,6 +8,7 @@ import { templateInput } from "@/lib/invoice-message";
 import { isBusinessType, isModuleId, moduleOverrides } from "@/lib/business";
 import { lastBusinessChange } from "@/lib/business-history";
 import { refreshCatalogToken } from "@/lib/catalog-cache";
+import { captchaFailed, captchaToken } from "@/lib/captcha";
 
 /** Картинка QR для оплаты — в data URL до ~300 КБ (колонка pay_qr_image). */
 async function qrImage(file: File): Promise<string | null> {
@@ -254,7 +255,12 @@ export async function changePassword(form: FormData) {
   if (password === current) redirect(accountBack("same"));
   const { db, user } = await getUserContext();
   if (!user.email) redirect(accountBack("failed"));
-  const check = await db.auth.signInWithPassword({ email: user.email, password: current });
+  const check = await db.auth.signInWithPassword({
+    email: user.email,
+    password: current,
+    options: { captchaToken: captchaToken(form) },
+  });
+  if (captchaFailed(check.error)) redirect(accountBack("captcha"));
   if (check.error) redirect(accountBack(check.error.status === 429 ? "rate" : "current"));
   const { error } = await db.auth.updateUser({ password });
   if (error) {
@@ -280,7 +286,12 @@ export async function changeEmail(form: FormData) {
   const { db, user } = await getUserContext();
   if (!user.email) redirect(accountBack("failed"));
   if (email === user.email.toLowerCase()) redirect(accountBack("email_same"));
-  const check = await db.auth.signInWithPassword({ email: user.email, password: current });
+  const check = await db.auth.signInWithPassword({
+    email: user.email,
+    password: current,
+    options: { captchaToken: captchaToken(form) },
+  });
+  if (captchaFailed(check.error)) redirect(accountBack("email_captcha"));
   if (check.error) redirect(accountBack(check.error.status === 429 ? "rate" : "email_current"));
   const h = await headers();
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host") ?? ""}`;

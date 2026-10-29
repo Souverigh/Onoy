@@ -4,6 +4,7 @@ import Link from "next/link";
 import { login } from "../auth/actions";
 import { configured } from "@/lib/supabase/server";
 import { Submit } from "@/components/submit";
+import { Turnstile } from "@/components/turnstile";
 import { cookies } from "next/headers";
 import { EXPIRED_COOKIE, INACTIVITY_LIMIT_MS } from "@/lib/session-timeout";
 import { ContactLinks } from "@/components/contact-links";
@@ -165,6 +166,10 @@ export default async function Login({
                   <p role="alert" className="form-error">
                     Не удалось войти через Google. Попробуйте ещё раз или войдите по email и паролю.
                   </p>
+                ) : error === "captcha" ? (
+                  <p role="alert" className="form-error">
+                    Не прошла проверка «я не робот». Подождите пару секунд и нажмите ещё раз.
+                  </p>
                 ) : error === "link" ? (
                   <p role="alert" className="form-error">
                     Ссылка из письма устарела или уже открыта. Если email
@@ -176,6 +181,7 @@ export default async function Login({
                     попытку.
                   </p>
                 ) : null}
+                <Turnstile />
                 <Submit>Войти в Depter</Submit>
                 <small className="muted consent-note">
                   Входя, вы принимаете <Link href="/terms">Пользовательское соглашение</Link> и{" "}

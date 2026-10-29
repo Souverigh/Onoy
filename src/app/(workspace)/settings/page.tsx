@@ -7,6 +7,7 @@ import { getContext } from "@/lib/context";
 import { StaffPanel, type Invite, type Member } from "@/components/staff-panel";
 import { Submit } from "@/components/submit";
 import { NoAutofillInput } from "@/components/no-autofill-input";
+import { Turnstile } from "@/components/turnstile";
 import { changeEmail, changePassword, restoreBusiness, updateBusiness, updateShop } from "./actions";
 import { lastBusinessChange, shopStats } from "@/lib/business-history";
 import { BusinessFields } from "@/components/business-fields";
@@ -30,12 +31,14 @@ const ACCOUNT_TEXT: Record<string, string> = {
   email_taken: "Этот email уже занят другим аккаунтом.",
   email_current: "Пароль не подошёл - email не изменён.",
   rate: "Слишком много попыток. Подождите несколько минут и повторите.",
+  captcha: "Не прошла проверка «я не робот». Подождите пару секунд и нажмите ещё раз.",
+  email_captcha: "Не прошла проверка «я не робот». Подождите пару секунд и нажмите ещё раз.",
   link: "Ссылка из письма устарела или уже открыта. Попробуйте ещё раз.",
   failed: "Не получилось. Обновите страницу и попробуйте снова.",
 };
 const ACCOUNT_OK = new Set(["password_changed", "email_sent", "email_half", "email_changed"]);
-const PASSWORD_ERRORS = new Set(["current", "short", "mismatch", "same", "weak"]);
-const EMAIL_ERRORS = new Set(["email_invalid", "email_same", "email_taken", "email_current"]);
+const PASSWORD_ERRORS = new Set(["current", "short", "mismatch", "same", "weak", "captcha"]);
+const EMAIL_ERRORS = new Set(["email_invalid", "email_same", "email_taken", "email_current", "email_captcha"]);
 
 export default async function Settings({
   searchParams,
@@ -527,6 +530,7 @@ export default async function Settings({
                   </label>
                 </div>
                 <small className="muted">Не короче 6 символов.</small>
+                <Turnstile />
                 <div className="actions">
                   <Submit>Сменить пароль</Submit>
                 </div>
@@ -548,6 +552,7 @@ export default async function Settings({
                   Текущий пароль
                   <NoAutofillInput name="current" type="password" required maxLength={1024} />
                 </label>
+                <Turnstile />
                 <div className="actions">
                   <Submit>Отправить ссылку</Submit>
                 </div>

@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { requestPasswordReset } from "../auth/actions";
 import { Submit } from "@/components/submit";
+import { Turnstile } from "@/components/turnstile";
 
 const errors: Record<string, string> = {
   email: "Введите email, с которым входите в Depter.",
   rate: "Письма уже отправлялись недавно. Подождите несколько минут и попробуйте снова.",
   link: "Ссылка из письма устарела или уже использована. Запросите новое письмо.",
+  captcha: "Не прошла проверка «я не робот». Подождите пару секунд и нажмите ещё раз.",
 };
 
 // «Забыли пароль?»: письмо со ссылкой на новый пароль (см. requestPasswordReset).
@@ -35,6 +37,7 @@ export default async function Forgot({ searchParams }: { searchParams: Promise<{
                   Email
                   <input name="email" type="email" autoComplete="email" required maxLength={254} />
                 </label>
+                <Turnstile />
                 <Submit>Отправить ссылку</Submit>
               </form>
             </>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { changeSignupEmail, resendSignup } from "../../auth/actions";
 import { SignupIntro } from "@/components/signup-intro";
+import { Turnstile } from "@/components/turnstile";
 import { SIGNUP_EMAIL_COOKIE } from "@/lib/signup";
 
 /**
@@ -47,7 +48,9 @@ export default async function VerifySignup({
             <p className="form-error" role="alert">
               {error === "rate"
                 ? "Слишком много попыток. Подождите несколько минут и попробуйте снова."
-                : "Впишите email, на который регистрировались."}
+                : error === "captcha"
+                  ? "Не прошла проверка «я не робот». Подождите пару секунд и нажмите ещё раз."
+                  : "Впишите email, на который регистрировались."}
             </p>
           )}
           {email && (
@@ -58,6 +61,7 @@ export default async function VerifySignup({
                   отправьте его ещё раз
                 </button>
               </small>
+              <Turnstile />
             </form>
           )}
           {email && (

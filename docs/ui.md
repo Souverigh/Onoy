@@ -154,6 +154,9 @@
   «Да, удалить» в окне подтверждения; `.text-button` — ссылка-кнопка
   («+ Комментарий»).
 - `Submit` — кнопка отправки формы с «Сохраняем…».
+- `Turnstile` — проверка «я не робот» перед `Submit` в каждой форме, где
+  сервер вызывает `signInWithPassword`, `signUp`, `resend` или
+  `resetPasswordForEmail` (ответ — `captchaToken(form)` из `src/lib/captcha.ts`).
 - `ConfirmButton` — действие с окном подтверждения (не `confirm()` браузера);
   `DeleteWithUndo` — удаление с «Вернуть».
 - В `.simple-operation-actions` кнопки во всю ширину — это для телефона и

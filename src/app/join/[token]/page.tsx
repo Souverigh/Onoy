@@ -2,6 +2,7 @@ import Link from "next/link";
 import { acceptInvite, login, signUpByInvite } from "@/app/auth/actions";
 import { configured, createAnonClient, createClient } from "@/lib/supabase/server";
 import { Submit } from "@/components/submit";
+import { Turnstile } from "@/components/turnstile";
 
 const errors: Record<string, string> = {
   credentials: "Не удалось войти. Проверьте email и пароль.",
@@ -10,6 +11,7 @@ const errors: Record<string, string> = {
   accept: "Не удалось присоединиться. Возможно, ссылка уже использована - попросите новую.",
   member: "Вы уже работаете в этом магазине.",
   consent: "Чтобы создать аккаунт, примите Пользовательское соглашение и Политику конфиденциальности.",
+  captcha: "Не прошла проверка «я не робот». Подождите пару секунд и нажмите ещё раз.",
 };
 
 // Приглашение продавца (ТЗ, тариф «Бизнес»): ссылка от владельца, 7 дней, одна.
@@ -95,6 +97,7 @@ export default async function JoinPage({
                         , согласен на обработку персональных данных
                       </span>
                     </label>
+                    <Turnstile />
                     <Submit>Создать аккаунт и присоединиться</Submit>
                   </form>
                   <form action={login}>
@@ -108,6 +111,7 @@ export default async function JoinPage({
                       Пароль
                       <input name="password" type="password" autoComplete="current-password" required maxLength={1024} />
                     </label>
+                    <Turnstile />
                     <Submit>Войти</Submit>
                   </form>
                 </>

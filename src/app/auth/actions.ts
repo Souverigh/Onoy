@@ -9,6 +9,7 @@ import { EXPIRED_COOKIE } from "@/lib/session-timeout";
 import { storedPhone } from "@/lib/contacts";
 import { BUSINESS_COOKIE, DEFAULT_BUSINESS, isBusinessType } from "@/lib/business";
 import { SIGNUP_EMAIL_COOKIE } from "@/lib/signup";
+import { captchaFailed, captchaToken } from "@/lib/captcha";
 /** Куда вернуть после входа: только страница приглашения, иначе главная. */
 function nextPath(form: FormData) {
   const next = String(form.get("next") ?? "");
@@ -33,7 +34,8 @@ export async function login(form: FormData) {
   if (!email || email.length > 254 || !password || password.length > 1024)
     redirect(failed);
   const db = await createClient();
-  const { error } = await db.auth.signInWithPassword({ email, password });
+  const { error } = await db.auth.signInWithPassword({ email, password, options: { captchaToken: captchaToken(form) } });
+  if (captchaFailed(error)) redirect(next === "/" ? "/login?error=captcha" : `${next}?error=captcha`);
   // Зарегистрировался, но не подтвердил email — к странице «откройте ссылку из письма».
   if (error?.code === "email_not_confirmed" && next === "/") {
     await rememberSignupEmail(email);
@@ -93,9 +95,11 @@ export async function signUp(form: FormData) {
     options: {
       emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/onboarding`,
       data: { ...consentRecord(), ...(isBusinessType(business) ? { business_type: business } : {}) },
+      captchaToken: captchaToken(form),
     },
   });
   if (error) {
+    if (captchaFailed(error)) redirect("/signup?error=captcha");
     if (error.status === 429) redirect("/signup?error=rate");
     redirect(`/signup?error=${error.message.toLowerCase().includes("disabled") ? "disabled" : "invalid"}`);
   }
@@ -167,8 +171,9 @@ export async function resendSignup(form: FormData) {
   const { error } = await db.auth.resend({
     type: "signup",
     email,
-    options: { emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/onboarding` },
+    options: { emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/onboarding`, captchaToken: captchaToken(form) },
   });
+  if (captchaFailed(error)) redirect("/signup/verify?error=captcha");
   if (error?.status === 429) redirect("/signup/verify?error=rate");
   if (error) console.warn("resendSignup:", error.status, error.message);
   redirect("/signup/verify?sent=1");
@@ -203,8 +208,13 @@ export async function signUpByInvite(form: FormData) {
   const { data, error } = await db.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=${back}`, data: consentRecord() },
+    options: {
+      emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=${back}`,
+      data: consentRecord(),
+      captchaToken: captchaToken(form),
+    },
   });
+  if (captchaFailed(error)) redirect(`${back}?error=captcha`);
   if (error) redirect(`${back}?error=${error.message.toLowerCase().includes("disabled") ? "signup_disabled" : "signup"}`);
   if (!data.session) redirect(`${back}?check=email`);
   const joined = await db.rpc("accept_invite", { p_token: token });
@@ -296,7 +306,9 @@ export async function requestPasswordReset(form: FormData) {
   const db = await createClient();
   const { error } = await db.auth.resetPasswordForEmail(email, {
     redirectTo: `${await siteOrigin()}/auth/confirm?next=/reset-password`,
+    captchaToken: captchaToken(form),
   });
+  if (captchaFailed(error)) redirect("/forgot?error=captcha");
   // Лимит писем Supabase (несколько в час) — просим подождать; прочее не раскрываем.
   if (error?.status === 429) redirect("/forgot?error=rate");
   if (error) console.warn("requestPasswordReset:", error.status, error.message);

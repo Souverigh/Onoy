@@ -14793,6 +14793,11 @@ form label.rental-picked-price {
 .auth-or + .google-form {
   margin-top: 0;
 }
+/* Проверку «я не робот» рисует Cloudflare (turnstile.tsx): обычно невидима — без
+   своего места в форме; галочка, когда нужна, встаёт строкой формы. */
+.turnstile {
+  display: contents;
+}
 .auth-card .google-form + .consent-note {
   margin-top: 10px;
 }
