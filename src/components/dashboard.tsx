@@ -194,7 +194,7 @@ export function Dashboard({
               {mySales.todayCount} {plural(mySales.todayCount, "продажа", "продажи", "продаж")} →
             </small>
           </Link>
-          <Link className="debt-card" href={href("/sellers#debts")}>
+          <Link className="debt-card" href={href("/sellers?tab=debts#details")}>
             <span>Мне должны</span>
             <strong>{debtMoney(mySales.owed, mySales.currency)}</strong>
             <small>Мои клиенты →</small>

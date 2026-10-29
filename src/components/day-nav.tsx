@@ -66,6 +66,8 @@ export function PeriodDayPicker({ value, base, periodText }: { value: string; ba
       label="День"
       value={value}
       emptyLabel={periodText}
+      // Период — обычным тёмным текстом, а не серым «не выбрано».
+      text={value ? undefined : periodText}
       maxDaysBack={3650}
       onChange={(day) => router.push(day ? `${base}${base.includes("?") ? "&" : "?"}date=${day}` : base)}
     />

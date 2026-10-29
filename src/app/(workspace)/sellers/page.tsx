@@ -23,6 +23,23 @@ const time = (value: string) =>
   );
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** «1 продажа», «3 продажи», «25 продаж». */
+const salesWord = (n: number) => {
+  const last = n % 10;
+  const teen = n % 100 >= 11 && n % 100 <= 14;
+  return `${n} ${!teen && last === 1 ? "продажа" : !teen && last >= 2 && last <= 4 ? "продажи" : "продаж"}`;
+};
+
+/** Вкладки «Подробности» у продавца (макет 29.10.2026). */
+const TABS = [
+  ["days", "По дням"],
+  ["customers", "Клиенты"],
+  ["sales", "Продажи"],
+  ["debts", "Долги"],
+] as const;
+type Tab = (typeof TABS)[number][0];
+const isTab = (value: string | undefined): value is Tab => TABS.some(([t]) => t === value);
+
 /**
  * Продажи по продавцам. Владелец — список продавцов за месяц (или день) и
  * каждый отдельно: по дням, по клиентам, список продаж. Продавец видит
@@ -31,7 +48,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 export default async function Sellers({
   searchParams,
 }: {
-  searchParams: Promise<{ id?: string; offset?: string; date?: string }>;
+  searchParams: Promise<{ id?: string; offset?: string; date?: string; tab?: string }>;
 }) {
   const params = await searchParams;
   const { db, organizationId, user, isOwner, currency: cur } = await getContext();
@@ -43,20 +60,26 @@ export default async function Sellers({
   const start = day ?? p.start;
   const end = day ?? p.through;
   const sellerId = isOwner ? (params.id && uuidPattern.test(params.id) ? params.id : null) : user.id;
+  // За один день «По дням» не нужно — сразу продажи.
+  const defaultTab: Tab = day ? "sales" : "days";
+  const tab: Tab = isTab(params.tab) && !(day && params.tab === "days") ? params.tab : defaultTab;
 
-  const query = (o: { id?: string | null; offset?: number; date?: string | null }) => {
+  const query = (o: { id?: string | null; offset?: number; date?: string | null; tab?: Tab | null }) => {
     const q = new URLSearchParams();
     const id = o.id === undefined ? (isOwner ? sellerId : null) : o.id;
     if (id) q.set("id", id);
     if (o.date) q.set("date", o.date);
     else if (o.offset) q.set("offset", String(o.offset));
+    // Открытая вкладка остаётся при смене периода; у списка продавцов вкладок нет.
+    const t = o.tab === undefined ? (id ? tab : null) : o.tab;
+    if (t && t !== (o.date ? "sales" : "days")) q.set("tab", t);
     const s = q.toString();
     return `/sellers${s ? `?${s}` : ""}`;
   };
   const title = day ? fmt(day, { day: "numeric", month: "long", year: "numeric" }) : fmt(p.start, { month: "long", year: "numeric" }).replace(/ г\.$/, "");
 
-  // Период на кнопке: «01.10 – 21.10» (месяц и год — строкой ниже), один день — «15.10.2026».
-  const periodText = start === end ? ruDate(start) : `${ruDate(start).slice(0, 5)} – ${ruDate(end).slice(0, 5)}`;
+  // Период на кнопке: «01.10 – 29.10.2026», один день — «15.10.2026».
+  const periodText = start === end ? ruDate(start) : `${ruDate(start).slice(0, 5)} – ${ruDate(end)}`;
   const nav = (
     <div className="day-nav">
       {day ? (
@@ -79,7 +102,7 @@ export default async function Sellers({
             ›
           </span>
         ))}
-      <DownloadMenu href={query({ date: day, offset }).replace(/^\/sellers/, "/sellers/export")} />
+      <DownloadMenu href={query({ date: day, offset, tab: null }).replace(/^\/sellers/, "/sellers/export")} label="Скачать" />
     </div>
   );
 
@@ -129,7 +152,7 @@ export default async function Sellers({
                 <div className="day-line">
                   <span>Должны клиенты</span>
                   <strong>
-                    {r.id ? <Link href={`${query({ id: r.id, offset, date: day })}#debts`}>{debtMoney(owed.get(r.id) ?? 0, cur)}</Link> : "-"}
+                    {r.id ? <Link href={`${query({ id: r.id, offset, date: day, tab: "debts" })}#details`}>{debtMoney(owed.get(r.id) ?? 0, cur)}</Link> : "-"}
                   </strong>
                 </div>
               </li>
@@ -170,7 +193,7 @@ export default async function Sellers({
                       <ForeignSums items={r.foreign} pick="collected" />
                     </td>
                     <td>
-                      {r.id ? <Link href={`${query({ id: r.id, offset, date: day })}#debts`}>{debtMoney(owed.get(r.id) ?? 0, cur)}</Link> : "-"}
+                      {r.id ? <Link href={`${query({ id: r.id, offset, date: day, tab: "debts" })}#details`}>{debtMoney(owed.get(r.id) ?? 0, cur)}</Link> : "-"}
                     </td>
                   </tr>
                 ))}
@@ -188,99 +211,137 @@ export default async function Sellers({
     sellerCustomerDebts(db, organizationId, sellerId, cur),
   ]);
   const name = isOwner ? (members.get(sellerId)?.name ?? "Продавец") : "Мои продажи";
+  const tabs = TABS.filter(([t]) => !(day && t === "days"));
 
   return (
     <>
       {isOwner && <ReportTabs current="sellers" />}
+      {isOwner && (
+        <Link className="back-link seller-back" href={query({ id: null, offset, date: day })}>
+          ← Все продавцы
+        </Link>
+      )}
       <div className="page-heading day-heading">
-        <h1>{name}</h1>
+        <div>
+          <h1>{name}</h1>
+          <p className="muted day-date">
+            {isOwner ? `Отчёт продавца · ${title}` : title}
+          </p>
+        </div>
         {nav}
       </div>
-      <p className="muted day-date">
-        {isOwner && (
-          <>
-            <Link href={query({ id: null, offset, date: day })}>← Все продавцы</Link> ·{" "}
-          </>
-        )}
-        {title}
-      </p>
 
-      <section className="day-tiles" aria-label="Итог">
-        <article className="panel day-tile">
-          <span>Продано</span>
-          <strong>{money(detail.sold, cur)}</strong>
-          <small className="muted">
-            продаж: {detail.count} · в долг {money(detail.credit, cur)}
-          </small>
-        </article>
-        <article className="panel day-tile">
-          <span>Сразу оплатили</span>
-          <strong>{money(detail.cash, cur)}</strong>
-        </article>
-        <article className="panel day-tile">
-          <span className="label-with-tip">
-            Собрано
-            <InfoTip>Оплаты долгов от клиентов, которые внёс этот продавец.</InfoTip>
-          </span>
-          <strong>{money(detail.collected, cur)}</strong>
-        </article>
-      </section>
-      {detail.foreign.map((f) => (
-        <section key={f.currency} className="panel day-debts">
-          <h2 className="day-foreign-title label-with-tip">
-            В {CURRENCY_SIGN[f.currency]}
-            <InfoTip>Продажи клиентам в {CURRENCY_SIGN[f.currency]} считаются отдельно и не складываются с основными суммами.</InfoTip>
-          </h2>
-          <div className="day-line">
-            <span>Продано ({f.count})</span>
-            <strong>{money(f.sold, f.currency)}</strong>
+      {/* За период: продано, оплата при продаже, собрано (макет 29.10.2026). */}
+      <section className="panel seller-stats">
+        <h2 className="day-card-title">За выбранный период</h2>
+        <div className="seller-stat-row">
+          <div className="seller-stat">
+            <span>Продано</span>
+            <strong>{money(detail.sold, cur)}</strong>
+            <small>
+              <span>{salesWord(detail.count)}</span>
+              <span className="seller-stat-more">В долг: {money(detail.credit, cur)}</span>
+            </small>
           </div>
-        </section>
-      ))}
+          <div className="seller-stat">
+            <span>Оплата при продаже</span>
+            <strong>{money(detail.cash, cur)}</strong>
+            <small>При оформлении продажи</small>
+          </div>
+          <div className="seller-stat">
+            <span className="label-with-tip">
+              Собрано
+              <InfoTip>Оплаты долгов от клиентов, которые внёс этот продавец.</InfoTip>
+            </span>
+            <strong>{money(detail.collected, cur)}</strong>
+            <small>Оплаты могут относиться к прошлым продажам</small>
+          </div>
+        </div>
+        {detail.foreign.map((f) => (
+          <p key={f.currency} className="seller-foreign">
+            <strong>Отдельно в {CURRENCY_SIGN[f.currency]}</strong>: продано <strong>{money(f.sold, f.currency)}</strong>
+            <span className="muted"> · {salesWord(f.count)}</span>
+          </p>
+        ))}
+      </section>
 
-      {!detail.count && !detail.foreign.length ? (
-        <p className="muted">Продаж за этот период нет.</p>
-      ) : (
-        <>
-          {!day && (
-            <section className="panel">
-              <h2>По дням</h2>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>День</th>
-                      <th>Продаж</th>
-                      <th>Клиентов</th>
-                      <th>Продано</th>
+      <section className="panel seller-debt">
+        <div>
+          <h2 className="day-card-title">
+            <span className="seller-debt-long">{isOwner ? "Клиенты продавца должны сейчас" : "Мои клиенты должны сейчас"}</span>
+            <span className="seller-debt-short">Долг клиентов сейчас</span>
+          </h2>
+          <strong>{debtMoney(debts.total, cur)}</strong>
+          {debts.foreign.map((f) => (
+            <small key={f.currency}>И в другой валюте: {debtMoney(f.total, f.currency)}</small>
+          ))}
+          <small>
+            <span className="seller-debt-long">Текущий долг, отдельно от показателей за период</span>
+            <span className="seller-debt-short">Отдельно от продаж за период</span>
+          </small>
+        </div>
+        <Link className="seller-debt-link" href={`${query({ tab: "debts" })}#details`}>
+          Посмотреть долги →
+        </Link>
+      </section>
+
+      <section className="panel seller-details" id="details">
+        <h2 className="day-card-title">Подробности</h2>
+        <nav className="seller-tabs" aria-label="Подробности">
+          {tabs.map(([t, label]) => (
+            <Link
+              key={t}
+              href={`${query({ tab: t })}#details`}
+              className={t === tab ? "active" : undefined}
+              aria-current={t === tab ? "page" : undefined}
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
+
+        {tab === "days" &&
+          (detail.days.length ? (
+            <div className="table-wrap">
+              <table className="seller-table-days">
+                <thead>
+                  <tr>
+                    <th>День</th>
+                    <th className="seller-num">Продаж</th>
+                    <th className="seller-num">Клиентов</th>
+                    <th className="seller-sum">Продано</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detail.days.map((d) => (
+                    <tr key={d.date}>
+                      <td>
+                        <Link href={query({ date: d.date, tab: null })}>
+                          <span className="seller-weekday">{fmt(d.date, { weekday: "short" })}, </span>
+                          {fmt(d.date, { day: "numeric", month: "long" })}
+                        </Link>
+                      </td>
+                      <td className="seller-num">{d.count}</td>
+                      <td className="seller-num">{d.customers}</td>
+                      <td className="seller-sum">{money(d.sold, cur)}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {detail.days.map((d) => (
-                      <tr key={d.date}>
-                        <td>
-                          <Link href={query({ date: d.date })}>{fmt(d.date, { day: "numeric", month: "long", weekday: "short" })}</Link>
-                        </td>
-                        <td>{d.count}</td>
-                        <td>{d.customers}</td>
-                        <td>{money(d.sold, cur)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="muted">Продаж за этот период нет.</p>
+          ))}
 
-          <section className="panel">
-            <h2>По клиентам</h2>
+        {tab === "customers" &&
+          (detail.customers.length ? (
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
                     <th>Клиент</th>
-                    <th>Продаж</th>
-                    <th>Продано</th>
+                    <th className="seller-num">Продаж</th>
+                    <th className="seller-sum">Продано</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -289,83 +350,86 @@ export default async function Sellers({
                       <td>
                         <Link href={`/customers/${c.id}`}>{c.name}</Link>
                       </td>
-                      <td>{c.count}</td>
-                      <td>{money(c.sold, cur)}</td>
+                      <td className="seller-num">{c.count}</td>
+                      <td className="seller-sum">{money(c.sold, cur)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </section>
+          ) : (
+            <p className="muted">Продаж за этот период нет.</p>
+          ))}
 
-          <details className="panel day-fold report-table" open={Boolean(day)}>
-            <summary>Все продажи{detail.sales.length >= 200 ? " (последние 200)" : ""}</summary>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Когда</th>
-                    <th>Клиент</th>
-                    <th>Сумма</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detail.sales.map((s) => (
-                    <tr key={s.id}>
-                      <td>{time(s.date)}</td>
-                      <td>
-                        {s.customerId ? <Link href={`/customers/${s.customerId}`}>{s.customerName}</Link> : s.customerName}
-                      </td>
-                      <td>
-                        {money(s.total, s.currency)}
-                        {s.paid && <small className="muted"> · оплачено</small>}
-                      </td>
+        {tab === "sales" &&
+          (detail.sales.length ? (
+            <>
+              {detail.sales.length >= 200 && <p className="muted">Показаны последние 200 продаж.</p>}
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Когда</th>
+                      <th>Клиент</th>
+                      <th className="seller-sum">Сумма</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </details>
-        </>
-      )}
+                  </thead>
+                  <tbody>
+                    {detail.sales.map((sale) => (
+                      <tr key={sale.id}>
+                        <td>{time(sale.date)}</td>
+                        <td>
+                          {sale.customerId ? (
+                            <Link href={`/customers/${sale.customerId}`}>{sale.customerName}</Link>
+                          ) : (
+                            sale.customerName
+                          )}
+                        </td>
+                        <td className="seller-sum">
+                          {money(sale.total, sale.currency)}
+                          {sale.paid && <small className="muted"> · оплачено</small>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <p className="muted">Продаж за этот период нет.</p>
+          ))}
 
-      <section className="panel" id="debts">
-        <h2 className="label-with-tip">
-          {isOwner ? "Должны клиенты продавца" : "Мне должны"}: {debtMoney(debts.total, cur)}
-          <InfoTip>
-            Клиенты, которым {isOwner ? "продавец" : "вы"} хоть раз оформляли продажу, и их долг магазину на сейчас - не
-            за выбранный период.
-          </InfoTip>
-        </h2>
-        {debts.foreign.map((f) => (
-          <p key={f.currency} className="muted">
-            И в другой валюте: {debtMoney(f.total, f.currency)}
-          </p>
-        ))}
-        {debts.customers.length ? (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Клиент</th>
-                  <th>Долг</th>
-                </tr>
-              </thead>
-              <tbody>
-                {debts.customers.map((c) => (
-                  <tr key={c.id}>
-                    <td>
-                      <Link href={`/customers/${c.id}`}>{c.name}</Link>
-                    </td>
-                    <td>{debtMoney(c.balance, c.currency)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="muted">Никто не должен.</p>
-        )}
+        {tab === "debts" &&
+          (debts.customers.length ? (
+            <>
+              <p className="muted">
+                Клиенты, которым {isOwner ? "продавец" : "вы"} хоть раз оформляли продажу, и их долг магазину на сейчас - не за
+                выбранный период.
+              </p>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Клиент</th>
+                      <th className="seller-sum">Долг</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {debts.customers.map((c) => (
+                      <tr key={c.id}>
+                        <td>
+                          <Link href={`/customers/${c.id}`}>{c.name}</Link>
+                        </td>
+                        <td className="seller-sum">{debtMoney(c.balance, c.currency)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <p className="muted">Никто не должен.</p>
+          ))}
       </section>
     </>
   );

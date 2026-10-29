@@ -453,7 +453,7 @@ export default async function Reports({
                       {money(s.collected, cur)}
                       <ForeignSums items={s.foreign} pick="collected" />
                     </td>
-                    <td>{s.id ? <Link href={`/sellers?id=${s.id}#debts`}>{money(owed.get(s.id) ?? 0, cur)}</Link> : "-"}</td>
+                    <td>{s.id ? <Link href={`/sellers?id=${s.id}&tab=debts#details`}>{money(owed.get(s.id) ?? 0, cur)}</Link> : "-"}</td>
                   </tr>
                 ))}
               </tbody>

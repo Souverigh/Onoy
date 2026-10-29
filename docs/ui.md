@@ -83,6 +83,12 @@
   серая подсказка `.report-hint`); ниже разделы `details.report-section`
   (значок и название `.report-section-title`, пояснение `.report-section-desc`,
   ссылка `.report-section-link`, стрелка справа).
+- Отчёт продавца (макет 29.10.2026) — «← Все продавцы» `.seller-back` над
+  именем; «За выбранный период» `.seller-stats` (три колонки `.seller-stat`
+  через черту, на телефоне строками; «Отдельно в ₽» — `.seller-foreign`);
+  «Клиенты продавца должны сейчас» `.seller-debt`; «Подробности» —
+  вкладки-ссылками `.seller-tabs` (`?tab=days|customers|sales|debts#details`),
+  числа по центру `.seller-num`, суммы справа `.seller-sum`.
 - Заказы из каталога в кабинете — таблицей, как продажи (`.op-table` +
   `.op-list-mobile`, строка `.record-row` ведёт на заказ); на странице заказа
   «На кого продажа» — `.order-customer`: варианты списком в одной рамке
