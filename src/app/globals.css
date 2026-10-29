@@ -1844,15 +1844,34 @@ div.photo-field {
   margin: -8px auto 8px;
 }
 /* Несколько PDF — разные накладные: из чего сложилась сумма (28.10.2026). */
-.invoice-files p {
+.invoice-files {
+  margin: -4px 0 14px;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  font-size: 14px;
+}
+.invoice-files ul {
   margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.invoice-files ol {
-  margin: 6px 0;
-  padding-left: 22px;
+.invoice-files li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
 }
-.invoice-files ol + p {
-  margin-top: 6px;
+.invoice-files li:last-child {
+  border-bottom: 0;
+}
+.invoice-files-total {
+  font-weight: 700;
+}
+.invoice-files .warning {
+  margin: 4px 0 8px;
+  font-size: 13px;
 }
 .photo-check-ok,
 .photo-check-mismatch {
@@ -8143,25 +8162,6 @@ form label.order-choice:has(input:checked),
     position: sticky;
     top: 16px;
   }
-  /* Страницы накладной — крупно, чтобы читать строки, а не миниатюрами. */
-  .photo-operation-form .page-thumbs {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 12px;
-  }
-  .photo-operation-form .page-thumb {
-    width: auto;
-    height: auto;
-    max-height: 72vh;
-    aspect-ratio: 3 / 4;
-    background: var(--bg);
-  }
-  .photo-operation-form .page-thumb img {
-    object-fit: contain;
-  }
-  .photo-operation-form .page-thumbs:has(> li:only-child) {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 /* Дата записи — заметным полем наверху формы продажи и прихода. */
@@ -9573,8 +9573,9 @@ form label.consent {
   }
 }
 
-/* Оплата: на узком экране — колонкой телефона; на широком — чек слева
-   большой зоной (перетащить или выбрать), поля справа. */
+/* Оплата (макет 29.10.2026): дата — кнопкой справа вверху, валюта — в поле
+   суммы, чек — карточкой в своей строке. На телефоне — колонкой; когда самой
+   панели хватает ширины (а не всему окну) — подпись слева, поле справа. */
 .payment-operation-form {
   max-width: 480px;
 }
@@ -9583,101 +9584,135 @@ form label.consent {
 }
 .receipt-field.dragging {
   border-color: var(--green);
-  background: #eef6ea;
+  background: var(--green-wash);
 }
-/* Две колонки — когда самой панели формы хватает ширины (а не всему окну):
-   так и в окне ~1000px с боковым меню форма раскладывается. */
 .simple-operation-panel.wide-operation-panel {
   container-type: inline-size;
 }
+.pay-date {
+  align-self: flex-end;
+  margin-bottom: 14px;
+}
+.pay-date-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 15px;
+  cursor: pointer;
+  list-style: none;
+}
+.pay-date-chip::-webkit-details-marker {
+  display: none;
+}
+.pay-date-chip svg {
+  color: var(--green);
+}
+.pay-date[open] > .pay-date-chip {
+  border-color: var(--green-border);
+  background: var(--green-wash);
+}
+.pay-date .more-menu-list.pay-date-panel {
+  left: auto;
+  right: 0;
+  min-width: 290px;
+  padding: 14px 14px 0;
+}
+.payment-operation-form .amount-field {
+  flex-direction: row;
+  gap: 0;
+}
+.payment-operation-form .amount-field input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 16px;
+  border-radius: var(--radius) 0 0 var(--radius);
+  font-size: 22px;
+  text-align: left;
+}
+.amount-currency {
+  flex: none;
+  width: 96px;
+  min-height: 0;
+  border-left: 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background-color: var(--surface-soft);
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 700;
+}
+/* Подписи полей оплаты — одинаковые: «Поставщик», «Сумма оплаты», «Чек»… */
+.payment-operation-form .party-picker-label,
+.payment-operation-form > .amount-head,
+.payment-operation-form > .payment-method-row > span:first-child,
+.payment-operation-form > .receipt-field > .invoice-dropzone-title,
+.payment-operation-form > .note-field {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 400;
+}
+.payment-operation-form .receipt-picked img,
+.payment-operation-form .receipt-picked .page-thumb-pdf {
+  flex: none;
+  width: 64px;
+  height: 76px;
+  border-radius: 6px;
+  object-fit: cover;
+}
 @container (min-width: 700px) {
   .payment-operation-form {
-    max-width: none;
+    max-width: 920px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 440px);
-    column-gap: 28px;
-    align-items: start;
+    grid-template-columns: 190px minmax(0, 1fr);
+    column-gap: 24px;
+    align-items: center;
   }
   .payment-operation-form > * {
+    grid-column: 1 / -1;
+  }
+  .payment-operation-form > .pay-date {
+    justify-self: end;
+  }
+  .payment-operation-form > .amount-head {
+    grid-column: 1;
+    margin-bottom: 18px;
+  }
+  .payment-operation-form > .amount-field {
     grid-column: 2;
   }
-  .payment-operation-form > .receipt-field {
-    grid-column: 1;
-    grid-row: 1 / span 40;
-    position: sticky;
-    top: 16px;
-    min-height: 420px;
+  /* Строки «подпись | поле». */
+  .payment-operation-form .party-date > .party-picker,
+  .payment-operation-form > .payment-method-row,
+  .payment-operation-form > .receipt-field,
+  .payment-operation-form > .note-field {
+    display: grid;
+    grid-template-columns: 190px minmax(0, 1fr);
+    column-gap: 24px;
+    align-items: center;
+  }
+  .payment-operation-form .party-date > .party-picker > :not(.party-picker-label),
+  .payment-operation-form > .receipt-field > :not(.invoice-dropzone-title) {
+    grid-column: 2;
+  }
+  .payment-operation-form .party-date > .party-picker > .party-picker-label,
+  .payment-operation-form > .receipt-field > .invoice-dropzone-title {
     margin: 0;
-    padding: 18px;
-    border: 1.5px dashed #c9d2cc;
-    border-radius: 12px;
-    background: var(--surface-soft);
   }
-  .payment-operation-form > .receipt-field.dragging {
-    border-color: var(--green);
-    background: #eef6ea;
+  .payment-operation-form > .payment-method-row {
+    margin-bottom: 18px;
   }
-  /* Пустая зона: одна большая кнопка на всю высоту — «перетащите или выберите». */
-  .payment-operation-form .receipt-field > .page-add {
-    align-self: stretch;
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 340px;
-    border: 0;
-    background: transparent;
-    color: var(--muted);
-    font-size: 16px;
-    text-align: center;
-    white-space: normal;
+  .payment-operation-form > .payment-method-row .method-pills {
+    justify-self: start;
   }
-  .payment-operation-form .receipt-field > .page-add::before {
-    content: "";
-    width: 56px;
-    height: 56px;
-    margin-bottom: 14px;
-    border-radius: 16px;
-    background:
-      no-repeat center / 28px
-        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23245d4c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 15V3m-4 4 4-4 4 4M5 13v8h14v-8'/%3E%3C/svg%3E"),
-      #e6f0e1;
+  .payment-operation-form > .payment-method-row .method-pills button {
+    min-width: 170px;
   }
-  .payment-operation-form .receipt-field .page-add-long {
-    display: none;
-  }
-  .payment-operation-form .receipt-field .page-add-drop {
-    display: block;
-    max-width: 260px;
-  }
-  .payment-operation-form .receipt-field > .page-add:hover {
-    color: var(--green);
-  }
-  /* Выбранный чек — крупно, чтобы сверить сумму и номер перевода глазами. */
-  .payment-operation-form .receipt-picked {
-    flex-direction: column;
-    align-items: stretch;
-    padding: 12px;
-  }
-  .payment-operation-form .receipt-picked img,
-  .payment-operation-form .receipt-picked .page-thumb-pdf {
-    width: 100%;
-    height: auto;
-    max-height: 64vh;
-    flex: none;
-    object-fit: contain;
-    background: var(--bg);
-  }
-  .payment-operation-form .receipt-picked .page-thumb-pdf {
-    min-height: 240px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .payment-operation-form .receipt-remove {
-    margin-left: 0;
-    align-self: flex-start;
+  .payment-operation-form > .receipt-field {
+    margin-bottom: 18px;
   }
 }
 
@@ -10300,31 +10335,157 @@ form label.consent {
   margin: 0;
 }
 
-/* PDF накладной в форме по фото: на телефоне — значок «PDF», на компьютере —
-   просмотр браузера (все страницы прокруткой, увеличение, скачать). */
-.page-thumb-pdf-view {
+/* Листы и файлы накладной (PageViewer, 28.10.2026): вкладки сверху, один
+   крупный просмотр под ними. На телефоне крупно — только фото. */
+.page-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.page-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 0 0 2px;
+  list-style: none;
+  overflow-x: auto;
+}
+.page-tab {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: white;
+}
+.page-tab.on {
+  border-color: var(--green);
+  background: var(--green-tint);
+}
+.page-tab-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 220px;
+  padding: 6px 4px 6px 6px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.page-tab-mini {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 44px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-soft);
+  color: var(--danger-ink);
+  font-size: 9px;
+  font-weight: 700;
+}
+.page-tab-mini img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.page-tab-text {
+  min-width: 0;
+}
+.page-tab-text b {
+  display: block;
+  font-size: 13px;
+}
+.page-tab-text small {
+  display: block;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.page-tab-remove {
+  align-self: stretch;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+}
+.page-tab-remove:hover {
+  color: var(--danger-ink);
+}
+.page-view {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--neutral-soft);
+}
+.page-view img {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+}
+.page-view iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+/* PDF внутри страницы телефон не показывает — хватает значка на вкладке. */
+.page-view.is-pdf {
   display: none;
 }
+.page-view-nav {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: white;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.page-view-nav button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.page-view-nav button:disabled {
+  visibility: hidden;
+}
+.page-view-nav button:not(:disabled):hover {
+  background: var(--green);
+}
 @media (min-width: 1100px) {
-  .photo-operation-form .page-thumb.is-pdf {
-    aspect-ratio: auto;
-    height: 78vh;
-    max-height: none;
-  }
-  .photo-operation-form .page-thumb.is-pdf .page-thumb-pdf {
-    display: none;
-  }
-  .photo-operation-form .page-thumb-pdf-view {
+  .photo-operation-form .page-view,
+  .photo-operation-form .page-view.is-pdf {
     display: block;
-    width: 100%;
-    height: 100%;
-    border: 0;
+    height: 72vh;
   }
-  /* Панель просмотра PDF — сверху справа: «×» и номер — внизу, не поверх неё. */
-  .photo-operation-form .page-thumb.is-pdf .page-thumb-remove {
-    top: auto;
-    bottom: 8px;
-    right: 8px;
+  .photo-operation-form .page-view img {
+    height: 100%;
+    max-height: none;
   }
 }
 

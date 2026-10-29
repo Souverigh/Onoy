@@ -379,6 +379,11 @@ export default async function NewOperation({
       <div className="page-heading operation-page-heading">
         <div>
           <h1>{title}</h1>
+          {fixedDirection && (
+            <p className="muted">
+              {fixedDirection === "outgoing" ? "Запишите уже сделанную оплату" : "Запишите деньги, которые клиент уже отдал"}
+            </p>
+          )}
         </div>
       </div>
       {itemsKind && !params.documentId && needsParty && (

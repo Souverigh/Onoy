@@ -32,6 +32,7 @@ import { PartyPicker, type PickerParty } from "./party-picker";
 import { NewCustomerInline } from "./new-customer-inline";
 import { ConfirmDialog } from "./confirm-dialog";
 import { RecognizedLines, linesTotal, type CatalogProduct } from "./recognized-lines";
+import { PageViewer } from "./page-viewer";
 import { lineProductsValue, stockSummary } from "./sale-stock-lines";
 import { LeaveGuard } from "./leave-guard";
 import { NoteField } from "./note-field";
@@ -418,12 +419,20 @@ export function OperationForm({
         ? "Подтвердить товар от поставщика"
         : kind === "sale"
           ? "Подтвердить продажу"
-          : "Подтвердить оплату";
+          : "Записать оплату";
   // Имя на накладной и выбранный клиент не похожи (задача 38) — видно до записи.
   const invoiceName = verdict?.ok && (kind === "purchase" || kind === "sale") ? verdict.counterparty : null;
   // Несколько PDF — разные накладные, сумма — всех вместе (lib/adre/files.ts).
   const invoiceFiles = kind !== "payment" && checkedPhoto?.result?.processing?.files?.length ? checkedPhoto.result.processing.files : null;
   const otherParties = invoiceFiles ? differentParties(invoiceFiles, kind === "sale" ? "buyer" : "seller") : [];
+  // Несколько PDF — разные накладные: на вкладке номер и сумма (PageViewer); фото — листы одной.
+  const separateFiles = pages.length > 1 && pages.every(isPdf);
+  const pageLabel = (i: number, pdf: boolean, name?: string) => {
+    const file = separateFiles || (useExisting && invoiceFiles) ? invoiceFiles?.[i] : undefined;
+    if (file)
+      return { title: file.number ? `№ ${file.number}` : `Файл ${i + 1}`, note: money(file.total.toFixed(2), file.currency) };
+    return { title: pdf && (separateFiles || invoiceFiles) ? `Файл ${i + 1}` : `Лист ${i + 1}`, note: name };
+  };
   const partyScore =
     invoiceName && selectedRecord ? (bestMatches(invoiceName, [selectedRecord], 1, 0)[0]?.score ?? 0) : 1;
   const partyMismatch = Boolean(invoiceName && selectedRecord && partyConfirmed !== selectedParty && partyScore < SAME_PARTY);
@@ -539,10 +548,20 @@ export function OperationForm({
   // оплаты»; в заголовке — что заполнено. Раскрывается сам при ошибке в нём
   // и когда курс нужно ввести вручную.
   const shownDate = dateValue ?? dateSeed;
+  // Дата оплаты — кнопкой вверху формы: «29 октября, 07:51» (прошлый год — с годом).
+  const shownDay = shownDate ? new Date(`${shownDate.slice(0, 10)}T00:00:00Z`) : null;
+  const dateChip =
+    shownDay && !Number.isNaN(shownDay.getTime())
+      ? `${new Intl.DateTimeFormat("ru-RU", {
+          day: "numeric",
+          month: "long",
+          ...(shownDate.slice(0, 4) === bishkekNow().slice(0, 4) ? {} : { year: "numeric" }),
+          timeZone: "UTC",
+        }).format(shownDay)}${shownDate.length > 10 ? `, ${shownDate.slice(11, 16)}` : ""}`
+      : "Сейчас";
   const moreSummary = [
     foreign && rate ? `курс ${formatRate(rate)}` : null,
     bankRef.trim() ? `№ ${bankRef.trim()}` : null,
-    shownDate ? `${ruDate(shownDate)}${shownDate.length > 10 ? ` ${shownDate.slice(11, 16)}` : ""}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -567,8 +586,10 @@ export function OperationForm({
           : null
       : null;
   // Ошибка сервера про поле из «Подробностей» — тоже раскрываем.
+  // Дата оплаты — в своём окне вверху (pay-date), не в «Подробностях».
+  const dateError = kind === "payment" && [localError, commit.error].some((e) => e === "date");
   const moreError = [localError, commit.error].some(
-    (e) => e === "rate" || e === "date" || e === "currency" || e === "part",
+    (e) => e === "rate" || (e === "date" && kind !== "payment") || e === "currency" || e === "part",
   );
   const moreNeeded = moreError || (foreign && !quote && !rateValue);
   useEffect(() => {
@@ -1243,8 +1264,13 @@ export function OperationForm({
         {!(noInvoice && !hasPhoto) && (
           <div className="photo-field invoice-dropzone">
             <span className="invoice-dropzone-title">
-              Фото накладной
-              {pages.length > 0 && <span className="muted"> · страниц: {pages.length}</span>}
+              {separateFiles ? "Накладные" : "Фото накладной"}
+              {pages.length > 0 && (
+                <span className="muted">
+                  {" "}
+                  · {separateFiles ? `${pages.length} ${pages.length < 5 ? "файла" : "файлов"}` : `страниц: ${pages.length}`}
+                </span>
+              )}
               {pages.length === 0 && !useExisting && (
                 <InfoTip>
                   {kind === "sale" ? "Клиента" : "Поставщика"} и сумму подставим с фото. Несколько листов - по
@@ -1253,51 +1279,23 @@ export function OperationForm({
               )}
             </span>
             {useExisting && existingDocument && pages.length === 0 && (
-              <ol className="page-thumbs">
-                {existingDocument.pages.map((page, i) => (
-                  <li key={i} className={`page-thumb${page.mimeType === "application/pdf" && page.url ? " is-pdf" : ""}`}>
-                    {page.mimeType === "application/pdf" || !page.url ? (
-                      <>
-                        <span className="page-thumb-pdf">{page.url ? "PDF" : "Фото"}</span>
-                        {page.url && <PdfView url={page.url} />}
-                      </>
-                    ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={page.url} alt={`Страница ${i + 1}`} />
-                    )}
-                    <span className="page-thumb-n">{i + 1}</span>
-                  </li>
-                ))}
-              </ol>
+              <PageViewer
+                pages={existingDocument.pages.map((page, i) => {
+                  const pdf = page.mimeType === "application/pdf";
+                  return { key: String(i), pdf, url: page.url, ...pageLabel(i, pdf) };
+                })}
+              />
             )}
             {pages.length > 0 && (
-              <ol className="page-thumbs">
-                {pages.map((file, i) => (
-                  <li key={`${i}-${file.name}-${file.lastModified}`} className={`page-thumb${isPdf(file) ? " is-pdf" : ""}`}>
-                    {isPdf(file) ? (
-                      <>
-                        <span className="page-thumb-pdf" title={file.name}>
-                          PDF
-                          <small>{file.name}</small>
-                        </span>
-                        {previews[i] && <PdfView url={previews[i]} />}
-                      </>
-                    ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      previews[i] && <img src={previews[i]} alt={`Страница ${i + 1}`} />
-                    )}
-                    <span className="page-thumb-n">{i + 1}</span>
-                    <button
-                      type="button"
-                      className="page-thumb-remove"
-                      aria-label={`Убрать страницу ${i + 1}`}
-                      onClick={() => removePage(i)}
-                    >
-                      ×
-                    </button>
-                  </li>
-                ))}
-              </ol>
+              <PageViewer
+                pages={pages.map((file, i) => ({
+                  key: `${i}-${file.name}-${file.lastModified}`,
+                  pdf: isPdf(file),
+                  url: previews[i] ?? null,
+                  ...pageLabel(i, isPdf(file), file.name),
+                }))}
+                onRemove={removePage}
+              />
             )}
             {useExisting && pages.length === 0 ? (
               <div className="page-add-actions">
@@ -1321,7 +1319,7 @@ export function OperationForm({
                     предлагает камеру, галерею и файлы. */}
                 <label className="button page-add">
                   {pages.length ? (
-                    "+ Ещё страница"
+                    separateFiles ? "+ Ещё накладная" : "+ Ещё страница"
                   ) : (
                     <>
                       <span className="page-add-long">Сфотографировать или выбрать накладную</span>
@@ -1397,86 +1395,31 @@ export function OperationForm({
           </div>
         )}
         {/* Клиент или поставщик — первым полем, как в продаже и приходе. */}
-        {kind === "payment" && <div className="party-date">{partySection}</div>}
-        {kind === "payment" && !prefill && (
-          <div
-            className={`photo-field receipt-field${receiptDragging ? " dragging" : ""}`}
-            // Компьютер: чек можно перетащить мышью из папки или браузера.
-            onDragOver={(e) => {
-              if (!e.dataTransfer.types.includes("Files")) return;
-              e.preventDefault();
-              setReceiptDragging(true);
-            }}
-            onDragLeave={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setReceiptDragging(false);
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              setReceiptDragging(false);
-              const file = e.dataTransfer.files?.[0];
-              if (file) void pickReceipt(file);
-            }}
-          >
-            <span className="invoice-dropzone-title">
-              Чек
-              {!receiptFile && (
-                <InfoTip>
-                  Необязательно. Фото чека или скриншот перевода - сумму, дату, номер перевода и клиента заполним с
-                  него.
-                </InfoTip>
-              )}
-            </span>
-            {receiptFile ? (
-              <div className="receipt-picked">
-                {receiptPreview ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={receiptPreview} alt="Чек" />
-                ) : (
-                  <span className="page-thumb-pdf">PDF</span>
-                )}
-                <span className="receipt-picked-text">
-                  {checkingReceipt
-                    ? "Читаем чек…"
-                    : receiptCheck?.ok
-                      ? receiptCheck.amount
-                        ? `С чека: ${money(receiptCheck.amount, receiptCheck.currency ?? docCurrency)}. Проверьте поля ниже.`
-                        : "Сумму на чеке не нашли - введите вручную."
-                      : receiptCheck?.error === "photo_used"
-                        ? PHOTO_USED_TEXT
-                        : receiptCheck?.error === "upload_failed"
-                          ? "Чек не загрузился - отправим вместе с оплатой."
-                          : receiptCheck
-                            ? "Чек прочитать не удалось - заполните поля вручную, чек сохранится."
-                            : null}
-                </span>
-                <button
-                  type="button"
-                  className="receipt-remove"
-                  aria-label="Убрать чек"
-                  onClick={() => void pickReceipt(null)}
-                >
-                  × Убрать
-                </button>
-              </div>
-            ) : (
-              <label className="button page-add">
-                <span className="page-add-long">Сфотографировать или выбрать чек</span>
-                <span className="page-add-drop">Перетащите чек сюда или нажмите, чтобы выбрать файл</span>
-                <span className="page-add-short">Фото или файл чека</span>
-                <input
-                  type="file"
-                  accept={DOCUMENT_ACCEPT}
-                  className="sr-only"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] ?? null;
-                    e.target.value = "";
-                    void pickReceipt(file);
-                  }}
-                />
-              </label>
-            )}
-          </div>
+        {kind === "payment" && (
+          // Дата и время оплаты — кнопкой справа вверху (макет 29.10.2026); нажали — поле.
+          <details className="more-menu pay-date" open={dateError || undefined}>
+            <summary className="pay-date-chip">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 6h16v15H4V6Zm0 5h16M8 3v5m8-5v5" />
+              </svg>
+              <span>{dateChip}</span>
+              <span aria-hidden="true">▾</span>
+            </summary>
+            <div className="more-menu-list pay-date-panel">
+              <RuDateInput
+                label={prefill?.date || (receiptCheck?.ok && receiptCheck.date) ? "Дата и время перевода (с чека)" : "Дата и время оплаты"}
+                value={dateSeed}
+                withTime
+                onChange={(next) => {
+                  setDateValue(next);
+                  setDateTouched(true);
+                  if (localError === "date") setLocalError(null);
+                }}
+              />
+            </div>
+          </details>
         )}
+        {kind === "payment" && <div className="party-date">{partySection}</div>}
         {invoiceName && (
           <div className="party-suggestions">
             <span className="muted">
@@ -1533,6 +1476,9 @@ export function OperationForm({
           </div>
         )}
         <div className="amount-head">
+          {kind === "payment" ? (
+            <span>Сумма оплаты</span>
+          ) : (
           <span className="label-with-tip">
             Сколько?
             <InfoTip>
@@ -1545,6 +1491,8 @@ export function OperationForm({
                     : "Оплата сразу уменьшит ваш долг поставщику."}
             </InfoTip>
           </span>
+          )}
+          {kind !== "payment" && (
           <span className="currency-pills" role="group" aria-label="Валюта суммы">
             {CURRENCIES.map((c) => (
               <button
@@ -1561,6 +1509,7 @@ export function OperationForm({
               </button>
             ))}
           </span>
+          )}
         </div>
         <label
           className={`amount-field${kind !== "payment" && amountMatches ? " amount-matches" : ""}`}
@@ -1581,7 +1530,59 @@ export function OperationForm({
             }}
             aria-label={`Сумма, ${CURRENCY_SIGN[docCurrency]}`}
           />
+          {kind === "payment" && (
+            // Валюта — в самом поле суммы: «20 000 | сом ▾» (макет 29.10.2026).
+            <select
+              className="amount-currency"
+              aria-label="Валюта суммы"
+              value={docCurrency}
+              onChange={(e) => {
+                const c = e.target.value as (typeof CURRENCIES)[number];
+                setAmountCurrency(c === debtCurrency ? null : c);
+                setRateValue("");
+              }}
+            >
+              {CURRENCIES.map((c) => (
+                <option key={c} value={c}>
+                  {CURRENCY_SIGN[c]}
+                </option>
+              ))}
+            </select>
+          )}
         </label>
+        {/* Несколько PDF — из каких накладных сложилась сумма. */}
+        {invoiceFiles && invoiceFiles.length > 1 && (
+          <div className="invoice-files" role="status">
+            <ul>
+              {invoiceFiles.map((f, i) => (
+                <li key={i}>
+                  <span>
+                    {f.number ? `№ ${f.number}` : `Файл ${i + 1}`}
+                    {f.date && <span className="muted"> от {ruDate(f.date) || f.date}</span>}
+                  </span>
+                  <span>{money(f.total.toFixed(2), f.currency)}</span>
+                </li>
+              ))}
+              {new Set(invoiceFiles.map((f) => f.currency)).size === 1 && (
+                <li className="invoice-files-total">
+                  <span>Всего</span>
+                  <span>
+                    {money(
+                      invoiceFiles.reduce((sum, f) => sum + f.total, 0).toFixed(2),
+                      invoiceFiles[0].currency,
+                    )}
+                  </span>
+                </li>
+              )}
+            </ul>
+            {otherParties.length > 0 && (
+              <p className="warning">
+                В накладных разные {kind === "sale" ? "покупатели" : "поставщики"}: {otherParties.map((p) => `«${p}»`).join(", ")}. Если это
+                разные {kind === "sale" ? "клиенты" : "поставщики"} - запишите каждую накладную отдельно.
+              </p>
+            )}
+          </div>
+        )}
         {amountSuggestions.length > 0 && (
           // Итоги накладной разошлись — один блок выбора: вопрос, две суммы, подсказка.
           <div className="amount-choice" role="group" aria-label="Какую сумму записать">
@@ -1638,30 +1639,6 @@ export function OperationForm({
           <div className="photo-check">
             {checking && <p className="muted">Проверяем фото…</p>}
             {checkNote && <p className="muted">{checkNote}</p>}
-            {invoiceFiles && invoiceFiles.length > 1 && (
-              <div className="notice invoice-files" role="status">
-                <p>
-                  <b>
-                    {invoiceFiles.length} {invoiceFiles.length < 5 ? "накладные" : "накладных"}
-                  </b>{" "}
-                  - сумма всех вместе:
-                </p>
-                <ol>
-                  {invoiceFiles.map((f, i) => (
-                    <li key={i}>
-                      {f.number ? `№ ${f.number}` : `Файл ${i + 1}`}
-                      {f.date ? ` от ${ruDate(f.date) || f.date}` : ""} - {money(f.total.toFixed(2), f.currency)}
-                    </li>
-                  ))}
-                </ol>
-                {otherParties.length > 0 && (
-                  <p>
-                    В накладных разные {kind === "sale" ? "покупатели" : "поставщики"}: {otherParties.map((p) => `«${p}»`).join(", ")}. Если это
-                    разные {kind === "sale" ? "клиенты" : "поставщики"} - запишите каждую накладную отдельно.
-                  </p>
-                )}
-              </div>
-            )}
             {verdict && !verdict.ok && (
               <div className="photo-check-mismatch document-kind-warning" role="status">
                 {verdict.reason === "direction" ? (
@@ -1808,9 +1785,88 @@ export function OperationForm({
             </span>
           </div>
         )}
-        {/* Комментарий — сразу под «Наличные / Перевод» (просьба пользователя 22.10.2026). */}
+        {kind === "payment" && !prefill && (
+          <div
+            className={`photo-field receipt-field${receiptDragging ? " dragging" : ""}`}
+            // Компьютер: чек можно перетащить мышью из папки или браузера.
+            onDragOver={(e) => {
+              if (!e.dataTransfer.types.includes("Files")) return;
+              e.preventDefault();
+              setReceiptDragging(true);
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setReceiptDragging(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setReceiptDragging(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) void pickReceipt(file);
+            }}
+          >
+            <span className="invoice-dropzone-title">
+              Чек
+              {!receiptFile && (
+                <InfoTip>
+                  Необязательно. Фото чека или скриншот перевода - сумму, дату, номер перевода и клиента заполним с
+                  него.
+                </InfoTip>
+              )}
+            </span>
+            {receiptFile ? (
+              <div className="receipt-picked">
+                {receiptPreview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={receiptPreview} alt="Чек" />
+                ) : (
+                  <span className="page-thumb-pdf">PDF</span>
+                )}
+                <span className="receipt-picked-text">
+                  {checkingReceipt
+                    ? "Читаем чек…"
+                    : receiptCheck?.ok
+                      ? receiptCheck.amount
+                        ? `С чека: ${money(receiptCheck.amount, receiptCheck.currency ?? docCurrency)}. Проверьте поля ниже.`
+                        : "Сумму на чеке не нашли - введите вручную."
+                      : receiptCheck?.error === "photo_used"
+                        ? PHOTO_USED_TEXT
+                        : receiptCheck?.error === "upload_failed"
+                          ? "Чек не загрузился - отправим вместе с оплатой."
+                          : receiptCheck
+                            ? "Чек прочитать не удалось - заполните поля вручную, чек сохранится."
+                            : null}
+                </span>
+                <button
+                  type="button"
+                  className="receipt-remove"
+                  aria-label="Убрать чек"
+                  onClick={() => void pickReceipt(null)}
+                >
+                  × Убрать
+                </button>
+              </div>
+            ) : (
+              <label className="button page-add">
+                <span className="page-add-long">Сфотографировать или выбрать чек</span>
+                <span className="page-add-drop">Перетащите чек сюда или нажмите, чтобы выбрать файл</span>
+                <span className="page-add-short">Фото или файл чека</span>
+                <input
+                  type="file"
+                  accept={DOCUMENT_ACCEPT}
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    e.target.value = "";
+                    void pickReceipt(file);
+                  }}
+                />
+              </label>
+            )}
+          </div>
+        )}
+        {/* Комментарий — под «Наличные / Перевод» и чеком (просьба пользователя 22.10.2026, макет 29.10.2026). */}
         {kind === "payment" && (
-          <NoteField value={note} onChange={setNote} placeholder="За прошлый заказ" />
+          <NoteField value={note} onChange={setNote} placeholder="За прошлый заказ" label="Комментарий" />
         )}
         {overLimit && (
           <p className="form-error limit-warning" role="alert">
@@ -1890,16 +1946,6 @@ export function OperationForm({
                   onChange={(e) => setBankRef(e.target.value)}
                 />
               </label>
-              <RuDateInput
-                label={prefill?.date || (receiptCheck?.ok && receiptCheck.date) ? "Дата и время перевода (с чека)" : "Дата и время оплаты"}
-                value={dateSeed}
-                withTime
-                onChange={(next) => {
-                  setDateValue(next);
-                  setDateTouched(true);
-                  if (localError === "date") setLocalError(null);
-                }}
-              />
             </div>
           </details>
         )}
@@ -1916,7 +1962,7 @@ export function OperationForm({
           // «Подтвердить» — прилипает к низу экрана.
           <div className="sale-bar payment-bar">
             <div className="sale-bar-total">
-              <span className="muted">{direction === "incoming" ? "Клиент принёс" : "Оплата поставщику"}</span>
+              <span className="muted">{direction === "incoming" ? "Клиент принёс" : "Сумма оплаты"}</span>
               {enteredAmount > 0 ? (
                 <strong>{money(enteredAmount.toFixed(2), docCurrency)}</strong>
               ) : (
@@ -2042,13 +2088,4 @@ export function OperationForm({
       </form>
     </>
   );
-}
-
-/**
- * PDF накладной на компьютере — встроенным просмотром браузера, как на
- * странице документа: все страницы прокруткой, увеличение, скачать (просьба
- * пользователя 22.10.2026). На телефоне — значок «PDF» (стили).
- */
-function PdfView({ url }: { url: string }) {
-  return <iframe src={url} title="PDF накладной" className="page-thumb-pdf-view" />;
 }

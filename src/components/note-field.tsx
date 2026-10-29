@@ -7,14 +7,16 @@ export function NoteField({
   value,
   onChange,
   placeholder = "Например: остаток привезёт завтра",
+  label = "Комментарий (необязательно)",
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  label?: string;
 }) {
   return (
     <label className="note-field">
-      Комментарий (необязательно)
+      {label}
       <input
         name="note"
         maxLength={NOTE_MAX}
