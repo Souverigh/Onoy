@@ -3967,28 +3967,6 @@ tr.line-mismatch {
 .report-switch {
   margin: 0 4px 0 0;
 }
-.report-delta {
-  display: inline-block;
-  margin-left: 4px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: #eef1ee;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-.report-delta.up {
-  background: #e3efd6;
-  color: var(--green);
-}
-.report-delta.down {
-  background: #fbe6e3;
-  color: #9a1f18;
-}
-.report-debtors {
-  margin-bottom: 14px;
-}
 .report-table summary {
   cursor: pointer;
   font-weight: 600;
@@ -9206,23 +9184,402 @@ td.record-sum {
   margin: 0;
   font-size: 13px;
 }
-.report-leaders {
-  display: grid;
-  /* Колонка не шире экрана: без этого широкая таблица растягивает колонку,
-     а с ней всю страницу и нижнюю панель; таблица прокручивается в .table-wrap. */
-  grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
-  margin-bottom: 16px;
-}
-.report-leaders > *,
 .report-charts > *,
 .report-tiles > * {
   min-width: 0;
 }
-@media (min-width: 1000px) {
-  .report-leaders {
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-    align-items: start;
+
+/* Отчёт за месяц (макет 29.10.2026): три карточки, пояснение, прибыль и
+   поставщики рядом, ниже — раскрывающиеся разделы. */
+.report-heading {
+  align-items: flex-start;
+}
+.report-nav {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.report-switch-row {
+  display: contents;
+}
+.day-heading .report-switch.pill-switch {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 2px;
+  margin: 0;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--neutral-soft);
+}
+.report-switch.pill-switch a {
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+.report-switch.pill-switch a.selected {
+  background: var(--green);
+  color: white;
+}
+.report-period-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: white;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  list-style: none;
+  cursor: pointer;
+}
+.report-period-button::-webkit-details-marker {
+  display: none;
+}
+.report-period-button svg {
+  width: 20px;
+  height: 20px;
+  color: var(--green);
+}
+.report-period-button span:last-child {
+  margin-left: auto;
+  font-size: 12px;
+}
+.report-period .more-menu-list {
+  left: auto;
+  right: 0;
+  max-height: 340px;
+  overflow: auto;
+}
+.report-period .more-menu-list a.selected {
+  color: var(--green);
+  font-weight: 700;
+}
+.report-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.report-kpi {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  min-width: 0;
+  padding: 18px 20px;
+}
+.report-kpi-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--green-soft);
+  color: var(--green);
+}
+.report-kpi > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.report-kpi > div > span {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.report-kpi strong {
+  color: var(--ink);
+  font-size: 28px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.report-kpi small {
+  color: var(--muted);
+  font-size: 14px;
+}
+.report-kpi-link {
+  color: var(--green);
+  font-weight: 600;
+  text-decoration: underline;
+}
+.report-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--notice-bg);
+  color: var(--notice-ink);
+  font-size: 14px;
+}
+.report-note .day-attention-icon,
+.report-warn .day-attention-icon {
+  width: 18px;
+  height: 18px;
+  font-size: 12px;
+}
+.report-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+@media (max-width: 900px) {
+  .report-kpis,
+  .report-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.report-card-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 700;
+}
+.report-card-title svg {
+  color: var(--green);
+}
+.report-partial {
+  padding: 3px 12px;
+  border: 1px solid var(--warning-border);
+  border-radius: 999px;
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.report-profit .report-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--notice-bg);
+  color: var(--warning-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.report-profit .report-profit-lines {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.report-profit .report-profit-lines dt,
+.report-profit .report-profit-lines dd {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.report-profit .report-profit-lines dt {
+  color: var(--ink);
+}
+.report-profit .report-profit-lines dt:last-of-type,
+.report-profit .report-profit-lines dd:last-of-type {
+  border-bottom: 0;
+}
+.report-suppliers {
+  display: flex;
+  flex-direction: column;
+}
+.report-suppliers .report-card-title {
+  margin-bottom: 8px;
+}
+.report-suppliers .day-line strong {
+  font-size: 16px;
+}
+.report-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--neutral-soft);
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+.report-hint-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--green);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+}
+/* Раздел, который раскрывается: значок, название, пояснение, стрелка справа. */
+.report-section {
+  margin-bottom: 12px;
+  padding: 0;
+}
+.report-section > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 24px;
+  padding: 16px 22px;
+  list-style: none;
+  cursor: pointer;
+}
+.report-section > summary::-webkit-details-marker {
+  display: none;
+}
+.report-section > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  margin-left: 12px;
+  border-right: 2px solid var(--ink-soft);
+  border-bottom: 2px solid var(--ink-soft);
+  transform: rotate(45deg);
+}
+.report-section[open] > summary::after {
+  transform: rotate(-135deg);
+}
+.report-section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 700;
+}
+.report-section-title svg {
+  color: var(--green);
+}
+.report-section-desc {
+  flex: 1 1 200px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.report-section-link {
+  margin-left: auto;
+  color: var(--green);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.report-section > .table-wrap,
+.report-section > .report-charts,
+.report-section-body,
+.report-section-foot {
+  margin: 0 22px 16px;
+}
+.report-section-body {
+  display: grid;
+  gap: 20px;
+}
+.report-section-body h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.report-section-foot {
+  font-size: 13px;
+}
+@media (max-width: 560px) {
+  .report-switch-row {
+    order: 10;
+    display: flex;
+    flex-basis: 100%;
+    justify-content: center;
+  }
+  .report-period {
+    flex: 1;
+    min-width: 0;
+  }
+  .report-period-button {
+    width: 100%;
+  }
+  .report-kpis {
+    gap: 0;
+    padding: 2px 16px;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    background: white;
+  }
+  .report-kpi {
+    padding: 14px 0;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    background: none;
+  }
+  .report-kpi:last-child {
+    border-bottom: 0;
+  }
+  .report-kpi-icon {
+    width: 44px;
+    height: 44px;
+  }
+  .report-kpi strong {
+    font-size: 22px;
+  }
+  .report-kpi small {
+    font-size: 13px;
+  }
+  /* «Расходы» на телефоне — вся строка ведёт к расходам, справа «›». */
+  .report-kpi-link {
+    position: absolute;
+    inset: 0;
+    font-size: 0;
+  }
+  .report-kpi:has(.report-kpi-link)::after {
+    content: "›";
+    position: absolute;
+    top: 50%;
+    right: 2px;
+    transform: translateY(-50%);
+    color: var(--ink);
+    font-size: 26px;
+  }
+  .report-note {
+    font-size: 13px;
+  }
+  .report-profit .report-profit-lines {
+    font-size: 13px;
+  }
+  .report-card-title {
+    gap: 8px;
+    font-size: 16px;
+  }
+  .report-partial {
+    padding: 2px 8px;
+    font-size: 11px;
+  }
+  .report-profit .report-warn {
+    font-size: 13px;
+  }
+  .report-section > summary {
+    padding: 14px 16px;
+  }
+  .report-section-title {
+    gap: 10px;
+    font-size: 15px;
+  }
+  .report-section-desc {
+    display: none;
+  }
+  .report-section > .table-wrap,
+  .report-section > .report-charts,
+  .report-section-body,
+  .report-section-foot {
+    margin: 0 16px 14px;
   }
 }
 

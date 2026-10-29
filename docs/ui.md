@@ -74,6 +74,15 @@
   `.day-card-title`; строка с «!» и пояснением — `.day-note`. Долги —
   таблицей по валютам `.day-debt-table` («Долг» / «Аванс»). Не закрытые дни —
   `.day-attention` со значком. «Скачать» с подписью — `DownloadMenu label`.
+- Отчёт за месяц/неделю (макет 29.10.2026) — период: `.report-switch`
+  («Месяц / Неделя»), список периодов `details.report-period`, стрелки;
+  сверху три карточки `.report-kpis` / `.report-kpi` со значком
+  `.report-kpi-icon` (на телефоне — одной карточкой строками), пояснение
+  `.report-note`; две карточки рядом `.report-pair` с заголовком
+  `.report-card-title` (метка `.report-partial`, жёлтая строка `.report-warn`,
+  серая подсказка `.report-hint`); ниже разделы `details.report-section`
+  (значок и название `.report-section-title`, пояснение `.report-section-desc`,
+  ссылка `.report-section-link`, стрелка справа).
 - Заказы из каталога в кабинете — таблицей, как продажи (`.op-table` +
   `.op-list-mobile`, строка `.record-row` ведёт на заказ); на странице заказа
   «На кого продажа» — `.order-customer`: варианты списком в одной рамке

@@ -8,6 +8,7 @@ export type IconName =
   | "camera"
   | "plus"
   | "minus"
+  | "coin"
   | "arrow"
   | "truck"
   | "check"
@@ -36,6 +37,7 @@ const paths: Record<IconName, string> = {
   camera: "M3 7h4l2-3h6l2 3h4v14H3V7Zm9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z",
   plus: "M12 5v14M5 12h14",
   minus: "M5 12h14",
+  coin: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm3 6.2c-.5-1-1.6-1.7-3-1.7-1.7 0-3 .9-3 2.2 0 3 6 1.5 6 4.6 0 1.3-1.3 2.2-3 2.2-1.4 0-2.6-.7-3.1-1.8M12 5.8v12.4",
   chart: "M3 3v18h18M8 17v-5m5 5V8m5 9v-7",
   arrow: "M5 12h14m-6-6 6 6-6 6",
   truck:
