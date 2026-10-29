@@ -66,6 +66,8 @@ export async function redoTarget(db: SupabaseClient, organizationId: string, kin
       }
     }
   }
+  // Без фото — та же сумма на вкладке «Сумма» (ModeTabs), а не на «Фото».
+  if (kind !== "payment" && !params.has("documentId")) params.set("mode", "amount");
   params.set("redo", "1");
   return `/money/new?${params.toString()}`;
 }

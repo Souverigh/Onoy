@@ -117,8 +117,12 @@ export function OperationForm({
   initialPaidNow,
   stockProducts,
   maker,
+  source,
 }: {
   kind: Operation;
+  /** Вкладка над формой (ModeTabs): «Фото» или «Сумма» — тогда
+   *  переключателя «По фото / Без накладной» в форме нет. */
+  source?: "photo" | "amount";
   idempotencyKey: string;
   /** Ключ для оплаты части сразу при приходе — отдельная запись оплаты. */
   partPaymentKey?: string;
@@ -200,7 +204,8 @@ export function OperationForm({
   // Дата продажи или прихода (задача 15): пусто — сегодня.
   const [recordDate, setRecordDate] = useState(initialDate ?? "");
   // «Накладной нет — записать сумму»: продажа по телефону, товар без бумаги.
-  const [noInvoice, setNoInvoice] = useState(false);
+  const [noInvoiceChoice, setNoInvoice] = useState(false);
+  const noInvoice = source ? source === "amount" : noInvoiceChoice;
   // Комментарий к продаже или приходу (необязательно).
   const [note, setNote] = useState("");
   const [noteOpen, setNoteOpen] = useState(false);
@@ -282,6 +287,12 @@ export function OperationForm({
     {},
   );
   const [localError, setLocalError] = useState<string | null>(null);
+  // Перешли на вкладку «Сумма» — подсказки и ошибка про фото больше не к месту.
+  useEffect(() => {
+    if (source !== "amount") return;
+    setCheckNote(null);
+    setLocalError((current) => (current === "photo" ? null : current));
+  }, [source]);
   // Фото, загруженные неудачной попыткой, — до смены фото продавцом.
   const [discardedAttempt, setDiscardedAttempt] = useState<number | undefined>(undefined);
   const uploadedDocumentId =
@@ -1194,7 +1205,7 @@ export function OperationForm({
         {kind !== "payment" && (
           // «По фото / Без накладной» — переключателем, а не пунктирным блоком (21.10.2026).
           <div className="invoice-source">
-            {!hasPhoto && (
+            {!hasPhoto && !source && (
               <span className="method-pills invoice-source-switch" role="group" aria-label="Накладная">
                 <button
                   type="button"
@@ -1219,7 +1230,11 @@ export function OperationForm({
               </span>
             )}
             {noInvoice && !hasPhoto && (
-              <p className="muted invoice-source-note">Запишем только сумму - в истории будет пометка «без накладной».</p>
+              <p className="muted invoice-source-note">
+                {source
+                  ? `Без фото и списка товаров - только сумма ${kind === "sale" ? "продажи" : "прихода"}.`
+                  : "Запишем только сумму - в истории будет пометка «без накладной»."}
+              </p>
             )}
         {!(noInvoice && !hasPhoto) && (
           <div className="photo-field invoice-dropzone">

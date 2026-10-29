@@ -3,7 +3,7 @@ import { word } from "@/lib/business";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { ModeTabs } from "@/components/mode-tabs";
+import { ModeTabs, type SaleMode } from "@/components/mode-tabs";
 import { OperationForm } from "@/components/operation-form";
 import { SaleItemsForm } from "@/components/sale-items-form";
 import type { StockProduct } from "@/lib/match";
@@ -65,8 +65,8 @@ export default async function NewOperation({
     kind === "payment" && (params.direction === "incoming" || params.direction === "outgoing")
       ? params.direction
       : undefined;
-  // Продажа и приход: по фото накладной (по умолчанию, задача 10) или
-  // товарами со склада; открываем вид, где продавец был в прошлый раз.
+  // Продажа и приход: по фото накладной (по умолчанию, задача 10), товарами
+  // со склада или только суммой; открываем вид, где продавец был в прошлый раз.
   const itemsKind = kind === "sale" || kind === "purchase";
   const remembered = (await cookies()).get(`mode_${kind}`)?.value;
   // Черновик (только ручной ввод товаров): свой, того же вида — RLS и фильтр.
@@ -83,14 +83,16 @@ export default async function NewOperation({
   const draft: Draft | undefined = draftResult?.data
     ? { id: draftResult.data.id, kind: kind as Draft["kind"], data: draftData(draftResult.data.data), updated_at: draftResult.data.updated_at }
     : undefined;
-  const wantedMode =
+  const wantedMode: SaleMode =
     draftParam || (stockOn && params.mode === "items")
       ? "items"
-      : !stockOn || params.mode === "photo"
-        ? "photo"
-        : remembered === "items"
+      : params.mode === "photo" || params.mode === "amount"
+        ? params.mode
+        : stockOn && remembered === "items"
           ? "items"
-          : "photo";
+          : remembered === "amount"
+            ? "amount"
+            : "photo";
   const productsRequest =
     itemsKind && !params.documentId && wantedMode === "items"
       ? db
@@ -379,11 +381,12 @@ export default async function NewOperation({
           <h1>{title}</h1>
         </div>
       </div>
-      {itemsKind && stockOn && !params.documentId && needsParty && (
+      {itemsKind && !params.documentId && needsParty && (
         <ModeTabs
           kind={kind as "sale" | "purchase"}
           selected={saleMode}
           party={initialParty}
+          stock={stockOn}
         />
       )}
       {replacing && (params.fixed === "1" || params.replace === "1") && (
@@ -506,6 +509,8 @@ export default async function NewOperation({
             correcting={params.fix === "1"}
             correction={correction}
             maker={maker}
+            // Вкладка «Фото» / «Сумма»; с фото из другой формы — без вкладок.
+            source={itemsKind && !params.documentId ? (saleMode === "amount" ? "amount" : "photo") : undefined}
             initialPaidNow={
               kind === "purchase" && params.fix === "1" && params.paid && /^\d{1,14}(\.\d{1,2})?$/.test(params.paid)
                 ? params.paid.replace(".", ",")

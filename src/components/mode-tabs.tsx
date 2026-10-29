@@ -2,31 +2,41 @@
 
 import Link from "next/link";
 
+export type SaleMode = "photo" | "items" | "amount";
+
 /**
- * «По фото накладной» / «Товары со склада» (задача 10). Выбор запоминается
- * на этом телефоне — в следующий раз форма откроется там же.
+ * «Фото» / «Склад» (задача 10) / «Сумма» (28.10.2026 — было переключателем
+ * «Без накладной» внутри фото; подписи одним словом — просьба пользователя).
+ * «Склад» — только с модулем склада. Выбор запоминается на этом телефоне —
+ * в следующий раз форма откроется там же.
  */
 export function ModeTabs({
   kind,
   selected,
   party,
+  stock,
 }: {
   kind: "sale" | "purchase";
-  selected: "photo" | "items";
+  selected: SaleMode;
   party?: string;
+  stock: boolean;
 }) {
-  const remember = (mode: "photo" | "items") => {
+  const remember = (mode: SaleMode) => {
     document.cookie = `mode_${kind}=${mode}; path=/money; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
   };
-  const href = (mode: "photo" | "items") => `/money/new?type=${kind}&mode=${mode}${party ? `&party=${party}` : ""}`;
+  const href = (mode: SaleMode) => `/money/new?type=${kind}&mode=${mode}${party ? `&party=${party}` : ""}`;
+  const tabs: [SaleMode, string][] = [
+    ["photo", "Фото"],
+    ...(stock ? [["items", "Склад"] as [SaleMode, string]] : []),
+    ["amount", "Сумма"],
+  ];
   return (
     <nav className="tabs sale-mode-tabs" aria-label={kind === "sale" ? "Как оформить продажу" : "Как оформить товар от поставщика"}>
-      <Link className={selected === "photo" ? "selected" : ""} href={href("photo")} onClick={() => remember("photo")}>
-        По фото накладной
-      </Link>
-      <Link className={selected === "items" ? "selected" : ""} href={href("items")} onClick={() => remember("items")}>
-        {kind === "sale" ? "Товары со склада" : "Товары на склад"}
-      </Link>
+      {tabs.map(([mode, label]) => (
+        <Link key={mode} className={selected === mode ? "selected" : ""} href={href(mode)} onClick={() => remember(mode)}>
+          {label}
+        </Link>
+      ))}
     </nav>
   );
 }
