@@ -5,7 +5,6 @@ import type { InvoiceLine, InvoiceResult } from "@/lib/adre/types";
 import { searchProducts, type StockProduct } from "@/lib/match";
 import { money, quantity } from "@/lib/format";
 import { ruDate } from "@/lib/ru-date";
-import { InfoTip } from "./info-tip";
 import { StockLineStatus, stockSummary, type StockMatching } from "./sale-stock-lines";
 
 /** «1 строка», «3 строки», «5 строк». */
@@ -163,16 +162,6 @@ export function RecognizedLines({
             <span className="muted"> · со склада {summary.writtenOff}</span>
           ))}
         {summary && summary.asking > 0 && <span className="sale-stock-asking"> · проверьте {summary.asking}</span>}
-        {stock && (
-          // Нажатие на «!» не должно сворачивать блок.
-          <span className="sale-stock-tip" onClick={(e) => e.preventDefault()}>
-            <InfoTip>
-              {stock.purchase
-                ? "Нажмите на строку, чтобы исправить название, количество или цену. «✓ На склад» - приход ляжет на этот товар (нашли по коду или названию). Похожий - только после «Да», название с накладной запомним. «Новый товар» - заведём с кодом из накладной. «Не принимать» - строка останется в накладной и долге поставщику, склад не изменится."
-                : "Нажмите на строку, чтобы исправить название, количество или цену. «✓ Со склада» - спишем с остатка. Похожий товар спишем только после «Да» - название с фото запомним. «Не списывать» - строка останется в накладной и долге клиента, склад не изменится."}
-            </InfoTip>
-          </span>
-        )}
       </summary>
       {head && <p className="muted">{head}</p>}
       <ol>

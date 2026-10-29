@@ -2005,12 +2005,6 @@ div.photo-field {
   color: var(--green);
   font-weight: 600;
 }
-.sale-stock-tip {
-  display: inline-flex;
-  vertical-align: middle;
-  margin-left: 6px;
-  font-weight: 400;
-}
 .sale-stock-actions {
   display: flex;
   flex-wrap: wrap;
@@ -10199,9 +10193,6 @@ form label.consent {
   min-height: 32px;
   padding: 4px 0;
   font-size: 14px;
-}
-.recognized-lines > summary .sale-stock-tip {
-  margin-left: 6px;
 }
 /* Приход «Оплатили сразу»: сколько — полем над нижней панелью. */
 .paid-now-field {
