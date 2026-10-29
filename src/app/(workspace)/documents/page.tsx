@@ -11,7 +11,16 @@ type DocRow = {
   status: string;
   error_message: string | null;
   created_at: string;
+  mime_type: string | null;
 };
+
+/**
+ * Фото показываем по 10 (просьба пользователя 29.10.2026 — беречь трафик):
+ * миниатюры грузятся только у показанных, дальше — «Показать ещё 10».
+ * Для вкладок и поиска просматриваем последние 200 и отбираем.
+ */
+const PAGE = 10;
+const SCANNED = 200;
 
 const statusLabel: Record<string, { label: string; className: string }> = {
   uploaded: { label: "Читаем фото", className: "tag" },
@@ -21,185 +30,238 @@ const statusLabel: Record<string, { label: string; className: string }> = {
   failed: { label: "Ошибка", className: "tag reversed-tag" },
 };
 
-const kindLabel: Record<string, string> = {
-  purchase: "Товар от поставщика",
-  sale: "Продажа",
-  payment: "Оплата",
-  expense: "Расход",
+/** Название строки (макет 29.10.2026): «Фото продажи», «Чек расхода». */
+const kindTitle: Record<string, string> = {
+  purchase: "Фото накладной",
+  sale: "Фото продажи",
+  payment: "Чек оплаты",
+  expense: "Чек расхода",
 };
-const dateTime = new Intl.DateTimeFormat("ru-RU", {
-  dateStyle: "short",
-  timeStyle: "short",
-  timeZone: "Asia/Bishkek",
-});
+/** Кого нет у фото без записи. */
+const nobody: Record<string, string> = {
+  purchase: "Поставщик не указан",
+  sale: "Клиент не указан",
+  payment: "Клиент не указан",
+  expense: "Расход магазина",
+};
+/** Кнопка у фото без записи — открыть форму для проверки и подтверждения. */
+const recordLabel: Record<string, string> = {
+  purchase: "Оформить приход",
+  sale: "Оформить продажу",
+  payment: "Оформить оплату",
+  expense: "Оформить расход",
+};
 
-// Список на телефоне — коротко, без года: «30.09, 07:59».
-const shortDateTime = new Intl.DateTimeFormat("ru-RU", {
-  day: "2-digit",
-  month: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  timeZone: "Asia/Bishkek",
-});
+// «29 октября, 08:17».
+const uploaded = (iso: string) => {
+  const d = new Date(iso);
+  const day = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: "Asia/Bishkek" }).format(d);
+  const time = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bishkek" }).format(d);
+  return `${day}, ${time}`;
+};
 
 const roleLabel = { customer: "клиент", supplier: "поставщик", expense: "расход магазина" } as const;
+
+const TABS = [
+  ["all", "Все"],
+  ["orphan", "Без записи"],
+  ["linked", "С записью"],
+] as const;
+type Tab = (typeof TABS)[number][0];
+
+/** Фото без записи: ни продажи, ни прихода, ни оплаты, ни расхода (и не в работе). */
+const isOrphan = (doc: DocRow, links: Links) => !links.linked.has(doc.id) && doc.status !== "processing";
 
 /** Статус для списка: отменённая запись и фото без записи — словами (задачи 14, 31). */
 function statusOf(doc: DocRow, links: Links) {
   if (links.reversed.has(doc.id)) return { label: "Отменена", className: "tag" };
-  if (!links.linked.has(doc.id) && doc.status !== "processing") return { label: "Без записи", className: "tag" };
+  if (isOrphan(doc, links)) return { label: "Без записи", className: "tag doc-tag-orphan" };
   if (recognitionStuck(doc)) return { label: "Не прочиталось", className: "tag reversed-tag" };
   return statusLabel[doc.status] ?? statusLabel.uploaded;
 }
 
-/** Кнопки у фото без записи: записать по нему или удалить. */
-function OrphanActions({ doc }: { doc: DocRow }) {
-  const href =
-    doc.kind === "expense" ? "/money/expense" : `/money/new?type=${doc.kind ?? "sale"}&documentId=${doc.id}`;
-  return (
-    <span className="doc-orphan-actions">
-      <Link className="button primary" href={href}>
-        {doc.kind === "purchase"
-          ? "Записать товар"
-          : doc.kind === "payment"
-            ? "Записать оплату"
-            : doc.kind === "expense"
-              ? "Записать расход"
-              : "Записать продажу по этому фото"}
-      </Link>
-      <DeleteWithUndo what="document" id={doc.id} title="Удалить фото?" label="Удалить" hide={`doc-${doc.id}`} />
-    </span>
-  );
-}
+const recordHref = (doc: DocRow) =>
+  doc.kind === "expense" ? "/money/expense" : `/money/new?type=${doc.kind ?? "sale"}&documentId=${doc.id}`;
 
-export default async function Documents({ searchParams }: { searchParams: Promise<{ deleted?: string }> }) {
-  const { deleted } = await searchParams;
+export default async function Documents({
+  searchParams,
+}: {
+  searchParams: Promise<{ deleted?: string; tab?: string; q?: string; n?: string }>;
+}) {
+  const params = await searchParams;
+  const tab: Tab = params.tab === "orphan" || params.tab === "linked" ? params.tab : "all";
+  const q = (params.q ?? "").trim().slice(0, 100);
+  // Сколько показать: 10, 20, 30… (?n=), не больше просматриваемых.
+  const shown = Math.min(SCANNED, Math.max(PAGE, Math.ceil((parseInt(params.n ?? "") || PAGE) / PAGE) * PAGE));
   const { db, organizationId } = await getContext();
   const { data, error } = await db
     .from("documents")
-    .select("id,kind,status,error_message,created_at")
+    .select("id,kind,status,error_message,created_at,mime_type")
     .eq("organization_id", organizationId)
     .order("created_at", { ascending: false })
-    .limit(50);
+    // Без вкладки и поиска — на одно больше: так видно, есть ли ещё.
+    .limit(tab === "all" && !q ? shown + 1 : SCANNED);
   if (error) throw new Error("Не удалось загрузить документы");
-  const documents = (data ?? []) as DocRow[];
-  const ids = documents.map((d) => d.id);
-  const [links, digitizedAt, duplicates] = await Promise.all([
+  const all = (data ?? []) as DocRow[];
+  const ids = all.map((d) => d.id);
+  const [links, duplicates] = await Promise.all([
     partiesOf(db, organizationId, ids),
-    lastRecognition(db, organizationId, ids),
     duplicateDocuments(db, organizationId, ids),
   ]);
   const parties = links.parties;
 
+  // Вкладка и поиск — по названию, клиенту или поставщику, статусу.
+  const needle = q.toLocaleLowerCase("ru");
+  const found = all
+    .filter((doc) => (tab === "orphan" ? isOrphan(doc, links) : tab === "linked" ? links.linked.has(doc.id) : true))
+    .filter((doc) => {
+      if (!needle) return true;
+      const party = parties.get(doc.id);
+      const text = [
+        doc.kind ? kindTitle[doc.kind] : "Фото",
+        party?.name ?? (doc.kind ? nobody[doc.kind] : ""),
+        statusOf(doc, links).label,
+        uploaded(doc.created_at),
+      ].join(" ");
+      return text.toLocaleLowerCase("ru").includes(needle);
+    });
+  const documents = found.slice(0, shown);
+  const hasMore = found.length > shown;
+  const anyOrphan = documents.some((doc) => isOrphan(doc, links));
+  const href = (t: Tab, n?: number) => {
+    const query = new URLSearchParams();
+    if (t !== "all") query.set("tab", t);
+    if (q) query.set("q", q);
+    if (n) query.set("n", String(n));
+    const text = query.toString();
+    return `/documents${text ? `?${text}` : ""}`;
+  };
+
   return (
     <>
-      {deleted && (
+      {params.deleted && (
         <p className="notice success" role="status">
           Фото удалено.
         </p>
       )}
-      <div className="page-heading">
+      <div className="page-heading doc-heading">
         <div>
-          <span className="eyebrow">ФОТО → РАСПОЗНАВАНИЕ → ПРОВЕРКА</span>
           <h1>Документы</h1>
+          <p className="doc-subtitle">
+            <span className="doc-long">Накладные и чеки к операциям</span>
+            <span className="doc-short">Накладные и чеки</span>
+          </p>
           <p className="muted">
-            Накладные и чеки, приложенные к операциям и расходам. Долг они не меняют - это
-            уже случилось при подтверждении операции.
+            <span className="doc-long">Фото само по себе не меняет долг. Учитывается подтверждённая операция.</span>
+            <span className="doc-short">Фото само по себе не меняет долг. Операция учитывается после подтверждения.</span>
           </p>
         </div>
       </div>
+
+      <nav className="doc-tabs" aria-label="Документы">
+        {TABS.map(([t, label]) => (
+          <Link key={t} href={href(t)} className={t === tab ? "active" : undefined} aria-current={t === tab ? "page" : undefined}>
+            {label}
+          </Link>
+        ))}
+      </nav>
+      <form className="doc-search" action="/documents" role="search">
+        {tab !== "all" && <input type="hidden" name="tab" value={tab} />}
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+          <path d="m21 21-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" />
+        </svg>
+        <input name="q" type="search" defaultValue={q} placeholder="Найти документ" aria-label="Найти документ" autoComplete="off" />
+      </form>
+
       {documents.length ? (
-        <section className="panel">
-          {/* Телефон: компактный список — строка документа целиком нажимается. */}
-          <ul className="doc-list-mobile">
+        <section className="panel doc-panel">
+          {/* Одна разметка: на компьютере — таблицей с шапкой, на телефоне — карточками. */}
+          <div className="doc-row doc-row-head" aria-hidden="true">
+            <span>Документ</span>
+            <span>Статус</span>
+            <span>Загружен</span>
+          </div>
+          <ul className="doc-rows">
             {documents.map((doc) => {
               const status = statusOf(doc, links);
               const party = parties.get(doc.id);
-              const orphan = !links.linked.has(doc.id) && doc.status !== "processing";
+              const orphan = isOrphan(doc, links);
+              const open = `/documents/${doc.id}?from=documents`;
+              const pdf = doc.mime_type === "application/pdf";
               return (
-                <li key={doc.id} id={`doc-${doc.id}`}>
-                  <Link href={`/documents/${doc.id}?from=documents`} className="doc-list-item">
-                    <span className="doc-list-main">
-                      <strong>{doc.kind ? kindLabel[doc.kind] : "Документ"}</strong>
-                      {party ? (
-                        <span className="doc-list-party">
-                          {" · "}
-                          {party.name} <small className="muted">{roleLabel[party.role]}</small>
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className={status.className}>{status.label}</span>
-                    <span className="doc-list-meta muted">
-                      {shortDateTime.format(new Date(doc.created_at))}
-                    </span>
-                    {duplicates.has(doc.id) && <span className="tag duplicate-tag">дубликат</span>}
+                <li key={doc.id} id={`doc-${doc.id}`} className="doc-row">
+                  <Link href={open} className="doc-thumb" aria-hidden="true" tabIndex={-1}>
+                    {pdf ? (
+                      <span className="page-thumb-pdf">PDF</span>
+                    ) : (
+                      // Маленькая копия по постоянному адресу — браузер не качает её повторно.
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={`/documents/${doc.id}/thumb`} alt="" loading="lazy" decoding="async" />
+                    )}
                   </Link>
-                  {orphan && <OrphanActions doc={doc} />}
+                  <span className="doc-main">
+                    <Link href={open} className="doc-title">
+                      {doc.kind ? kindTitle[doc.kind] : "Фото"}
+                    </Link>
+                    <span className="doc-party muted">
+                      {party ? (
+                        <>
+                          {party.name} <small>· {roleLabel[party.role]}</small>
+                        </>
+                      ) : doc.kind ? (
+                        nobody[doc.kind]
+                      ) : (
+                        "Не записано"
+                      )}
+                    </span>
+                  </span>
+                  <span className="doc-status">
+                    <span className={status.className}>{status.label}</span>
+                    {duplicates.has(doc.id) && <span className="tag duplicate-tag">дубликат</span>}
+                  </span>
+                  <span className="doc-date">{uploaded(doc.created_at)}</span>
+                  <span className="doc-action">
+                    {orphan ? (
+                      <Link className="button doc-action-button" href={recordHref(doc)}>
+                        {recordLabel[doc.kind ?? "sale"]}
+                      </Link>
+                    ) : (
+                      <Link className="button doc-action-button" href={open}>
+                        Открыть
+                      </Link>
+                    )}
+                  </span>
+                  <details className="more-menu record-menu doc-menu">
+                    <summary className="record-menu-toggle" aria-label="Действия с фото">
+                      <Icon name="more" />
+                    </summary>
+                    <div className="more-menu-list">
+                      <Link href={open}>Открыть фото</Link>
+                      {orphan && (
+                        <DeleteWithUndo
+                          what="document"
+                          id={doc.id}
+                          title="Удалить фото?"
+                          label="Удалить"
+                          className="doc-menu-delete"
+                          hide={`doc-${doc.id}`}
+                        />
+                      )}
+                    </div>
+                  </details>
                 </li>
               );
             })}
           </ul>
-          <div className="table-wrap doc-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Тип</th>
-                  <th>Кто</th>
-                  <th>Статус</th>
-                  <th>Загружен</th>
-                  <th>Прочитан</th>
-                  <th>
-                    <span className="sr-only">Открыть</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {documents.map((doc) => {
-                  const status = statusOf(doc, links);
-                  const orphan = !links.linked.has(doc.id) && doc.status !== "processing";
-                  return (
-                    <tr key={doc.id} id={`doc-${doc.id}`} className="row-link">
-                      <td>{doc.kind ? kindLabel[doc.kind] : "-"}</td>
-                      <td>
-                        {parties.get(doc.id) ? (
-                          <span className="doc-party">
-                            {parties.get(doc.id)!.name}
-                            <small className="muted">
-                              {roleLabel[parties.get(doc.id)!.role]}
-                            </small>
-                          </span>
-                        ) : (
-                          <span className="muted">-</span>
-                        )}
-                      </td>
-                      <td>
-                        <span className={status.className}>{status.label}</span>
-                        {duplicates.has(doc.id) && <span className="tag duplicate-tag">дубликат</span>}
-                        {doc.status === "failed" && doc.error_message && !orphan && (
-                          <small>Не получилось прочитать фото</small>
-                        )}
-                        {orphan && <OrphanActions doc={doc} />}
-                      </td>
-                      <td>{dateTime.format(new Date(doc.created_at))}</td>
-                      <td>
-                        {(doc.status === "digitized" || doc.status === "review") && digitizedAt.get(doc.id) ? (
-                          dateTime.format(new Date(digitizedAt.get(doc.id)!))
-                        ) : (
-                          <span className="muted">-</span>
-                        )}
-                      </td>
-                      <td>
-                        <Link href={`/documents/${doc.id}?from=documents`} aria-label="Открыть документ">
-                          <Icon name="arrow" />
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          {hasMore && (
+            // Следующие 10 — по нажатию; страница остаётся на месте, новые фото — ниже.
+            <Link className="button doc-more" href={href(tab, shown + PAGE)} scroll={false}>
+              Показать ещё {PAGE}
+            </Link>
+          )}
         </section>
+      ) : all.length ? (
+        <p className="muted doc-none">{q ? "По этому поиску ничего не нашлось." : "Здесь пока пусто."}</p>
       ) : (
         <div className="empty">
           <span className="empty-icon">
@@ -212,26 +274,19 @@ export default async function Documents({ searchParams }: { searchParams: Promis
           </p>
         </div>
       )}
+      {anyOrphan && (
+        <p className="day-note doc-hint">
+          <span className="report-hint-icon" aria-hidden="true">
+            i
+          </span>
+          «Оформить» - открыть форму для проверки и подтверждения.
+        </p>
+      )}
     </>
   );
 }
 
 type Db = Awaited<ReturnType<typeof getContext>>["db"];
-
-/** Время последнего распознавания документа (строка document_extractions). */
-async function lastRecognition(db: Db, organizationId: string, documentIds: string[]) {
-  const result = new Map<string, string>();
-  if (!documentIds.length) return result;
-  const { data } = await db
-    .from("document_extractions")
-    .select("document_id,created_at")
-    .eq("organization_id", organizationId)
-    .in("document_id", documentIds)
-    .order("created_at", { ascending: false })
-    .limit(1000);
-  for (const row of data ?? []) if (!result.has(row.document_id)) result.set(row.document_id, row.created_at);
-  return result;
-}
 
 /** Чеки оплат-дубликатов, которые ещё ждут проверки владельца. */
 async function duplicateDocuments(db: Db, organizationId: string, documentIds: string[]) {
