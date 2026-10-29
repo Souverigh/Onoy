@@ -313,13 +313,16 @@ export async function RecordsPage({
             {tab === "records" && journal.count > 0 && (
               <div className="record-totals">
                 <div>
+                  {/* Телефон: число продаж и каждая валюта — своей строкой (globals.css). */}
                   <p className="record-totals-main">
-                    <b className="record-totals-count">{journal.count}</b> {countWord(journal.count)}
-                    {" · "}
+                    <span className="record-totals-what">
+                      <b className="record-totals-count">{journal.count}</b> {countWord(journal.count)}
+                    </span>
+                    <span className="record-totals-dot"> · </span>
                     {journal.partial && "не меньше "}
                     {journal.totals.map((t, i) => (
-                      <span key={t.currency ?? "shop"}>
-                        {i > 0 && " и "}
+                      <span key={t.currency ?? "shop"} className="record-totals-sum">
+                        {i > 0 && <span className="record-totals-and"> и </span>}
                         <strong>{totalMoney(t)}</strong>
                       </span>
                     ))}

@@ -111,7 +111,7 @@ export function JournalBar({
           />
         </form>
 
-        <div className="journal-drop">
+        <div className="journal-drop journal-period">
           <button
             type="button"
             className={`journal-drop-button${open === "period" ? " active" : ""}`}
