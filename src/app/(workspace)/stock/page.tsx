@@ -37,7 +37,7 @@ const PAGE = 50;
 type SortKey = "name" | "low" | "popular" | "received" | "new";
 /** Сортировка склада; «Мало осталось» и «Недавно приходили» — из product_list (миграция 20261013110000). */
 const SORTS: [SortKey, string][] = [
-  ["name", "А-Я"],
+  ["name", "Название: А-Я"],
   ["low", "Мало осталось"],
   ["popular", "Ходовые"],
   ["received", "Недавно приходили"],
@@ -45,6 +45,10 @@ const SORTS: [SortKey, string][] = [
 ];
 const shortDate = (value: string) =>
   new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", day: "numeric", month: "short" }).format(new Date(value));
+
+/** «1 товар», «3 товара», «192 товара». */
+const goodsWord = (n: number) =>
+  `${n} ${n % 10 === 1 && n % 100 !== 11 ? "товар" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "товара" : "товаров"}`;
 
 /** «1 размер», «3 размера», «12 размеров». */
 const sizesWord = (n: number) =>
@@ -196,43 +200,63 @@ export default async function StockPage({
   ];
   // Категорий ещё нет, а товары есть — предлагаем разложить (категории подобраны по названиям).
   const offered = !categories.length && named.length >= 4 ? categoryGroups(named).length : 0;
-  const productRow = (row: Row) => (
-    <li key={row.id} className="op-list-item">
-      <Link className="op-list-main" href={`/stock/${row.id}`}>
-        <strong>{row.name}</strong>
-      </Link>
-      <span className={`op-list-amount${isLow(row) && filter !== "archive" ? " warning" : ""}`}>
-        {quantity(row.stock)} {row.unit}
-      </span>
-      <span className="op-list-meta muted">
-        {row.sku ? `Код ${row.sku} · ` : ""}
-        {Number(row.sale_price) > 0 ? `${money(row.sale_price, currency)} за ${row.unit}` : "цена не указана"}
-        {decimalLessThan("0", row.stock) &&
-          Number(row.purchase_price) > 0 &&
-          ` · на складе на ${money(lineValue(row.stock, row.purchase_price), row.purchase_currency ?? currency)}`}
-        {sort === "popular" && ` · продаж за 90 дн.: ${row.sold_count ?? 0}`}
-        {outText(row.id)}
-        {sort === "received" && (row.last_received_at ? ` · приход ${shortDate(row.last_received_at)}` : " · приходов не было")}
-        {row.category_id && categoryLabel(categories, row.category_id) && ` · ${categoryLabel(categories, row.category_id)}`}
-      </span>
-      {!row.category_id && filter !== "archive" && (() => {
-        // Подсказка по названию: нажали — категория поставлена.
-        const hint = suggestCategory(row.name, hints);
-        const label = categoryLabel(categories, hint);
-        return hint && label ? (
-          <span className="op-list-meta stock-category-hint">
-            <CategoryChip productId={row.id} categoryId={hint} label={label} />
-          </span>
-        ) : null;
-      })()}
-      {isLow(row) && filter !== "archive" && (
-        <span className="op-list-meta warning stock-low-tag">
-          {/* Минус — продали больше, чем было записано: «нет на складе» тут непонятно. */}
-          {decimalLessThan("0", row.stock) ? "мало" : decimalLessThan(row.stock, "0") ? "продано больше, чем было" : "нет на складе"}
-        </span>
-      )}
-    </li>
+  // «Получил товар» у магазина; у других видов бизнеса — их слово («Закупка продуктов»).
+  const receiveLabel = stockLabel === "Склад" ? "Получил товар" : word(business, "purchase");
+  // Подпись под остатком: минус — продали больше, чем было записано; «нет на складе» тут непонятно.
+  const lowText = (row: Row) =>
+    decimalLessThan("0", row.stock) ? "Мало" : decimalLessThan(row.stock, "0") ? "Продано больше, чем было" : "Нет на складе";
+  const categoryCell = (row: Row) => {
+    const label = row.category_id ? categoryLabel(categories, row.category_id) : null;
+    if (label) return label;
+    if (filter === "archive") return <span className="muted">-</span>;
+    // Подсказка по названию: нажали — категория поставлена.
+    const hint = suggestCategory(row.name, hints);
+    const hintLabel = categoryLabel(categories, hint);
+    return hint && hintLabel ? <CategoryChip productId={row.id} categoryId={hint} label={hintLabel} /> : <span className="muted">-</span>;
+  };
+  const rowMenu = (open: string, name: string) => (
+    <details className="more-menu record-menu stk-menu">
+      <summary className="record-menu-toggle" aria-label={`Действия: ${name}`}>
+        <Icon name="more" />
+      </summary>
+      <div className="more-menu-list">
+        <Link href={open}>Открыть</Link>
+        <Link href="/money/new?type=purchase&mode=items">{receiveLabel}</Link>
+      </div>
+    </details>
   );
+  const productRow = (row: Row) => {
+    const low = isLow(row) && filter !== "archive";
+    const extra = [
+      decimalLessThan("0", row.stock) && Number(row.purchase_price) > 0
+        ? `На складе на ${money(lineValue(row.stock, row.purchase_price), row.purchase_currency ?? currency)}`
+        : "",
+      sort === "popular" ? `продаж за 90 дн.: ${row.sold_count ?? 0}` : "",
+      sort === "received" ? (row.last_received_at ? `приход ${shortDate(row.last_received_at)}` : "приходов не было") : "",
+    ].filter(Boolean);
+    return (
+      <li key={row.id} className="stk-row">
+        <span className="stk-name">
+          <Link href={`/stock/${row.id}`}>{row.name}</Link>
+          <small className="muted">
+            {[row.sku ? `Код ${row.sku}` : "", ...extra].filter(Boolean).join(" · ")}
+            {outText(row.id)}
+          </small>
+        </span>
+        <span className={low ? "stk-qty low" : "stk-qty"}>
+          <strong>
+            {quantity(row.stock)} {row.unit}
+          </strong>
+          {low && <small>{lowText(row)}</small>}
+        </span>
+        <span className="stk-price">
+          {Number(row.sale_price) > 0 ? `${money(row.sale_price, currency)}/${row.unit}` : <span className="muted">Не указана</span>}
+        </span>
+        <span className="stk-category">{categoryCell(row)}</span>
+        {rowMenu(`/stock/${row.id}`, row.name)}
+      </li>
+    );
+  };
   // Размеры и цвета одной модели — одной строкой: всего, по размерам по порядку.
   const modelRow = (modelId: string, items: Row[]) => {
     const model = models[modelId];
@@ -242,19 +266,35 @@ export default async function StockPage({
     const prices = [...new Set(items.map((row) => Number(row.sale_price)))].sort((a, b) => a - b);
     const low = filter !== "archive" && items.some(isLow);
     return (
-      <li key={modelId} className="op-list-item stock-model">
-        <Link className="op-list-main" href={`/stock/model/${modelId}`}>
-          <strong>{model.name}</strong>
-        </Link>
-        <span className={`op-list-amount${low ? " warning" : ""}`}>{quantity(String(Math.round(total * 1000) / 1000))} шт</span>
-        <span className="op-list-meta muted">
-          {sizesWord(items.length)}
-          {prices[0] > 0
-            ? ` · ${prices.length > 1 ? `${money(String(prices[0]), currency)} - ${money(String(prices[prices.length - 1]), currency)}` : money(String(prices[0]), currency)}`
-            : " · цена не указана"}
-          {items[0].category_id && categoryLabel(categories, items[0].category_id) && ` · ${categoryLabel(categories, items[0].category_id)}`}
+      <li key={modelId} className="stk-row stock-model">
+        <span className="stk-name">
+          <Link href={`/stock/model/${modelId}`}>{model.name}</Link>
+          <small className="muted">{sizesWord(items.length)}</small>
         </span>
-        <span className="op-list-meta stock-variants">
+        <span className={low ? "stk-qty low" : "stk-qty"}>
+          <strong>{quantity(String(Math.round(total * 1000) / 1000))} шт</strong>
+          {low && <small>Мало по размерам</small>}
+        </span>
+        <span className="stk-price">
+          {prices[0] > 0 ? (
+            prices.length > 1 ? (
+              `${money(String(prices[0]), currency)} - ${money(String(prices[prices.length - 1]), currency)}`
+            ) : (
+              `${money(String(prices[0]), currency)}/шт`
+            )
+          ) : (
+            <span className="muted">Не указана</span>
+          )}
+        </span>
+        <span className="stk-category">
+          {items[0].category_id && categoryLabel(categories, items[0].category_id) ? (
+            categoryLabel(categories, items[0].category_id)
+          ) : (
+            <span className="muted">-</span>
+          )}
+        </span>
+        {rowMenu(`/stock/model/${modelId}`, model.name)}
+        <span className="stock-variants stk-variants">
           {sorted.map((row) => (
             <Link key={row.id} href={`/stock/${row.id}`} className={isLow(row) && filter !== "archive" ? "stock-variant low" : "stock-variant"}>
               {variantLabel(model.axes, variants[row.id]?.attrs)} <b>{quantity(row.stock)}</b>
@@ -267,45 +307,39 @@ export default async function StockPage({
   };
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading stk-heading">
         <div>
-          {stockLabel === "Склад" && <span className="eyebrow">СКЛАД</span>}
           <h1>
             {stockLabel === "Склад" ? "Товары" : stockLabel} <span className="count">{total}</span>
           </h1>
-          <p className="muted">Остатки, цены и коды. Товар от поставщика прибавляет остаток, продажа - списывает.</p>
-          {/* Телефон: кнопки в шапке скрыты — каталог отдельной строкой. */}
-          {catalogOn && (
-            <Link className="stock-catalog-mobile" href="/stock/catalog">
-              <span>
-                <strong>Каталог для клиентов</strong>
-                <small className="muted">Ссылка с ценами и фото для WhatsApp</small>
-              </span>
-              <span aria-hidden="true">→</span>
-            </Link>
-          )}
+          <p className="muted">Остатки и цены</p>
         </div>
-        <div className="heading-actions stock-heading-actions">
-          {catalogOn && (
-            <Link className="button" href="/stock/catalog">
-              Каталог для клиентов
-            </Link>
-          )}
-          <Link className="button" href="/stock/categories">
-            Категории
-          </Link>
-          {isOwner && (
-            <Link className="button" href="/stock/import">
-              Из Excel
-            </Link>
-          )}
-          <Link className="button" href="/money/new?type=purchase&mode=items">
-            + {word(business, "purchase")}
-          </Link>
+        <div className="stk-actions">
           <Link className="button primary" href="/stock/new">
             <Icon name="plus" />
-            Товар
+            <span className="stk-long">Добавить товар</span>
+            <span className="stk-short">Товар</span>
           </Link>
+          <Link className="button" href="/money/new?type=purchase&mode=items">
+            <Icon name="file" />
+            {receiveLabel}
+          </Link>
+          <details className="more-menu stk-more">
+            <summary className="button">
+              Ещё <span className="rec-new-caret" aria-hidden="true" />
+            </summary>
+            <div className="more-menu-list">
+              {catalogOn && (
+                <Link href="/stock/catalog">
+                  Каталог для клиентов
+                  <small className="muted">Ссылка с ценами и фото для WhatsApp</small>
+                </Link>
+              )}
+              <Link href="/stock/categories">Категории</Link>
+              {isOwner && <Link href="/stock/import">Загрузить из Excel</Link>}
+              <Link href={viewHref("archive", sort)}>Архив</Link>
+            </div>
+          </details>
         </div>
       </div>
       {archived_one && (
@@ -323,75 +357,81 @@ export default async function StockPage({
         </Link>
       )}
       {summary && summary.inStock > 0 && (
-        <section className="day-tiles stock-tiles" aria-label="Склад в деньгах">
-          <article className="panel day-tile">
-            <span className="label-with-tip">
-              На складе по закупке
-              <InfoTip>
-                Остаток × цена закупки по всем товарам в наличии ({summary.inStock}) - в той валюте, в которой
-                закупали.
-                {summary.noCost ? ` Без цены закупки - ${summary.noCost} тов., они не вошли.` : ""}
-              </InfoTip>
-            </span>
-            <strong className="stock-tile-sums">
-              {costLines.length ? costLines.map((line) => <span key={line}>{line}</span>) : <span>{money("0", currency)}</span>}
-            </strong>
-            <small className="muted">товаров в наличии: {summary.inStock}</small>
-          </article>
-          <article className="panel day-tile">
-            <span className="label-with-tip">
-              Если продать всё
-              <InfoTip>
-                Остаток × цена продажи.
-                {summary.noSale ? ` Без цены продажи - ${summary.noSale} тов., они не вошли.` : ""}
-                {markup === null
-                  ? shopOnly
-                    ? " Наценку покажем, когда у всех товаров в наличии будут обе цены."
-                    : " Наценку не считаем: часть товара закуплена в другой валюте."
-                  : ""}
-              </InfoTip>
-            </span>
-            <strong>{money(whole(summary.sale), currency)}</strong>
-            <small className="muted">
-              {markup !== null
-                ? `наценка ${markup < 0 ? "−" : ""}${money(whole(Math.abs(markup)), currency)}`
-                : "по ценам продажи"}
-            </small>
-          </article>
-          <article className="panel day-tile stock-tile-check">
-            <span>Проверить</span>
-            {lowCount > 0 || summary.noCost > 0 ? (
-              <>
-                {lowCount > 0 && <Link href={viewHref("low", sort)}>Мало или нет: {lowCount} →</Link>}
-                {summary.noCost > 0 && (
-                  <Link href={viewHref("nocost", sort)}>Без цены закупки: {summary.noCost} →</Link>
-                )}
-              </>
-            ) : (
-              <small className="muted">Всего хватает, у всех товаров есть цена закупки.</small>
-            )}
-          </article>
-        </section>
+        // На телефоне — сворачивается под «Стоимость остатков ▾».
+        <details className="panel stk-value" open>
+          <summary>Стоимость остатков</summary>
+          <div className="stk-value-row">
+            <div className="stk-value-col">
+              <span className="label-with-tip">
+                <span>
+                  <span className="stk-long">Стоимость по закупке</span>
+                  <span className="stk-short">По закупке</span>
+                </span>
+                <InfoTip>
+                  Остаток × цена закупки по всем товарам в наличии ({summary.inStock}) - в той валюте, в которой
+                  закупали.
+                  {summary.noCost ? ` Без цены закупки - ${summary.noCost} тов., они не вошли.` : ""}
+                </InfoTip>
+              </span>
+              <strong className="stock-tile-sums">
+                {costLines.length ? costLines.map((line) => <span key={line}>{line}</span>) : <span>{money("0", currency)}</span>}
+              </strong>
+            </div>
+            <div className="stk-value-col">
+              <span className="label-with-tip">
+                По ценам продажи
+                <InfoTip>
+                  Остаток × цена продажи.
+                  {summary.noSale ? ` Без цены продажи - ${summary.noSale} тов., они не вошли.` : ""}
+                  {markup === null
+                    ? shopOnly
+                      ? " Наценку покажем, когда у всех товаров в наличии будут обе цены."
+                      : " Наценку не считаем: часть товара закуплена в другой валюте."
+                    : ` Наценка ${markup < 0 ? "−" : ""}${money(whole(Math.abs(markup)), currency)}.`}
+                </InfoTip>
+              </span>
+              <strong>{money(whole(summary.sale), currency)}</strong>
+              <small className="muted">По текущим ценам</small>
+            </div>
+            <div className="stk-value-col stk-instock">
+              <span>В наличии:</span>
+              <strong>{goodsWord(summary.inStock)}</strong>
+            </div>
+          </div>
+        </details>
       )}
-      <section className="panel">
-        <form className="search" action="/stock">
+      {summary && (lowCount > 0 || summary.noCost > 0) && (
+        <p className="stk-check">
+          <span className="stk-check-icon" aria-hidden="true">
+            !
+          </span>
+          {lowCount > 0 && <Link href={viewHref("low", sort)}>Мало или нет: {lowCount} →</Link>}
+          {summary.noCost > 0 && <Link href={viewHref("nocost", sort)}>Без цены закупки: {summary.noCost} →</Link>}
+        </p>
+      )}
+      <section className="panel stk-panel">
+        <form className="doc-search stk-search" action="/stock" role="search">
           {filter !== "all" && <input type="hidden" name="filter" value={filter} />}
           {sort !== "name" && <input type="hidden" name="sort" value={sort} />}
           {category && <input type="hidden" name="category" value={category} />}
-          <label htmlFor="stock-search" className="sr-only">
-            Поиск по названию или коду
-          </label>
-          <input id="stock-search" name="q" placeholder="Название или код…" defaultValue={query} maxLength={100} />
-          <button className="button">Найти</button>
-          {query && (
-            <Link className="text-button" href={filter === "all" ? "/stock" : `/stock?filter=${filter}`}>
-              Сбросить
-            </Link>
-          )}
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            <path d="m21 21-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" />
+          </svg>
+          <input
+            id="stock-search"
+            name="q"
+            type="search"
+            placeholder="Название или код товара"
+            aria-label="Поиск по названию или коду"
+            defaultValue={query}
+            maxLength={100}
+            autoComplete="off"
+          />
         </form>
         <NavSelects>
           <NavSelect
             label="Показать"
+            className="stk-show"
             options={[
               { label: "Все товары", href: viewHref("all", sort), selected: filter === "all" },
               { label: "Мало на складе", href: viewHref("low", sort), selected: filter === "low" },
@@ -399,18 +439,30 @@ export default async function StockPage({
               { label: "Архив", href: viewHref("archive", sort), selected: filter === "archive" },
             ]}
           />
-          <NavSelect label="Категория" options={categoryOptions} />
+          <NavSelect label="Категория" className="stk-cat" options={categoryOptions} />
           <NavSelect
-            label="Сначала"
+            label="Сортировка"
+            className="stk-sort"
             options={SORTS.map(([key, label]) => ({ label, href: viewHref(filter, key), selected: sort === key }))}
           />
         </NavSelects>
         {rows.length ? (
-          <ul className="stock-list">
-            {groupByModel(rows, (row) => variants[row.id]?.model).map((g) =>
-              g.kind === "item" ? productRow(g.item) : modelRow(g.model, g.items),
-            )}
-          </ul>
+          <>
+            <div className="stk-row stk-row-head" aria-hidden="true">
+              <span>Товар</span>
+              <span>Остаток</span>
+              <span>
+                <span className="stk-long">Цена продажи</span>
+                <span className="stk-short">Цена</span>
+              </span>
+              <span className="stk-category">Категория</span>
+            </div>
+            <ul className="stk-rows">
+              {groupByModel(rows, (row) => variants[row.id]?.model).map((g) =>
+                g.kind === "item" ? productRow(g.item) : modelRow(g.model, g.items),
+              )}
+            </ul>
+          </>
         ) : (
           <div className="empty">
             <span className="empty-icon">
@@ -466,19 +518,6 @@ export default async function StockPage({
           </nav>
         )}
       </section>
-      {/* Телефон: кнопки внизу, над нижней панелью — под большим пальцем. */}
-      <div className="bottom-actions-spacer" aria-hidden="true" />
-      <div className="stock-bottom-actions">
-        {isOwner && (
-          <Link className="button" href="/stock/import">
-            Из Excel
-          </Link>
-        )}
-        <Link className="button primary" href="/stock/new">
-          <Icon name="plus" />
-          Товар
-        </Link>
-      </div>
     </>
   );
 }
