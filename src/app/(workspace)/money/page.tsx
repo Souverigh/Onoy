@@ -6,6 +6,7 @@ import { firstPaymentHref } from "@/lib/duplicates";
 import { debtMoney, money } from "@/lib/format";
 import { memberLabels } from "@/lib/members";
 import { NavSelect, NavSelects } from "@/components/nav-select";
+import { Icon, type IconName } from "@/components/icon";
 
 type PartyBalance = { id: string; name: string; balance: string; currency: string | null };
 /** Контрагент, встроенный в запись (PostgREST по составному FK). */
@@ -30,32 +31,58 @@ type Activity = {
   href: string;
 };
 
-const dateTime = (value: string) =>
-  new Intl.DateTimeFormat("ru-RU", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "Asia/Bishkek",
-  }).format(new Date(value));
-// «28.09, 16:15» — для списка на телефоне.
-const shortDateTime = (value: string) =>
-  new Intl.DateTimeFormat("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Asia/Bishkek",
-  }).format(new Date(value));
+type Tab = "ops" | "customers" | "suppliers";
+type OpType = "sale" | "purchase" | "payment";
+const TABS: [Tab, string][] = [
+  ["ops", "Операции"],
+  ["customers", "Клиенты"],
+  ["suppliers", "Поставщики"],
+];
+const OP_TYPES: [OpType | null, string][] = [
+  [null, "Все операции"],
+  ["sale", "Продажи"],
+  ["purchase", "Товар от поставщика"],
+  ["payment", "Оплаты"],
+];
+const kindIcon: Record<Activity["kind"], IconName> = { sale: "cart", purchase: "truck", payment: "wallet" };
+
+/** Для поиска по имени: без знаков, которые ломают фильтр PostgREST. */
+const searchText = (value: string | undefined) => (value ?? "").replace(/[%,()*\\]/g, " ").trim().slice(0, 60);
+
+// «28 октября, 10:21».
+const dayTime = (value: string) => {
+  const d = new Date(value);
+  const day = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: "Asia/Bishkek" }).format(d);
+  const time = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bishkek" }).format(d);
+  return `${day}, ${time}`;
+};
 
 export default async function Money({
   searchParams,
 }: {
-  searchParams: Promise<{ created?: string; error?: string; duplicate?: string; sale?: string; part?: string; by?: string; order?: string }>;
+  searchParams: Promise<{
+    created?: string;
+    error?: string;
+    duplicate?: string;
+    sale?: string;
+    part?: string;
+    by?: string;
+    order?: string;
+    tab?: string;
+    q?: string;
+    type?: string;
+  }>;
 }) {
   const { db, organizationId, isOwner, user, currency: shopCurrency } = await getContext();
   const params = await searchParams;
   // Владелец: «Кто внёс» — все записи или одного участника магазина.
   const by = isOwner && params.by && /^[0-9a-f-]{36}$/i.test(params.by) ? params.by : null;
-  const limit = by ? 30 : 8;
+  // Вкладка, поиск по имени клиента/поставщика и вид операции (макет 29.10.2026).
+  const tab: Tab = params.tab === "customers" || params.tab === "suppliers" ? params.tab : "ops";
+  const q = searchText(params.q);
+  const opType: OpType | null = params.type === "sale" || params.type === "purchase" || params.type === "payment" ? params.type : null;
+  const filtered = Boolean(by || q || opType);
+  const limit = filtered ? 30 : 15;
   const author = by ? { created_by: by } : {};
   // Продажи и приход — чья запись (maker_id): исправление владельцем остаётся за продавцом.
   const maker = by ? { maker_id: by } : {};
@@ -64,49 +91,70 @@ export default async function Money({
   const byDate = params.order === "date";
   const orderColumn = byDate ? "occurred_at" : "created_at";
   const membersRequest = memberLabels(db, organizationId);
+  const pattern = `%${q}%`;
+  // Поиск: сначала id клиентов и поставщиков с таким именем, потом их записи.
+  const [matchedCustomers, matchedSuppliers] =
+    q && tab === "ops"
+      ? await Promise.all([
+          db.from("customers").select("id").eq("organization_id", organizationId).ilike("name", pattern).limit(100),
+          db.from("suppliers").select("id").eq("organization_id", organizationId).ilike("name", pattern).limit(100),
+        ])
+      : [null, null];
+  const customerIds = (matchedCustomers?.data ?? []).map((r) => r.id as string);
+  const supplierIds = (matchedSuppliers?.data ?? []).map((r) => r.id as string);
+  const wants = (kind: OpType) => tab === "ops" && (!opType || opType === kind);
+  const none = Promise.resolve({ data: [], error: null });
+  const balances = (view: "customer_balances" | "supplier_balances") => {
+    const query = db
+      .from(view)
+      .select("id,name,balance,currency")
+      .eq("organization_id", organizationId)
+      .is("archived_at", null)
+      .is("merged_into_id", null);
+    return (q ? query.ilike("name", pattern) : query).order("name").limit(100);
+  };
+  const paymentParties = [
+    customerIds.length ? `customer_id.in.(${customerIds.join(",")})` : "",
+    supplierIds.length ? `supplier_id.in.(${supplierIds.join(",")})` : "",
+  ].filter(Boolean);
   const [customerResult, supplierResult, purchaseResult, saleResult, paymentResult, claimsResult] =
     await Promise.all([
       // Архивные и объединённые — не здесь (задача 25).
-      db
-        .from("customer_balances")
-        .select("id,name,balance,currency")
-        .eq("organization_id", organizationId)
-        .is("archived_at", null)
-        .is("merged_into_id", null)
-        .order("name")
-        .limit(8),
-      db
-        .from("supplier_balances")
-        .select("id,name,balance,currency")
-        .eq("organization_id", organizationId)
-        .is("archived_at", null)
-        .is("merged_into_id", null)
-        .order("name")
-        .limit(8),
-      db
-        .from("purchases")
-        .select("id,supplier_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id,created_by:maker_id,created_at,suppliers(name,currency)")
-        .eq("organization_id", organizationId)
-        .eq("status", "posted")
-        .match(maker)
-        .order(orderColumn, { ascending: false })
-        .limit(limit),
-      db
-        .from("sales")
-        .select("id,customer_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id,created_by:maker_id,created_at,customers(name,currency)")
-        .eq("organization_id", organizationId)
-        .eq("status", "posted")
-        .match(maker)
-        .order(orderColumn, { ascending: false })
-        .limit(limit),
-      db
-        .from("payments")
-        .select("id,customer_id,supplier_id,direction,amount,occurred_at,reversed_at,reversal_comment,is_opening,kind,document_id,created_by,created_at,customers(name,currency),suppliers(name,currency)")
-        .eq("organization_id", organizationId)
-        .eq("status", "confirmed")
-        .match(author)
-        .order(orderColumn, { ascending: false })
-        .limit(limit),
+      tab === "customers" ? balances("customer_balances") : none,
+      tab === "suppliers" ? balances("supplier_balances") : none,
+      wants("purchase") && !(q && !supplierIds.length)
+        ? (() => {
+            const query = db
+              .from("purchases")
+              .select("id,supplier_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id,created_by:maker_id,created_at,suppliers(name,currency)")
+              .eq("organization_id", organizationId)
+              .eq("status", "posted")
+              .match(maker);
+            return (q ? query.in("supplier_id", supplierIds) : query).order(orderColumn, { ascending: false }).limit(limit);
+          })()
+        : none,
+      wants("sale") && !(q && !customerIds.length)
+        ? (() => {
+            const query = db
+              .from("sales")
+              .select("id,customer_id,total,occurred_at,reversed_at,reversal_comment,is_opening,document_id,created_by:maker_id,created_at,customers(name,currency)")
+              .eq("organization_id", organizationId)
+              .eq("status", "posted")
+              .match(maker);
+            return (q ? query.in("customer_id", customerIds) : query).order(orderColumn, { ascending: false }).limit(limit);
+          })()
+        : none,
+      wants("payment") && !(q && !paymentParties.length)
+        ? (() => {
+            const query = db
+              .from("payments")
+              .select("id,customer_id,supplier_id,direction,amount,occurred_at,reversed_at,reversal_comment,is_opening,kind,document_id,created_by,created_at,customers(name,currency),suppliers(name,currency)")
+              .eq("organization_id", organizationId)
+              .eq("status", "confirmed")
+              .match(author);
+            return (q ? query.or(paymentParties.join(",")) : query).order(orderColumn, { ascending: false }).limit(limit);
+          })()
+        : none,
       db
         .from("payments")
         .select("id", { count: "exact", head: true })
@@ -242,12 +290,21 @@ export default async function Money({
         : activity.kind === "sale"
           ? "Продажа"
           : paymentLabelWithSide(activity.paymentKind, activity.direction ?? "incoming");
-  const recentActivities = activities.slice(0, by ? 30 : 15);
-  const recordsHref = (author: string | null, date: boolean) => {
-    const q = new URLSearchParams();
-    if (author) q.set("by", author);
-    if (date) q.set("order", "date");
-    const text = q.toString();
+  const recentActivities = activities.slice(0, limit);
+  // Адрес списка с заменой одного из отборов; остальные сохраняются.
+  const recordsHref = (change: { by?: string | null; date?: boolean; tab?: Tab; type?: OpType | null }) => {
+    const query = new URLSearchParams();
+    const t = change.tab ?? tab;
+    if (t !== "ops") query.set("tab", t);
+    if (q) query.set("q", q);
+    if (t === "ops") {
+      const author = change.by === undefined ? by : change.by;
+      const type = change.type === undefined ? opType : change.type;
+      if (author) query.set("by", author);
+      if (type) query.set("type", type);
+      if (change.date ?? byDate) query.set("order", "date");
+    }
+    const text = query.toString();
     return `/money${text ? `?${text}` : ""}`;
   };
   // Фильтр «Кто внёс» — когда в магазине больше одного участника.
@@ -265,14 +322,43 @@ export default async function Money({
 
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading rec-heading">
         <div>
-          <span className="eyebrow">ОПЕРАЦИИ И РАСЧЁТЫ</span>
           <h1>Все записи</h1>
-          <p className="muted">
-            Товар от поставщиков, продажи, оплаты и текущие долги магазина.
-          </p>
+          <p className="muted">История операций и расчёты</p>
         </div>
+        <details className="more-menu rec-new">
+          <summary className="button primary">
+            <Icon name="plus" />
+            <span className="rec-new-long">Новая запись</span>
+            <span className="rec-new-short">Запись</span>
+            <span className="rec-new-caret" aria-hidden="true" />
+          </summary>
+          <div className="more-menu-list">
+            <Link href="/money/new?type=sale">
+              Продажа
+              <small className="muted">Продали клиенту</small>
+            </Link>
+            <Link href="/money/new?type=purchase">
+              Товар от поставщика
+              <small className="muted">Получили товар, долг поставщику растёт</small>
+            </Link>
+            <Link href="/money/new?type=payment&direction=incoming">
+              Клиент принёс деньги
+              <small className="muted">Наличными или переводом</small>
+            </Link>
+            <Link href="/money/new?type=payment&direction=outgoing">
+              Я заплатил поставщику
+              <small className="muted">Наличными или переводом</small>
+            </Link>
+            {isOwner && (
+              <Link href="/money/adjustment">
+                Скидка / возврат
+                <small className="muted">Уменьшить долг, с комментарием</small>
+              </Link>
+            )}
+          </div>
+        </details>
       </div>
       {successText && (
         <p className="notice success" role="status">
@@ -318,210 +404,140 @@ export default async function Money({
           Ждут подтверждения: {pendingClaims} {plural(pendingClaims, "заявка", "заявки", "заявок")} на оплату →
         </Link>
       )}
-      <section className="operation-actions" aria-label="Новая операция">
-        <Link className="operation-action" href="/money/new?type=purchase">
-          <span>＋</span>
-          <div>
-            <strong>Товар от поставщика</strong>
-            <small>Получили товар, долг поставщику растёт</small>
-          </div>
-        </Link>
-        <Link className="operation-action" href="/money/new?type=sale">
-          <span>−</span>
-          <div>
-            <strong>Продажа</strong>
-            <small>Продали клиенту</small>
-          </div>
-        </Link>
-        <Link className="operation-action" href="/money/new?type=payment&direction=incoming">
-          <span>↓</span>
-          <div>
-            <strong>Клиент принёс деньги</strong>
-            <small>Наличными или переводом</small>
-          </div>
-        </Link>
-        <Link className="operation-action" href="/money/new?type=payment&direction=outgoing">
-          <span>↑</span>
-          <div>
-            <strong>Я заплатил поставщику</strong>
-            <small>Наличными или переводом</small>
-          </div>
-        </Link>
-        {isOwner && (
-          <Link className="operation-action" href="/money/adjustment">
-            <span>%</span>
-            <div>
-              <strong>Скидка / возврат</strong>
-              <small>Уменьшить долг, с комментарием</small>
-            </div>
+      <nav className="doc-tabs rec-tabs" aria-label="Все записи">
+        {TABS.map(([t, label]) => (
+          <Link key={t} href={recordsHref({ tab: t })} className={t === tab ? "active" : undefined} aria-current={t === tab ? "page" : undefined}>
+            {label}
           </Link>
-        )}
-      </section>
-      <div className="money-columns">
-        <section className="panel">
-          <div className="section-title">
-            <h2>Мне должны</h2>
-            <Link className="text-button" href="/customers">
-              Все клиенты
-            </Link>
-          </div>
-          {customers.length ? (
-            <div className="balance-list">
-              {customers.map((customer) => (
-                <Link
-                  className="balance-row"
-                  href={`/customers/${customer.id}`}
-                  key={customer.id}
-                >
-                  <span>{customer.name}</span>
-                  <strong>{debtMoney(customer.balance, customer.currency ?? shopCurrency)}</strong>
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <p className="muted">Добавьте клиентов, чтобы вести расчёты.</p>
-          )}
-        </section>
-        <section className="panel">
-          <div className="section-title">
-            <h2>Я должен поставщикам</h2>
-            <Link className="text-button" href="/suppliers">
-              Все поставщики
-            </Link>
-          </div>
-          {suppliers.length ? (
-            <div className="balance-list">
-              {suppliers.map((supplier) => (
-                <Link
-                  className="balance-row"
-                  href={`/suppliers/${supplier.id}`}
-                  key={supplier.id}
-                >
-                  <span>{supplier.name}</span>
-                  <strong>{debtMoney(supplier.balance, supplier.currency ?? shopCurrency)}</strong>
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <p className="muted">Добавьте поставщиков, чтобы вести расчёты.</p>
-          )}
-        </section>
-      </div>
-      <section className="panel operation-history">
-        <div className="section-title">
-          <h2>Последние операции</h2>
-        </div>
-        <NavSelects>
-          {people.length > 0 && (
+        ))}
+      </nav>
+      <div className="rec-filters">
+        <form className="doc-search rec-search" action="/money" role="search">
+          {tab !== "ops" && <input type="hidden" name="tab" value={tab} />}
+          {by && <input type="hidden" name="by" value={by} />}
+          {opType && <input type="hidden" name="type" value={opType} />}
+          {byDate && <input type="hidden" name="order" value="date" />}
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            <path d="m21 21-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" />
+          </svg>
+          <input name="q" type="search" defaultValue={q} placeholder="Клиент или поставщик" aria-label="Клиент или поставщик" autoComplete="off" />
+        </form>
+        {tab === "ops" && (
+          <NavSelects>
             <NavSelect
-              label="Кто внёс"
+              label="Вид операции"
+              className="rec-type"
+              icon={<Icon name="menu" />}
+              options={OP_TYPES.map(([type, label]) => ({ label, href: recordsHref({ type }), selected: opType === type }))}
+            />
+            {people.length > 0 && (
+              <NavSelect
+                label="Кто внёс"
+                className="rec-people"
+                icon={<Icon name="user" />}
+                options={[
+                  { label: "Все сотрудники", href: recordsHref({ by: null }), selected: !by },
+                  ...people.map(([id, m]) => ({ label: id === user.id ? "Я" : m.name, href: recordsHref({ by: id }), selected: by === id })),
+                ]}
+              />
+            )}
+            <NavSelect
+              label="Сначала"
+              className="rec-order"
+              icon={<Icon name="sort" />}
               options={[
-                { label: "Все", href: recordsHref(null, byDate), selected: !by },
-                ...people.map(([id, m]) => ({ label: id === user.id ? "Я" : m.name, href: recordsHref(id, byDate), selected: by === id })),
+                { label: "Недавно внесённые", href: recordsHref({ date: false }), selected: !byDate },
+                { label: "По дате операции", href: recordsHref({ date: true }), selected: byDate },
               ]}
             />
-          )}
-          <NavSelect
-            label="Сначала"
-            options={[
-              { label: "Недавно внесённые", href: recordsHref(by, false), selected: !byDate },
-              { label: "По дате операции", href: recordsHref(by, true), selected: byDate },
-            ]}
-          />
-        </NavSelects>
-        {activities.length ? (
-          <>
-          {/* Телефон: список вместо широкой таблицы — всё видно без прокрутки вбок. */}
-          <ul className="op-list-mobile">
-            {recentActivities.map((activity) => (
-              <li
-                key={`${activity.kind}-${activity.id}`}
-                className={activity.reversed ? "op-list-item reversed" : "op-list-item"}
-              >
-                <Link className="op-list-main" href={activity.href}>
-                  <strong>{activityLabel(activity)}</strong>
-                  {" · "}
-                  {activity.party}
-                </Link>
-                <strong className="op-list-amount">{money(activity.amount, activity.currency)}</strong>
-                <span className="op-list-meta muted">
-                  {shortDateTime(activity.occurred_at)}
-                  {activity.author && ` · ${activity.author}`}
-                  {activity.reversed && <span className="tag reversed-tag">отменена</span>}
-                </span>
-                {!activity.reversed && isOwner && (
-                  <Link
-                    className="op-list-action"
-                    href={`/money/reverse/${activity.kind}/${activity.id}`}
-                  >
-                    Отменить
-                  </Link>
-                )}
-                {activity.reversed && activity.reversalComment && (
-                  <span className="op-list-note muted">Причина: {activity.reversalComment}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-          <div className="table-wrap op-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Операция</th>
-                  <th>Клиент или поставщик</th>
-                  <th>Сумма</th>
-                  <th>Дата</th>
-                  <th>Кто внёс</th>
-                  <th>
-                    <span className="sr-only">Действия</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentActivities.map((activity) => (
-                  <tr
-                    key={`${activity.kind}-${activity.id}`}
-                    className={activity.reversed ? "reversed-row" : ""}
-                  >
-                    <td>
-                      <Link className="entry-link" href={activity.href}>
-                        {activityLabel(activity)}
-                      </Link>
-                      {activity.reversed && (
-                        <span className="tag reversed-tag">отменена</span>
-                      )}
-                    </td>
-                    <td>{activity.party}</td>
-                    <td>{money(activity.amount, activity.currency)}</td>
-                    <td>{dateTime(activity.occurred_at)}</td>
-                    <td className="muted">{activity.author ?? "-"}</td>
-                    <td>
-                      {activity.reversed ? (
-                        <span className="muted" title={activity.reversalComment}>
-                          {activity.reversalComment}
-                        </span>
-                      ) : isOwner ? (
-                        <Link
-                          className="text-button"
-                          href={`/money/reverse/${activity.kind}/${activity.id}`}
-                        >
+          </NavSelects>
+        )}
+      </div>
+
+      {tab === "ops" &&
+        (recentActivities.length ? (
+          <section className="panel rec-panel">
+            <div className="rec-row rec-row-head" aria-hidden="true">
+              <span>Операция</span>
+              <span>Клиент / поставщик</span>
+              <span className="rec-sum">Сумма</span>
+              <span>Дата</span>
+              <span>Кто внёс</span>
+            </div>
+            <ul className="rec-rows">
+              {recentActivities.map((activity) => (
+                <li key={`${activity.kind}-${activity.id}`} className={activity.reversed ? "rec-row reversed" : "rec-row"}>
+                  <span className="rec-icon" aria-hidden="true">
+                    <Icon name={kindIcon[activity.kind]} />
+                  </span>
+                  <span className="rec-op">
+                    <Link className="rec-title" href={activity.href}>
+                      {activityLabel(activity)}
+                    </Link>
+                    {activity.reversed && <span className="tag rec-reversed-tag">Отменена</span>}
+                  </span>
+                  <span className="rec-party">
+                    {activity.party}
+                    {activity.reversed && activity.reversalComment && <small className="muted">{activity.reversalComment}</small>}
+                  </span>
+                  <strong className="rec-sum">{money(activity.amount, activity.currency)}</strong>
+                  {/* На компьютере — две колонки, на телефоне — одна строка «дата • кто внёс». */}
+                  <span className="rec-meta">
+                    <span className="rec-date">{dayTime(activity.occurred_at)}</span>
+                    <span className={activity.author ? "rec-author" : "rec-author none"}>{activity.author ?? "-"}</span>
+                  </span>
+                  <details className="more-menu record-menu rec-menu">
+                    <summary className="record-menu-toggle" aria-label={`Действия: ${activityLabel(activity)}, ${activity.party}`}>
+                      <Icon name="more" />
+                    </summary>
+                    <div className="more-menu-list">
+                      <Link href={activity.href}>Открыть</Link>
+                      {!activity.reversed && isOwner && (
+                        <Link className="danger-link" href={`/money/reverse/${activity.kind}/${activity.id}`}>
                           Отменить
                         </Link>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          </>
+                      )}
+                    </div>
+                  </details>
+                </li>
+              ))}
+            </ul>
+          </section>
         ) : (
           <div className="empty">
-            <h2>Операций пока нет</h2>
-            <p>После проведения первая операция появится в этой истории.</p>
+            <h2>{filtered ? "Ничего не нашлось" : "Операций пока нет"}</h2>
+            <p>{filtered ? "Попробуйте другое имя или уберите отбор." : "После проведения первая операция появится в этой истории."}</p>
           </div>
-        )}
-      </section>
+        ))}
+
+      {tab !== "ops" && (
+        <section className="panel">
+          <div className="section-title">
+            <h2>{tab === "customers" ? "Мне должны" : "Я должен поставщикам"}</h2>
+            <Link className="text-button" href={tab === "customers" ? "/customers" : "/suppliers"}>
+              {tab === "customers" ? "Все клиенты" : "Все поставщики"}
+            </Link>
+          </div>
+          {(tab === "customers" ? customers : suppliers).length ? (
+            <div className="balance-list">
+              {(tab === "customers" ? customers : suppliers).map((party) => (
+                <Link className="balance-row" href={`/${tab}/${party.id}`} key={party.id}>
+                  <span>{party.name}</span>
+                  <strong>{debtMoney(party.balance, party.currency ?? shopCurrency)}</strong>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">
+              {q
+                ? "С таким именем никого нет."
+                : tab === "customers"
+                  ? "Добавьте клиентов, чтобы вести расчёты."
+                  : "Добавьте поставщиков, чтобы вести расчёты."}
+            </p>
+          )}
+        </section>
+      )}
     </>
   );
 }

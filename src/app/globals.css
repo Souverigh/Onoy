@@ -9995,6 +9995,302 @@ td.record-sum {
   }
 }
 
+/* Все записи (макет 29.10.2026): «+ Новая запись ▾», вкладки, поиск и
+   отборы, строки со значком; на компьютере таблицей, на телефоне карточками. */
+.rec-heading {
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+.rec-heading p.muted {
+  font-size: 15px;
+}
+.rec-new > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  list-style: none;
+  cursor: pointer;
+}
+.rec-new > summary::-webkit-details-marker {
+  display: none;
+}
+.rec-new > summary svg {
+  width: 20px;
+  height: 20px;
+}
+.rec-new-caret {
+  width: 7px;
+  height: 7px;
+  margin: -3px 0 0 4px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+.rec-new-short {
+  display: none;
+}
+.rec-new .more-menu-list {
+  left: auto;
+  right: 0;
+  min-width: 290px;
+}
+.rec-new .more-menu-list a {
+  display: grid;
+  gap: 2px;
+  font-weight: 600;
+}
+.rec-new .more-menu-list small {
+  font-size: 12px;
+  font-weight: 400;
+}
+.rec-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.rec-search {
+  flex: 1 1 260px;
+  margin: 0;
+}
+.rec-filters .nav-selects {
+  flex: 3 1 560px;
+  flex-wrap: wrap;
+  margin: 0;
+}
+.rec-filters .nav-select {
+  max-width: none;
+}
+/* Список со значком слева внутри поля, без подписи сверху. */
+.nav-select-icon {
+  position: relative;
+}
+.nav-select-glyph {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  display: flex;
+  color: var(--ink-soft);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.nav-select-glyph svg {
+  width: 18px;
+  height: 18px;
+}
+.nav-select-icon select {
+  min-height: 46px;
+  padding-left: 42px;
+  border-color: var(--control-border);
+}
+.rec-panel {
+  padding: 8px 16px;
+}
+.rec-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rec-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 0.9fr) 40px;
+  align-items: center;
+  gap: 4px 18px;
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.rec-rows .rec-row:last-child {
+  border-bottom: 0;
+}
+.rec-row-head {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  border-bottom: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 14px;
+}
+.rec-row-head span:first-child {
+  grid-column: 1 / 3;
+}
+.rec-row-head span:last-child {
+  grid-column: 6;
+}
+.rec-icon {
+  display: flex;
+  color: var(--green);
+}
+.rec-icon svg {
+  width: 24px;
+  height: 24px;
+}
+.rec-op {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.rec-title {
+  color: var(--ink);
+  font-size: 16px;
+  text-decoration: none;
+}
+.rec-party {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 16px;
+}
+.rec-party small {
+  font-size: 13px;
+}
+.rec-sum {
+  text-align: right;
+  white-space: nowrap;
+}
+strong.rec-sum {
+  font-size: 16px;
+}
+.rec-meta {
+  display: contents;
+}
+.rec-date {
+  font-size: 15px;
+}
+.rec-author {
+  color: var(--ink-soft);
+  font-size: 15px;
+}
+.tag.rec-reversed-tag {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--neutral-soft);
+  color: var(--muted);
+  font-size: 12px;
+}
+/* Отменённая запись — бледно, название и сумма зачёркнуты. */
+.rec-row.reversed .rec-icon,
+.rec-row.reversed .rec-party,
+.rec-row.reversed .rec-date,
+.rec-row.reversed .rec-author {
+  opacity: 0.6;
+}
+.rec-row.reversed .rec-title,
+.rec-row.reversed strong.rec-sum {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.rec-menu .more-menu-list {
+  left: auto;
+  right: 0;
+}
+@media (max-width: 900px) {
+  .rec-row-head {
+    display: none;
+  }
+  .rec-row {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "icon op sum"
+      "icon party menu"
+      "icon meta meta";
+    gap: 2px 12px;
+    padding: 14px 4px;
+  }
+  .rec-icon {
+    grid-area: icon;
+    align-self: start;
+    padding-top: 2px;
+  }
+  .rec-op {
+    grid-area: op;
+  }
+  .rec-title {
+    font-weight: 700;
+  }
+  .rec-party {
+    grid-area: party;
+    font-size: 15px;
+  }
+  .rec-sum,
+  strong.rec-sum {
+    grid-area: sum;
+  }
+  .rec-meta {
+    grid-area: meta;
+    display: block;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .rec-date,
+  .rec-author {
+    color: inherit;
+    font-size: inherit;
+  }
+  .rec-author::before {
+    content: " • ";
+  }
+  .rec-author.none {
+    display: none;
+  }
+  .rec-menu {
+    grid-area: menu;
+    justify-self: end;
+  }
+  .rec-menu .record-menu-toggle {
+    width: 32px;
+    height: 28px;
+  }
+}
+@media (max-width: 560px) {
+  .rec-new-long {
+    display: none;
+  }
+  .rec-new-short {
+    display: inline;
+  }
+  .rec-heading h1 {
+    font-size: 26px;
+  }
+  .rec-filters {
+    gap: 10px;
+  }
+  .rec-search {
+    flex-basis: 100%;
+  }
+  .rec-filters .nav-selects {
+    flex-direction: row;
+    flex-basis: 100%;
+    gap: 10px;
+  }
+  .rec-filters .nav-select {
+    flex: 1 1 140px;
+    max-width: none;
+  }
+  /* Сортировка на телефоне — строкой текста под отборами. */
+  .rec-order {
+    flex-basis: 100%;
+  }
+  .rec-order .nav-select-glyph {
+    display: none;
+  }
+  .rec-order select {
+    align-self: flex-start;
+    width: auto;
+    min-height: 32px;
+    padding: 4px 28px 4px 4px;
+    border: 0;
+    background-color: transparent;
+    color: var(--ink-soft);
+    font-size: 14px;
+  }
+  .rec-panel {
+    padding: 4px 14px;
+  }
+}
+
 /* Касса дня: остаток на утро, «Забрал / Положил» (17.10.2026). */
 .day-cash-lines {
   display: flex;
