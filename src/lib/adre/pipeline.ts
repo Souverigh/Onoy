@@ -4,6 +4,7 @@ import { isImage, pageHalves, uprightPage } from "./image";
 import { mergeHalves } from "./halves";
 import { normalizeInvoiceResult } from "./normalize";
 import { reconcileInvoice } from "./reconcile";
+import { mergeInvoiceFiles } from "./files";
 
 /** ТЗ §15.5: документ длиннее 25 строк распознавать по половинам. */
 export const LONG_DOCUMENT_LINES = 25;
@@ -40,10 +41,40 @@ function readingScore(result: InvoiceResult): number {
  * 2. Длинная страница (> 25 строк), где не сошлись строки или итог, —
  *    распознаём верхнюю и нижнюю половины отдельно, склеиваем и берём этот
  *    вариант, только если он сходится лучше.
+ * 3. Несколько PDF — разные накладные: каждая распознаётся отдельно (как
+ *    выше), итог — одна запись из всех (files.ts).
  * Поворот — если все страницы фото (не PDF); половины — только одно фото.
  * Любая ошибка поправки оставляет первый результат.
  */
 export async function recognizeInvoicePages(
+  provider: RecognitionProvider,
+  pages: PhotoPage[],
+): Promise<RawCall<InvoiceResult>> {
+  if (separateInvoiceFiles(pages)) return recognizeSeparateFiles(provider, pages);
+  return recognizeOneInvoice(provider, pages);
+}
+
+/**
+ * Несколько PDF — разные накладные (каждый файл — целый документ: выгрузка
+ * из 1С, присланная в WhatsApp), а не листы одной, как фото (28.10.2026).
+ */
+export function separateInvoiceFiles(pages: { mimeType: string }[]) {
+  return pages.length > 1 && pages.every((p) => p.mimeType === "application/pdf");
+}
+
+/** Каждый PDF — своим распознаванием, затем одна запись из всех (files.ts). */
+async function recognizeSeparateFiles(provider: RecognitionProvider, pages: PhotoPage[]): Promise<RawCall<InvoiceResult>> {
+  const calls = await Promise.all(pages.map((page) => recognizeOneInvoice(provider, [page])));
+  return {
+    result: mergeInvoiceFiles(calls.map((c) => c.result)),
+    raw: { files: calls.map((c) => c.raw) },
+    costUsd: calls.every((c) => c.costUsd != null)
+      ? Number(calls.reduce((sum, c) => sum + (c.costUsd ?? 0), 0).toFixed(4))
+      : null,
+  };
+}
+
+async function recognizeOneInvoice(
   provider: RecognitionProvider,
   pages: PhotoPage[],
 ): Promise<RawCall<InvoiceResult>> {

@@ -37,8 +37,9 @@ export type InvoiceResult = {
   fragment?: boolean;
   /** Где верх документа на каждом фото, по порядку. */
   page_top_sides?: TopSide[];
-  /** Как распознавали: какие фото повернули (номера с 1), читали ли по половинам (pipeline.ts). */
-  processing?: { rotatedPages?: number[]; halves?: boolean };
+  /** Как распознавали: какие фото повернули (номера с 1), читали ли по половинам (pipeline.ts);
+   *  несколько PDF — разные накладные, каждая отдельно (files.ts). */
+  processing?: { rotatedPages?: number[]; halves?: boolean; files?: InvoiceFile[] };
   /** Старые ответы (v1): направление по мнению модели, без знания нашего магазина. */
   document_type?: "invoice_out" | "invoice_in";
   /** v1 — контрагент по мнению модели; v2 — не заполняется, см. classify.ts. */
@@ -55,6 +56,17 @@ export type InvoiceResult = {
   warnings: string[];
   /** Продавец исправил строки в форме до записи — это уже не чистый ответ модели. */
   seller_edited?: boolean;
+};
+
+/** Одна из нескольких накладных записи (PDF-файл): что показать продавцу. */
+export type InvoiceFile = {
+  number: string | null;
+  date: string | null;
+  /** Итог по бумаге, если виден, иначе по строкам. */
+  total: number;
+  currency: "KGS" | "USD" | "RUB";
+  seller: string | null;
+  buyer: string | null;
 };
 
 export type ReceiptResult = {

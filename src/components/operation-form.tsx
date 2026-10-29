@@ -21,6 +21,7 @@ import {
 } from "@/app/(workspace)/money/actions";
 import type { DocumentVerdict } from "@/lib/adre/classify";
 import type { InvoiceLine, InvoiceResult } from "@/lib/adre/types";
+import { differentParties } from "@/lib/adre/files";
 import { Submit } from "./submit";
 import { RuDateInput, bishkekNow } from "./ru-date-input";
 import { DatePicker } from "./date-picker";
@@ -420,6 +421,9 @@ export function OperationForm({
           : "Подтвердить оплату";
   // Имя на накладной и выбранный клиент не похожи (задача 38) — видно до записи.
   const invoiceName = verdict?.ok && (kind === "purchase" || kind === "sale") ? verdict.counterparty : null;
+  // Несколько PDF — разные накладные, сумма — всех вместе (lib/adre/files.ts).
+  const invoiceFiles = kind !== "payment" && checkedPhoto?.result?.processing?.files?.length ? checkedPhoto.result.processing.files : null;
+  const otherParties = invoiceFiles ? differentParties(invoiceFiles, kind === "sale" ? "buyer" : "seller") : [];
   const partyScore =
     invoiceName && selectedRecord ? (bestMatches(invoiceName, [selectedRecord], 1, 0)[0]?.score ?? 0) : 1;
   const partyMismatch = Boolean(invoiceName && selectedRecord && partyConfirmed !== selectedParty && partyScore < SAME_PARTY);
@@ -1634,6 +1638,30 @@ export function OperationForm({
           <div className="photo-check">
             {checking && <p className="muted">Проверяем фото…</p>}
             {checkNote && <p className="muted">{checkNote}</p>}
+            {invoiceFiles && invoiceFiles.length > 1 && (
+              <div className="notice invoice-files" role="status">
+                <p>
+                  <b>
+                    {invoiceFiles.length} {invoiceFiles.length < 5 ? "накладные" : "накладных"}
+                  </b>{" "}
+                  - сумма всех вместе:
+                </p>
+                <ol>
+                  {invoiceFiles.map((f, i) => (
+                    <li key={i}>
+                      {f.number ? `№ ${f.number}` : `Файл ${i + 1}`}
+                      {f.date ? ` от ${ruDate(f.date) || f.date}` : ""} - {money(f.total.toFixed(2), f.currency)}
+                    </li>
+                  ))}
+                </ol>
+                {otherParties.length > 0 && (
+                  <p>
+                    В накладных разные {kind === "sale" ? "покупатели" : "поставщики"}: {otherParties.map((p) => `«${p}»`).join(", ")}. Если это
+                    разные {kind === "sale" ? "клиенты" : "поставщики"} - запишите каждую накладную отдельно.
+                  </p>
+                )}
+              </div>
+            )}
             {verdict && !verdict.ok && (
               <div className="photo-check-mismatch document-kind-warning" role="status">
                 {verdict.reason === "direction" ? (

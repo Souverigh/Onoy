@@ -1843,6 +1843,17 @@ div.photo-field {
   max-width: 480px;
   margin: -8px auto 8px;
 }
+/* Несколько PDF — разные накладные: из чего сложилась сумма (28.10.2026). */
+.invoice-files p {
+  margin: 0;
+}
+.invoice-files ol {
+  margin: 6px 0;
+  padding-left: 22px;
+}
+.invoice-files ol + p {
+  margin-top: 6px;
+}
 .photo-check-ok,
 .photo-check-mismatch {
   font-size: 14px;

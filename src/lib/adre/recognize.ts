@@ -6,7 +6,7 @@ import { documentPages } from "@/lib/storage";
 import { normalizeInvoiceResult } from "./normalize";
 import { contentFingerprint } from "./fingerprint";
 import { TOLERANCE, reconcileInvoice } from "./reconcile";
-import { recognizeInvoicePages } from "./pipeline";
+import { recognizeInvoicePages, separateInvoiceFiles } from "./pipeline";
 import { expenseMatches, normalizeExpenseResult } from "./expense";
 import { notebookDate } from "../notebook-date";
 import { plainWarnings } from "../plain-warnings";
@@ -124,6 +124,7 @@ async function recognizeWithCache<T>({
   kind,
   loadPhoto,
   normalize,
+  accept,
 }: {
   db: SupabaseClient;
   organizationId: string;
@@ -131,9 +132,11 @@ async function recognizeWithCache<T>({
   kind: ExtractionKind;
   loadPhoto: PhotoSource;
   normalize: (result: T) => T;
+  /** Готовый ответ ещё годится? Нет — распознаём заново. */
+  accept?: (cached: T) => Promise<boolean>;
 }): Promise<{ result: T; cached: boolean }> {
   const cached = await cachedExtraction<T>(db, organizationId, documentId, kind);
-  if (cached) return { result: normalize(cached), cached: true };
+  if (cached && (!accept || (await accept(cached)))) return { result: normalize(cached), cached: true };
 
   const provider = getProvider();
   if (!provider) throw new Error("no_provider_configured");
@@ -176,6 +179,13 @@ export async function recognizeInvoiceCached(args: CachedArgs) {
     ...args,
     kind: "invoice",
     normalize: normalizeInvoiceResult,
+    // Несколько PDF, распознанные до 28.10.2026 как одна накладная (второй
+    // файл терялся), — заново, каждый отдельно (pipeline.ts).
+    accept: async (cached) =>
+      Boolean(cached.processing?.files) ||
+      !separateInvoiceFiles(
+        (await documentPages(args.db, args.organizationId, args.documentId)).map((p) => ({ mimeType: p.mime_type })),
+      ),
   });
   await saveFingerprint(args.db, args.organizationId, args.documentId, recognized.result);
   return recognized;
