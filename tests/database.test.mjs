@@ -8,7 +8,7 @@ const a = "11111111-1111-4111-8111-111111111111",
 let orgA, orgB, productA;
 before(async () => {
   await db.exec(
-    `CREATE ROLE anon; CREATE ROLE authenticated; CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid primary key, email text); CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; GRANT USAGE ON SCHEMA auth TO authenticated; GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated; INSERT INTO auth.users VALUES ('${a}'),('${b}');`,
+    `CREATE ROLE anon; CREATE ROLE authenticated; CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid primary key, email text, created_at timestamptz not null default now(), email_confirmed_at timestamptz, last_sign_in_at timestamptz, raw_user_meta_data jsonb not null default '{}'); CREATE TABLE auth.mfa_factors(id uuid primary key default gen_random_uuid(), user_id uuid not null, factor_type text not null default 'totp', status text not null); CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb $$; GRANT USAGE ON SCHEMA auth TO authenticated; GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated; GRANT EXECUTE ON FUNCTION auth.jwt() TO authenticated; INSERT INTO auth.users VALUES ('${a}'),('${b}');`,
   );
   if (existsSync("supabase/migrations"))
     for (const f of readdirSync("supabase/migrations")
@@ -20,9 +20,10 @@ before(async () => {
   );
 });
 after(() => db.close());
-async function user(id) {
+/** Вход пользователя; aal2 — со вторым ключом (код из приложения), как у админа. */
+async function user(id, aal = "aal2") {
   await db.exec(
-    `RESET ROLE; SET ROLE authenticated; SELECT set_config('request.jwt.claim.sub','${id}',false);`,
+    `RESET ROLE; SET ROLE authenticated; SELECT set_config('request.jwt.claim.sub','${id}',false); SELECT set_config('request.jwt.claims','{"sub":"${id}","aal":"${aal}"}',false);`,
   );
 }
 async function owner() {
@@ -4281,4 +4282,109 @@ test("rentals: a thing goes out once, payment is a plain sale, deposit is a cash
   await assert.rejects(issue(k(4)), /not_a_member/);
   await assert.rejects(db.query("insert into rentals(organization_id,customer_id,days,due_on,collateral_kind,idempotency_key) values ($1,$2,1,current_date,'none',$3)", [orgA, client, k(5)]), /permission denied/);
   await owner();
+});
+
+test("admin console: data only with the second key; people with last action, shop page, notes, business type, team", async () => {
+  const c = "3c3c3c3c-3333-4333-8333-333333333333";
+  await owner();
+  await db.query(
+    `insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) values ($1,'new-c@example.com',now(),'{"business_type":"prokat"}')`,
+    [c],
+  );
+  await db.query("update auth.users set email='owner-a@example.com', last_sign_in_at=now()+interval '1 minute' where id=$1", [a]);
+  await db.query("insert into private.platform_admins(user_id) values ($1) on conflict do nothing", [b]);
+  const businessBefore = (await db.query("select business_type from organizations where id=$1", [orgA])).rows[0].business_type;
+
+  // Без второго ключа аккаунт знает, что он админ (чтобы спросить код), но данных не видит.
+  await user(b, "aal1");
+  assert.equal((await db.query("select am_i_platform_admin() as v")).rows[0].v, true);
+  await assert.rejects(db.query("select * from admin_people()"), /admin_only/);
+  await assert.rejects(db.query("select * from admin_shops()"), /admin_only/);
+
+  await user(b);
+  const people = (await db.query("select * from admin_people()")).rows;
+  const shop = people.find((r) => r.kind === "shop" && r.org_id === orgA);
+  assert.equal(shop.email, "owner-a@example.com");
+  assert.equal(shop.last_action, "auth.login"); // вход позже последней записи
+  assert.equal(shop.last_action_role, "owner");
+  assert.ok(shop.customers > 0 && shop.first_record_at);
+  const account = people.find((r) => r.user_id === c);
+  assert.equal(account.kind, "account");
+  assert.equal(account.last_action, "auth.confirmed");
+  assert.equal(account.business_type, "prokat");
+
+  // Страница магазина: участники и последние действия — без клиентов и сумм.
+  const page = (await db.query("select admin_shop($1) as v", [orgA])).rows[0].v;
+  assert.ok(page.members.some((m) => m.role === "owner" && m.email === "owner-a@example.com"));
+  assert.ok(page.actions.length > 1);
+  assert.deepEqual(Object.keys(page.actions[0]).sort(), ["action", "at", "role", "who"]);
+  assert.ok(page.records_30d > 0);
+  await assert.rejects(db.query("select admin_shop(gen_random_uuid())"), /invalid_shop/);
+  const person = (await db.query("select admin_account($1) as v", [c])).rows[0].v;
+  assert.ok(person.confirmed_at && person.shop_id === null);
+
+  // Заметки и «связаться снова».
+  await db.query("select admin_add_note($1,null,'Звонил, перезвонить','2026-11-01')", [orgA]);
+  await db.query("select admin_add_note(null,$1,'Написал в WhatsApp',null)", [c]);
+  await assert.rejects(db.query("select admin_add_note($1,$2,'обоим',null)", [orgA, c]), /invalid_target/);
+  await assert.rejects(db.query("select admin_add_note($1,null,'  ',null)", [orgA]), /invalid_note/);
+  assert.equal((await db.query("select body from admin_notes($1,null)", [orgA])).rows[0].body, "Звонил, перезвонить");
+  assert.equal(
+    (await db.query("select next_contact::text as d, last_note from admin_people() where org_id=$1", [orgA])).rows[0].d,
+    "2026-11-01",
+  );
+  assert.equal((await db.query("select last_note from admin_people() where user_id=$1", [c])).rows[0].last_note, "Написал в WhatsApp");
+  await user(a);
+  await assert.rejects(db.query("select * from private.admin_notes"), /permission denied/);
+  await assert.rejects(db.query("select * from admin_notes($1,null)", [orgA]), /admin_only/);
+  await assert.rejects(db.query("select admin_set_business($1,'prokat')", [orgA]), /admin_only/);
+
+  // Вид бизнеса от админа — тем же событием, что у владельца (с пометкой).
+  await user(b);
+  await db.query("select admin_set_business($1,'prokat')", [orgA]);
+  await owner();
+  assert.equal((await db.query("select business_type from organizations where id=$1", [orgA])).rows[0].business_type, "prokat");
+  const changed = (await db.query("select metadata from audit_events where organization_id=$1 and action='organization.business_profile' order by created_at desc limit 1", [orgA])).rows[0].metadata;
+  assert.equal(changed.by_admin, true);
+  await user(b);
+  await db.query("select admin_set_business($1,$2)", [orgA, businessBefore]);
+
+  // Продление пробного не делает магазин оплатившим; отметка оплаты — делает.
+  await owner();
+  const trialShop = (await db.query("insert into organizations(name,created_by,creation_key) values ('Пробный',$1,gen_random_uuid()) returning id", [c])).rows[0].id;
+  await db.query("insert into audit_events(organization_id,actor_id,action,metadata) values ($1,$2,'organization.created','{\"trial\":true}')", [trialShop, c]);
+  await user(b);
+  const isTrial = async () => (await db.query("select trial from admin_people() where org_id=$1", [trialShop])).rows[0].trial;
+  assert.equal(await isTrial(), true);
+  await assert.rejects(db.query("select admin_extend($1,'2020-01-01',false)", [trialShop]), /invalid_date/);
+  await db.query("select admin_extend($1,current_date+14,false)", [trialShop]);
+  assert.equal(await isTrial(), true);
+  await db.query("select admin_extend($1,current_date+40,true)", [trialShop]);
+  assert.equal(await isTrial(), false);
+  assert.equal((await db.query("select (admin_shop($1)->>'paid_until')::date = current_date+40 as ok", [trialShop])).rows[0].ok, true);
+  await user(a);
+  await assert.rejects(db.query("select admin_extend($1,current_date+400,true)", [trialShop]), /admin_only/);
+  await user(b);
+
+  // Команда: новый админ — по email готового аккаунта; себя не убрать.
+  await assert.rejects(db.query("select admin_add_admin('nobody@example.com')"), /no_account/);
+  assert.equal((await db.query("select admin_add_admin(' NEW-C@example.com ') as id")).rows[0].id, c);
+  await assert.rejects(db.query("select admin_add_admin('new-c@example.com')"), /already_admin/);
+  await owner();
+  await db.query("insert into auth.mfa_factors(user_id,status) values ($1,'verified'),($2,'unverified')", [b, c]);
+  await user(b);
+  const team = (await db.query("select * from admin_team()")).rows;
+  assert.deepEqual(team.map((t) => [t.user_id, t.has_mfa]).sort(), [[b, true], [c, false]].sort());
+  assert.ok(!(await db.query("select * from admin_people()")).rows.some((r) => r.user_id === c && r.kind === "account"));
+  await assert.rejects(db.query("select admin_remove_admin($1)", [b]), /cannot_remove_self/);
+  await db.query("select admin_remove_admin($1)", [c]);
+  await assert.rejects(db.query("select admin_remove_admin($1)", [c]), /not_admin/);
+  await user(a);
+  await assert.rejects(db.query("select admin_add_admin('new-c@example.com')"), /admin_only/);
+  await owner();
+  assert.deepEqual(
+    (await db.query("select action from private.admin_events where target_user=$1 order by created_at", [c])).rows.map((r) => r.action),
+    ["admin.added", "admin.removed"],
+  );
+  await db.query("delete from private.platform_admins where user_id=$1", [b]);
 });

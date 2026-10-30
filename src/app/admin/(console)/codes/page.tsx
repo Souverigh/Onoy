@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { requirePlatformAdmin } from "@/lib/admin";
 import { Submit } from "@/components/submit";
-import { createCode, deleteCode } from "../actions";
+import { createCode, deleteCode } from "@/app/admin/actions";
 
 type Code = {
   code: string;

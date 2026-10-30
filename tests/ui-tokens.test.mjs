@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const BASELINE = 227;
+const BASELINE = 226;
 
 test("globals.css: no new hard-coded colors outside :root tokens", () => {
   const css = readFileSync("src/app/globals.css", "utf8");

@@ -4640,27 +4640,721 @@ form .return-search {
   margin-bottom: 16px;
 }
 
-/* Админ-панель Depter. */
-.admin {
-  max-width: 1100px;
+/* Админ-панель Depter: вход со вторым ключом, список, страница магазина (29.10.2026). */
+.adm {
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 20px 16px 60px;
+  padding: 18px 24px 60px;
 }
-.admin-header {
+.adm-top {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 24px;
+  gap: 12px 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 22px;
 }
-.admin-header .pill-switch {
+.adm-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+.adm-brand i {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--green);
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  font-weight: 800;
+}
+.adm-brand small {
+  color: var(--muted);
+  font-weight: 400;
+}
+.adm-nav {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+}
+.adm-nav a {
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.adm-nav a:hover {
+  background: var(--hover);
+}
+.adm-nav a.on {
+  background: var(--neutral-soft);
+  color: var(--ink);
+  font-weight: 600;
+}
+.adm-nav b {
+  font-size: 11px;
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+  border-radius: 999px;
+  padding: 1px 6px;
+  margin-left: 4px;
+}
+.adm-me {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--muted);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.adm-h1 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-bottom: 14px;
+}
+.adm-h1 h1 {
+  margin: 0;
+  font-size: 24px;
+}
+.adm-h1 .muted {
+  font-size: 14px;
+}
+
+/* Счётчики-фильтры над списком. */
+.adm-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.adm-chip {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 9px 11px;
+}
+.adm-chip:hover {
+  border-color: var(--control-border);
+  background: var(--surface-soft);
+}
+.adm-chip b {
+  display: block;
+  font-size: 20px;
+  line-height: 1.2;
+}
+.adm-chip span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.adm-chip.on {
+  border-color: var(--green);
+  box-shadow: inset 0 0 0 1px var(--green);
+}
+.adm-chip.tone-ok b {
+  color: var(--green);
+}
+.adm-chip.tone-warn b {
+  color: var(--warning-ink);
+}
+.adm-chip.tone-bad b {
+  color: var(--danger-ink);
+}
+.adm-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.adm-tools input,
+.adm-tools select {
+  height: 42px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-sm);
+  padding: 0 12px;
+  background: white;
+  font-size: 14px;
+}
+.adm-tools input {
+  flex: 1 1 280px;
+  max-width: 420px;
+}
+.adm-tools .button {
+  min-height: 42px;
+  padding: 8px 16px;
+}
+.adm-count {
+  margin-left: auto;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* Таблица (ПК) и карточки (телефон). */
+.adm-grid {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.adm-table table {
+  font-size: 14px;
+}
+.adm-table th {
+  padding: 10px 13px;
+}
+.adm-table td {
+  padding: 11px 13px;
+  vertical-align: middle;
+}
+.adm-table tr {
+  position: relative;
+}
+.adm-table tbody tr:hover td {
+  background: var(--green-wash);
+}
+.adm-row-link {
+  display: block;
+  font-weight: 600;
+}
+/* Строка целиком ведёт на страницу магазина; кнопка связи — поверх. */
+.adm-table .adm-row-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.adm-table .adm-contact {
+  position: relative;
+  z-index: 1;
+}
+.adm-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.adm-when {
+  display: block;
+  font-weight: 500;
+}
+.adm-flag {
+  color: var(--warning-ink);
+}
+.adm-stage {
+  display: inline-block;
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 3px 9px;
+  white-space: nowrap;
+  background: var(--neutral-soft);
+  color: var(--ink-soft);
+}
+.adm-stage.tone-ok {
+  background: var(--success-bg);
+  color: var(--success-ink);
+}
+.adm-stage.tone-trial {
+  background: var(--green-tint);
+  color: var(--green);
+}
+.adm-stage.tone-warn {
+  background: var(--notice-bg);
+  color: var(--notice-ink);
+}
+.adm-stage.tone-bad {
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+}
+.adm-contact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--button-border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  background: white;
+  white-space: nowrap;
+}
+.adm-contact:hover {
+  background: var(--hover);
+}
+.adm-act {
+  text-align: right;
+}
+.adm-cards {
+  display: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.adm-cards li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.adm-cards small {
+  grid-column: 1;
+  color: var(--muted);
+  font-size: 12px;
+}
+.adm-cards small.adm-flag {
+  color: var(--warning-ink);
+}
+.adm-cards .adm-stage {
+  justify-self: end;
+  align-self: start;
+}
+.adm-cards .adm-contact {
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  align-self: end;
+  justify-self: end;
+}
+.adm-pager {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+}
+.adm-pager div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.adm-pager a {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 4px 10px;
+  color: var(--ink);
+}
+.adm-pager a.on {
+  background: var(--ink);
+  color: white;
+  border-color: var(--ink);
+}
+
+/* Страница магазина или человека. */
+.adm-back {
+  font-size: 14px;
+  color: var(--muted);
+  display: inline-block;
+  margin-bottom: 10px;
+}
+.adm-shop-head {
+  margin-bottom: 18px;
+}
+.adm-shop-head h1 {
+  margin: 0;
+  font-size: 26px;
+  overflow-wrap: anywhere;
+}
+.adm-shop-head p {
+  margin: 4px 0 8px;
+  font-size: 14px;
+}
+.adm-cols {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.adm-card {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  margin-bottom: 16px;
+}
+.adm-card h2 {
+  font-size: 15px;
+  margin: 0 0 12px;
+}
+.adm-contact-row {
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+  gap: 8px 12px;
+  align-items: center;
+  font-size: 14px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.adm-contact-row:last-child {
+  border-bottom: 0;
+}
+.adm-contact-row > span {
+  color: var(--muted);
+}
+.adm-contact-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.adm-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.adm-steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  padding: 6px 0;
+}
+.adm-steps i {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  font-size: 12px;
+  flex: none;
+  background: var(--neutral-soft);
+  color: var(--muted);
+}
+.adm-steps .done i {
+  background: var(--green);
+  color: white;
+}
+.adm-steps .now i {
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+  border: 1px solid var(--warning-strong);
+}
+.adm-steps .todo {
+  color: var(--muted);
+}
+.adm-steps small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+.adm-hint {
+  font-size: 13px;
+  margin: 10px 0 0;
+}
+.adm-log {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+.adm-log li {
+  display: grid;
+  grid-template-columns: 130px 1fr auto;
+  gap: 10px;
+  font-size: 14px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+.adm-log li:last-child {
+  border-bottom: 0;
+}
+.adm-log b {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.adm-log small {
+  color: var(--muted);
+  font-size: 13px;
+}
+.adm-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
   margin: 0;
 }
-.admin-logout {
-  display: inline;
-  margin-left: 10px;
+.adm-stats div {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
 }
+.adm-stats dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.adm-stats dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+}
+.adm-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 16px 0 6px;
+}
+.adm-card h2 + .adm-label {
+  margin-top: 0;
+}
+.adm-pay {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+.adm-pay span {
+  color: var(--muted);
+}
+.adm-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.adm-actions form {
+  display: contents;
+}
+.adm-actions .button {
+  min-height: 42px;
+  font-size: 14px;
+  justify-content: flex-start;
+  white-space: normal;
+  text-align: left;
+}
+.adm-actions .button small {
+  color: var(--muted);
+  font-weight: 400;
+  margin-left: auto;
+  font-size: 12px;
+}
+.adm-fold {
+  border-top: 1px solid var(--line);
+  padding: 10px 0 2px;
+}
+.adm-fold summary {
+  cursor: pointer;
+  font-size: 14px;
+}
+.adm-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  margin: 10px 0 6px;
+}
+.adm-inline-form label {
+  flex: 1 1 200px;
+}
+.adm-inline-form .date-picker-field {
+  flex: 1 1 200px;
+}
+.adm-note-form textarea {
+  width: 100%;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  font-size: 14px;
+  resize: vertical;
+}
+.adm-note-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 8px;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.adm-note-row label {
+  font-size: 13px;
+  color: var(--muted);
+}
+.adm-note-row input {
+  display: block;
+  height: 40px;
+  margin-top: 4px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-sm);
+  padding: 0 10px;
+  font-size: 14px;
+}
+.adm-notes {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+}
+.adm-notes li {
+  border-top: 1px solid var(--line);
+  padding: 9px 0;
+  font-size: 14px;
+  white-space: pre-line;
+}
+.adm-notes small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+.adm-danger summary {
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--danger-ink);
+}
+.adm-team {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.adm-team li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.adm-team li:last-child {
+  border-bottom: 0;
+}
+.adm-team strong {
+  margin-right: 8px;
+}
+.adm-team small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Вход в админку и второй ключ. */
+.adm-login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+.adm-login-card {
+  width: 100%;
+  max-width: 400px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 28px;
+  display: grid;
+  gap: 12px;
+}
+.adm-login-card h1 {
+  margin: 6px 0 0;
+  font-size: 22px;
+}
+.adm-login-card > p {
+  margin: 0;
+  font-size: 14px;
+}
+.adm-login-card form {
+  display: grid;
+  gap: 12px;
+}
+.adm-login-card label {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  font-size: 14px;
+}
+.adm-login-card form + form {
+  justify-self: start;
+}
+.adm-code-input {
+  letter-spacing: 8px;
+  font-size: 22px;
+  text-align: center;
+}
+.adm-mfa-steps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+  display: grid;
+  gap: 4px;
+}
+.adm-mfa-qr {
+  justify-self: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  background: white;
+}
+.adm-key-add {
+  margin-top: 12px;
+}
+.adm-key-page {
+  max-width: 440px;
+}
+.adm-key-page .adm-login-card {
+  max-width: none;
+}
+.adm-mfa-secret summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+}
+.adm-mfa-secret code {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .adm {
+    padding: 12px 16px 40px;
+  }
+  .adm-me {
+    margin-left: 0;
+  }
+  .adm-cols {
+    grid-template-columns: 1fr;
+  }
+  .adm-table {
+    display: none;
+  }
+  .adm-cards {
+    display: block;
+  }
+  .adm-count {
+    margin-left: 0;
+  }
+}
+@media (max-width: 560px) {
+  .adm-chips {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .adm-tools select,
+  .adm-tools .button {
+    flex: 1 1 140px;
+  }
+  .adm-contact-row {
+    grid-template-columns: 1fr;
+  }
+  .adm-contact-acts {
+    justify-content: flex-start;
+  }
+  .adm-actions {
+    grid-template-columns: 1fr;
+  }
+  .adm-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+  .adm-log li {
+    grid-template-columns: 1fr auto;
+  }
+  .adm-log li span {
+    grid-column: 1;
+    grid-row: 2;
+  }
+}
+
+/* Старая админка: «Заявки» и «Коды». */
 .admin-shops {
   display: grid;
   gap: 14px;
@@ -4669,9 +5363,6 @@ form .return-search {
   display: grid;
   gap: 12px;
   margin: 0;
-}
-.admin-shop.blocked {
-  border-color: #f3d3c8;
 }
 .admin-shop h2,
 .admin-shop p {
@@ -4682,36 +5373,6 @@ form .return-search {
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 8px;
-}
-.admin-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: flex-start;
-}
-.admin-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
-  gap: 8px;
-  margin: 0;
-}
-.admin-stats div {
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-.admin-stats dt {
-  font-size: 12px;
-  color: var(--muted);
-}
-.admin-stats dd {
-  margin: 2px 0 0;
-  font-weight: 600;
-}
-.admin-forms {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px 32px;
 }
 .admin-form {
   display: flex;
