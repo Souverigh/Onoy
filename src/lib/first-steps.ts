@@ -24,14 +24,13 @@ export async function firstSteps(
   const count = (q: PromiseLike<{ count: number | null }>) => Promise.resolve(q).then((r) => r.count ?? 0, () => 0);
   const head = { count: "exact" as const, head: true };
   const rental = modules.includes("rental");
-  const [customers, openings, sales, rentals, members, invites] = await Promise.all([
+  const [customers, openings, sales, rentals, closures] = await Promise.all([
     count(db.from("customers").select("id", head).eq("organization_id", organizationId)),
     // Перенос тетради записывает старые долги начальными остатками.
     count(db.from("sales").select("id", head).eq("organization_id", organizationId).eq("is_opening", true)),
     count(db.from("sales").select("id", head).eq("organization_id", organizationId).eq("is_opening", false)),
     rental ? count(db.from("rentals").select("id", head).eq("organization_id", organizationId)) : Promise.resolve(0),
-    count(db.from("organization_members").select("user_id", head).eq("organization_id", organizationId)),
-    count(db.from("organization_invites").select("id", head).eq("organization_id", organizationId)),
+    count(db.from("day_closures").select("day", head).eq("organization_id", organizationId)),
   ]);
   const main = mainAction(business, modules);
   const steps: FirstStep[] = [
@@ -65,13 +64,13 @@ export async function firstSteps(
       done: sales > 0 || rentals > 0,
     },
     {
-      id: "seller",
-      title: "Пригласите продавца",
-      text: "Если за прилавком не только вы: у продавца будет свой вход, а вы увидите, кто что записал.",
-      href: "/settings#staff",
-      button: "Пригласить",
-      icon: "users",
-      done: members > 1 || invites > 0,
+      id: "day",
+      title: "Подведите итог дня",
+      text: "Вечером: сколько продали, сколько денег пришло и сколько наличных должно быть в кассе. Сошлось - нажмите «Закрыть день».",
+      href: "/day",
+      button: "Открыть итог дня",
+      icon: "chart",
+      done: closures > 0,
     },
   ];
   return steps.every((s) => s.done) ? null : steps;

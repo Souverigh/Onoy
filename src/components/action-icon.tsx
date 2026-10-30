@@ -1,7 +1,7 @@
 import type { ActionIcon } from "@/lib/business";
 
 /** Значки главной: кнопок (ActionIcon) и «Первых шагов». */
-export type IconName = ActionIcon | "camera" | "users";
+export type IconName = ActionIcon | "camera" | "users" | "chart";
 
 /** Контуры значков; цвет — от текста кнопки (currentColor). */
 const ICON_PATHS: Record<IconName, string[]> = {
@@ -18,6 +18,7 @@ const ICON_PATHS: Record<IconName, string[]> = {
     "M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5",
     "M16 4.8a3.3 3.3 0 0 1 0 6.4M18.5 14.8c1.6.8 2.6 2.5 3 5.2",
   ],
+  chart: ["M4 20h16", "M7 16v-4", "M12 16V7", "M17 16v-7"],
 };
 
 export function Icon({ name, size = 26 }: { name: IconName; size?: number }) {
