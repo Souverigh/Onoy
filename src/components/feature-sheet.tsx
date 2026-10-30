@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef } from "react";
+import { supportHref, WhatsAppIcon } from "./contact-links";
 import { Icon } from "./icon";
 import { TeachExample, TeachSteps, type ExampleRow } from "./teach";
 
@@ -18,15 +19,19 @@ export type SheetContent = {
 /**
  * Объяснение снизу экрана (на компьютере — окном по центру): «Что умеет
  * Depter» и «Первые шаги». Ничего не записывает — только кнопка туда, где
- * это делают. Esc, крестик или нажатие мимо — закрыть.
+ * это делают, и «Не получается? Напишите нам» в WhatsApp. Esc, крестик или
+ * нажатие мимо — закрыть.
  */
 export function FeatureSheet({
   content,
   icon,
+  shopName,
   onClose,
 }: {
   content: SheetContent | null;
   icon: React.ReactNode;
+  /** Для готового текста в поддержку: магазин и о чём объяснение. */
+  shopName: string;
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -77,6 +82,15 @@ export function FeatureSheet({
                 {content.button.label}
               </Link>
             </div>
+            <a
+              className="support-line"
+              href={supportHref(shopName, `вопрос про «${content.title}»`)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <WhatsAppIcon />
+              Не получается? <b>Напишите нам</b>
+            </a>
           </div>
         </>
       )}

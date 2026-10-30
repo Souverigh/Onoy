@@ -21,7 +21,7 @@ export function readSeen(shopId: string): string[] {
  * Карточки возможностей и объяснение снизу экрана: зачем, шаги, бледный
  * пример и кнопка туда, где это делают. Закрыли объяснение — «✓ посмотрели».
  */
-export function FeatureCards({ features, shopId }: { features: Feature[]; shopId: string }) {
+export function FeatureCards({ features, shopId, shopName }: { features: Feature[]; shopId: string; shopName: string }) {
   const [seen, setSeen] = useState<string[]>([]);
   const [open, setOpen] = useState<Feature | null>(null);
 
@@ -58,7 +58,7 @@ export function FeatureCards({ features, shopId }: { features: Feature[]; shopId
           </button>
         ))}
       </div>
-      <FeatureSheet content={open} icon={open && <Icon name={open.icon} />} onClose={close} />
+      <FeatureSheet content={open} icon={open && <Icon name={open.icon} />} shopName={shopName} onClose={close} />
     </>
   );
 }

@@ -19,7 +19,7 @@ export default async function FeaturesPage() {
           <p className="muted">Нажмите на карточку - покажем, как это работает.</p>
         </div>
       </div>
-      <FeatureCards features={list} shopId={organizationId} />
+      <FeatureCards features={list} shopId={organizationId} shopName={organizationName} />
     </>
   );
 }

@@ -13,6 +13,8 @@ import { quickActions } from "@/lib/business";
 import { firstSteps } from "@/lib/first-steps";
 import { FirstSteps } from "@/components/first-steps";
 import { FeaturesButton } from "@/components/features-button";
+import { SupportCard } from "@/components/support-card";
+import { supportHref } from "@/components/contact-links";
 import { features } from "@/lib/features";
 import { isNewShop } from "@/lib/new-shop";
 
@@ -198,8 +200,18 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
         intro={
           (newShopSteps || featureIcons.length > 0) && (
             <>
-              {newShopSteps && <FirstSteps steps={newShopSteps} shopId={organizationId} />}
-              {featureIcons.length > 0 && <FeaturesButton shopId={organizationId} icons={featureIcons} />}
+              {newShopSteps && <FirstSteps steps={newShopSteps} shopId={organizationId} shopName={organizationName} />}
+              {featureIcons.length > 0 && (
+                <>
+                  <FeaturesButton shopId={organizationId} icons={featureIcons} />
+                  <SupportCard
+                    title="Поможем начать"
+                    text="Перенести тетрадь, настроить магазин, ответить на вопрос - пишите в WhatsApp, ответит человек."
+                    href={supportHref(organizationName, "новый магазин")}
+                    hideKey={`depter-support-hidden-${organizationId}`}
+                  />
+                </>
+              )}
             </>
           )
         }

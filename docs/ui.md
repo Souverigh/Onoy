@@ -211,7 +211,12 @@
   пустым списком при этом не показываются.
 - «Что умеет Depter» — карточки из `lib/features.ts` на `/features`
   (`FeatureCards`, объяснение `dialog.feature-sheet`), на главной — кнопка
-  `FeaturesButton` (`.features-cta`).
+  `FeaturesButton` (`.features-cta`). В объяснении (`FeatureSheet`) внизу —
+  «Не получается? Напишите нам» (`.support-line`).
+- Поддержка в WhatsApp — `supportHref(магазин, где)` из
+  `components/contact-links.tsx` (готовый текст), карточкой — `SupportCard`
+  (с `hideKey` — крестик «больше не показывать»). Частые вопросы — `/help`
+  из `lib/help.ts` (`details` в `.help-faq`, ответ — `.teach`).
 
 ## Перед тем как отдать экран
 

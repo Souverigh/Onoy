@@ -16082,3 +16082,97 @@ button.first-steps-next {
 button.first-steps-row {
   background: white;
 }
+/* Поддержка в WhatsApp (support-card.tsx): на главной нового магазина и в «Помощи». */
+.support-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: white;
+}
+.support-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.support-card-head strong {
+  font-size: 17px;
+}
+.support-card-close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: -6px -6px 0 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+}
+.support-card-close:hover {
+  background: var(--hover);
+}
+.support-card p {
+  margin: 4px 0 12px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+.support-card-wa {
+  gap: 8px;
+  justify-content: center;
+  width: 100%;
+}
+/* Строка под объяснением: не получилось — сразу в поддержку. */
+.support-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+.support-line b {
+  color: var(--green);
+}
+/* «Помощь» (/help): вопросы раскрываются нажатием, ответ — как пустой раздел (teach). */
+.help-faq {
+  padding: 4px 16px;
+}
+.help-faq details {
+  border-bottom: 1px solid var(--line);
+}
+.help-faq details:last-child {
+  border-bottom: 0;
+}
+.help-faq summary {
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 0;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.help-faq summary::-webkit-details-marker {
+  display: none;
+}
+.help-faq summary::after {
+  content: "+";
+  flex: none;
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--green);
+}
+.help-faq details[open] summary::after {
+  content: "−";
+}
+.help-faq .teach {
+  padding: 0 0 16px;
+}
+.help-faq + .support-card {
+  margin-top: 16px;
+}

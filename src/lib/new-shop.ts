@@ -21,4 +21,5 @@ export const MENU_HINTS: Readonly<Record<string, string>> = {
   "/documents": "Фото накладных и чеков",
   "/news": "Новое в приложении",
   "/settings": "Магазин, продавцы, куда платить",
+  "/help": "Частые вопросы и поддержка",
 };

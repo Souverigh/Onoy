@@ -31,13 +31,15 @@ const allNav: NavItem[] = [
   // «Что нового» (src/lib/changelog.ts): окно на главной и лента обновлений.
   ["/news", "Что нового", "spark"],
   ["/settings", "Настройки", "settings"],
+  // Частые вопросы и поддержка в WhatsApp (src/lib/help.ts) — всем, всегда.
+  ["/help", "Помощь", "bulb"],
 ];
 /**
  * Меню на компьютере — тремя частями: сверху работа на каждый день, ниже —
  * «Ждут ответа» (со счётчиками), внизу — «Что нового» и «Настройки».
  */
 const WAITING = new Set(["/claims", "/orders", "/documents"]);
-const FOOTER = new Set(["/news", "/settings"]);
+const FOOTER = new Set(["/news", "/settings", "/help"]);
 /** «27 ноября» — дата подписки внизу меню. */
 const dayMonthLong = (d: string) =>
   new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long" }).format(new Date(`${d}T12:00:00+06:00`));

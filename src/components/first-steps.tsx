@@ -163,7 +163,7 @@ function Tour({ onClose }: { onClose: () => void }) {
  * (помним в браузере), потом — по кнопке. «Скрыть» убирает карточку на этом
  * устройстве; сделано всё — карточка пропадает сама (src/lib/first-steps.ts).
  */
-export function FirstSteps({ steps, shopId }: { steps: FirstStep[]; shopId: string }) {
+export function FirstSteps({ steps, shopId, shopName }: { steps: FirstStep[]; shopId: string; shopName: string }) {
   const hideKey = `depter-first-steps-hidden-${shopId}`;
   const tourKey = `depter-tour-seen-${shopId}`;
   const [hidden, setHidden] = useState(true);
@@ -267,6 +267,7 @@ export function FirstSteps({ steps, shopId }: { steps: FirstStep[]; shopId: stri
       <FeatureSheet
         content={open && { ...open, button: { label: open.button, href: open.href } }}
         icon={open && <Icon name={open.icon} size={21} />}
+        shopName={shopName}
         onClose={() => setOpen(null)}
       />
     </section>
