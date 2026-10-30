@@ -4775,7 +4775,9 @@ form .return-search {
 }
 .adm-tools input,
 .adm-tools select {
+  width: auto;
   height: 42px;
+  min-height: 42px;
   border: 1px solid var(--control-border);
   border-radius: var(--radius-sm);
   padding: 0 12px;
@@ -4805,13 +4807,21 @@ form .return-search {
 }
 .adm-table table {
   font-size: 14px;
+  white-space: normal;
 }
 .adm-table th {
-  padding: 10px 13px;
+  padding: 10px 12px;
 }
 .adm-table td {
-  padding: 11px 13px;
+  padding: 11px 12px;
   vertical-align: middle;
+}
+.adm-table td small {
+  overflow-wrap: anywhere;
+}
+.adm-table .adm-act small {
+  margin-top: 3px;
+  white-space: nowrap;
 }
 .adm-table tr {
   position: relative;
@@ -4840,6 +4850,7 @@ form .return-search {
 .adm-when {
   display: block;
   font-weight: 500;
+  white-space: nowrap;
 }
 .adm-flag {
   color: var(--warning-ink);
@@ -5238,6 +5249,7 @@ form .return-search {
 .adm-funnel-filters select {
   width: auto;
   height: 38px;
+  min-height: 38px;
   border: 1px solid var(--control-border);
   border-radius: var(--radius-sm);
   padding: 0 10px;
@@ -5548,6 +5560,12 @@ form .return-search {
   overflow-wrap: anywhere;
 }
 
+/* Средний экран: у кнопки связи только значок, номер — под ней. */
+@media (max-width: 1180px) {
+  .adm-table .adm-contact-text {
+    display: none;
+  }
+}
 @media (max-width: 900px) {
   .adm {
     padding: 12px 16px 40px;

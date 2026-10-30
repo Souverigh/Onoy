@@ -164,10 +164,7 @@ export default async function AdminPeople({
                   <th className="adm-num">Записей за 7 дн.</th>
                   <th>Последнее действие</th>
                   <th>Оплата</th>
-                  <th>Телефон</th>
-                  <th>
-                    <span className="sr-only">Связаться</span>
-                  </th>
+                  <th className="adm-act">Связаться</th>
                 </tr>
               </thead>
               <tbody>
@@ -195,13 +192,21 @@ export default async function AdminPeople({
                       )}
                     </td>
                     <td>{payText(p, today)}</td>
-                    <td>{p.phone || "-"}</td>
                     <td className="adm-act">
                       {contact && (
-                        <a className="adm-contact" href={contact.href} target="_blank" rel="noopener noreferrer">
-                          <span aria-hidden="true">{contact.icon}</span> {contact.label}
+                        <a
+                          className="adm-contact"
+                          href={contact.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={contact.label}
+                          title={contact.label}
+                        >
+                          <span aria-hidden="true">{contact.icon}</span>
+                          <span className="adm-contact-text">{contact.label}</span>
                         </a>
                       )}
+                      {p.phone && <small>{p.phone}</small>}
                     </td>
                   </tr>
                 ))}
