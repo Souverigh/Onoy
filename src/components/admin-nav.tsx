@@ -12,6 +12,9 @@ export function AdminNav({ due }: { due: number }) {
       <Link className={on((path === "/admin" && !contact) || path.startsWith("/admin/shop") || path.startsWith("/admin/account"))} href="/admin">
         Магазины
       </Link>
+      <Link className={on(path.startsWith("/admin/funnel"))} href="/admin/funnel">
+        Воронка
+      </Link>
       <Link className={on(path === "/admin" && contact)} href="/admin?f=contact">
         Связаться{due > 0 && <b>{due}</b>}
       </Link>

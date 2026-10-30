@@ -4388,3 +4388,55 @@ test("admin console: data only with the second key; people with last action, sho
   );
   await db.query("delete from private.platform_admins where user_id=$1", [b]);
 });
+
+test("admin funnel: steps per self-registered person, active = 3 records within 7 days; sellers and admins left out", async () => {
+  const d = "3d3d3d3d-3333-4333-8333-333333333333",
+    seller = "3e3e3e3e-3333-4333-8333-333333333333";
+  await owner();
+  await db.query("insert into auth.users(id,email,email_confirmed_at) values ($1,'funnel-d@example.com',now()),($2,'seller-e@example.com',now())", [d, seller]);
+  const shop = (await db.query("insert into organizations(name,created_by,creation_key,paid_until) values ('Воронка',$1,gen_random_uuid(),current_date+3) returning id", [d])).rows[0].id;
+  await db.query("insert into organization_members(organization_id,user_id) values ($1,$2)", [shop, d]);
+  await db.query("insert into organization_members(organization_id,user_id,role) values ($1,$2,'staff')", [shop, seller]);
+  await db.query("insert into audit_events(organization_id,actor_id,action,metadata) values ($1,$2,'organization.created','{\"trial\":true}')", [shop, d]);
+  await db.query("insert into organization_invites(organization_id,display_name,created_by) values ($1,'Айгуль',$2)", [shop, d]);
+  const customer = (await db.query("insert into customers(organization_id,name) values ($1,'Клиент') returning id", [shop])).rows[0].id;
+  const record = (ago) =>
+    db.query(
+      `insert into payments(organization_id,customer_id,direction,amount,idempotency_key,created_at)
+       values ($1,$2,'incoming',1,gen_random_uuid(),now()-interval '${ago}')`,
+      [shop, customer],
+    );
+  // Три записи, но не за 7 дней (12 дней, 3 дня, час назад) — ещё не «активен».
+  for (const ago of ["12 days", "3 days", "1 hour"]) await record(ago);
+  await db.query("insert into private.platform_admins(user_id) values ($1) on conflict do nothing", [b]);
+
+  await user(b, "aal1");
+  await assert.rejects(db.query("select * from admin_funnel()"), /admin_only/);
+  await user(b);
+  assert.equal((await db.query("select active_at from admin_funnel() where user_id=$1", [d])).rows[0].active_at, null);
+  // Ещё одна 2 дня назад — три записи за 7 дней (3 дня, 2 дня, час назад).
+  await owner();
+  await record("2 days");
+  await user(b);
+  const rows = (await db.query("select * from admin_funnel()")).rows;
+  const row = rows.find((r) => r.user_id === d);
+  assert.equal(row.org_id, shop);
+  assert.equal(row.customers, 1);
+  assert.ok(row.first_customer_at && row.first_record_at && row.last_record_at);
+  assert.equal(row.records_7d, 3);
+  assert.equal(row.active_at.getTime(), row.last_record_at.getTime()); // третья запись окна, не первая
+  assert.equal(row.trial, true);
+  assert.equal(row.paid_at, null);
+  assert.equal(row.pending_invites, 1);
+  assert.ok(!rows.some((r) => r.user_id === seller)); // продавец по приглашению — не в воронке
+  assert.ok(!rows.some((r) => r.user_id === b)); // админ — тоже
+
+  await db.query("select admin_extend($1,current_date+30,true)", [shop]);
+  const paid = (await db.query("select paid_at, trial from admin_funnel() where user_id=$1", [d])).rows[0];
+  assert.ok(paid.paid_at);
+  assert.equal(paid.trial, false);
+  await user(a);
+  await assert.rejects(db.query("select * from admin_funnel()"), /admin_only/);
+  await owner();
+  await db.query("delete from private.platform_admins where user_id=$1", [b]);
+});
