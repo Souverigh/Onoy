@@ -15916,8 +15916,10 @@ form label.rental-picked-price {
   font-size: 13px;
   color: var(--accent);
 }
+/* Узкий телефон: «и ещё 4» уходит на вторую строку, а не распирает экран. */
 .features-cta-icons {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 5px;
 }
@@ -15934,12 +15936,12 @@ form label.rental-picked-price {
   height: 16px;
 }
 .features-cta-icons small {
-  margin-left: 3px;
+  margin-left: 2px;
   white-space: nowrap;
 }
 .features-cta-go {
   flex: none;
-  padding: 10px 14px;
+  padding: 10px 12px;
   border-radius: var(--radius);
   background: var(--accent);
   color: var(--green);
