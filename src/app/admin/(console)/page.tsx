@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requirePlatformAdmin } from "@/lib/admin";
-import { loadPeople } from "@/lib/admin-data";
+import { loadFeedback, loadPeople } from "@/lib/admin-data";
+import { feedbackDue } from "@/lib/admin-feedback";
 import { STAGES, actionLabel, agoText, isStageKey, stageOf, waText, whenText, whoLabel, type PersonRow, type StageKey } from "@/lib/admin-people";
 import { subscriptionState } from "@/lib/subscription";
 import { bishkekDate } from "@/lib/day-summary";
@@ -22,7 +23,6 @@ function payText(p: PersonRow, today: string) {
   return p.trial ? `пробный до ${date}` : `до ${date}`;
 }
 
-
 /** Люди и магазины: счётчики-фильтры, поиск, таблица по 25 (на телефоне — карточки). */
 export default async function AdminPeople({
   searchParams,
@@ -37,6 +37,8 @@ export default async function AdminPeople({
     const sub = p.kind === "shop" ? subscriptionState(p.paid_until, null, Boolean(p.blocked_at), today) : null;
     return { ...p, stage: stageOf(p, sub) };
   });
+
+  const dueRequests = (await loadFeedback(db)).filter((f) => feedbackDue(f, today)).length;
 
   const filter: StageKey | "contact" | null = params.f === "contact" ? "contact" : isStageKey(params.f) ? params.f : null;
   const sort: Sort = params.sort === "new" || params.sort === "paid" ? params.sort : "action";
@@ -115,6 +117,11 @@ export default async function AdminPeople({
             : "Клиенты и долги магазинов здесь не видны - только счётчики и контакты владельцев."}
         </span>
       </div>
+      {filter === "contact" && dueRequests > 0 && (
+        <p className="notice">
+          И заявки, которым пора ответить: {dueRequests}. <Link href="/admin/feedback?f=contact">Открыть заявки →</Link>
+        </p>
+      )}
       <nav className="adm-chips" aria-label="Фильтр по этапу">
         <Link className={!filter ? "adm-chip on" : "adm-chip"} href={href({ f: null })}>
           <b>{people.length}</b>

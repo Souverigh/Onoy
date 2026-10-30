@@ -7,6 +7,7 @@ import { captchaFailed, captchaToken } from "@/lib/captcha";
 import { EXPIRED_COOKIE } from "@/lib/session-timeout";
 import { extendPaidUntil, type PersonRow } from "@/lib/admin-people";
 import { digestText, type FunnelRow } from "@/lib/admin-funnel";
+import { isFeedbackStatus, type FeedbackRow } from "@/lib/admin-feedback";
 import { sendTelegram, siteUrl } from "@/lib/telegram";
 import { bishkekDate } from "@/lib/day-summary";
 import { isBusinessType } from "@/lib/business";
@@ -176,13 +177,34 @@ function personBack(form: FormData) {
   redirect("/admin");
 }
 
+const feedbackId = (form: FormData) => {
+  const id = String(form.get("feedback") ?? "");
+  return /^\d{1,15}$/.test(id) ? Number(id) : null;
+};
+
+/** Статус заявки: новая / написали, ждём ответа / готово. */
+export async function setFeedbackStatus(form: FormData) {
+  const id = feedbackId(form);
+  const status = String(form.get("status") ?? "");
+  if (!id) redirect("/admin/feedback");
+  if (!isFeedbackStatus(status)) redirect(`/admin/feedback/${id}?done=error`);
+  const { db } = await requirePlatformAdmin();
+  const result = await db.rpc("admin_set_feedback_status", { p_id: id, p_status: status });
+  if (result.error) redirect(`/admin/feedback/${id}?done=error`);
+  revalidatePath("/admin", "layout");
+  redirect(`/admin/feedback/${id}?done=status`);
+}
+
 export async function addNote(form: FormData) {
-  const back = personBack(form);
+  const feedback = feedbackId(form);
+  const back = feedback ? { org: null, user: null, page: `/admin/feedback/${feedback}` } : personBack(form);
   const body = String(form.get("body") ?? "").trim();
   const next = String(form.get("next_contact") ?? "").trim();
   if (!body || body.length > 2000 || (next && !/^\d{4}-\d{2}-\d{2}$/.test(next))) redirect(`${back.page}?done=note_error`);
   const { db } = await requirePlatformAdmin();
-  const result = await db.rpc("admin_add_note", { p_org: back.org, p_user: back.user, p_body: body, p_next: next || null });
+  const result = feedback
+    ? await db.rpc("admin_add_feedback_note", { p_id: feedback, p_body: body, p_next: next || null })
+    : await db.rpc("admin_add_note", { p_org: back.org, p_user: back.user, p_body: body, p_next: next || null });
   if (result.error) redirect(`${back.page}?done=note_error`);
   revalidatePath("/admin");
   redirect(`${back.page}?done=note#notes`);
@@ -237,10 +259,21 @@ export async function telegramTest(form: FormData) {
   const { db } = await requirePlatformAdmin();
   let ok: boolean;
   if (form.get("kind") === "digest") {
-    const [people, funnel] = await Promise.all([db.rpc("admin_people"), db.rpc("admin_funnel")]);
+    const [people, funnel, feedback] = await Promise.all([
+      db.rpc("admin_people"),
+      db.rpc("admin_funnel"),
+      db.rpc("admin_feedback"),
+    ]);
     if (people.error || funnel.error) redirect("/admin/team?error=tg_fail#telegram");
     ok = await sendTelegram(
-      digestText((people.data ?? []) as PersonRow[], (funnel.data ?? []) as FunnelRow[], new Date(), bishkekDate(), siteUrl("")),
+      digestText(
+        (people.data ?? []) as PersonRow[],
+        (funnel.data ?? []) as FunnelRow[],
+        new Date(),
+        bishkekDate(),
+        siteUrl(""),
+        (feedback.data ?? []) as FeedbackRow[],
+      ),
     );
   } else ok = await sendTelegram("✅ Проверка: уведомления Depter приходят в этот чат.");
   redirect(`/admin/team?${ok ? "done=tg_ok" : "error=tg_fail"}#telegram`);

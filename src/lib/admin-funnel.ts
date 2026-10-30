@@ -1,4 +1,5 @@
 import type { PersonRow } from "./admin-people";
+import type { FeedbackRow } from "./admin-feedback";
 
 /** Строка воронки (admin_funnel): человек, который сам зарегистрировался. */
 export type FunnelRow = {
@@ -159,7 +160,14 @@ type Entry = { name: string; path: string; why: string };
  * Утренняя сводка команде в Telegram (HTML): итоги суток, кому позвонить по
  * заметкам, кто застрял, у кого беда. site — адрес сайта для ссылок.
  */
-export function digestText(people: PersonRow[], funnel: FunnelRow[], now: Date, today: string, site: string): string {
+export function digestText(
+  people: PersonRow[],
+  funnel: FunnelRow[],
+  now: Date,
+  today: string,
+  site: string,
+  feedback: FeedbackRow[] = [],
+): string {
   const ago = (iso: string | null) => (iso ? now.getTime() - new Date(iso).getTime() : Infinity);
   const day = (iso: string | null) => ago(iso) < DAY;
   const link = (e: Entry) => `• <a href="${site}${e.path}">${esc(e.name)}</a> — ${esc(e.why)}`;
@@ -179,9 +187,18 @@ export function digestText(people: PersonRow[], funnel: FunnelRow[], now: Date, 
   const firsts = funnel.filter((r) => day(r.first_record_at)).length;
   const active = people.filter((p) => p.kind === "shop" && (p.records_7d ?? 0) >= 3).length;
 
-  const contact: Entry[] = people
-    .filter((p) => p.next_contact && p.next_contact <= today)
-    .map((p) => ({ name: p.name ?? p.email ?? "без имени", path: pathOf(p), why: (p.last_note ?? "по заметке").slice(0, 80) }));
+  const contact: Entry[] = [
+    ...people
+      .filter((p) => p.next_contact && p.next_contact <= today)
+      .map((p) => ({ name: p.name ?? p.email ?? "без имени", path: pathOf(p), why: (p.last_note ?? "по заметке").slice(0, 80) })),
+    ...feedback
+      .filter((f) => f.next_contact && f.next_contact <= today && f.status !== "done")
+      .map((f) => ({ name: `Заявка: ${f.name}`, path: `/admin/feedback/${f.id}`, why: (f.last_note ?? "по заметке").slice(0, 80) })),
+  ];
+  // Заявки без ответа — ещё «новые»; старше 2 недель уже не напоминаем.
+  const requests: Entry[] = feedback
+    .filter((f) => f.status === "new" && ago(f.created_at) < FRESH)
+    .map((f) => ({ name: f.name, path: `/admin/feedback/${f.id}`, why: `${f.contact} · ${f.message.slice(0, 60)}` }));
 
   const fresh = funnel.filter((r) => ago(r.created_at) < FRESH);
   const stuck: Entry[] = [];
@@ -207,10 +224,12 @@ export function digestText(people: PersonRow[], funnel: FunnelRow[], now: Date, 
     `За сутки: регистраций ${signups} · магазинов ${shops} · первых записей ${firsts}`,
     `Активных магазинов сейчас: ${active}`,
     ...section("📞 Связаться сегодня", contact),
+    ...section("✉️ Заявки без ответа", requests),
     ...section("⏳ Застряли", stuck),
     ...section("⚠️ Внимание", attention),
   ];
-  if (!contact.length && !stuck.length && !attention.length) lines.push("\nВсё спокойно: никто не застрял, звонить сегодня никому.");
+  if (!contact.length && !requests.length && !stuck.length && !attention.length)
+    lines.push("\nВсё спокойно: никто не застрял, звонить сегодня никому.");
   lines.push(`\n<a href="${site}/admin">Открыть админку</a> · <a href="${site}/admin/funnel">Воронка</a>`);
   return lines.join("\n");
 }

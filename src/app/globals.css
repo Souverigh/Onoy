@@ -5542,6 +5542,57 @@ form .return-search {
 .adm-key-add {
   margin-top: 12px;
 }
+/* Заявки: точка у новой, начало сообщения, совпадение с аккаунтом, статус. */
+.adm-chips-short {
+  grid-template-columns: repeat(auto-fit, minmax(118px, 170px));
+}
+.adm-new-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger-ink);
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+.adm-msg {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 380px;
+  color: var(--ink-soft);
+}
+.adm-cards .adm-msg {
+  grid-column: 1 / -1;
+  max-width: none;
+}
+.adm-match {
+  color: var(--green);
+}
+.adm-full-text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.adm-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.adm-status-row .button {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 14px;
+}
+.adm-status-row .button.on {
+  background: var(--green-tint);
+  border-color: var(--green);
+  color: var(--green);
+  font-weight: 600;
+}
 .adm-tg-actions {
   margin-top: 10px;
 }
@@ -5618,26 +5669,7 @@ form .return-search {
   }
 }
 
-/* Старая админка: «Заявки» и «Коды». */
-.admin-shops {
-  display: grid;
-  gap: 14px;
-}
-.admin-shop {
-  display: grid;
-  gap: 12px;
-  margin: 0;
-}
-.admin-shop h2,
-.admin-shop p {
-  margin: 0;
-}
-.admin-shop-head {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 8px;
-}
+/* Старая админка: «Коды». */
 .admin-form {
   display: flex;
   flex-wrap: wrap;
@@ -7373,11 +7405,6 @@ tr.row-link:has(a[data-pending]) {
   .landing-about h2 {
     font-size: 22px;
   }
-}
-.admin-feedback-text {
-  white-space: pre-wrap;
-  margin: 12px 0 0;
-  line-height: 1.6;
 }
 
 /* ===== Задачи 05.10 ===== */

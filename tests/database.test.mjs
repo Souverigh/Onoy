@@ -4453,3 +4453,47 @@ test("morning digest: the server key (service_role) reads people and funnel; oth
   await assert.rejects(db.query("select * from admin_people()"), /permission denied/);
   await owner();
 });
+
+test("admin requests: status, notes with a contact date, match with a Depter account by email or shop phone", async () => {
+  await owner();
+  await db.query("update auth.users set email='owner-a@example.com' where id=$1", [a]);
+  await db.query("update organizations set phone='+996 555 77 88 99' where id=$1", [orgA]);
+  // Прямо в таблицу: лимит send_feedback (30 в час) уже выбран прошлым тестом.
+  await db.query(
+    "insert into private.feedback_messages(name,contact,message) values ('Мария','OWNER-A@example.com','Не приходит письмо'),('Азамат','0555 778 899','Хочу подключить'),('Гость','+996 700 000 001','Сколько стоит?')",
+  );
+  await db.query("insert into private.platform_admins(user_id) values ($1) on conflict do nothing", [b]);
+
+  await user(b);
+  const rows = (await db.query("select * from admin_feedback()")).rows;
+  const byName = (n) => rows.find((r) => r.name === n);
+  assert.equal(byName("Мария").status, "new");
+  assert.equal(byName("Мария").match_user, a); // по email, без учёта регистра
+  assert.equal(byName("Азамат").match_org, orgA); // по последним 9 цифрам телефона магазина
+  assert.equal(byName("Гость").match_user, null);
+
+  const id = byName("Гость").id;
+  await db.query("select admin_set_feedback_status($1,'contacted')", [id]);
+  await assert.rejects(db.query("select admin_set_feedback_status($1,'lost')", [id]), /invalid_status/);
+  await db.query("select admin_add_feedback_note($1,'Написал в WhatsApp, ждёт цену','2026-11-01')", [id]);
+  await assert.rejects(db.query("select admin_add_feedback_note($1,'',null)", [id]), /invalid_note/);
+  const after = (await db.query("select status, status_at, next_contact::text as d, last_note from admin_feedback() where id=$1", [id])).rows[0];
+  assert.equal(after.status, "contacted");
+  assert.ok(after.status_at);
+  assert.equal(after.d, "2026-11-01");
+  assert.equal(after.last_note, "Написал в WhatsApp, ждёт цену");
+  assert.equal((await db.query("select body from admin_feedback_notes($1)", [id])).rows.length, 1);
+
+  // Без второго ключа и владельцу магазина — нельзя; сводке (серверный ключ) — читать можно.
+  await user(b, "aal1");
+  await assert.rejects(db.query("select admin_set_feedback_status($1,'done')", [id]), /admin_only/);
+  await user(a);
+  await assert.rejects(db.query("select * from admin_feedback()"), /admin_only/);
+  await assert.rejects(db.query("select admin_add_feedback_note($1,'x',null)", [id]), /admin_only/);
+  await owner();
+  await db.exec(`SET ROLE service_role; SELECT set_config('request.jwt.claims','{"role":"service_role"}',false);`);
+  assert.ok((await db.query("select * from admin_feedback()")).rows.length >= 3);
+  await owner();
+  assert.equal((await db.query("select count(*)::int as n from private.admin_events where action='feedback.status'")).rows[0].n, 1);
+  await db.query("delete from private.platform_admins where user_id=$1", [b]);
+});

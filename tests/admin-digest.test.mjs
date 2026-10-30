@@ -49,6 +49,19 @@ test("digest: day totals, contacts due by notes, stuck people, attention; links 
   assert.ok(!text.includes("Всё спокойно"));
 });
 
+test("digest: requests without an answer and request contacts due by notes", () => {
+  const feedback = [
+    { id: 7, name: "Айбек", contact: "+996 555 123 456", message: "Хочу подключить магазин", created_at: hoursAgo(3), status: "new", next_contact: null },
+    { id: 8, name: "Бакыт", contact: "+996 772 44 11 00", message: "Два магазина?", created_at: hoursAgo(50), status: "contacted", next_contact: "2026-10-30", last_note: "Ждёт цену" },
+    { id: 9, name: "Эрлан", contact: "e@x.kg", message: "Старая", created_at: hoursAgo(24 * 20), status: "new", next_contact: null },
+    { id: 10, name: "Гуля", contact: "g@x.kg", message: "Готово", created_at: hoursAgo(10), status: "done", next_contact: "2026-10-29" },
+  ];
+  const text = digestText([], [], now, today, "https://www.depter.kg", feedback);
+  assert.match(text, /Заявки без ответа<\/b> \(1\)\n• <a href="https:\/\/www.depter.kg\/admin\/feedback\/7">Айбек<\/a> — \+996 555 123 456 · Хочу подключить магазин/);
+  assert.match(text, /Связаться сегодня<\/b> \(1\)\n• <a href="https:\/\/www.depter.kg\/admin\/feedback\/8">Заявка: Бакыт<\/a> — Ждёт цену/);
+  assert.ok(!text.includes("Эрлан") && !text.includes("Гуля")); // старая и закрытая — не напоминаем
+});
+
 test("digest: a quiet morning says so", () => {
   const text = digestText([], [], now, today, "https://www.depter.kg");
   assert.match(text, /Всё спокойно/);

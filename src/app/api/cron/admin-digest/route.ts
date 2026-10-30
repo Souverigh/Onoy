@@ -1,6 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { digestText, type FunnelRow } from "@/lib/admin-funnel";
 import type { PersonRow } from "@/lib/admin-people";
+import type { FeedbackRow } from "@/lib/admin-feedback";
 import { bishkekDate } from "@/lib/day-summary";
 import { sendTelegram, siteUrl, telegramConfigured } from "@/lib/telegram";
 
@@ -18,17 +19,24 @@ export async function GET(request: Request) {
   if (!telegramConfigured() || !process.env.SUPABASE_SERVICE_ROLE_KEY)
     return Response.json({ ok: false, reason: "telegram or service key not set" });
   const db = createServiceClient();
-  const [people, funnel] = await Promise.all([db.rpc("admin_people"), db.rpc("admin_funnel")]);
+  const [people, funnel, feedback] = await Promise.all([
+    db.rpc("admin_people"),
+    db.rpc("admin_funnel"),
+    db.rpc("admin_feedback"),
+  ]);
   if (people.error || funnel.error) {
     console.warn("admin-digest:", people.error?.message ?? funnel.error?.message);
     return Response.json({ ok: false, reason: "load failed" }, { status: 500 });
   }
+  // Заявки не загрузились — сводка всё равно уходит, без них.
+  if (feedback.error) console.warn("admin-digest feedback:", feedback.error.message);
   const text = digestText(
     (people.data ?? []) as PersonRow[],
     (funnel.data ?? []) as FunnelRow[],
     new Date(),
     bishkekDate(),
     siteUrl(""),
+    (feedback.data ?? []) as FeedbackRow[],
   );
   return Response.json({ ok: await sendTelegram(text) });
 }

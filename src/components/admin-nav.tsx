@@ -2,8 +2,8 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 
-/** Меню админки; «Связаться» — у кого подошла дата из заметки. */
-export function AdminNav({ due }: { due: number }) {
+/** Меню админки; «Связаться» — у кого подошла дата из заметки, «Заявки» — сколько новых. */
+export function AdminNav({ due, fresh }: { due: number; fresh: number }) {
   const path = usePathname();
   const contact = useSearchParams().get("f") === "contact";
   const on = (match: boolean) => (match ? "on" : undefined);
@@ -19,7 +19,7 @@ export function AdminNav({ due }: { due: number }) {
         Связаться{due > 0 && <b>{due}</b>}
       </Link>
       <Link className={on(path.startsWith("/admin/feedback"))} href="/admin/feedback">
-        Заявки
+        Заявки{fresh > 0 && <b>{fresh}</b>}
       </Link>
       <Link className={on(path.startsWith("/admin/codes"))} href="/admin/codes">
         Коды
