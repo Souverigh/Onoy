@@ -10,6 +10,8 @@ import { debtMoney } from "@/lib/format";
 import Link from "next/link";
 import { Submit } from "@/components/submit";
 import { duplicateReason, firstPaymentHref } from "@/lib/duplicates";
+import { isNewShop } from "@/lib/new-shop";
+import { Teach } from "@/components/teach";
 
 type Claim = {
   id: string;
@@ -56,7 +58,7 @@ export default async function Claims({
 }: {
   searchParams: Promise<{ error?: string; done?: string; undo?: string }>;
 }) {
-  const { db, organizationId, currency: shopCurrency } = await requireOwner();
+  const { db, organizationId, currency: shopCurrency, shopCreatedAt } = await requireOwner();
   const { error, done, undo } = await searchParams;
   const { data, error: loadError } = await db
     .from("payments")
@@ -341,6 +343,21 @@ export default async function Claims({
             );
           })}
         </div>
+      ) : !processed.length && isNewShop(shopCreatedAt) ? (
+        <section className="panel">
+          <Teach
+            title="Здесь - оплаты, о которых сообщили клиенты"
+            text="Клиент открывает ссылку из напоминания, переводит деньги и нажимает «Я оплатил». Вы проверяете перевод и подтверждаете - долг уменьшится сам."
+            rows={[
+              { name: "Айгуль", note: "«Я оплатил» · MBank · 30 октября", value: money(5000, shopCurrency) },
+              { name: "Нурлан", note: "«Я оплатил» · О!Деньги · 29 октября", value: money(3200, shopCurrency) },
+            ]}
+          >
+            <Link className="button primary" href="/settings#pay">
+              Вписать номер для перевода
+            </Link>
+          </Teach>
+        </section>
       ) : (
         <div className="empty">
           <h2>Заявок нет</h2>

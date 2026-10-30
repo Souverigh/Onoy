@@ -1,10 +1,10 @@
 "use client";
-import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { FirstStep } from "@/lib/first-steps";
 import { InstallApp } from "./install-app";
 import { Icon } from "./action-icon";
+import { FeatureSheet } from "./feature-sheet";
 
 /**
  * Тур по главной: подсвечивает часть экрана и объясняет её. Элемента нет или он
@@ -168,6 +168,8 @@ export function FirstSteps({ steps, shopId }: { steps: FirstStep[]; shopId: stri
   const tourKey = `depter-tour-seen-${shopId}`;
   const [hidden, setHidden] = useState(true);
   const [tour, setTour] = useState(false);
+  // Нажатый шаг: сначала объяснение, в форму — кнопкой из него.
+  const [open, setOpen] = useState<FirstStep | null>(null);
 
   useEffect(() => {
     let wasHidden = false;
@@ -207,7 +209,7 @@ export function FirstSteps({ steps, shopId }: { steps: FirstStep[]; shopId: stri
         <span style={{ width: `${(done / steps.length) * 100}%` }} />
       </div>
       {next && (
-        <Link className="first-steps-next" href={next.href}>
+        <button type="button" className="first-steps-next" onClick={() => setOpen(next)}>
           <Icon name={next.icon} />
           <span className="first-steps-next-text">
             <small>Шаг {steps.indexOf(next) + 1}</small>
@@ -217,7 +219,7 @@ export function FirstSteps({ steps, shopId }: { steps: FirstStep[]; shopId: stri
           <span className="first-steps-go" aria-hidden="true">
             ›
           </span>
-        </Link>
+        </button>
       )}
       <ol className="first-steps-list">
         {steps
@@ -232,13 +234,13 @@ export function FirstSteps({ steps, shopId }: { steps: FirstStep[]; shopId: stri
               </li>
             ) : (
               <li key={s.id}>
-                <Link className="first-steps-row" href={s.href}>
+                <button type="button" className="first-steps-row" onClick={() => setOpen(s)}>
                   <Icon name={s.icon} size={20} />
                   <strong>{s.title}</strong>
                   <span className="first-steps-go" aria-hidden="true">
                     ›
                   </span>
-                </Link>
+                </button>
               </li>
             ),
           )}
@@ -262,6 +264,11 @@ export function FirstSteps({ steps, shopId }: { steps: FirstStep[]; shopId: stri
         </button>
       </div>
       {tour && <Tour onClose={closeTour} />}
+      <FeatureSheet
+        content={open && { ...open, button: { label: open.button, href: open.href } }}
+        icon={open && <Icon name={open.icon} size={21} />}
+        onClose={() => setOpen(null)}
+      />
     </section>
   );
 }

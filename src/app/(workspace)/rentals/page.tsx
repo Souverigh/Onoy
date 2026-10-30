@@ -7,6 +7,8 @@ import { Icon } from "@/components/icon";
 import { RentalRowItem } from "@/components/rental-row";
 import { RENTAL_COLUMNS, type RentalRow } from "@/lib/rental-data";
 import { overdueDays } from "@/lib/rentals";
+import { isNewShop } from "@/lib/new-shop";
+import { Teach } from "@/components/teach";
 
 /**
  * Прокат (модуль rental): «На руках» — сверху просроченные, потом по дню
@@ -15,7 +17,7 @@ import { overdueDays } from "@/lib/rentals";
  */
 export default async function RentalsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const { tab } = await searchParams;
-  const { db, organizationId, organizationName, currency, modules } = await getContext();
+  const { db, organizationId, organizationName, currency, modules, shopCreatedAt } = await getContext();
   const returned = tab === "returned";
   let request = db.from("rentals").select(RENTAL_COLUMNS).eq("organization_id", organizationId).is("reversed_at", null);
   request = returned
@@ -69,6 +71,15 @@ export default async function RentalsPage({ searchParams }: { searchParams: Prom
               <RentalRowItem key={r.id} r={r} today={today} currency={currency} shopName={organizationName} />
             ))}
           </ul>
+        ) : !returned && isNewShop(shopCreatedAt) ? (
+          <Teach
+            title="Здесь - что сейчас на руках"
+            text="Выдали вещь на дни - Depter помнит, у кого она, до какого дня вернуть и какой залог. Просроченное видно сразу."
+            rows={[
+              { name: "Айгуль", note: "Платье вечернее, M · вернуть до 2 ноября", value: `залог ${money(2000, currency)}` },
+              { name: "Бакыт", note: "Костюм мужской, 50 · вернуть сегодня", value: `залог ${money(1500, currency)}` },
+            ]}
+          />
         ) : (
           <p className="muted">
             {returned ? "Вернувших пока нет." : "Сейчас ничего не выдано. Нажмите «Выдать», чтобы записать прокат."}

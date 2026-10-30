@@ -7,6 +7,7 @@ import { InstallApp } from "./install-app";
 import { REPORT_TAB_KEY, reportTabHref } from "./report-tabs";
 import { DEFAULT_BUSINESS, MODULE_IDS, mainAction, navLabel, type BusinessType, type ModuleId } from "@/lib/business";
 import { newestNews, unreadNews, type NewsEntry } from "@/lib/changelog";
+import { MENU_HINTS } from "@/lib/new-shop";
 import { WhatsNewDialog, readNewsSeen, saveNewsSeen } from "./whats-new";
 
 /** Адрес, название, иконка и модуль (src/lib/business.ts), если раздел не из ядра. */
@@ -58,6 +59,7 @@ const EXTRA_TITLES: [string, string][] = [
   ["/import", "Перенос из тетради"],
   ["/stock/new", "Новый товар"],
   ["/stock/import", "Товары из Excel"],
+  ["/features", "Что умеет Depter"],
 ];
 
 /**
@@ -79,6 +81,7 @@ export function Shell({
   news = [],
   shopCreatedAt = null,
   paidUntil = null,
+  newShop = false,
 }: {
   name: string;
   children: React.ReactNode;
@@ -99,6 +102,8 @@ export function Shell({
   shopCreatedAt?: string | null;
   /** Подписка оплачена до (владельцу — строкой внизу меню); null — без срока. */
   paidUntil?: string | null;
+  /** Первые 30 дней (isNewShop): в меню «Ещё» под разделом — что в нём (MENU_HINTS). */
+  newShop?: boolean;
 }) {
   const path = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -320,7 +325,14 @@ export function Shell({
                   onClick={() => setMenuOpen(false)}
                 >
                   <Icon name={icon} />
-                  <span>{label}</span>
+                  {newShop && MENU_HINTS[href] ? (
+                    <span className="menu-text">
+                      <span>{label}</span>
+                      <small>{MENU_HINTS[href]}</small>
+                    </span>
+                  ) : (
+                    <span>{label}</span>
+                  )}
                   {badge(href)}
                 </Link>
               ))}

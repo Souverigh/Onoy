@@ -15761,3 +15761,322 @@ form label.rental-picked-price {
   margin-top: 0;
   font-size: 12px;
 }
+/* Пустой раздел нового магазина (teach.tsx): зачем он, бледный пример в
+   пунктирной рамке — не данные, не нажимается — и настоящие кнопки. */
+.teach {
+  padding: 12px 2px 4px;
+}
+.teach h2 {
+  margin: 0 0 6px;
+  font-size: 19px;
+  line-height: 1.3;
+}
+.teach > p {
+  margin: 0 0 18px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+.teach-steps {
+  list-style: none;
+  counter-reset: teach;
+  display: grid;
+  gap: 10px;
+  margin: 0 0 20px;
+  padding: 0;
+}
+.teach-steps li {
+  counter-increment: teach;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 15px;
+  line-height: 1.4;
+}
+.teach-steps li::before {
+  content: counter(teach);
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--green);
+  color: white;
+  font-size: 14px;
+  font-weight: 700;
+}
+.teach-example {
+  position: relative;
+  margin-bottom: 18px;
+  padding: 24px 12px 6px;
+  border: 1.5px dashed var(--control-border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-soft);
+}
+.teach-example-tag {
+  position: absolute;
+  top: -11px;
+  left: 12px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: var(--neutral-soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.teach-example-body {
+  opacity: 0.5;
+  pointer-events: none;
+  user-select: none;
+}
+.teach-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+.teach-row:last-child {
+  border-bottom: 0;
+}
+.teach-row strong {
+  font-size: 15px;
+}
+.teach-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+}
+.teach-row b {
+  font-size: 15px;
+  white-space: nowrap;
+}
+.teach-message {
+  margin: 4px 0 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--green-tint);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.teach-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+@media (max-width: 560px) {
+  .teach-actions .button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+/* «Что умеет Depter» на главной нового магазина (features-button.tsx):
+   тёмно-зелёная плашка (выбор пользователя 30.10.2026), значок, что внутри
+   (ряд значков) и явная кнопка «Смотреть». */
+.features-cta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  background: var(--green);
+  color: white;
+}
+.features-cta:hover {
+  background: var(--green-hover);
+}
+.features-cta-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--green);
+}
+.features-cta-icon svg {
+  width: 26px;
+  height: 26px;
+}
+.features-cta-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.features-cta-text strong {
+  font-size: 17px;
+  line-height: 1.2;
+}
+.features-cta-text small {
+  font-size: 13px;
+  color: var(--accent);
+}
+.features-cta-icons {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.features-cta-icons > span {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.15);
+}
+.features-cta-icons svg {
+  width: 16px;
+  height: 16px;
+}
+.features-cta-icons small {
+  margin-left: 3px;
+  white-space: nowrap;
+}
+.features-cta-go {
+  flex: none;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--green);
+  font-size: 15px;
+  font-weight: 700;
+}
+.feature-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  background: var(--green-soft);
+  color: var(--green);
+}
+/* Экран /features: карточки и объяснение снизу экрана (feature-cards.tsx). */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.feature-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: white;
+  color: var(--ink);
+  text-align: left;
+}
+.feature-card:hover {
+  border-color: var(--green-border);
+  background: var(--green-wash);
+}
+.feature-card .feature-icon {
+  margin-bottom: 6px;
+}
+.feature-card strong {
+  font-size: 15px;
+  line-height: 1.25;
+}
+.feature-card small {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.feature-seen {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--success-bg);
+  color: var(--success-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+.feature-sheet {
+  width: min(560px, 100vw);
+  max-width: 100vw;
+  max-height: 90vh;
+  margin: auto auto 0;
+  padding: 10px 18px calc(22px + env(safe-area-inset-bottom));
+  border: 0;
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.15);
+  color: var(--ink);
+}
+.feature-sheet::backdrop {
+  background: var(--tour-shade);
+}
+@media (min-width: 900px) {
+  .feature-sheet {
+    margin: auto;
+    border-radius: 18px;
+  }
+}
+.feature-sheet-grip {
+  width: 40px;
+  height: 4px;
+  margin: 0 auto 14px;
+  border-radius: 2px;
+  background: var(--faint);
+}
+.feature-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.feature-sheet-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.feature-sheet-close {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-left: auto;
+  border: 0;
+  border-radius: 50%;
+  background: var(--neutral-soft);
+  color: var(--ink-soft);
+}
+.feature-sheet .teach {
+  padding: 0;
+}
+.feature-sheet .teach-actions .button {
+  width: 100%;
+  justify-content: center;
+}
+/* Меню «Ещё» нового магазина: под разделом — что в нём. */
+.menu-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.menu-text small {
+  font-size: 13px;
+  color: var(--muted);
+}
+/* Шаги — кнопки (открывают объяснение), а не ссылки: вид прежний. */
+button.first-steps-next,
+button.first-steps-row {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+}
+button.first-steps-next {
+  border: 0;
+}
+button.first-steps-row {
+  background: white;
+}

@@ -17,6 +17,13 @@ export default async function NewsPage() {
           <h1>Что нового</h1>
           <p className="muted">Что появилось в Depter и где это найти.</p>
         </div>
+        {isOwner && (
+          <div className="page-heading-actions">
+            <Link className="button" href="/features">
+              Что умеет Depter
+            </Link>
+          </div>
+        )}
       </div>
       {days.map((date) => (
         <section key={date} className="panel news-day">

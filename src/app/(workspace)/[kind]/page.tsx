@@ -11,6 +11,8 @@ import { NavSelect, NavSelects } from "@/components/nav-select";
 import { OVERDUE_THRESHOLDS, dayMonth, overdueThreshold, promiseStatus } from "@/lib/promise";
 import { bishkekDate } from "@/lib/day-summary";
 import { memberLabels } from "@/lib/members";
+import { isNewShop } from "@/lib/new-shop";
+import { Teach } from "@/components/teach";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export default async function DirectoryPage({
@@ -41,7 +43,7 @@ export default async function DirectoryPage({
   const overdue = kind === "customers" ? overdueThreshold(rawOverdue) : null;
   const current = Math.max(1, Math.min(10000, parseInt(page) || 1));
   const query = q.trim().slice(0, 100);
-  const { db, organizationId, currency: shopCurrency, isOwner } = await getContext();
+  const { db, organizationId, currency: shopCurrency, isOwner, shopCreatedAt } = await getContext();
   // «Кто внёс» (просьба пользователя 23.10.2026): клиенты и поставщики, по
   // которым сотрудник записал продажу/приход (maker_id) или оплату (created_by).
   // Владелец выбирает любого сотрудника; продавец видит в списке только себя (RLS).
@@ -137,6 +139,9 @@ export default async function DirectoryPage({
   if (error) throw new Error("Не удалось загрузить справочник");
   const entries = (data ?? []) as Entry[];
   const oldestDays = new Map(late.map((row) => [row.customer_id, row.oldest_days]));
+  // Новый магазин, список пуст и без отборов — вместо поиска и «Список пока пуст» пример.
+  const teaching =
+    kind !== "products" && isNewShop(shopCreatedAt) && !entries.length && !query && !overdue && !archived && !seller && current === 1;
   const today = bishkekDate();
   const listHref = (extra: Record<string, string | number>) => {
     const params = new URLSearchParams();
@@ -205,29 +210,31 @@ export default async function DirectoryPage({
         </p>
       )}
       <section className="panel">
-        <form className="search" action={`/${kind}`}>
-          {overdue && <input type="hidden" name="overdue" value={overdue} />}
-          {archived && <input type="hidden" name="archived" value="1" />}
-          {sort !== "recent" && kind !== "products" && <input type="hidden" name="sort" value={sort} />}
-          {seller && <input type="hidden" name="seller" value={seller} />}
-          <label htmlFor="search-name" className="sr-only">
-            {kind === "products" ? "Поиск по названию" : "Поиск по имени или телефону"}
-          </label>
-          <input
-            id="search-name"
-            name="q"
-            placeholder={kind === "products" ? "Поиск по названию…" : "Имя или телефон…"}
-            defaultValue={query}
-            maxLength={100}
-          />
-          <button className="button">Найти</button>
-          {query && (
-            <Link className="text-button" href={seller ? `/${kind}?seller=${seller}` : `/${kind}`}>
-              Сбросить
-            </Link>
-          )}
-        </form>
-        {kind !== "products" && (
+        {!teaching && (
+          <form className="search" action={`/${kind}`}>
+            {overdue && <input type="hidden" name="overdue" value={overdue} />}
+            {archived && <input type="hidden" name="archived" value="1" />}
+            {sort !== "recent" && kind !== "products" && <input type="hidden" name="sort" value={sort} />}
+            {seller && <input type="hidden" name="seller" value={seller} />}
+            <label htmlFor="search-name" className="sr-only">
+              {kind === "products" ? "Поиск по названию" : "Поиск по имени или телефону"}
+            </label>
+            <input
+              id="search-name"
+              name="q"
+              placeholder={kind === "products" ? "Поиск по названию…" : "Имя или телефон…"}
+              defaultValue={query}
+              maxLength={100}
+            />
+            <button className="button">Найти</button>
+            {query && (
+              <Link className="text-button" href={seller ? `/${kind}?seller=${seller}` : `/${kind}`}>
+                Сбросить
+              </Link>
+            )}
+          </form>
+        )}
+        {kind !== "products" && !teaching && (
           <NavSelects>
             <NavSelect
               label="Показать"
@@ -349,6 +356,42 @@ export default async function DirectoryPage({
               </tbody>
             </table>
           </div>
+        ) : teaching && kind === "customers" ? (
+          <Teach
+            title="Здесь - кто должен вам"
+            text="Продали в долг - долг клиента посчитается сам. Одна кнопка - и напоминание с суммой уходит клиенту в WhatsApp."
+            rows={[
+              { name: "Айгуль", note: "обещала оплатить до 5 ноября", value: debtMoney(12500, shopCurrency) },
+              { name: "Нурлан", note: "+996 555 12-34-56", value: debtMoney(3200, shopCurrency) },
+              { name: "Магазин «Береке»", note: "всё оплачено", value: debtMoney(0, shopCurrency) },
+            ]}
+          >
+            <Link className="button primary" href="/customers/new">
+              <Icon name="plus" />
+              Добавить клиента
+            </Link>
+            <Link className="button" href="/import?kind=customers">
+              Перенести из тетради по фото
+            </Link>
+          </Teach>
+        ) : teaching ? (
+          <Teach
+            title="Здесь - кому должен магазин"
+            text="Взяли товар в долг - запишите, и Depter посчитает, сколько вы должны каждому поставщику."
+            rows={[
+              { name: "Оптовка «Дордой»", note: "товар 28 октября", value: debtMoney(45000, shopCurrency) },
+              { name: "Сут-Азия", note: "+996 555 65-43-21", value: debtMoney(8300, shopCurrency) },
+              { name: "Нон-Бишкек", note: "всё оплачено", value: debtMoney(0, shopCurrency) },
+            ]}
+          >
+            <Link className="button primary" href="/suppliers/new">
+              <Icon name="plus" />
+              Добавить поставщика
+            </Link>
+            <Link className="button" href="/import?kind=suppliers">
+              Перенести из тетради по фото
+            </Link>
+          </Teach>
         ) : (
           <div className="empty">
             <span className="empty-icon">
@@ -371,35 +414,42 @@ export default async function DirectoryPage({
             )}
           </div>
         )}
-        <div className="pagination">
-          <span className="muted">Страница {current} · По 25 записей</span>
-          <div className="actions">
-            {current > 1 && (
-              <Link className="button" href={listHref({ page: current - 1 })}>
-                Назад
-              </Link>
-            )}
-            {current * 25 < (count ?? 0) && (
-              <Link className="button" href={listHref({ page: current + 1 })}>
-                Далее
-              </Link>
-            )}
+        {!teaching && (
+          <div className="pagination">
+            <span className="muted">Страница {current} · По 25 записей</span>
+            <div className="actions">
+              {current > 1 && (
+                <Link className="button" href={listHref({ page: current - 1 })}>
+                  Назад
+                </Link>
+              )}
+              {current * 25 < (count ?? 0) && (
+                <Link className="button" href={listHref({ page: current + 1 })}>
+                  Далее
+                </Link>
+              )}
+            </div>
           </div>
-        </div>
-      </section>
-      {/* На телефоне кнопки — внизу, над нижней панелью: под большим пальцем и не теснят заголовок. */}
-      <div className="bottom-actions-spacer" aria-hidden="true" />
-      <div className="directory-bottom-actions">
-        {kind !== "products" && (
-          <Link className="button" href={`/import?kind=${kind}`}>
-            Из тетради
-          </Link>
         )}
-        <Link className="button primary" href={`/${kind}/new`}>
-          <Icon name="plus" />
-          {meta.single}
-        </Link>
-      </div>
+      </section>
+      {/* На телефоне кнопки — внизу, над нижней панелью: под большим пальцем и не теснят заголовок.
+          С примером те же кнопки уже в панели. */}
+      {!teaching && (
+        <>
+          <div className="bottom-actions-spacer" aria-hidden="true" />
+          <div className="directory-bottom-actions">
+            {kind !== "products" && (
+              <Link className="button" href={`/import?kind=${kind}`}>
+                Из тетради
+              </Link>
+            )}
+            <Link className="button primary" href={`/${kind}/new`}>
+              <Icon name="plus" />
+              {meta.single}
+            </Link>
+          </div>
+        </>
+      )}
     </>
   );
 }

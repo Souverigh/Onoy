@@ -28,6 +28,8 @@ import { CopyButton } from "@/components/copy-button";
 import { ConfirmButton } from "@/components/confirm-button";
 import { waPhone } from "@/lib/share";
 import { bishkekDate } from "@/lib/day-summary";
+import { isNewShop } from "@/lib/new-shop";
+import { TeachExample } from "@/components/teach";
 
 type ShareLink = { id: string; token: string; revoked_at: string | null };
 type Aging = {
@@ -65,7 +67,7 @@ export default async function EntryPage({
 }) {
   const { kind, id } = await params;
   if (!isDirectory(kind)) notFound();
-  const { db, organizationId, organizationName, isOwner, currency: shopCurrency, modules } = await getContext();
+  const { db, organizationId, organizationName, isOwner, currency: shopCurrency, modules, shopCreatedAt } = await getContext();
   const { error, saved, linked, revoked, reversed, promised, adjusted, archived, restored, merged, unmerged, rid, added, dup, name: draftName, phone: draftPhone, add_phone: addPhone } =
     await searchParams;
   const isParty = kind === "customers" || kind === "suppliers";
@@ -841,6 +843,28 @@ export default async function EntryPage({
                     );
                   })}
                 </ul>
+              ) : isNewShop(shopCreatedAt) ? (
+                // Новый магазин: где появятся записи — бледным примером, не данными.
+                <div className="teach">
+                  <p>
+                    {kind === "customers"
+                      ? "Здесь будет каждая продажа и оплата этого клиента - с датой и суммой. Такую же историю клиент видит по своей ссылке."
+                      : "Здесь будет каждый товар и оплата этому поставщику - с датой и суммой."}
+                  </p>
+                  <TeachExample
+                    rows={
+                      kind === "customers"
+                        ? [
+                            { name: "Продажа в долг", note: "28 октября", value: money(12500, cur) },
+                            { name: "Клиент принёс деньги", note: "30 октября", value: money(5000, cur) },
+                          ]
+                        : [
+                            { name: "Товар от поставщика", note: "28 октября", value: money(45000, cur) },
+                            { name: "Я заплатил поставщику", note: "30 октября", value: money(20000, cur) },
+                          ]
+                    }
+                  />
+                </div>
               ) : (
                 <p className="muted">Операций пока нет.</p>
               )}

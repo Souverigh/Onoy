@@ -12,6 +12,9 @@ import { rentalsDue } from "@/lib/rental-data";
 import { quickActions } from "@/lib/business";
 import { firstSteps } from "@/lib/first-steps";
 import { FirstSteps } from "@/components/first-steps";
+import { FeaturesButton } from "@/components/features-button";
+import { features } from "@/lib/features";
+import { isNewShop } from "@/lib/new-shop";
 
 /** Сколько клиентов показываем в «Кому напомнить сегодня». */
 const REMIND_LIMIT = 6;
@@ -71,7 +74,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
   }
   const today = bishkekDate();
   // Новый магазин: «Первые шаги» и тур по главной — только владельцу.
-  const steps = firstSteps(db, organizationId, business, modules, shopCreatedAt).catch(() => null);
+  const steps = firstSteps(db, organizationId, business, modules, shopCreatedAt, shopCurrency).catch(() => null);
   const [customerBalances, supplierBalances, late, history, claims, reviewResult, recent, ordersResult] = await Promise.all([
     // Долги — по валютам: доллары Хороза со сомами не складываем.
     db
@@ -184,11 +187,22 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
 
   const todayRow = history[0]; // за 1 день — одна строка, сегодня
   const newShopSteps = await steps;
+  // «Что умеет Depter» — первые 30 дней, и когда «Первые шаги» уже сделаны.
+  const featureIcons = isNewShop(shopCreatedAt)
+    ? features({ business, modules, currency: shopCurrency, shopName: organizationName, today }).map((f) => f.icon)
+    : [];
   return (
     <>
       {passwordNotice}
       <Dashboard
-        intro={newShopSteps && <FirstSteps steps={newShopSteps} shopId={organizationId} />}
+        intro={
+          (newShopSteps || featureIcons.length > 0) && (
+            <>
+              {newShopSteps && <FirstSteps steps={newShopSteps} shopId={organizationId} />}
+              {featureIcons.length > 0 && <FeaturesButton shopId={organizationId} icons={featureIcons} />}
+            </>
+          )
+        }
         summary={{ debts: debtTotals } satisfies Summary}
         reminders={reminders}
         remindersMore={candidates.length - shown.length}

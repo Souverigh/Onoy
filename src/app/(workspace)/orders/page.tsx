@@ -7,6 +7,8 @@ import { linkedCustomers, matchOrder, ORDER_COLUMNS, phoneBook, type CatalogOrde
 import { navLabel } from "@/lib/business";
 import { setOrderDismissed } from "./actions";
 import { goodsCount, ORDER_ERRORS, orderDateTime } from "./order-text";
+import { isNewShop } from "@/lib/new-shop";
+import { Teach } from "@/components/teach";
 
 /** Метка покупателя в списке: знаем ли его. */
 function matchTag(match: OrderMatch) {
@@ -27,7 +29,7 @@ export default async function OrdersPage({
   searchParams: Promise<{ error?: string; dismissed?: string }>;
 }) {
   const { error, dismissed } = await searchParams;
-  const { db, organizationId, currency, user, business, modules } = await getContext();
+  const { db, organizationId, currency, user, business, modules, isOwner, shopCreatedAt } = await getContext();
   const stockLabel = navLabel(business, "/stock", "Склад");
   const [openResult, doneResult, members] = await Promise.all([
     db
@@ -151,31 +153,56 @@ export default async function OrdersPage({
         </form>
       )}
 
-      <section className="panel operation-history">
-        <div className="section-title">
-          <h2>Новые</h2>
-          <span className="muted">{open.length}</span>
-        </div>
-        {open.length ? (
-          table(rows(open))
-        ) : (
-          <p className="muted">
-            Новых заказов нет.{" "}
-            {modules.includes("stock") ? (
-              <>
-                Ссылку на каталог для клиентов можно включить на{" "}
-                <Link href="/stock/catalog">«{stockLabel} → Каталог для клиентов»</Link>.
-              </>
-            ) : (
-              // Каталог показывает товары склада: без «Склада» ссылку не включить.
-              <>
-                Каталог показывает товары со склада - чтобы его включить, включите «Склад» в{" "}
-                <Link href="/settings#business">Настройках</Link>.
-              </>
+      {/* Новый магазин, заказов ещё не было — как это работает и пример. */}
+      {!all.length && isNewShop(shopCreatedAt) ? (
+        <section className="panel">
+          <Teach
+            title="Здесь - заказы из вашего каталога"
+            text="Клиенты сами выбирают товары по ссылке, без звонков и переписки."
+            steps={[
+              "Отправьте клиенту ссылку на каталог в WhatsApp",
+              "Он отмечает товары и нажимает «Отправить заказ»",
+              "Заказ появляется здесь - соберите его и сделайте продажу",
+            ]}
+            rows={[
+              { name: "Айгуль", note: `Сахар 10 кг, Масло 5 л · ${goodsCount(2)}`, value: money(2150, currency) },
+              { name: "Магазин «Береке»", note: `Мука 50 кг · ${goodsCount(1)}`, value: money(3800, currency) },
+            ]}
+          >
+            {isOwner && modules.includes("stock") && (
+              <Link className="button primary" href="/stock/catalog">
+                Включить каталог для клиентов
+              </Link>
             )}
-          </p>
-        )}
-      </section>
+          </Teach>
+        </section>
+      ) : (
+        <section className="panel operation-history">
+          <div className="section-title">
+            <h2>Новые</h2>
+            <span className="muted">{open.length}</span>
+          </div>
+          {open.length ? (
+            table(rows(open))
+          ) : (
+            <p className="muted">
+              Новых заказов нет.{" "}
+              {modules.includes("stock") ? (
+                <>
+                  Ссылку на каталог для клиентов можно включить на{" "}
+                  <Link href="/stock/catalog">«{stockLabel} → Каталог для клиентов»</Link>.
+                </>
+              ) : (
+                // Каталог показывает товары склада: без «Склада» ссылку не включить.
+                <>
+                  Каталог показывает товары со склада - чтобы его включить, включите «Склад» в{" "}
+                  <Link href="/settings#business">Настройках</Link>.
+                </>
+              )}
+            </p>
+          )}
+        </section>
+      )}
 
       {done.length > 0 && (
         <section className="panel operation-history">

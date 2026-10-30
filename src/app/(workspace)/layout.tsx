@@ -5,6 +5,7 @@ import { PRICE_KGS, subscriptionState } from "@/lib/subscription";
 import { DEPTER_PHONE } from "@/components/contact-links";
 import { bishkekDate } from "@/lib/day-summary";
 import { CHANGELOG, newsFor } from "@/lib/changelog";
+import { isNewShop } from "@/lib/new-shop";
 export const dynamic = "force-dynamic";
 export default async function Layout({
   children,
@@ -57,6 +58,7 @@ export default async function Layout({
       modules={ctx.modules}
       news={newsFor(CHANGELOG, ctx.isOwner, ctx.modules)}
       shopCreatedAt={ctx.shopCreatedAt}
+      newShop={isNewShop(ctx.shopCreatedAt)}
       paidUntil={ctx.paidUntil}
     >
       {sub.kind === "blocked" && (

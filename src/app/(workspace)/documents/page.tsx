@@ -4,6 +4,10 @@ import { Icon } from "@/components/icon";
 import { expenseCategoryLabel } from "@/lib/expenses";
 import { DeleteWithUndo } from "@/components/delete-with-undo";
 import { recognitionStuck } from "@/lib/document-status";
+import { isNewShop } from "@/lib/new-shop";
+import { Teach } from "@/components/teach";
+import { money } from "@/lib/format";
+import { word } from "@/lib/business";
 
 type DocRow = {
   id: string;
@@ -93,7 +97,7 @@ export default async function Documents({
   const q = (params.q ?? "").trim().slice(0, 100);
   // Сколько показать: 10, 20, 30… (?n=), не больше просматриваемых.
   const shown = Math.min(SCANNED, Math.max(PAGE, Math.ceil((parseInt(params.n ?? "") || PAGE) / PAGE) * PAGE));
-  const { db, organizationId } = await getContext();
+  const { db, organizationId, shopCreatedAt, currency, business } = await getContext();
   const { data, error } = await db
     .from("documents")
     .select("id,kind,status,error_message,created_at,mime_type")
@@ -262,6 +266,22 @@ export default async function Documents({
         </section>
       ) : all.length ? (
         <p className="muted doc-none">{q ? "По этому поиску ничего не нашлось." : "Здесь пока пусто."}</p>
+      ) : isNewShop(shopCreatedAt) ? (
+        <section className="panel">
+          <Teach
+            title="Здесь - фото накладных и чеков"
+            text="Сфотографируйте накладную, когда записываете товар от поставщика или продажу, - фото сохранится здесь, и его всегда легко найти."
+            rows={[
+              { name: "Накладная", note: "Оптовка «Дордой» · 28 октября", value: money(45000, currency) },
+              { name: "Накладная", note: "Айгуль · 30 октября", value: money(1310, currency) },
+            ]}
+          >
+            <Link className="button primary" href="/money/new?type=purchase">
+              <Icon name="camera" />
+              {word(business, "purchase")} по фото
+            </Link>
+          </Teach>
+        </section>
       ) : (
         <div className="empty">
           <span className="empty-icon">

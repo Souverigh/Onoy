@@ -7,6 +7,9 @@ import { debtMoney, money } from "@/lib/format";
 import { memberLabels } from "@/lib/members";
 import { NavSelect, NavSelects } from "@/components/nav-select";
 import { Icon, type IconName } from "@/components/icon";
+import { isNewShop } from "@/lib/new-shop";
+import { Teach } from "@/components/teach";
+import { mainAction, word } from "@/lib/business";
 
 type PartyBalance = { id: string; name: string; balance: string; currency: string | null };
 /** Контрагент, встроенный в запись (PostgREST по составному FK). */
@@ -73,7 +76,7 @@ export default async function Money({
     type?: string;
   }>;
 }) {
-  const { db, organizationId, isOwner, user, currency: shopCurrency } = await getContext();
+  const { db, organizationId, isOwner, user, currency: shopCurrency, shopCreatedAt, business, modules } = await getContext();
   const params = await searchParams;
   // Владелец: «Кто внёс» — все записи или одного участника магазина.
   const by = isOwner && params.by && /^[0-9a-f-]{36}$/i.test(params.by) ? params.by : null;
@@ -502,6 +505,24 @@ export default async function Money({
                 </li>
               ))}
             </ul>
+          </section>
+        ) : !filtered && isNewShop(shopCreatedAt) ? (
+          <section className="panel">
+            <Teach
+              title="Здесь - всё, что записано"
+              text="Продажи, оплаты, товар от поставщиков и расходы - одним списком: когда, сколько и кто записал."
+              rows={[
+                { name: "Продажа в долг", note: "Айгуль · 30 октября", value: money(12500, shopCurrency) },
+                { name: "Клиент принёс деньги", note: "Нурлан · 30 октября", value: money(3000, shopCurrency) },
+                { name: word(business, "purchase"), note: "Оптовка «Дордой» · 29 октября", value: money(45000, shopCurrency) },
+                { name: "Расход", note: "аренда · 28 октября", value: money(15000, shopCurrency) },
+              ]}
+            >
+              <Link className="button primary" href={mainAction(business, modules).href}>
+                <Icon name="plus" />
+                {mainAction(business, modules).label}
+              </Link>
+            </Teach>
           </section>
         ) : (
           <div className="empty">

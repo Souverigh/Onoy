@@ -15,6 +15,8 @@ import { categoryGroups, categoryLabel, categoryTree, categoryWithChildren, sugg
 import { CategoryChip } from "@/components/category-helper";
 import { loadVariants } from "@/lib/model-data";
 import { groupByModel, sortVariants, variantLabel } from "@/lib/product-model";
+import { isNewShop } from "@/lib/new-shop";
+import { Teach } from "@/components/teach";
 
 type Row = {
   id: string;
@@ -79,7 +81,7 @@ export default async function StockPage({
   const wide = filter === "low" || filter === "nocost";
   const query = q.trim().slice(0, 100);
   const current = Math.max(1, Math.min(1000, parseInt(page) || 1));
-  const { db, organizationId, currency, isOwner, business, modules } = await getContext();
+  const { db, organizationId, currency, isOwner, business, modules, shopCreatedAt } = await getContext();
   // Название — как пункт меню («Продукты» у кафе, «Вещи» у проката); каталог — только с модулем.
   const stockLabel = navLabel(business, "/stock", "Склад");
   const catalogOn = isOwner && modules.includes("catalog");
@@ -146,6 +148,8 @@ export default async function StockPage({
   if (filter === "low") rows = rows.filter(isLow);
   if (filter === "nocost") rows = rows.filter(noCost);
   const total = wide ? rows.length : (count ?? 0);
+  // Новый магазин, товаров нет и без отборов — вместо поиска и «Склад пока пуст» пример.
+  const teaching = isNewShop(shopCreatedAt) && !rows.length && !query && !category && filter === "all" && current === 1;
   const pages = wide ? 1 : Math.max(1, Math.ceil(total / PAGE));
 
   // Закупка — в тех валютах, в которых закупали, без пересчёта (решение
@@ -410,42 +414,46 @@ export default async function StockPage({
         </p>
       )}
       <section className="panel stk-panel">
-        <form className="doc-search stk-search" action="/stock" role="search">
-          {filter !== "all" && <input type="hidden" name="filter" value={filter} />}
-          {sort !== "name" && <input type="hidden" name="sort" value={sort} />}
-          {category && <input type="hidden" name="category" value={category} />}
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-            <path d="m21 21-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" />
-          </svg>
-          <input
-            id="stock-search"
-            name="q"
-            type="search"
-            placeholder="Название или код товара"
-            aria-label="Поиск по названию или коду"
-            defaultValue={query}
-            maxLength={100}
-            autoComplete="off"
-          />
-        </form>
-        <NavSelects>
-          <NavSelect
-            label="Показать"
-            className="stk-show"
-            options={[
-              { label: "Все товары", href: viewHref("all", sort), selected: filter === "all" },
-              { label: "Мало на складе", href: viewHref("low", sort), selected: filter === "low" },
-              { label: "Без цены закупки", href: viewHref("nocost", sort), selected: filter === "nocost" },
-              { label: "Архив", href: viewHref("archive", sort), selected: filter === "archive" },
-            ]}
-          />
-          <NavSelect label="Категория" className="stk-cat" options={categoryOptions} />
-          <NavSelect
-            label="Сортировка"
-            className="stk-sort"
-            options={SORTS.map(([key, label]) => ({ label, href: viewHref(filter, key), selected: sort === key }))}
-          />
-        </NavSelects>
+        {!teaching && (
+          <>
+            <form className="doc-search stk-search" action="/stock" role="search">
+              {filter !== "all" && <input type="hidden" name="filter" value={filter} />}
+              {sort !== "name" && <input type="hidden" name="sort" value={sort} />}
+              {category && <input type="hidden" name="category" value={category} />}
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                <path d="m21 21-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" />
+              </svg>
+              <input
+                id="stock-search"
+                name="q"
+                type="search"
+                placeholder="Название или код товара"
+                aria-label="Поиск по названию или коду"
+                defaultValue={query}
+                maxLength={100}
+                autoComplete="off"
+              />
+            </form>
+            <NavSelects>
+              <NavSelect
+                label="Показать"
+                className="stk-show"
+                options={[
+                  { label: "Все товары", href: viewHref("all", sort), selected: filter === "all" },
+                  { label: "Мало на складе", href: viewHref("low", sort), selected: filter === "low" },
+                  { label: "Без цены закупки", href: viewHref("nocost", sort), selected: filter === "nocost" },
+                  { label: "Архив", href: viewHref("archive", sort), selected: filter === "archive" },
+                ]}
+              />
+              <NavSelect label="Категория" className="stk-cat" options={categoryOptions} />
+              <NavSelect
+                label="Сортировка"
+                className="stk-sort"
+                options={SORTS.map(([key, label]) => ({ label, href: viewHref(filter, key), selected: sort === key }))}
+              />
+            </NavSelects>
+          </>
+        )}
         {rows.length ? (
           <>
             <div className="stk-row stk-row-head" aria-hidden="true">
@@ -463,6 +471,34 @@ export default async function StockPage({
               )}
             </ul>
           </>
+        ) : teaching ? (
+          <Teach
+            title="Здесь - что есть в наличии и сколько осталось"
+            text="Получили товар - остаток прибавится, продали - убавится. Что заканчивается, Depter покажет сам."
+            rows={
+              modules.includes("variants")
+                ? [
+                    { name: "Платье вечернее, M", note: `цена ${money(3500, currency)}`, value: "2 шт" },
+                    { name: "Костюм мужской, 50", note: "мало осталось", value: "1 шт" },
+                    { name: "Туфли женские, 38", note: `цена ${money(2800, currency)}`, value: "4 шт" },
+                  ]
+                : [
+                    { name: "Сахар 1 кг", note: `цена ${money(95, currency)}`, value: "24 шт" },
+                    { name: "Масло подсолнечное 1 л", note: "мало осталось", value: "3 шт" },
+                    { name: "Мука 50 кг", note: `цена ${money(1900, currency)}`, value: "12 шт" },
+                  ]
+            }
+          >
+            {isOwner && (
+              <Link className="button primary" href="/stock/import">
+                Загрузить из Excel
+              </Link>
+            )}
+            <Link className={isOwner ? "button" : "button primary"} href="/stock/new">
+              <Icon name="plus" />
+              Добавить товар
+            </Link>
+          </Teach>
         ) : (
           <div className="empty">
             <span className="empty-icon">
