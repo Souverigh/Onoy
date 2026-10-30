@@ -3,7 +3,13 @@ import { requirePlatformAdmin } from "@/lib/admin";
 import { whenText } from "@/lib/admin-people";
 import { Submit } from "@/components/submit";
 import { ConfirmButton } from "@/components/confirm-button";
-import { addAdmin, removeAdmin, removeAdminKey } from "../../actions";
+import { recentTelegramChats, telegramConfigured } from "@/lib/telegram";
+import {
+  addAdmin,
+  removeAdmin,
+  removeAdminKey,
+  telegramTest,
+} from "../../actions";
 
 type Admin = {
   user_id: string;
@@ -37,6 +43,11 @@ const MESSAGES: Record<string, [string, boolean]> = {
     false,
   ],
   key: ["Не удалось отключить телефон. Обновите страницу.", false],
+  tg_ok: ["Отправлено - проверьте чат в Telegram.", true],
+  tg_fail: [
+    "Telegram не принял сообщение. Проверьте TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID и что бот добавлен в чат.",
+    false,
+  ],
 };
 
 /** Команда Depter: кто может входить в админку. */
@@ -53,6 +64,11 @@ export default async function AdminTeam({
   ]);
   const team = (data ?? []) as Admin[];
   const keys = factors.data?.totp ?? [];
+  // Бот есть, чата нет — показываем, где боту писали, чтобы взять номер чата.
+  const chats =
+    process.env.TELEGRAM_BOT_TOKEN && !telegramConfigured()
+      ? await recentTelegramChats()
+      : [];
   const message = MESSAGES[done ?? error ?? ""];
   return (
     <>
@@ -142,31 +158,87 @@ export default async function AdminTeam({
             </ul>
           </section>
         </div>
-        <section className="adm-card">
-          <h2>Добавить админа</h2>
-          <ol className="adm-mfa-steps">
-            <li>
-              Человек регистрируется на depter.kg/signup и подтверждает почту.
-              Магазин создавать не нужно.
-            </li>
-            <li>Вы вписываете его email ниже.</li>
-            <li>
-              Он заходит на depter.kg/admin и подключает Google Authenticator по
-              QR-коду.
-            </li>
-          </ol>
-          <form action={addAdmin} className="adm-inline-form">
-            <label>
-              Email его аккаунта Depter
-              <input name="email" type="email" required maxLength={254} />
-            </label>
-            <Submit>Добавить</Submit>
-          </form>
-          <small className="muted">
-            Админ видит контакты владельцев и счётчики магазинов, но не клиентов
-            и суммы.
-          </small>
-        </section>
+        <div>
+          <section className="adm-card" id="telegram">
+            <h2>Уведомления в Telegram</h2>
+            {!process.env.TELEGRAM_BOT_TOKEN ? (
+              <p className="muted adm-hint">
+                Бот не подключён. Добавьте в Vercel переменную
+                TELEGRAM_BOT_TOKEN (токен от @BotFather) и сделайте Redeploy.
+              </p>
+            ) : !telegramConfigured() ? (
+              <>
+                <p className="muted adm-hint">
+                  Бот есть, чат не выбран. Добавьте бота в группу команды,
+                  напишите там любое сообщение и обновите страницу. Номер чата
+                  впишите в Vercel как TELEGRAM_CHAT_ID.
+                </p>
+                {chats.length > 0 && (
+                  <ul className="adm-team">
+                    {chats.map((c) => (
+                      <li key={c.id}>
+                        <div>
+                          <strong>{c.title}</strong>
+                          <small>
+                            TELEGRAM_CHAT_ID: <code>{c.id}</code>
+                          </small>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="muted adm-hint">
+                  Сразу: регистрации, новые магазины, заявки. Каждое утро около
+                  9:00 - сводка: кто застрял, кому позвонить, у кого кончается
+                  пробный.
+                  {!process.env.SUPABASE_SERVICE_ROLE_KEY ||
+                  !process.env.CRON_SECRET
+                    ? " Утренняя сводка ждёт SUPABASE_SERVICE_ROLE_KEY и CRON_SECRET в Vercel."
+                    : ""}
+                </p>
+                <form
+                  action={telegramTest}
+                  className="adm-actions adm-tg-actions"
+                >
+                  <button className="button" name="kind" value="test">
+                    Отправить проверку
+                  </button>
+                  <button className="button" name="kind" value="digest">
+                    Прислать сводку сейчас
+                  </button>
+                </form>
+              </>
+            )}
+          </section>
+          <section className="adm-card">
+            <h2>Добавить админа</h2>
+            <ol className="adm-mfa-steps">
+              <li>
+                Человек регистрируется на depter.kg/signup и подтверждает почту.
+                Магазин создавать не нужно.
+              </li>
+              <li>Вы вписываете его email ниже.</li>
+              <li>
+                Он заходит на depter.kg/admin и подключает Google Authenticator
+                по QR-коду.
+              </li>
+            </ol>
+            <form action={addAdmin} className="adm-inline-form">
+              <label>
+                Email его аккаунта Depter
+                <input name="email" type="email" required maxLength={254} />
+              </label>
+              <Submit>Добавить</Submit>
+            </form>
+            <small className="muted">
+              Админ видит контакты владельцев и счётчики магазинов, но не
+              клиентов и суммы.
+            </small>
+          </section>
+        </div>
       </div>
     </>
   );

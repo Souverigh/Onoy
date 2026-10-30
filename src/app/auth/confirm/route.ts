@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient, configured } from "@/lib/supabase/server";
+import { notifySignup } from "@/lib/team-notify";
+import { BUSINESS_COOKIE } from "@/lib/business";
 
 /** Куда можно вернуть после ссылки из письма — только свои страницы. */
 function allowedNext(next: string | null) {
@@ -52,14 +54,17 @@ export async function GET(request: NextRequest) {
   if (next === "/settings" && !code && !tokenHash && url.searchParams.get("message"))
     return NextResponse.redirect(settings("email_half"));
   const db = await createClient();
-  const { error } = code
+  const result = code
     ? await db.auth.exchangeCodeForSession(code)
     : tokenHash && type && OTP_TYPES.has(type)
       ? await db.auth.verifyOtp({ type, token_hash: tokenHash })
-      : { error: new Error("no code") };
+      : { data: null, error: new Error("no code") };
+  const { error } = result;
   if (error) {
     console.warn("auth/confirm:", error.message);
     return fail;
   }
+  // Вход через Google с переходом на supabase.co: новый аккаунт — команде в Telegram.
+  if (code && next === "/") notifySignup(result.data?.user, "google", request.cookies.get(BUSINESS_COOKIE)?.value);
   return NextResponse.redirect(next === "/settings" ? settings("email_changed") : new URL(next, url.origin));
 }

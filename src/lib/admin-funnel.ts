@@ -1,3 +1,5 @@
+import type { PersonRow } from "./admin-people";
+
 /** Строка воронки (admin_funnel): человек, который сам зарегистрировался. */
 export type FunnelRow = {
   user_id: string;
@@ -143,4 +145,72 @@ export function stuckText(step: number, shop: string | null): string {
     default:
       return `Здравствуйте! Это Depter${name}. Подсказать, как продлить Depter после пробного месяца?`;
   }
+}
+
+/** Застрявших показываем первые две недели после регистрации — дальше это уже не «застрял». */
+const FRESH = 14 * DAY;
+const PER_SECTION = 8;
+
+const esc = (s: string | null | undefined) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+type Entry = { name: string; path: string; why: string };
+
+/**
+ * Утренняя сводка команде в Telegram (HTML): итоги суток, кому позвонить по
+ * заметкам, кто застрял, у кого беда. site — адрес сайта для ссылок.
+ */
+export function digestText(people: PersonRow[], funnel: FunnelRow[], now: Date, today: string, site: string): string {
+  const ago = (iso: string | null) => (iso ? now.getTime() - new Date(iso).getTime() : Infinity);
+  const day = (iso: string | null) => ago(iso) < DAY;
+  const link = (e: Entry) => `• <a href="${site}${e.path}">${esc(e.name)}</a> — ${esc(e.why)}`;
+  const pathOf = (r: { org_id: string | null; user_id: string | null }) => (r.org_id ? `/admin/shop/${r.org_id}` : `/admin/account/${r.user_id}`);
+  const section = (title: string, entries: Entry[]) =>
+    entries.length
+      ? [
+          `\n<b>${title}</b> (${entries.length})`,
+          ...entries.slice(0, PER_SECTION).map(link),
+          ...(entries.length > PER_SECTION ? [`… и ещё ${entries.length - PER_SECTION}`] : []),
+        ]
+      : [];
+
+  const date = new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bishkek", day: "numeric", month: "long" }).format(now);
+  const signups = funnel.filter((r) => day(r.created_at)).length;
+  const shops = funnel.filter((r) => day(r.shop_created_at)).length;
+  const firsts = funnel.filter((r) => day(r.first_record_at)).length;
+  const active = people.filter((p) => p.kind === "shop" && (p.records_7d ?? 0) >= 3).length;
+
+  const contact: Entry[] = people
+    .filter((p) => p.next_contact && p.next_contact <= today)
+    .map((p) => ({ name: p.name ?? p.email ?? "без имени", path: pathOf(p), why: (p.last_note ?? "по заметке").slice(0, 80) }));
+
+  const fresh = funnel.filter((r) => ago(r.created_at) < FRESH);
+  const stuck: Entry[] = [];
+  for (const r of fresh) {
+    const name = r.shop_name ?? r.email ?? "без имени";
+    const step = reached(r);
+    if (step === 1 && ago(r.created_at) >= DAY) stuck.push({ name, path: pathOf(r), why: "не подтвердил почту" });
+    else if (step === 2 && ago(r.confirmed_at) >= DAY) stuck.push({ name, path: pathOf(r), why: "почта есть, магазина нет" });
+    else if (hasProblem(r, "no_customers", now, today)) stuck.push({ name, path: pathOf(r), why: "магазин без клиентов" });
+    else if (step === 4 && ago(r.first_customer_at) >= DAY) stuck.push({ name, path: pathOf(r), why: "клиенты есть, записей нет" });
+  }
+
+  const attention: Entry[] = [];
+  for (const r of funnel) {
+    const name = r.shop_name ?? r.email ?? "без имени";
+    if (hasProblem(r, "quiet", now, today)) attention.push({ name, path: pathOf(r), why: "затих после активной недели" });
+    else if (hasProblem(r, "trial_ending", now, today))
+      attention.push({ name, path: pathOf(r), why: `пробный до ${r.paid_until?.slice(8, 10)}.${r.paid_until?.slice(5, 7)}, записей мало` });
+  }
+
+  const lines = [
+    `☀️ <b>Depter · ${date}</b>`,
+    `За сутки: регистраций ${signups} · магазинов ${shops} · первых записей ${firsts}`,
+    `Активных магазинов сейчас: ${active}`,
+    ...section("📞 Связаться сегодня", contact),
+    ...section("⏳ Застряли", stuck),
+    ...section("⚠️ Внимание", attention),
+  ];
+  if (!contact.length && !stuck.length && !attention.length) lines.push("\nВсё спокойно: никто не застрял, звонить сегодня никому.");
+  lines.push(`\n<a href="${site}/admin">Открыть админку</a> · <a href="${site}/admin/funnel">Воронка</a>`);
+  return lines.join("\n");
 }

@@ -8,7 +8,7 @@ const a = "11111111-1111-4111-8111-111111111111",
 let orgA, orgB, productA;
 before(async () => {
   await db.exec(
-    `CREATE ROLE anon; CREATE ROLE authenticated; CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid primary key, email text, created_at timestamptz not null default now(), email_confirmed_at timestamptz, last_sign_in_at timestamptz, raw_user_meta_data jsonb not null default '{}'); CREATE TABLE auth.mfa_factors(id uuid primary key default gen_random_uuid(), user_id uuid not null, factor_type text not null default 'totp', status text not null); CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb $$; GRANT USAGE ON SCHEMA auth TO authenticated; GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated; GRANT EXECUTE ON FUNCTION auth.jwt() TO authenticated; INSERT INTO auth.users VALUES ('${a}'),('${b}');`,
+    `CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role; CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid primary key, email text, created_at timestamptz not null default now(), email_confirmed_at timestamptz, last_sign_in_at timestamptz, raw_user_meta_data jsonb not null default '{}'); CREATE TABLE auth.mfa_factors(id uuid primary key default gen_random_uuid(), user_id uuid not null, factor_type text not null default 'totp', status text not null); CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb $$; GRANT USAGE ON SCHEMA auth TO authenticated; GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated; GRANT EXECUTE ON FUNCTION auth.jwt() TO authenticated; INSERT INTO auth.users VALUES ('${a}'),('${b}');`,
   );
   if (existsSync("supabase/migrations"))
     for (const f of readdirSync("supabase/migrations")
@@ -4439,4 +4439,17 @@ test("admin funnel: steps per self-registered person, active = 3 records within 
   await assert.rejects(db.query("select * from admin_funnel()"), /admin_only/);
   await owner();
   await db.query("delete from private.platform_admins where user_id=$1", [b]);
+});
+
+test("morning digest: the server key (service_role) reads people and funnel; other roles and claims do not", async () => {
+  await owner();
+  await db.exec(`SET ROLE service_role; SELECT set_config('request.jwt.claim.sub','',false); SELECT set_config('request.jwt.claims','{"role":"service_role"}',false);`);
+  assert.ok((await db.query("select * from admin_people()")).rows.length > 0);
+  assert.ok((await db.query("select * from admin_funnel()")).rows.length > 0);
+  // Обычный вход без админа не становится сервером: роль в токене подписана Supabase.
+  await db.exec(`RESET ROLE; SET ROLE authenticated; SELECT set_config('request.jwt.claim.sub','${a}',false); SELECT set_config('request.jwt.claims','{"sub":"${a}","role":"authenticated","aal":"aal2"}',false);`);
+  await assert.rejects(db.query("select * from admin_people()"), /admin_only/);
+  await db.exec("RESET ROLE; SET ROLE anon; SELECT set_config('request.jwt.claims','{\"role\":\"anon\"}',false);");
+  await assert.rejects(db.query("select * from admin_people()"), /permission denied/);
+  await owner();
 });

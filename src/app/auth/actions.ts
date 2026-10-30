@@ -10,6 +10,7 @@ import { storedPhone } from "@/lib/contacts";
 import { BUSINESS_COOKIE, DEFAULT_BUSINESS, isBusinessType } from "@/lib/business";
 import { SIGNUP_EMAIL_COOKIE } from "@/lib/signup";
 import { captchaFailed, captchaToken } from "@/lib/captcha";
+import { notifyShop, notifySignup } from "@/lib/team-notify";
 /** Куда вернуть после входа: только страница приглашения, иначе главная. */
 function nextPath(form: FormData) {
   const next = String(form.get("next") ?? "");
@@ -106,6 +107,7 @@ export async function signUp(form: FormData) {
   // Такой email уже подтверждён — Supabase не говорит прямо, но не даёт
   // ни одного способа входа (identities пуст). Отправляем ко входу.
   if (data.user && data.user.identities?.length === 0) redirect("/login?error=exists");
+  notifySignup(data.user, "email", business);
   if (!data.session) {
     await rememberSignupEmail(email);
     redirect("/signup/verify");
@@ -150,11 +152,12 @@ export async function signInWithGoogleIdToken(token: string, nonce: string, busi
   if (isBusinessType(business))
     (await cookies()).set(BUSINESS_COOKIE, business, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 30 });
   const db = await createClient();
-  const { error } = await db.auth.signInWithIdToken({ provider: "google", token, nonce });
+  const { data, error } = await db.auth.signInWithIdToken({ provider: "google", token, nonce });
   if (error) {
     console.warn("signInWithGoogleIdToken:", error.status, error.message);
     redirect("/login?error=google");
   }
+  notifySignup(data.user, "google", business);
   (await cookies()).delete(EXPIRED_COOKIE);
   revalidatePath("/", "layout");
   redirect("/");
@@ -240,7 +243,7 @@ export async function logout() {
   redirect("/login");
 }
 export async function createOrganization(form: FormData) {
-  const { db } = await getUserContext();
+  const { db, user } = await getUserContext();
   const name = String(form.get("name") ?? "").trim();
   const key = String(form.get("key") ?? "");
   if (!name || name.length > 120 || !/^[-0-9a-f]{36}$/i.test(key))
@@ -288,6 +291,7 @@ export async function createOrganization(form: FormData) {
     const profile = await db.rpc("set_business_profile", { p_org: data, p_type: type, p_overrides: [] });
     if (profile.error) console.error("createOrganization: business type not set", profile.error);
   }
+  notifyShop({ id: String(data), name, business: type, phone, seller: sellerName, email: user.email });
   (await cookies()).delete(BUSINESS_COOKIE);
   revalidatePath("/", "layout");
   redirect("/");

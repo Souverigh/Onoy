@@ -1,6 +1,7 @@
 "use server";
 import { redirect } from "next/navigation";
 import { createAnonClient, configured } from "@/lib/supabase/server";
+import { notifyTeam, siteUrl, tg } from "@/lib/telegram";
 
 /**
  * Заявка со страницы входа (без входа) → send_feedback; читает только
@@ -25,5 +26,8 @@ export async function sendFeedback(form: FormData) {
     console.warn("sendFeedback:", error.message);
     back(error.message.includes("too_many") ? "busy" : "failed");
   }
+  notifyTeam(
+    `✉️ <b>Заявка</b> со страницы входа\n${tg(name)} · ${tg(contact)}\n${tg(message.slice(0, 500))}\n<a href="${siteUrl("/admin/feedback")}">Все заявки</a>`,
+  );
   back("sent");
 }

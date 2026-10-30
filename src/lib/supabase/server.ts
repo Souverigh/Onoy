@@ -17,6 +17,18 @@ export function createAnonClient() {
     { auth: { persistSession: false } },
   );
 }
+/**
+ * Серверный ключ Supabase (SUPABASE_SERVICE_ROLE_KEY в Vercel) — только для
+ * задач по расписанию без входа (утренняя сводка админам). Ключ обходит все
+ * ограничения базы: в браузер, логи и ответы не попадает.
+ */
+export function createServiceClient() {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!configured() || !key) throw new Error("Нет серверного ключа Supabase");
+  return createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
 export async function createClient() {
   if (!configured()) throw new Error("Supabase не подключён");
   const jar = await cookies();

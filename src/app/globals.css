@@ -5542,6 +5542,9 @@ form .return-search {
 .adm-key-add {
   margin-top: 12px;
 }
+.adm-tg-actions {
+  margin-top: 10px;
+}
 .adm-key-page {
   max-width: 440px;
 }

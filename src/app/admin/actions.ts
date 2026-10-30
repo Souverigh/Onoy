@@ -5,7 +5,9 @@ import { cookies, headers } from "next/headers";
 import { adminSession, requirePlatformAdmin } from "@/lib/admin";
 import { captchaFailed, captchaToken } from "@/lib/captcha";
 import { EXPIRED_COOKIE } from "@/lib/session-timeout";
-import { extendPaidUntil } from "@/lib/admin-people";
+import { extendPaidUntil, type PersonRow } from "@/lib/admin-people";
+import { digestText, type FunnelRow } from "@/lib/admin-funnel";
+import { sendTelegram, siteUrl } from "@/lib/telegram";
 import { bishkekDate } from "@/lib/day-summary";
 import { isBusinessType } from "@/lib/business";
 
@@ -228,6 +230,20 @@ export async function resendConfirmation(form: FormData) {
     redirect(`${back.page}?done=${captchaFailed(error) ? "captcha" : error.status === 429 ? "rate" : "mail_error"}`);
   }
   redirect(`${back.page}?done=confirm_sent`);
+}
+
+/** «Отправить проверку» и «Прислать сводку сейчас» — из «Команды», без ожидания утра. */
+export async function telegramTest(form: FormData) {
+  const { db } = await requirePlatformAdmin();
+  let ok: boolean;
+  if (form.get("kind") === "digest") {
+    const [people, funnel] = await Promise.all([db.rpc("admin_people"), db.rpc("admin_funnel")]);
+    if (people.error || funnel.error) redirect("/admin/team?error=tg_fail#telegram");
+    ok = await sendTelegram(
+      digestText((people.data ?? []) as PersonRow[], (funnel.data ?? []) as FunnelRow[], new Date(), bishkekDate(), siteUrl("")),
+    );
+  } else ok = await sendTelegram("✅ Проверка: уведомления Depter приходят в этот чат.");
+  redirect(`/admin/team?${ok ? "done=tg_ok" : "error=tg_fail"}#telegram`);
 }
 
 export async function addAdmin(form: FormData) {
