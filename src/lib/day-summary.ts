@@ -186,7 +186,7 @@ export async function computeDaySummary(
   const isToday = date === bishkekDate();
   const org = await db.from("organizations").select("currency").eq("id", organizationId).maybeSingle();
   const shopCurrency: Currency = isCurrency(org.data?.currency) ? org.data.currency : "KGS";
-  const [sales, payments, purchases, pending, later, customerBalances, supplierBalances, foreign, expenses, adjustments] =
+  const [sales, payments, purchases, pending, later, customerBalances, supplierBalances, foreign, expenses, adjustments, kitchen] =
     await Promise.all([
       db
         .from("sales")
@@ -236,6 +236,7 @@ export async function computeDaySummary(
         .gte("occurred_at", start)
         .lt("occurred_at", end)
         .range(0, 4999),
+      daySalesBetween(db, organizationId, date, date),
     ]);
   if (sales.error || payments.error || purchases.error || customerBalances.error || supplierBalances.error)
     throw new Error("Не удалось загрузить итог дня");
@@ -272,7 +273,7 @@ export async function computeDaySummary(
       later?.get(cur) ?? null,
       names,
     );
-  const main = partFor(shopCurrency);
+  const main = addDaySales(partFor(shopCurrency), kitchen);
   const otherCurrencies = [...new Set(foreign.values())].filter((c) => c !== shopCurrency);
   const foreignParts = otherCurrencies
     .map((cur) => ({ currency: cur, ...partFor(cur) }))
@@ -316,10 +317,13 @@ export async function computeDaySummary(
   const expensesTotal = round(expenseCategories.reduce((s, c) => s + c.amount, 0));
   const box = cashbox({
     shopCurrency,
-    cashSales: saleRows
-      .filter((r) => r.paid_immediately)
-      .map((r) => ({ amount: r.total, original_amount: r.original_amount, original_currency: r.original_currency, currency: currencyOf(r) })),
-    payments: paymentRows.map((p) => ({ ...p, currency: currencyOf(p) })),
+    cashSales: [
+      ...saleRows
+        .filter((r) => r.paid_immediately)
+        .map((r) => ({ amount: r.total, original_amount: r.original_amount, original_currency: r.original_currency, currency: currencyOf(r) })),
+      ...kitchenCash(kitchen, shopCurrency).cashSales,
+    ],
+    payments: [...paymentRows.map((p) => ({ ...p, currency: currencyOf(p) })), ...kitchenCash(kitchen, shopCurrency).transfers],
     expenses: expensesTotal,
   });
   // Касса с остатком на утро. Таблицы cash_moves ещё нет (миграция не
@@ -615,7 +619,7 @@ export async function dayHistory(
   const from = new Date(new Date(dayBounds(today).start).getTime() - (days - 1) * 86400000).toISOString();
   const org = await db.from("organizations").select("currency").eq("id", organizationId).maybeSingle();
   const shopCurrency: Currency = isCurrency(org.data?.currency) ? org.data.currency : "KGS";
-  const [sales, payments, purchases, foreign, expenses] = await Promise.all([
+  const [sales, payments, purchases, foreign, expenses, kitchen] = await Promise.all([
     db
       .from("sales")
       .select("customer_id,total,occurred_at")
@@ -654,6 +658,13 @@ export async function dayHistory(
       .is("reversed_at", null)
       .gte("spent_on", bishkekDate(from))
       .range(0, 4999),
+    db
+      .from("day_sales")
+      .select("sale_date,received")
+      .eq("organization_id", organizationId)
+      .is("reversed_at", null)
+      .gte("sale_date", bishkekDate(from))
+      .range(0, 999),
   ]);
   if (sales.error || payments.error || purchases.error)
     throw new Error("Не удалось загрузить итог дня");
@@ -680,6 +691,11 @@ export async function dayHistory(
   for (const r of (expenses.data ?? []) as { spent_on: string; amount: string }[]) {
     const d = rows.get(r.spent_on);
     if (d) d.expenses = round(d.expenses + Number(r.amount));
+  }
+  // Продажи кафе за день (модуль «kitchen»); таблицы может не быть — без них.
+  for (const r of (kitchen.data ?? []) as { sale_date: string; received: string }[]) {
+    const d = rows.get(r.sale_date);
+    if (d) d.sold = round(d.sold + Number(r.received));
   }
   return [...rows.values()];
 }
@@ -813,7 +829,7 @@ async function cashNetBetween(
 ): Promise<number> {
   const start = dayBounds(fromDay).start;
   const end = dayBounds(toDay).end;
-  const [sales, payments, expenses, moves] = await Promise.all([
+  const [sales, payments, expenses, moves, kitchen] = await Promise.all([
     db
       .from("sales")
       .select("customer_id,total,original_amount,original_currency")
@@ -836,13 +852,20 @@ async function cashNetBetween(
       .lte("spent_on", toDay)
       .range(0, 9999),
     cashMovesBetween(db, organizationId, shopCurrency, start, end),
+    daySalesBetween(db, organizationId, fromDay, toDay),
   ]);
   if (sales.error || payments.error) throw new Error("cashNetBetween failed");
   const currencyOf = (row: { customer_id?: string | null; supplier_id?: string | null }) => recordCurrency(row, foreign, shopCurrency);
   const box = cashbox({
     shopCurrency,
-    cashSales: ((sales.data ?? []) as unknown as SaleRow[]).map((r) => ({ ...r, amount: r.total, currency: currencyOf(r) })),
-    payments: ((payments.data ?? []) as unknown as PaymentRow[]).map((p) => ({ ...p, currency: currencyOf(p) })),
+    cashSales: [
+      ...((sales.data ?? []) as unknown as SaleRow[]).map((r) => ({ ...r, amount: r.total, currency: currencyOf(r) })),
+      ...kitchenCash(kitchen, shopCurrency).cashSales,
+    ],
+    payments: [
+      ...((payments.data ?? []) as unknown as PaymentRow[]).map((p) => ({ ...p, currency: currencyOf(p) })),
+      ...kitchenCash(kitchen, shopCurrency).transfers,
+    ],
     expenses: sum((expenses.data ?? []) as { amount: string }[], (e) => e.amount),
   });
   const movesNet = moves.reduce((t, m) => t + (m.direction === "in" ? m.amount : -m.amount), 0);
@@ -884,3 +907,45 @@ async function openingCash(
 const addDay = (date: string, days: number) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
 
+/** Продажи кафе за день (модуль «kitchen», миграция 20261113100000) — сколько получили и из них переводом. */
+type DaySaleMoney = { received: string; transfer: string };
+
+/**
+ * Действующие «Продажи за день» за дни [fromDay; toDay]. Таблицы ещё нет
+ * (миграция не применена) или не прочиталась — без них, итог дня не падает.
+ */
+async function daySalesBetween(db: SupabaseClient, organizationId: string, fromDay: string, toDay: string): Promise<DaySaleMoney[]> {
+  const { data, error } = await db
+    .from("day_sales")
+    .select("received,transfer")
+    .eq("organization_id", organizationId)
+    .is("reversed_at", null)
+    .gte("sale_date", fromDay)
+    .lte("sale_date", toDay)
+    .range(0, 999);
+  if (error) {
+    console.error("daySalesBetween failed", error.message);
+    return [];
+  }
+  return (data ?? []) as DaySaleMoney[];
+}
+
+/** Продажи кафе в итоге дня: продано и «сразу оплатили» — сколько получили (в валюте магазина). */
+function addDaySales(money: DayMoney, rows: DaySaleMoney[]): DayMoney {
+  if (!rows.length) return money;
+  const got = sum(rows, (r) => r.received);
+  return {
+    ...money,
+    sold: { ...money.sold, total: round(money.sold.total + got), cash: round(money.sold.cash + got), count: money.sold.count + rows.length },
+  };
+}
+
+/** Для кассы: наличная часть — как продажа «сразу оплатили», перевод — как входящий перевод. */
+function kitchenCash(rows: DaySaleMoney[], shopCurrency: string) {
+  return {
+    cashSales: rows.map((r) => ({ amount: round(Number(r.received) - Number(r.transfer)), currency: shopCurrency })),
+    transfers: rows
+      .filter((r) => Number(r.transfer) > 0)
+      .map((r) => ({ direction: "incoming", method: "transfer", amount: r.transfer, currency: shopCurrency })),
+  };
+}

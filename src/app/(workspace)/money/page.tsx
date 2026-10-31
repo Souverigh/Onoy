@@ -17,7 +17,7 @@ type PartyBalance = { id: string; name: string; balance: string; currency: strin
 type PartyName = { name: string; currency: string | null } | null;
 type Activity = {
   id: string;
-  kind: "purchase" | "sale" | "payment" | "expense";
+  kind: "purchase" | "sale" | "payment" | "expense" | "day_sale";
   party: string;
   /** У расхода только день, без времени. */
   dateOnly?: boolean;
@@ -51,7 +51,7 @@ const OP_TYPES: [OpType | null, string][] = [
   ["payment", "Оплаты"],
   ["expense", "Расходы"],
 ];
-const kindIcon: Record<Activity["kind"], IconName> = { sale: "cart", purchase: "truck", payment: "wallet", expense: "coin" };
+const kindIcon: Record<Activity["kind"], IconName> = { sale: "cart", purchase: "truck", payment: "wallet", expense: "coin", day_sale: "cart" };
 
 /** Для поиска по имени: без знаков, которые ломают фильтр PostgREST. */
 const searchText = (value: string | undefined) => (value ?? "").replace(/[%,()*\\]/g, " ").trim().slice(0, 60);
@@ -129,7 +129,7 @@ export default async function Money({
   // Расходы: владельцу все, продавцу — свои (общий список расходов только у владельца).
   // У расхода нет клиента или поставщика — при поиске по имени не показываем.
   const expenseAuthor = isOwner ? author : { created_by: user.id };
-  const [customerResult, supplierResult, purchaseResult, saleResult, paymentResult, claimsResult, expenseResult] =
+  const [customerResult, supplierResult, purchaseResult, saleResult, paymentResult, claimsResult, expenseResult, daySaleResult] =
     await Promise.all([
       // Архивные и объединённые — не здесь (задача 25).
       tab === "customers" ? balances("customer_balances") : none,
@@ -181,6 +181,16 @@ export default async function Money({
             .order(byDate ? "spent_on" : "created_at", { ascending: false })
             .limit(limit)
         : none,
+      // Продажи кафе за день (модуль «kitchen») — среди продаж; без клиента, поиску по имени не подходят.
+      modules.includes("kitchen") && wants("sale") && !q
+        ? db
+            .from("day_sales")
+            .select("id,sale_date,received,reversed_at,reversal_comment,created_by,created_at")
+            .eq("organization_id", organizationId)
+            .match(author)
+            .order(byDate ? "sale_date" : "created_at", { ascending: false })
+            .limit(limit)
+        : none,
     ]);
   if (
     customerResult.error ||
@@ -188,7 +198,8 @@ export default async function Money({
     purchaseResult.error ||
     saleResult.error ||
     paymentResult.error ||
-    expenseResult.error
+    expenseResult.error ||
+    daySaleResult.error
   )
     throw new Error("Не удалось загрузить деньги и историю операций");
 
@@ -238,6 +249,15 @@ export default async function Money({
     created_at: string;
     customers: PartyName;
     suppliers: PartyName;
+  }[];
+  const daySales = (daySaleResult.data ?? []) as unknown as {
+    id: string;
+    sale_date: string;
+    received: string;
+    reversed_at: string | null;
+    reversal_comment: string | null;
+    created_by: string | null;
+    created_at: string;
   }[];
   const expenses = (expenseResult.data ?? []) as unknown as {
     id: string;
@@ -326,6 +346,20 @@ export default async function Money({
       author: authorOf(row.created_by),
       href: `/money/expense/${row.id}`,
     })),
+    ...daySales.map((row) => ({
+      id: row.id,
+      kind: "day_sale" as const,
+      party: "Кафе за день",
+      amount: row.received,
+      currency: shopCurrency,
+      occurred_at: `${row.sale_date}T12:00:00+06:00`,
+      dateOnly: true,
+      created_at: row.created_at,
+      reversed: Boolean(row.reversed_at),
+      reversalComment: row.reversal_comment ?? undefined,
+      author: authorOf(row.created_by),
+      href: `/day-sales/${row.id}`,
+    })),
   ].sort(
     (a, b) =>
       new Date(byDate ? b.occurred_at : b.created_at).getTime() - new Date(byDate ? a.occurred_at : a.created_at).getTime(),
@@ -341,7 +375,9 @@ export default async function Money({
           ? "Продажа"
           : activity.kind === "expense"
             ? "Расход"
-            : paymentLabelWithSide(activity.paymentKind, activity.direction ?? "incoming");
+            : activity.kind === "day_sale"
+              ? "Продажи за день"
+              : paymentLabelWithSide(activity.paymentKind, activity.direction ?? "incoming");
   const recentActivities = activities.slice(0, limit);
   // Адрес списка с заменой одного из отборов; остальные сохраняются.
   const recordsHref = (change: { by?: string | null; date?: boolean; tab?: Tab; type?: OpType | null }) => {
@@ -387,6 +423,12 @@ export default async function Money({
             <span className="rec-new-caret" aria-hidden="true" />
           </summary>
           <div className="more-menu-list">
+            {modules.includes("kitchen") && (
+              <Link href="/day-sales">
+                Продажи за день
+                <small className="muted">Сколько блюд продали, продукты спишутся сами</small>
+              </Link>
+            )}
             <Link href="/money/new?type=sale">
               Продажа
               <small className="muted">Продали клиенту</small>
@@ -554,7 +596,9 @@ export default async function Money({
                           href={
                             activity.kind === "expense"
                               ? `/money/expense/${activity.id}?cancel=1`
-                              : `/money/reverse/${activity.kind}/${activity.id}`
+                              : activity.kind === "day_sale"
+                                ? `/day-sales/${activity.id}?cancel=1`
+                                : `/money/reverse/${activity.kind}/${activity.id}`
                           }
                         >
                           Отменить

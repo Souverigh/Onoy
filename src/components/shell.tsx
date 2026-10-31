@@ -275,7 +275,7 @@ export function Shell({
           {/* Главная кнопка — под вид бизнеса: у магазина «Продажа», у проката «Выдать». */}
           <Link href={link(main.href)} className="nav-primary">
             <Icon name="plus" />
-            <span>{main.label}</span>
+            <span>{main.short}</span>
           </Link>
           {bottom.slice(2).map(([href, label, icon]) => (
             <Link href={link(href)} key={href} className={active(href) ? "active" : ""}>

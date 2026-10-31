@@ -72,7 +72,7 @@ export async function periodReport(
       .range(0, 9999);
   const org = await db.from("organizations").select("currency").eq("id", organizationId).maybeSingle();
   const shopCurrency: Currency = isCurrency(org.data?.currency) ? org.data.currency : "KGS";
-  const [sales, purchases, payments, customers, aging, foreignMap, expenses] = await Promise.all([
+  const [sales, purchases, payments, customers, aging, foreignMap, expenses, daySales] = await Promise.all([
     rows("sales", "customer_id,total,paid_immediately,occurred_at"),
     rows("purchases", "supplier_id,total,occurred_at"),
     rows("payments", "customer_id,supplier_id,amount,direction,occurred_at,kind"),
@@ -96,6 +96,15 @@ export async function periodReport(
       .gte("spent_on", period.previous.start)
       .lte("spent_on", period.end)
       .range(0, 9999),
+    // Продажи кафе за день (модуль «kitchen»): выручка — сколько получили, сразу.
+    db
+      .from("day_sales")
+      .select("sale_date,received")
+      .eq("organization_id", organizationId)
+      .is("reversed_at", null)
+      .gte("sale_date", period.previous.start)
+      .lte("sale_date", period.end)
+      .range(0, 999),
   ]);
   if (sales.error || purchases.error || payments.error || customers.error)
     throw new Error("Не удалось загрузить итоги периода");
@@ -150,6 +159,18 @@ export async function periodReport(
       t.collected += cents(r.amount);
       if (t === current) byDay.get(date)!.collected += cents(r.amount);
     } else t.paidSuppliers += cents(r.amount);
+  }
+
+  // Таблицы может не быть (миграция не применена) — без продаж кафе.
+  if (daySales.error) console.error("periodReport: day_sales lookup failed", daySales.error.message);
+  for (const r of (daySales.data ?? []) as { sale_date: string; received: string }[]) {
+    const t = bucket(r.sale_date, {});
+    if (!t) continue;
+    const amount = cents(r.received);
+    t.sold += amount;
+    t.salesCount += 1;
+    t.soldCash += amount;
+    if (t === current) byDay.get(r.sale_date)!.sold += amount;
   }
 
   for (const r of (expenses.data ?? []) as { spent_on: string; amount: string }[]) {

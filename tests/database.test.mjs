@@ -33,7 +33,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 35);
+  assert.equal(rows.length, 37);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -4577,4 +4577,79 @@ test("kitchen menu: a dish is made of this shop's products, its recipe is replac
   await assert.rejects(db.query("insert into dishes(organization_id,name) values ($1,'x')", [orgB]), /permission denied/);
   await owner();
   assert.ok((await db.query("select count(*)::int as n from audit_events where action like 'dish.%' and organization_id=$1", [orgA])).rows[0].n >= 6);
+});
+
+test("kitchen day sales: dishes write off their recipe, goods themselves; one per day; owner reversal returns stock", async () => {
+  const seller = "44444444-4444-4444-8444-444444444444";
+  await owner();
+  const [rice, meat, fanta] = (
+    await db.query("select id from products where organization_id=$1 and archived_at is null and merged_into_id is null order by created_at limit 3", [orgA])
+  ).rows.map((r) => r.id);
+  const stock = async (id) => Number((await db.query("select stock from product_balances where id=$1", [id])).rows[0].stock);
+  const fantaPrice = (await db.query("select sale_price from products where id=$1", [fanta])).rows[0].sale_price;
+  await db.query("update products set sale_price=150 where id=$1", [fanta]);
+  await user(a);
+  const plov = (
+    await db.query("select save_dish($1,null,'Плов дня','350',null,$2::jsonb) as id", [
+      orgA,
+      JSON.stringify([{ product_id: rice, qty: "0.15" }, { product_id: meat, qty: "0.12" }]),
+    ])
+  ).rows[0].id;
+  const before = { rice: await stock(rice), meat: await stock(meat), fanta: await stock(fanta) };
+  const today = (await db.query("select (now() at time zone 'Asia/Bishkek')::date::text as d")).rows[0].d;
+  const lines = JSON.stringify([{ dish_id: plov, qty: "10" }, { product_id: fanta, qty: "2" }]);
+  const commit = (date, ls, received = "3800", transfer = "1000") =>
+    db.query("select commit_day_sale($1,$2::date,$3::jsonb,$4,$5) as id", [orgA, date, ls, received, transfer]);
+
+  // Продавец записывает; чужой магазин — нет.
+  await user(b);
+  await assert.rejects(commit(today, lines), /not_a_member/);
+  await user(seller);
+  const day = (await commit(today, lines)).rows[0].id;
+  await owner();
+  const row = (await db.query("select menu_total,received,transfer from day_sales where id=$1", [day])).rows[0];
+  assert.deepEqual([row.menu_total, row.received, row.transfer], ["3800.00", "3800.00", "1000.00"]);
+  assert.equal(await stock(rice), before.rice - 1.5);
+  assert.equal(await stock(meat), before.meat - 1.2);
+  assert.equal(await stock(fanta), before.fanta - 2);
+
+  // Второй раз за тот же день, будущее, мусор, перевод больше полученного — отказ.
+  await user(a);
+  await assert.rejects(commit(today, lines), /day_taken/);
+  await assert.rejects(commit("2999-01-01", lines), /invalid_date/);
+  await assert.rejects(commit(today, "[]"), /invalid_lines/);
+  await assert.rejects(commit(today, JSON.stringify([{ dish_id: plov, product_id: fanta, qty: "1" }])), /invalid_lines/);
+  await assert.rejects(commit(today, JSON.stringify([{ dish_id: plov, qty: "abc" }])), /invalid_lines/);
+  await assert.rejects(commit(today, lines, "100", "200"), /invalid_amount/);
+  await assert.rejects(commit(today, lines, "abc", "0"), /invalid_amount/);
+
+  // Отмена — только владелец и с причиной; остатки возвращаются, день снова свободен.
+  await user(seller);
+  await assert.rejects(db.query("select reverse_day_sale($1,$2,'ошибка')", [orgA, day]), /owner_only/);
+  await user(a);
+  await assert.rejects(db.query("select reverse_day_sale($1,$2,' ')", [orgA, day]), /comment_required/);
+  await db.query("select reverse_day_sale($1,$2,'ошиблись количеством')", [orgA, day]);
+  await assert.rejects(db.query("select reverse_day_sale($1,$2,'ещё раз')", [orgA, day]), /invalid_day_sale/);
+  await owner();
+  assert.deepEqual([await stock(rice), await stock(meat), await stock(fanta)], [before.rice, before.meat, before.fanta]);
+  await user(a);
+  const again = (await commit(today, JSON.stringify([{ dish_id: plov, qty: "1" }]), "350", "0")).rows[0].id;
+  await owner();
+  assert.equal(await stock(rice), before.rice - 0.15);
+
+  // Чужой магазин не видит; напрямую не написать; движения склада без записи — нельзя.
+  await user(b);
+  assert.equal((await db.query("select count(*)::int as n from day_sales")).rows[0].n, 0);
+  assert.equal((await db.query("select count(*)::int as n from day_sale_lines")).rows[0].n, 0);
+  await assert.rejects(db.query("insert into day_sales(organization_id,sale_date,occurred_at,menu_total,received) values ($1,now()::date,now(),0,0)", [orgB]), /permission denied/);
+  await owner();
+  await assert.rejects(
+    db.query("insert into inventory_movements(organization_id,product_id,qty_delta,reason) values ($1,$2,-1,'kitchen')", [orgA, rice]),
+    /inventory_movements_check/,
+  );
+  // Уборка: день отменён — остатки как были до теста.
+  await user(a);
+  await db.query("select reverse_day_sale($1,$2,'тест')", [orgA, again]);
+  await owner();
+  await db.query("update products set sale_price=$2 where id=$1", [fanta, fantaPrice]);
 });

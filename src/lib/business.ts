@@ -105,9 +105,20 @@ export const QUICK_ACTIONS = {
     icon: "hanger",
   },
   rentals: { href: "/rentals", label: "На руках", module: "rental", side: "customers", hint: "У кого что и до какого дня", icon: "clock" },
+  // Кафе (модуль kitchen): вечером — сколько каких блюд продали, продукты списываются сами.
+  day_sales: {
+    href: "/day-sales",
+    label: "Продажи за день",
+    // Внизу на телефоне длинное не влезает в центральную кнопку.
+    short: "Продажи",
+    module: "kitchen",
+    side: "customers",
+    hint: "Сколько блюд продали",
+    icon: "cart",
+  },
 } as const satisfies Record<
   string,
-  { href: string; label?: string; word?: WordKey; module?: ModuleId; side: ActionSide; hint: string; icon: ActionIcon }
+  { href: string; label?: string; short?: string; word?: WordKey; module?: ModuleId; side: ActionSide; hint: string; icon: ActionIcon }
 >;
 
 export type QuickActionId = keyof typeof QUICK_ACTIONS;
@@ -183,6 +194,9 @@ export const PRESETS = {
     modules: ["stock", "kitchen"],
     navLabels: { "/stock": "Продукты" },
     words: { purchase: "Закупка продуктов" },
+    // Без «Кухни» — кнопки и главная «Продажа», как у магазина (quickActions, mainAction).
+    quickActions: ["day_sales", "purchases", "payment_out", "expense"],
+    mainAction: "day_sales",
     slug: "kafe",
   },
   other: { label: "Другое", modules: ["stock", "catalog"], slug: "drugoe" },
@@ -237,14 +251,17 @@ export type QuickAction = {
   id: QuickActionId;
   href: string;
   label: string;
+  /** Подпись центральной кнопки внизу на телефоне, если label длинный. */
+  short: string;
   side: ActionSide;
   hint: string;
   icon: ActionIcon;
 };
 
 const action = (type: BusinessType, id: QuickActionId): QuickAction => {
-  const a: { href: string; label?: string; word?: WordKey; side: ActionSide; hint: string; icon: ActionIcon } = QUICK_ACTIONS[id];
-  return { id, href: a.href, label: a.word ? word(type, a.word) : (a.label ?? id), side: a.side, hint: a.hint, icon: a.icon };
+  const a: { href: string; label?: string; short?: string; word?: WordKey; side: ActionSide; hint: string; icon: ActionIcon } = QUICK_ACTIONS[id];
+  const label = a.word ? word(type, a.word) : (a.label ?? id);
+  return { id, href: a.href, label, short: a.short ?? label, side: a.side, hint: a.hint, icon: a.icon };
 };
 const usable = (id: QuickActionId, modules: readonly ModuleId[]) => {
   const m = (QUICK_ACTIONS[id] as { module?: ModuleId }).module;

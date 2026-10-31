@@ -21,13 +21,16 @@ type Movement = {
   id: string;
   created_at: string;
   qty_delta: string;
-  reason: "purchase" | "sale" | "opening" | "adjustment" | "receipt" | "return";
+  reason: "purchase" | "sale" | "opening" | "adjustment" | "receipt" | "return" | "kitchen";
   note: string | null;
   unit_cost: string | null;
   cost_currency: string | null;
   sale_id: string | null;
   purchase_id: string | null;
   sales: { reversed_at: string | null; customers: { name: string } | null } | null;
+  /** Продажи кафе за день (модуль «kitchen»): списание по составу блюд и возврат при отмене. */
+  day_sale_id?: string | null;
+  day_sales?: { sale_date: string } | null;
   purchases: { reversed_at: string | null; document_id: string | null; suppliers: { name: string } | null } | null;
   /** Возврат от клиента (return_items): отменён — запись возврата или сама продажа. */
   returned?: { customerId: string | null; customer: string | null; reversed: boolean };
@@ -77,7 +80,7 @@ export default async function ProductPage({
     db
       .from("inventory_movements")
       .select(
-        "id,created_at,qty_delta,reason,note,unit_cost,cost_currency,sale_id,purchase_id,sales(reversed_at,customers(name)),purchases(reversed_at,document_id,suppliers(name))",
+        "id,created_at,qty_delta,reason,note,unit_cost,cost_currency,sale_id,purchase_id,day_sale_id,sales(reversed_at,customers(name)),purchases(reversed_at,document_id,suppliers(name)),day_sales(sale_date)",
       )
       .eq("organization_id", organizationId)
       .eq("product_id", id)
@@ -180,6 +183,16 @@ export default async function ProductPage({
         reversed: Boolean(m.purchases?.reversed_at),
       };
     if (m.reason === "receipt") return { text: "Пришло", href: null, reversed: false };
+    if (m.reason === "kitchen") {
+      const day = m.day_sales?.sale_date
+        ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short" }).format(new Date(`${m.day_sales.sale_date}T12:00:00+06:00`))
+        : "";
+      return {
+        text: `${Number(m.qty_delta) > 0 ? "Отмена продаж за день" : "Продажи за день"}${day ? ` · ${day}` : ""}`,
+        href: m.day_sale_id ? `/day-sales/${m.day_sale_id}` : null,
+        reversed: false,
+      };
+    }
     if (m.reason === "return")
       return {
         text: `Возврат · ${m.returned?.customer ?? "клиент"}`,

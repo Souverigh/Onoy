@@ -76,6 +76,7 @@ test("business: home buttons and the main button follow the type, a switched-off
     id: "rental_issue",
     href: "/rentals/new",
     label: "Выдать",
+    short: "Выдать",
     side: "customers",
     hint: "Вещи клиенту на несколько дней",
     icon: "hanger",
@@ -103,4 +104,14 @@ test("business: every type has its own sign-up address", () => {
   for (const slug of slugs) assert.match(slug, /^[a-z]{2,20}$/);
   assert.equal(businessBySlug("prokat"), "clothing_rental");
   assert.equal(businessBySlug("../admin"), null);
+});
+
+test("business: a cafe with the kitchen starts with «Продажи за день»; without it — like a shop", async () => {
+  const { mainAction } = await import("../src/lib/business.ts");
+  const kitchen = resolveModules("restaurant", null);
+  assert.equal(mainAction("restaurant", kitchen).id, "day_sales");
+  assert.deepEqual(quickActions("restaurant", kitchen).map((a) => a.id), ["day_sales", "purchases", "payment_out", "expense"]);
+  const off = resolveModules("restaurant", ["-kitchen"]);
+  assert.equal(mainAction("restaurant", off).id, "sale");
+  assert.ok(quickActions("restaurant", off).some((a) => a.id === "sales"));
 });

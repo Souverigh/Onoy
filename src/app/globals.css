@@ -16830,3 +16830,398 @@ form .dish-line-qty input {
     white-space: nowrap;
   }
 }
+
+/* Кухня: «Продажи за день» (day-sales-form.tsx, макет 31.10.2026). Телефон —
+   список с кнопками − +, итог и «Записать» внизу над меню; компьютер (от
+   900px) — таблица с количеством с клавиатуры и сводка справа. */
+.ds-form {
+  display: grid;
+  gap: 12px;
+}
+.ds-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ds-head h1 {
+  margin: 0;
+  font-size: 24px;
+}
+form input.ds-date {
+  width: auto;
+  min-height: 40px;
+  padding: 0 10px;
+  font-size: 15px;
+}
+.ds-list,
+.ds-summary {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: white;
+}
+.ds-list {
+  overflow: hidden;
+}
+.ds-tools {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.ds-filter {
+  justify-self: start;
+}
+.ds-filter button {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+.ds-row.ds-row-head {
+  display: none;
+}
+.ds-category {
+  margin: 0;
+  padding: 8px 14px 6px;
+  background: var(--surface-soft);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ds-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.ds-name {
+  min-width: 0;
+  font-size: 15px;
+}
+.ds-row.on .ds-name {
+  font-weight: 700;
+}
+.ds-name small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.ds-name .ds-note,
+.ds-price,
+.ds-sum {
+  display: none;
+}
+.ds-qty {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.ds-step {
+  width: 38px;
+  height: 100%;
+  border: 0;
+  background: var(--surface-soft);
+  color: var(--green);
+  font-size: 20px;
+  cursor: pointer;
+}
+form .ds-qty input {
+  width: 48px;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 0 4px;
+  border: 0;
+  border-left: 1px solid var(--control-border);
+  border-right: 1px solid var(--control-border);
+  border-radius: 0;
+  text-align: center;
+  font-weight: 700;
+}
+.ds-qty:focus-within {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+form .ds-qty input:focus-visible {
+  outline: 0;
+}
+.ds-empty {
+  margin: 0;
+  padding: 16px 14px;
+}
+.ds-summary {
+  padding: 14px;
+}
+.ds-summary label {
+  margin: 12px 0 0;
+}
+.ds-summary label small {
+  font-size: 12px;
+}
+.ds-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  padding: 6px 0;
+  font-size: 15px;
+}
+.ds-big {
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  padding-top: 10px;
+}
+.ds-big b {
+  font-size: 22px;
+}
+.ds-gain {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--success-bg);
+  color: var(--success-ink);
+  font-size: 15px;
+}
+.ds-off {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.ds-off-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+.ds-off-title .text-button {
+  min-height: 0;
+  padding: 0;
+  font-size: 13px;
+}
+.ds-off-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  padding: 3px 0;
+  font-size: 14px;
+}
+.ds-off-row.short span:last-child {
+  color: var(--danger-ink);
+  font-weight: 700;
+}
+.ds-short {
+  margin: 8px 0 0;
+  padding: 9px 11px;
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+  font-size: 13px;
+}
+.ds-save-side {
+  display: none;
+}
+.ds-bar {
+  position: sticky;
+  bottom: calc(var(--bottom-nav) + env(safe-area-inset-bottom) + 8px);
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: white;
+  box-shadow: 0 8px 28px rgba(20, 30, 25, 0.16);
+}
+.ds-bar-total {
+  line-height: 1.25;
+}
+.ds-bar-total b {
+  display: block;
+  font-size: 18px;
+}
+.ds-bar-total small {
+  color: var(--muted);
+  font-size: 13px;
+}
+.ds-bar .button {
+  flex: 1;
+}
+/* Записанный день. */
+.ds-record {
+  display: grid;
+  gap: 12px;
+}
+.ds-record .panel {
+  margin: 0;
+}
+.ds-record.reversed .ds-record-lines {
+  opacity: 0.6;
+}
+.ds-record-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ds-record-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+  font-size: 15px;
+}
+.ds-record-list li:first-child {
+  border-top: 0;
+}
+.ds-record-list li .muted {
+  grid-column: 1;
+  font-size: 13px;
+}
+.ds-record-list li b {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+.ds-record-off {
+  margin-top: 12px;
+}
+.ds-record-off summary {
+  cursor: pointer;
+  color: var(--green);
+  font-weight: 700;
+  font-size: 14px;
+}
+.ds-record-off ul {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.ds-record-off li {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-size: 14px;
+}
+.ds-discount {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+.ds-cancel {
+  margin-top: 16px;
+}
+.ds-cancel-link {
+  width: 100%;
+  margin-top: 16px;
+}
+@media (min-width: 900px) {
+  .ds-form {
+    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-areas: "head head" "list summary";
+    align-items: start;
+    gap: 18px 20px;
+  }
+  .ds-head {
+    grid-area: head;
+  }
+  .ds-head h1 {
+    font-size: 28px;
+  }
+  .ds-list {
+    grid-area: list;
+  }
+  .ds-tools {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    padding: 14px 16px;
+  }
+  .ds-row,
+  .ds-row.ds-row-head {
+    grid-template-columns: minmax(0, 1fr) 110px 110px 120px;
+    gap: 14px;
+    padding: 7px 16px;
+  }
+  .ds-row.ds-row-head {
+    display: grid;
+    background: var(--surface-soft);
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .ds-category {
+    padding: 7px 16px;
+  }
+  .ds-name .ds-sub {
+    display: none;
+  }
+  .ds-name .ds-note {
+    display: inline;
+    margin-left: 6px;
+  }
+  .ds-price,
+  .ds-sum {
+    display: block;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .ds-row-head .ds-qty {
+    border: 0;
+    justify-content: flex-end;
+    height: auto;
+  }
+  .ds-qty {
+    justify-self: end;
+    width: 96px;
+  }
+  .ds-step {
+    display: none;
+  }
+  form .ds-qty input {
+    width: 100%;
+    border: 0;
+    padding: 0 12px;
+    text-align: right;
+  }
+  .ds-summary {
+    grid-area: summary;
+    position: sticky;
+    top: 20px;
+    padding: 18px;
+  }
+  .ds-save-side {
+    display: block;
+    margin-top: 16px;
+  }
+  .ds-save-side .button {
+    width: 100%;
+  }
+  .ds-bar {
+    display: none;
+  }
+  .ds-record {
+    grid-template-columns: minmax(0, 1fr) 340px;
+    align-items: start;
+    gap: 20px;
+  }
+  .ds-record-total {
+    position: sticky;
+    top: 20px;
+  }
+}
