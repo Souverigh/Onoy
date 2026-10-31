@@ -15,6 +15,8 @@ import { DownloadMenu } from "@/components/download-menu";
 import { ForeignSums } from "@/components/foreign-sums";
 import { CURRENCY_SIGN } from "@/lib/currency";
 import { debtTotalsByCurrency, foreignBlocks } from "@/lib/debt-totals";
+import { kitchenMonth } from "@/lib/kitchen-report";
+import { KitchenMonthCard } from "@/components/kitchen-report";
 
 /** Сколько периодов назад предлагает список «Октябрь 2026 ▾». */
 const PERIOD_MENU = 12;
@@ -55,8 +57,9 @@ export default async function Reports({
   const offset = Math.min(0, Math.max(-120, parseInt(params.offset ?? "0") || 0));
   const today = bishkekDate();
   const p = period(kind, today, offset);
-  const { db, organizationId, currency: shopCurrency } = await requireOwner();
-  const [report, sellers, owed, profit, debts] = await Promise.all([
+  const { db, organizationId, currency: shopCurrency, modules } = await requireOwner();
+  const kitchen = modules.includes("kitchen");
+  const [report, sellers, owed, profit, debts, cafe, cafeBefore] = await Promise.all([
     periodReport(db, organizationId, p),
     sellersOverview(db, organizationId, p.start, p.through, shopCurrency),
     sellersDebtTotals(db, organizationId, shopCurrency).catch(() => new Map<string, number>()),
@@ -67,6 +70,9 @@ export default async function Reports({
     }),
     // Долги в других валютах на сейчас — для раздела «Другие валюты».
     debtTotalsByCurrency(db, organizationId, shopCurrency).catch(() => []),
+    // Кафе (модуль «kitchen»): выручка и продукты за период и прошлый — для сравнения.
+    kitchen ? kitchenMonth(db, organizationId, shopCurrency, p.start, p.through).catch(() => null) : null,
+    kitchen ? kitchenMonth(db, organizationId, shopCurrency, p.previous.start, p.previous.through).catch(() => null) : null,
   ]);
 
   const word = kind === "week" ? "неделю" : "месяц";
@@ -87,7 +93,7 @@ export default async function Reports({
 
   return (
     <>
-      <ReportTabs current="month" />
+      <ReportTabs current="month" kitchen={modules.includes("kitchen")} />
       <div className="page-heading day-heading report-heading">
         <div>
           <h1>{kind === "week" ? "Отчёт за неделю" : "Отчёт за месяц"}</h1>
@@ -138,6 +144,17 @@ export default async function Reports({
           <DownloadMenu href={`/reports/export?period=${kind}${offset ? `&offset=${offset}` : ""}`} label="Скачать" />
         </div>
       </div>
+
+      {cafe && (cafe.days > 0 || (cafeBefore?.days ?? 0) > 0) && (
+        <KitchenMonthCard
+          title={kind === "week" ? "Кафе за неделю" : "Кафе за месяц"}
+          month={cafe}
+          previous={cafeBefore?.revenue ?? 0}
+          expenses={report.current.expenses}
+          currency={report.currency}
+          word={kind === "week" ? "к прошлой неделе" : "к прошлому месяцу"}
+        />
+      )}
 
       <section className="report-kpis" aria-label="Итоги">
         <article className="panel report-kpi">

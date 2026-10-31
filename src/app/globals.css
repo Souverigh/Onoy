@@ -12137,6 +12137,17 @@ form label.consent {
     padding: 10px 6px;
     text-align: center;
   }
+  /* Кафе: пять вкладок (с «Блюдами» и «Продуктами») — лентой, листается вбок. */
+  .report-tabs.wide {
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .report-tabs.wide a {
+    flex: none;
+    padding: 10px 14px;
+    font-size: 15px;
+  }
 }
 
 /* Телефон: выбор периода в отчётах — строкой во всю ширину под заголовком.
@@ -17223,5 +17234,370 @@ form .ds-qty input:focus-visible {
   .ds-record-total {
     position: sticky;
     top: 20px;
+  }
+}
+
+/* Отчёты кафе (kitchen-report.tsx, макет 31.10.2026): «Кафе за месяц»,
+   вкладки «Блюда» и «Продукты». Телефон — столбиком и списками, компьютер
+   (от 900px) — цепочка в строку, три списка рядом и таблицы. */
+.kr-month {
+  margin-bottom: 16px;
+}
+.kr-month h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+.kr-diff {
+  font-size: 13px;
+  font-weight: 700;
+}
+.kr-diff.up {
+  color: var(--success-ink);
+}
+.kr-diff.down {
+  color: var(--danger-ink);
+}
+.kr-flow > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  font-size: 15px;
+}
+.kr-flow > div:first-child {
+  border-top: 0;
+}
+.kr-flow b {
+  font-size: 16px;
+  white-space: nowrap;
+}
+.kr-flow small {
+  display: none;
+}
+.kr-flow .minus span,
+.kr-flow .minus b {
+  color: var(--ink-soft);
+}
+.kr-flow .net {
+  margin-top: 6px;
+  padding: 12px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--success-bg);
+  color: var(--success-ink);
+}
+.kr-flow .net b {
+  font-size: 20px;
+}
+.kr-flow .net.loss {
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+}
+.kr-note {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+.kr-three {
+  display: none;
+}
+.kr-seg {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.kr-seg button {
+  flex: 1;
+  min-height: 38px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: white;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.kr-seg button.on {
+  border-color: var(--green);
+  background: var(--green);
+  color: white;
+}
+.kr-list {
+  margin: 0;
+  padding: 4px 14px;
+}
+.kr-list p {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.kr-list p:first-child {
+  border-top: 0;
+}
+.kr-list span {
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.kr-list small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.kr-list b {
+  color: var(--success-ink);
+  white-space: nowrap;
+}
+.kr-list b.kr-loss,
+.kr-loss {
+  color: var(--danger-ink);
+}
+.kr-table {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.kr-table:not(.kr-products) {
+  display: none;
+}
+.kr-row.kr-head,
+.kr-products .kr-row.kr-head {
+  display: none;
+}
+.kr-products .kr-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "name cost" "name stock";
+  gap: 2px 10px;
+  align-items: center;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  text-decoration: none;
+}
+.kr-products .kr-row:first-of-type {
+  border-top: 0;
+}
+.kr-products .kr-row > :nth-child(2),
+.kr-products .kr-row > :nth-child(4) {
+  display: none;
+}
+.kr-name {
+  grid-area: name;
+  min-width: 0;
+  font-weight: 600;
+}
+.kr-name small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.kr-products .kr-row > b {
+  grid-area: cost;
+  text-align: right;
+  white-space: nowrap;
+}
+.kr-stock {
+  grid-area: stock;
+  text-align: right;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.kr-stock.short {
+  color: var(--danger-ink);
+  font-weight: 700;
+}
+.kr-rises {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.kr-rise {
+  padding: 12px 14px;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-lg);
+  background: var(--warning-bg);
+  font-size: 14px;
+}
+.kr-rise b {
+  display: block;
+  font-size: 15px;
+}
+.kr-rise p {
+  margin: 4px 0;
+}
+.kr-rise em {
+  font-style: normal;
+  font-weight: 700;
+  color: var(--danger-ink);
+}
+.kr-rise small {
+  display: block;
+  font-size: 12px;
+  color: var(--warning-ink);
+}
+.kr-share.high {
+  color: var(--warning-ink);
+  font-weight: 700;
+}
+.kr-share.bad {
+  color: var(--danger-ink);
+  font-weight: 700;
+}
+@media (min-width: 900px) {
+  .kr-flow {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .kr-flow > div {
+    display: block;
+    padding: 4px 16px;
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+  .kr-flow > div:first-child {
+    padding-left: 0;
+    border-left: 0;
+  }
+  .kr-flow span {
+    display: block;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .kr-flow b {
+    display: block;
+    margin-top: 4px;
+    font-size: 22px;
+  }
+  .kr-flow small {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .kr-flow .net {
+    margin: 0;
+    padding: 10px 14px;
+    border-left: 0;
+  }
+  .kr-flow .net span {
+    color: var(--success-ink);
+  }
+  .kr-flow .net.loss span {
+    color: var(--danger-ink);
+  }
+  .kr-three {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .kr-top {
+    margin: 0;
+    padding: 14px 16px;
+  }
+  .kr-top h3 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    color: var(--ink-soft);
+  }
+  .kr-top.bad h3 {
+    color: var(--danger-ink);
+  }
+  .kr-top p {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 0;
+    padding: 6px 0;
+    border-top: 1px solid var(--line);
+    font-size: 14px;
+  }
+  .kr-top p:first-of-type {
+    border-top: 0;
+  }
+  .kr-top b {
+    white-space: nowrap;
+    color: var(--success-ink);
+  }
+  .kr-top.bad b {
+    color: var(--danger-ink);
+  }
+  .kr-top .kr-top-note {
+    border: 0;
+    font-size: 12px;
+  }
+  .kr-phone {
+    display: none;
+  }
+  .kr-table:not(.kr-products) {
+    display: block;
+  }
+  .kr-row.kr-head,
+  .kr-products .kr-row.kr-head {
+    display: grid;
+    background: var(--surface-soft);
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .kr-table .kr-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) repeat(5, minmax(0, 1fr));
+    grid-template-areas: none;
+    gap: 14px;
+    align-items: center;
+    padding: 10px 16px;
+    border-top: 1px solid var(--line);
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .kr-products .kr-row {
+    grid-template-columns: minmax(0, 1.6fr) repeat(4, minmax(0, 1fr));
+  }
+  .kr-table .kr-row > :not(:first-child) {
+    text-align: right;
+    white-space: nowrap;
+  }
+  .kr-products .kr-row > :nth-child(2),
+  .kr-products .kr-row > :nth-child(4) {
+    display: block;
+  }
+  .kr-table .kr-row > *,
+  .kr-products .kr-row > b,
+  .kr-stock {
+    grid-area: auto;
+  }
+  .kr-name small,
+  .kr-stock small {
+    display: none;
+  }
+  .kr-products .kr-name small {
+    display: none;
+  }
+  .kr-stock {
+    font-size: 15px;
+    color: var(--ink);
+  }
+  .kr-rises {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 14px;
   }
 }

@@ -187,7 +187,7 @@ export function Shell({
   const [reportsHref, setReportsHref] = useState("/day");
   useEffect(() => {
     try {
-      setReportsHref(reportTabHref(localStorage.getItem(REPORT_TAB_KEY)));
+      setReportsHref(reportTabHref(localStorage.getItem(REPORT_TAB_KEY), modules.includes("kitchen")));
     } catch {
       // Приватный режим — «День».
     }

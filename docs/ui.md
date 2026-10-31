@@ -221,6 +221,13 @@
   `.ds-summary` справа. Записанный день — `.ds-record`. Короткая подпись
   центральной кнопки внизу — `short` у кнопки в `QUICK_ACTIONS`.
 
+- Отчёты кафе — `components/kitchen-report.tsx`: `KitchenMonthCard`
+  (`.kr-flow`: телефон — чеком, компьютер — цепочкой в строку), `DishReport`
+  (`DishLists`: компьютер — три карточки `.kr-three`, телефон — переключатель
+  `.kr-seg`), `ProductReport` (подорожания `.kr-rise`, таблица `.kr-table`),
+  `MonthNav` — выбор месяца как в отчёте за месяц. Вкладки кафе в
+  `ReportTabs` — `kitchen`; пять вкладок на телефоне листаются (`.wide`).
+
 ## Сообщения
 
 - `.notice` — жёлтая подсказка; `.notice.success` — зелёное «готово».

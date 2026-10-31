@@ -465,7 +465,7 @@ export default async function DayClose({
 }: {
   searchParams: Promise<{ date?: string; closed?: string; error?: string; cash?: string }>;
 }) {
-  const { db, organizationId, currency: shopCurrency } = await requireOwner();
+  const { db, organizationId, currency: shopCurrency, modules } = await requireOwner();
   const { date: rawDate, closed, error, cash } = await searchParams;
   const today = bishkekDate();
   // Будущие дни не показываем — сразу сегодняшний.
@@ -542,7 +542,7 @@ export default async function DayClose({
 
   return (
     <>
-      <ReportTabs current="day" />
+      <ReportTabs current="day" kitchen={modules.includes("kitchen")} />
       <div className="page-heading day-heading">
         <div>
           <h1 className="label-with-tip">

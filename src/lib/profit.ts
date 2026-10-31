@@ -47,6 +47,60 @@ async function byIds<T>(ids: string[], load: (part: string[]) => PromiseLike<{ d
   return results.flatMap((r) => (r.error ? [] : ((r.data ?? []) as T[])));
 }
 
+/**
+ * Себестоимость единицы товара в валюте магазина: средняя цена его приходов
+ * на склад до `to` (взвешенная по количеству, без отменённых приходов и
+ * приходов в другой валюте), а если таких нет — цена закупки из карточки.
+ * Товар без цены — не в карте. Ещё — названия товаров.
+ */
+export async function averageUnitCosts(
+  db: SupabaseClient,
+  organizationId: string,
+  shopCurrency: string,
+  productIds: string[],
+  to: string,
+): Promise<{ unitCost: Map<string, number>; names: Map<string, string> }> {
+  const [products, incoming] = await Promise.all([
+    byIds<{ id: string; name: string; purchase_price: string; purchase_currency: string | null }>(productIds, (part) =>
+      db.from("products").select("id,name,purchase_price,purchase_currency").eq("organization_id", organizationId).in("id", part),
+    ),
+    byIds<{
+      product_id: string;
+      qty_delta: string;
+      unit_cost: string;
+      cost_currency: string | null;
+      purchases: { reversed_at: string | null } | null;
+    }>(productIds, (part) =>
+      db
+        .from("inventory_movements")
+        .select("product_id,qty_delta,unit_cost,cost_currency,purchases(reversed_at)")
+        .eq("organization_id", organizationId)
+        .in("product_id", part)
+        .gt("qty_delta", 0)
+        .not("unit_cost", "is", null)
+        .lt("created_at", to)
+        .range(0, 49999),
+    ),
+  ]);
+  const weighted = new Map<string, { qty: number; cost: number }>();
+  for (const m of incoming) {
+    if (m.purchases?.reversed_at) continue;
+    if ((m.cost_currency ?? shopCurrency) !== shopCurrency) continue;
+    const w = weighted.get(m.product_id) ?? { qty: 0, cost: 0 };
+    w.qty += Number(m.qty_delta);
+    w.cost += Number(m.qty_delta) * Number(m.unit_cost);
+    weighted.set(m.product_id, w);
+  }
+  const unitCost = new Map<string, number>();
+  for (const p of products) {
+    const w = weighted.get(p.id);
+    if (w && w.qty > 0) unitCost.set(p.id, w.cost / w.qty);
+    else if (Number(p.purchase_price) > 0 && (p.purchase_currency ?? shopCurrency) === shopCurrency)
+      unitCost.set(p.id, Number(p.purchase_price));
+  }
+  return { unitCost, names: new Map(products.map((p) => [p.id, p.name])) };
+}
+
 export async function periodProfit(
   db: SupabaseClient,
   organizationId: string,
@@ -146,45 +200,7 @@ export async function periodProfit(
 
   // Себестоимость: средняя цена приходов на склад до конца периода, иначе — из карточки.
   const productIds = [...new Set([...lines, ...returned].map((l) => l.product_id).filter((id): id is string => Boolean(id)))];
-  const [products, incoming] = await Promise.all([
-    byIds<{ id: string; name: string; purchase_price: string; purchase_currency: string | null }>(productIds, (part) =>
-      db.from("products").select("id,name,purchase_price,purchase_currency").eq("organization_id", organizationId).in("id", part),
-    ),
-    byIds<{
-      product_id: string;
-      qty_delta: string;
-      unit_cost: string;
-      cost_currency: string | null;
-      purchases: { reversed_at: string | null } | null;
-    }>(productIds, (part) =>
-      db
-        .from("inventory_movements")
-        .select("product_id,qty_delta,unit_cost,cost_currency,purchases(reversed_at)")
-        .eq("organization_id", organizationId)
-        .in("product_id", part)
-        .gt("qty_delta", 0)
-        .not("unit_cost", "is", null)
-        .lt("created_at", to)
-        .range(0, 49999),
-    ),
-  ]);
-  const weighted = new Map<string, { qty: number; cost: number }>();
-  for (const m of incoming) {
-    if (m.purchases?.reversed_at) continue;
-    if ((m.cost_currency ?? shopCurrency) !== shopCurrency) continue;
-    const w = weighted.get(m.product_id) ?? { qty: 0, cost: 0 };
-    w.qty += Number(m.qty_delta);
-    w.cost += Number(m.qty_delta) * Number(m.unit_cost);
-    weighted.set(m.product_id, w);
-  }
-  const unitCost = new Map<string, number>();
-  const names = new Map(products.map((p) => [p.id, p.name]));
-  for (const p of products) {
-    const w = weighted.get(p.id);
-    if (w && w.qty > 0) unitCost.set(p.id, w.cost / w.qty);
-    else if (Number(p.purchase_price) > 0 && (p.purchase_currency ?? shopCurrency) === shopCurrency)
-      unitCost.set(p.id, Number(p.purchase_price));
-  }
+  const { unitCost, names } = await averageUnitCosts(db, organizationId, shopCurrency, productIds, to);
 
   let revenue = 0;
   let cost = 0;

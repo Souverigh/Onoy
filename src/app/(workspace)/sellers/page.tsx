@@ -51,7 +51,7 @@ export default async function Sellers({
   searchParams: Promise<{ id?: string; offset?: string; date?: string; tab?: string }>;
 }) {
   const params = await searchParams;
-  const { db, organizationId, user, isOwner, currency: cur } = await getContext();
+  const { db, organizationId, user, isOwner, currency: cur, modules } = await getContext();
   const today = bishkekDate();
   // ?date=YYYY-MM-DD — один день (из итога дня), иначе месяц со сдвигом.
   const day = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) && params.date <= today ? params.date : null;
@@ -113,7 +113,7 @@ export default async function Sellers({
     ]);
     return (
       <>
-        <ReportTabs current="sellers" />
+        <ReportTabs current="sellers" kitchen={modules.includes("kitchen")} />
         <div className="page-heading day-heading">
           <h1 className="label-with-tip">
             Продажи продавцов
@@ -215,7 +215,7 @@ export default async function Sellers({
 
   return (
     <>
-      {isOwner && <ReportTabs current="sellers" />}
+      {isOwner && <ReportTabs current="sellers" kitchen={modules.includes("kitchen")} />}
       {isOwner && (
         <Link className="back-link seller-back" href={query({ id: null, offset, date: day })}>
           ← Все продавцы
