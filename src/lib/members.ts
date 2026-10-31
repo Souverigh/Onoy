@@ -23,3 +23,28 @@ export async function memberLabels(db: SupabaseClient, organizationId: string): 
     ]),
   );
 }
+
+/**
+ * Оплаты по заявке клиента создаёт сам клиент по ссылке — автора нет. В отчётах
+ * «кто собрал» они идут за того, кто подтвердил (журнал payment.claim_confirmed;
+ * после «Вернуть» и нового подтверждения — последний). id оплаты → id участника.
+ */
+export async function claimConfirmers(
+  db: SupabaseClient,
+  organizationId: string,
+  paymentIds: string[],
+): Promise<Map<string, string>> {
+  const confirmers = new Map<string, string>();
+  for (let i = 0; i < paymentIds.length; i += 200) {
+    const { data, error } = await db
+      .from("audit_events")
+      .select("entity_id,actor_id")
+      .eq("organization_id", organizationId)
+      .eq("action", "payment.claim_confirmed")
+      .in("entity_id", paymentIds.slice(i, i + 200))
+      .order("created_at", { ascending: true });
+    if (error) throw new Error("Не удалось загрузить, кто подтвердил оплаты");
+    for (const e of data ?? []) if (e.actor_id) confirmers.set(e.entity_id as string, e.actor_id as string);
+  }
+  return confirmers;
+}

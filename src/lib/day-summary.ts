@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { paymentLabelWithSide } from "./entry-labels";
-import { memberLabels } from "./members";
+import { claimConfirmers, memberLabels } from "./members";
 import { isCurrency, type Currency } from "./currency";
 import { foreignParties, recordCurrency } from "./party-currency";
 import { expenseCategoryLabel, expensesByCategory } from "./expenses";
@@ -107,6 +107,7 @@ type SaleRow = {
   original_currency: string | null;
 };
 type PaymentRow = {
+  id: string;
   customer_id: string | null;
   supplier_id: string | null;
   direction: string;
@@ -287,7 +288,11 @@ export async function computeDaySummary(
     );
 
   // Кто сколько оформил: продажи и собранные оплаты по автору записи — в валюте магазина.
-  const members = await memberLabels(db, organizationId);
+  const incoming = paymentRows.filter((p) => p.direction === "incoming" && currencyOf(p) === shopCurrency);
+  const [members, confirmers] = await Promise.all([
+    memberLabels(db, organizationId),
+    claimConfirmers(db, organizationId, incoming.filter((p) => !p.created_by).map((p) => p.id)),
+  ]);
   const sellers = new Map<string, SellerTotal>();
   const seller = (id: string | null) => {
     const key = id ?? "";
@@ -302,8 +307,9 @@ export async function computeDaySummary(
     t.sold = round(t.sold + Number(r.total));
     t.count += 1;
   }
-  for (const p of paymentRows.filter((p) => p.direction === "incoming" && currencyOf(p) === shopCurrency)) {
-    const t = seller(p.created_by);
+  for (const p of incoming) {
+    // Заявка клиента — за того, кто подтвердил.
+    const t = seller(p.created_by ?? confirmers.get(p.id) ?? null);
     t.collected = round(t.collected + Number(p.amount));
   }
 
@@ -374,7 +380,7 @@ export async function computeDaySummary(
  * пока не применена миграция 20261005110000, — тогда без неё.
  */
 async function dayPayments(db: SupabaseClient, organizationId: string, start: string, end: string) {
-  const columns = "customer_id,supplier_id,direction,amount,bank_reference,document_id,created_by,original_amount,original_currency";
+  const columns = "id,customer_id,supplier_id,direction,amount,bank_reference,document_id,created_by,original_amount,original_currency";
   const query = (select: string) =>
     db
       .from("payments")

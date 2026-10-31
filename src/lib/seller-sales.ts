@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { dayBounds, bishkekDate } from "./day-summary";
-import { memberLabels } from "./members";
+import { claimConfirmers, memberLabels } from "./members";
 import { foreignParties, recordCurrency } from "./party-currency";
 import type { Currency } from "./currency";
 
@@ -54,7 +54,7 @@ type SaleRow = {
   created_by: string | null;
   occurred_at: string;
 };
-type PaymentRow = { customer_id: string | null; amount: string; created_by: string | null };
+type PaymentRow = { id: string; customer_id: string | null; amount: string; created_by: string | null };
 
 const round = (n: number) => Math.round(n * 100) / 100;
 const SALES_LIST_LIMIT = 200;
@@ -76,7 +76,7 @@ async function load(db: SupabaseClient, organizationId: string, start: string, e
     .range(0, 9999);
   let payments = db
     .from("payments")
-    .select("customer_id,amount,created_by")
+    .select("id,customer_id,amount,created_by")
     .eq("organization_id", organizationId)
     .eq("status", "confirmed")
     .eq("kind", "payment")
@@ -88,11 +88,22 @@ async function load(db: SupabaseClient, organizationId: string, start: string, e
     .range(0, 9999);
   if (sellerId) {
     sales = sales.eq("maker_id", sellerId);
-    payments = payments.eq("created_by", sellerId);
+    // Без автора — заявки клиентов: чьи они, решает подтверждение ниже.
+    payments = payments.or(`created_by.eq.${sellerId},created_by.is.null`);
   }
   const [s, p] = await Promise.all([sales, payments]);
   if (s.error || p.error) throw new Error("Не удалось загрузить продажи продавцов");
-  return { sales: (s.data ?? []) as SaleRow[], payments: (p.data ?? []) as PaymentRow[] };
+  const rows = (p.data ?? []) as PaymentRow[];
+  const confirmers = await claimConfirmers(
+    db,
+    organizationId,
+    rows.filter((r) => !r.created_by).map((r) => r.id),
+  );
+  const withAuthor = rows.map((r) => (r.created_by ? r : { ...r, created_by: confirmers.get(r.id) ?? null }));
+  return {
+    sales: (s.data ?? []) as SaleRow[],
+    payments: sellerId ? withAuthor.filter((r) => r.created_by === sellerId) : withAuthor,
+  };
 }
 
 /** Владелец: кто сколько продал за период. Продавцы без продаж — тоже в списке. */

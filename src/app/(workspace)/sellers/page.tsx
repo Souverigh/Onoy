@@ -251,7 +251,7 @@ export default async function Sellers({
           <div className="seller-stat">
             <span className="label-with-tip">
               Собрано
-              <InfoTip>Оплаты долгов от клиентов, которые внёс этот продавец.</InfoTip>
+              <InfoTip>Оплаты долгов от клиентов, которые внёс этот продавец, и заявки на оплату, которые он подтвердил.</InfoTip>
             </span>
             <strong>{money(detail.collected, cur)}</strong>
             <small>Оплаты могут относиться к прошлым продажам</small>
