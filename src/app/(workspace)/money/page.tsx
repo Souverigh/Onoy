@@ -10,14 +10,17 @@ import { Icon, type IconName } from "@/components/icon";
 import { isNewShop } from "@/lib/new-shop";
 import { Teach } from "@/components/teach";
 import { mainAction, word } from "@/lib/business";
+import { expenseCategoryLabel } from "@/lib/expenses";
 
 type PartyBalance = { id: string; name: string; balance: string; currency: string | null };
 /** Контрагент, встроенный в запись (PostgREST по составному FK). */
 type PartyName = { name: string; currency: string | null } | null;
 type Activity = {
   id: string;
-  kind: "purchase" | "sale" | "payment";
+  kind: "purchase" | "sale" | "payment" | "expense";
   party: string;
+  /** У расхода только день, без времени. */
+  dateOnly?: boolean;
   amount: string;
   currency: string;
   occurred_at: string;
@@ -35,7 +38,7 @@ type Activity = {
 };
 
 type Tab = "ops" | "customers" | "suppliers";
-type OpType = "sale" | "purchase" | "payment";
+type OpType = "sale" | "purchase" | "payment" | "expense";
 const TABS: [Tab, string][] = [
   ["ops", "Операции"],
   ["customers", "Клиенты"],
@@ -46,8 +49,9 @@ const OP_TYPES: [OpType | null, string][] = [
   ["sale", "Продажи"],
   ["purchase", "Товар от поставщика"],
   ["payment", "Оплаты"],
+  ["expense", "Расходы"],
 ];
-const kindIcon: Record<Activity["kind"], IconName> = { sale: "cart", purchase: "truck", payment: "wallet" };
+const kindIcon: Record<Activity["kind"], IconName> = { sale: "cart", purchase: "truck", payment: "wallet", expense: "coin" };
 
 /** Для поиска по имени: без знаков, которые ломают фильтр PostgREST. */
 const searchText = (value: string | undefined) => (value ?? "").replace(/[%,()*\\]/g, " ").trim().slice(0, 60);
@@ -59,6 +63,8 @@ const dayTime = (value: string) => {
   const time = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bishkek" }).format(d);
   return `${day}, ${time}`;
 };
+const dayOnly = (value: string) =>
+  new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: "Asia/Bishkek" }).format(new Date(value));
 
 export default async function Money({
   searchParams,
@@ -83,7 +89,7 @@ export default async function Money({
   // Вкладка, поиск по имени клиента/поставщика и вид операции (макет 29.10.2026).
   const tab: Tab = params.tab === "customers" || params.tab === "suppliers" ? params.tab : "ops";
   const q = searchText(params.q);
-  const opType: OpType | null = params.type === "sale" || params.type === "purchase" || params.type === "payment" ? params.type : null;
+  const opType: OpType | null = OP_TYPES.find(([type]) => type && type === params.type)?.[0] ?? null;
   const filtered = Boolean(by || q || opType);
   const limit = filtered ? 30 : 15;
   const author = by ? { created_by: by } : {};
@@ -120,7 +126,10 @@ export default async function Money({
     customerIds.length ? `customer_id.in.(${customerIds.join(",")})` : "",
     supplierIds.length ? `supplier_id.in.(${supplierIds.join(",")})` : "",
   ].filter(Boolean);
-  const [customerResult, supplierResult, purchaseResult, saleResult, paymentResult, claimsResult] =
+  // Расходы: владельцу все, продавцу — свои (общий список расходов только у владельца).
+  // У расхода нет клиента или поставщика — при поиске по имени не показываем.
+  const expenseAuthor = isOwner ? author : { created_by: user.id };
+  const [customerResult, supplierResult, purchaseResult, saleResult, paymentResult, claimsResult, expenseResult] =
     await Promise.all([
       // Архивные и объединённые — не здесь (задача 25).
       tab === "customers" ? balances("customer_balances") : none,
@@ -163,13 +172,23 @@ export default async function Money({
         .select("id", { count: "exact", head: true })
         .eq("organization_id", organizationId)
         .eq("status", "pending"),
+      wants("expense") && !q
+        ? db
+            .from("expenses")
+            .select("id,spent_on,amount,currency,category,note,reversed_at,reversal_comment,created_by,created_at")
+            .eq("organization_id", organizationId)
+            .match(expenseAuthor)
+            .order(byDate ? "spent_on" : "created_at", { ascending: false })
+            .limit(limit)
+        : none,
     ]);
   if (
     customerResult.error ||
     supplierResult.error ||
     purchaseResult.error ||
     saleResult.error ||
-    paymentResult.error
+    paymentResult.error ||
+    expenseResult.error
   )
     throw new Error("Не удалось загрузить деньги и историю операций");
 
@@ -219,6 +238,18 @@ export default async function Money({
     created_at: string;
     customers: PartyName;
     suppliers: PartyName;
+  }[];
+  const expenses = (expenseResult.data ?? []) as unknown as {
+    id: string;
+    spent_on: string;
+    amount: string;
+    currency: string;
+    category: string;
+    note: string | null;
+    reversed_at: string | null;
+    reversal_comment: string | null;
+    created_by: string | null;
+    created_at: string;
   }[];
   // Имя и валюта долга контрагента пришли вместе с записью — без второго запроса.
   const currencyOf = (party: PartyName) => party?.currency ?? shopCurrency;
@@ -279,6 +310,22 @@ export default async function Money({
         firstPaymentHref(row) ??
         (row.direction === "incoming" ? "/customers" : "/suppliers"),
     })),
+    ...expenses.map((row) => ({
+      id: row.id,
+      kind: "expense" as const,
+      // Вместо клиента — на что потратили.
+      party: row.note ? `${expenseCategoryLabel(row.category)} · ${row.note}` : expenseCategoryLabel(row.category),
+      amount: row.amount,
+      currency: row.currency,
+      // У расхода только день — полдень по Бишкеку, чтобы не съехал на соседние сутки.
+      occurred_at: `${row.spent_on}T12:00:00+06:00`,
+      dateOnly: true,
+      created_at: row.created_at,
+      reversed: Boolean(row.reversed_at),
+      reversalComment: row.reversal_comment ?? undefined,
+      author: authorOf(row.created_by),
+      href: `/money/expense/${row.id}`,
+    })),
   ].sort(
     (a, b) =>
       new Date(byDate ? b.occurred_at : b.created_at).getTime() - new Date(byDate ? a.occurred_at : a.created_at).getTime(),
@@ -292,7 +339,9 @@ export default async function Money({
         ? "Товар от поставщика"
         : activity.kind === "sale"
           ? "Продажа"
-          : paymentLabelWithSide(activity.paymentKind, activity.direction ?? "incoming");
+          : activity.kind === "expense"
+            ? "Расход"
+            : paymentLabelWithSide(activity.paymentKind, activity.direction ?? "incoming");
   const recentActivities = activities.slice(0, limit);
   // Адрес списка с заменой одного из отборов; остальные сохраняются.
   const recordsHref = (change: { by?: string | null; date?: boolean; tab?: Tab; type?: OpType | null }) => {
@@ -353,6 +402,10 @@ export default async function Money({
             <Link href="/money/new?type=payment&direction=outgoing">
               Я заплатил поставщику
               <small className="muted">Наличными или переводом</small>
+            </Link>
+            <Link href="/money/expense">
+              Расход
+              <small className="muted">Аренда, зарплата, свет</small>
             </Link>
             {isOwner && (
               <Link href="/money/adjustment">
@@ -486,7 +539,7 @@ export default async function Money({
                   <strong className="rec-sum">{money(activity.amount, activity.currency)}</strong>
                   {/* На компьютере — две колонки, на телефоне — одна строка «дата • кто внёс». */}
                   <span className="rec-meta">
-                    <span className="rec-date">{dayTime(activity.occurred_at)}</span>
+                    <span className="rec-date">{activity.dateOnly ? dayOnly(activity.occurred_at) : dayTime(activity.occurred_at)}</span>
                     <span className={activity.author ? "rec-author" : "rec-author none"}>{activity.author ?? "-"}</span>
                   </span>
                   <details className="more-menu record-menu rec-menu">
@@ -496,7 +549,14 @@ export default async function Money({
                     <div className="more-menu-list">
                       <Link href={activity.href}>Открыть</Link>
                       {!activity.reversed && isOwner && (
-                        <Link className="danger-link" href={`/money/reverse/${activity.kind}/${activity.id}`}>
+                        <Link
+                          className="danger-link"
+                          href={
+                            activity.kind === "expense"
+                              ? `/money/expense/${activity.id}?cancel=1`
+                              : `/money/reverse/${activity.kind}/${activity.id}`
+                          }
+                        >
                           Отменить
                         </Link>
                       )}
