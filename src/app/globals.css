@@ -14833,117 +14833,243 @@ form label.catalog-products-filter {
   margin: 0 0 12px;
 }
 
-/* Модель с размерами и цветами (model-form.tsx): выбор размеров и цветов
-   выпадающим списком с галочками (details.more-menu) и сетка остатков. */
-.axis-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 18px;
-  min-width: 0;
+/* Размеры и цвета (variant-picker.tsx, макет 31.10.2026): название оси,
+   справа «Буквенные ▾» и «+ Свой размер»; размеры — сплошной полосой,
+   цвета — кружками. В «Новом товаре» — в рамке .variant-block. */
+.variant-block {
+  margin: 0 0 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-soft);
 }
-.axis-field-label {
+.variant-block-title {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.variant-block-title small {
+  margin-left: 8px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.variant-axes {
+  display: grid;
+  gap: 20px;
+}
+.variant-axis-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 10px;
+  margin-bottom: 10px;
+}
+.variant-axis-name {
   font-size: 14px;
   color: var(--ink-soft);
 }
-.axis-picker > summary {
-  list-style: none;
-}
-.axis-picker > summary::-webkit-details-marker {
-  display: none;
-}
-.axis-picker-button {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: var(--control-height);
-  padding: 0 14px;
-  border: 1px solid var(--control-border);
-  border-radius: var(--radius-sm);
-  background: white;
-  color: var(--ink);
-  font-size: 16px;
-  cursor: pointer;
-}
-.axis-picker-button > span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.axis-picker-button.empty > span:first-child {
-  color: var(--muted);
-}
-.axis-picker[open] > .axis-picker-button {
-  border-color: var(--green);
-}
-.more-menu-list.axis-picker-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: min(440px, calc(100vw - 32px));
-  max-height: min(70vh, 560px);
-  padding: 14px;
-  overflow-y: auto;
-}
-.axis-group-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
-  font-size: 14px;
-}
-.axis-options {
+.variant-axis-tools {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
 }
-form label.axis-option {
+form select.variant-system {
+  width: auto;
+  min-height: 36px;
+  padding: 0 10px;
+  font-size: 14px;
+}
+.variant-add {
   display: inline-flex;
-  flex-direction: row;
   align-items: center;
   gap: 6px;
-  margin: 0;
-  padding: 6px 12px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--ink);
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--green-border);
+  border-radius: var(--radius-sm);
+  background: var(--green-wash);
+  color: var(--green);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.variant-add::before {
+  content: "+";
+  font-size: 17px;
+  line-height: 1;
+}
+.variant-add[aria-expanded="true"] {
+  background: var(--green-soft);
+}
+.variant-own {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.variant-own input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.variant-own .button {
+  flex: 0 0 auto;
+}
+/* Полоса размеров: одна рамка, выбранные залиты зелёным. */
+.variant-strip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: white;
+}
+.variant-strip button {
+  min-width: 54px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-left: 1px solid var(--control-border);
+  margin-left: -1px;
+  background: white;
+  color: var(--ink-soft);
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
 }
-form label.axis-option:has(input:checked) {
-  border-color: var(--green-border);
+.variant-strip button.on {
+  background: var(--green);
+  color: white;
+}
+.variant-strip button:disabled {
+  cursor: default;
+}
+.variant-strip button:focus-visible,
+.variant-swatch:focus-visible,
+.variant-chip:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+/* Цвета: кружки; выбранный — с кольцом и галочкой. Свой цвет — кнопкой с названием. */
+.variant-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.variant-swatch {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.variant-swatch.on {
+  box-shadow:
+    0 0 0 2px white,
+    0 0 0 4px var(--green);
+}
+.variant-swatch.on::after {
+  content: "✓";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: white;
+  font-size: 15px;
+  font-weight: 700;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.4);
+}
+.variant-swatch.light.on::after {
+  color: var(--ink);
+  text-shadow: none;
+}
+.variant-chip {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: white;
+  color: var(--ink);
+  font-size: 14px;
+  cursor: pointer;
+}
+.variant-chip.on {
+  border-color: var(--green);
   background: var(--green-soft);
   color: var(--green);
+  font-weight: 700;
 }
-form label.axis-option input {
-  width: auto;
-  min-height: 0;
-  margin: 0;
-  accent-color: var(--green);
+.variant-picked {
+  margin: 8px 0 0;
+  font-size: 13px;
 }
-.axis-picker-panel .model-axis-add {
-  display: flex;
-  gap: 8px;
-}
-.axis-picker-panel .model-axis-add input {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.axis-picker-panel .model-axis-add .button {
-  flex: 0 0 auto;
-}
-.axis-done {
-  align-self: flex-end;
-}
-.variant-empty {
-  margin: 0;
-  padding: 14px;
-  border: 1px dashed var(--line);
+.variant-result {
+  margin: 18px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  text-align: center;
+  background: white;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.variant-result b {
+  color: var(--ink);
+}
+/* «Наценка: +450 сом с каждой штуки (45%)» под ценами (price-markup.tsx). */
+.price-markup {
+  margin: 0 0 14px;
+  font-size: 14px;
+  color: var(--success-ink);
+}
+.price-markup.loss {
+  color: var(--danger-ink);
+}
+@media (max-width: 560px) {
+  .variant-block {
+    padding: 14px;
+  }
+  .variant-block-title small {
+    display: block;
+    margin: 4px 0 0;
+  }
+  /* Телефон: размеры сеткой; не влезли в ряд — следующий ряд такой же ширины, с линиями. */
+  .variant-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+    gap: 1px;
+  }
+  .variant-strip button {
+    min-width: 0;
+    margin: 0;
+    border: 0;
+    box-shadow: 0 0 0 1px var(--control-border);
+    padding: 0 2px;
+    font-size: 14px;
+  }
+  .variant-axis-tools {
+    gap: 6px;
+  }
+  form select.variant-system {
+    padding: 0 6px;
+    font-size: 13px;
+  }
+  .variant-add {
+    padding: 0 10px;
+    font-size: 13px;
+  }
+  .variant-swatches {
+    gap: 8px;
+  }
+  .variant-swatch {
+    width: 32px;
+    height: 32px;
+  }
 }
 /* Блоки формы модели: заголовок, поля, разделитель снизу. */
 .model-section {
@@ -14959,9 +15085,6 @@ form label.axis-option input {
   border-bottom: 0;
   margin-bottom: 4px;
 }
-.model-section .axis-field {
-  margin-bottom: 14px;
-}
 .model-section .setting-switch {
   margin-bottom: 0;
 }
@@ -14970,20 +15093,6 @@ form label.axis-option input {
 }
 .model-section-hint {
   margin: 14px 0 0;
-}
-.model-preview {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 0;
-  font-size: 14px;
-}
-.model-preview .tag {
-  margin: 0;
-  font-size: 13px;
-  color: var(--ink-soft);
-  background: var(--surface-soft);
 }
 .variant-cell.new {
   border: 1px dashed var(--green-border);
@@ -15053,14 +15162,6 @@ form .variant-qty,
   border-bottom: 1px solid var(--line);
 }
 @media (max-width: 560px) {
-  /* На телефоне список размеров раскрывается прямо в форме, не поверх. */
-  .more-menu-list.axis-picker-panel {
-    position: static;
-    width: auto;
-    max-height: none;
-    margin-top: 6px;
-    box-shadow: none;
-  }
   form .variant-qty,
   .variant-qty {
     width: 52px;
@@ -15069,16 +15170,6 @@ form .variant-qty,
   .variant-cell {
     min-width: 44px;
   }
-}
-/* Вкладки систем размеров в списке (model-form.tsx). */
-.method-pills.axis-tabs {
-  display: flex;
-}
-.method-pills.axis-tabs button {
-  flex: 1 1 0;
-  min-height: 40px;
-  padding: 0 8px;
-  font-size: 14px;
 }
 /* Склад: модель одной строкой, её размеры — метками с остатком (stock/page.tsx). */
 .stock-variants {

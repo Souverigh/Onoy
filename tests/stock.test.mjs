@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateRawSync } from "node:zlib";
-import { costCurrency, detectColumns, importRows, mergeImportRows, namelessLines, normalizeUnit, priceColumns, stockNumber } from "../src/lib/stock.ts";
+import { costCurrency, detectColumns, importRows, mergeImportRows, namelessLines, normalizeUnit, priceColumns, priceMarkup, stockNumber } from "../src/lib/stock.ts";
 import { normalizeText, searchProducts } from "../src/lib/match.ts";
 import { readCsv, readWorkbook, readXlsx } from "../src/lib/xlsx-read.ts";
 import { buildXlsx } from "../src/lib/xlsx.ts";
@@ -304,4 +304,14 @@ test("detectColumns: retail price column wins over wholesale; priceColumns lists
   assert.equal(found.columns.sale_price, 2);
   assert.equal(found.columns.purchase_price, 3);
   assert.deepEqual(priceColumns(table[0]), [1, 2]);
+});
+
+test("priceMarkup: per-unit margin and percent of the purchase price, nothing without both prices", () => {
+  assert.deepEqual(priceMarkup("1 450", "1000"), { amount: 450, percent: 45 });
+  assert.deepEqual(priceMarkup("450", "300"), { amount: 150, percent: 50 });
+  assert.deepEqual(priceMarkup("85,5", "90"), { amount: -4.5, percent: -5 });
+  assert.equal(priceMarkup("1200", ""), null);
+  assert.equal(priceMarkup("", "700"), null);
+  assert.equal(priceMarkup("0", "700"), null);
+  assert.equal(priceMarkup("abc", "700"), null);
 });

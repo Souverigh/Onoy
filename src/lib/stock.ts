@@ -411,3 +411,15 @@ export function stockValue(rows: StockValueRow[], shop: CostCurrency): StockValu
   for (const currency of COST_CURRENCIES) if (cost[currency]) costText[currency] = fromScaled5(cost[currency]!);
   return { cost: costText, sale: fromScaled5(sale), inStock, noCost, noSale };
 }
+
+/**
+ * Наценка с одной единицы товара: продажа минус закупка и сколько это от
+ * закупки. Нет одной из цен (или не число) — null: показывать нечего.
+ */
+export function priceMarkup(sale: string, purchase: string): { amount: number; percent: number } | null {
+  const s = stockNumber(sale, 2);
+  const p = stockNumber(purchase, 2);
+  if (s === null || p === null || Number(s) <= 0 || Number(p) <= 0) return null;
+  const amount = Math.round((Number(s) - Number(p)) * 100) / 100;
+  return { amount, percent: Math.round((amount / Number(p)) * 100) };
+}

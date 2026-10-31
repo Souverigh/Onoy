@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addAxisValues, attrsKey, combinations, parseAxes, variantName } from "../src/lib/product-model.ts";
+import { addAxisValues, attrsKey, combinations, goodsCount, parseAxes, variantName, variantsSummary } from "../src/lib/product-model.ts";
 
 test("product model: values are added once, trimmed, case-insensitive", () => {
   assert.deepEqual(addAxisValues(["S"], " m ; L,, s\nXL "), ["S", "m", "L", "XL"]);
@@ -63,4 +63,15 @@ test("product model: grouping keeps the order and puts a model where its first p
     groupByModel(rows, (r) => r.m).map((g) => (g.kind === "item" ? g.item.id : `${g.model}:${g.items.map((i) => i.id).join("")}`)),
     ["a", "x:bd", "c", "y:e"],
   );
+});
+
+test("product model: «Получится N товаров» counts and lists what was chosen", () => {
+  assert.deepEqual([1, 3, 9, 11, 21, 22, 112].map(goodsCount), ["1 товар", "3 товара", "9 товаров", "11 товаров", "21 товар", "22 товара", "112 товаров"]);
+  const axes = [
+    { key: "size", label: "Размеры", values: ["S", "M"] },
+    { key: "color", label: "Цвета", values: ["Чёрный", "Белый"] },
+  ];
+  assert.equal(variantsSummary(axes), "размеры S, M; цвета Чёрный, Белый");
+  // Ткань в метрах — только цвета.
+  assert.equal(variantsSummary([{ ...axes[0], values: [] }, axes[1]]), "цвета Чёрный, Белый");
 });

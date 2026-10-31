@@ -197,6 +197,16 @@
   числом товаров, `.active`, подкатегории с отступом): на компьютере колонкой
   слева, на телефоне раскрывается кнопкой «Категория: …» под поиском.
 
+- Размеры и цвета товара — `VariantPicker` (`components/variant-picker.tsx`):
+  ось с названием, справа система размеров `select.variant-system` и
+  «+ Свой…» `.variant-add`; размеры — полоса `.variant-strip`, цвета —
+  кружки `.variant-swatch` (цвета — `COLOR_SWATCHES` в `lib/product-model.ts`),
+  свой цвет — `.variant-chip`. В «Новом товаре» — в рамке `.variant-block`,
+  итог «Получится N товаров» — `.variant-result`; количество по сочетаниям —
+  `VariantQtyGrid`.
+- Наценка под ценами товара — `PriceMarkup` (`.price-markup`, в минус —
+  `.loss`).
+
 ## Сообщения
 
 - `.notice` — жёлтая подсказка; `.notice.success` — зелёное «готово».

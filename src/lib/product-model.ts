@@ -102,3 +102,37 @@ export function groupByModel<T>(items: readonly T[], modelOf: (item: T) => strin
   }
   return out;
 }
+
+/**
+ * Кружки цветов в форме товара (подсказки VARIANT_AXES.color). Свой цвет —
+ * без кружка, кнопкой с названием. light — светлый кружок, галочка тёмная.
+ */
+export const COLOR_SWATCHES: Readonly<Record<string, { color: string; light?: true }>> = {
+  Чёрный: { color: "#1d1d1d" },
+  Белый: { color: "#ffffff", light: true },
+  Серый: { color: "#9aa0a0" },
+  Синий: { color: "#2d55a8" },
+  Голубой: { color: "#8ec5ec", light: true },
+  Красный: { color: "#d23a32" },
+  Зелёный: { color: "#3f8f4f" },
+  Бежевый: { color: "#e3d2b4", light: true },
+  Коричневый: { color: "#7a4e2d" },
+  Розовый: { color: "#f2a7c1", light: true },
+  Жёлтый: { color: "#f2cd3a", light: true },
+};
+
+/** «1 товар», «3 товара», «12 товаров». */
+export function goodsCount(n: number) {
+  const mod10 = n % 10,
+    mod100 = n % 100;
+  const word =
+    mod10 === 1 && mod100 !== 11 ? "товар" : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? "товара" : "товаров";
+  return `${n} ${word}`;
+}
+
+/** «размеры S, M, L; цвета Чёрный, Белый» — что выбрано, для строки «Получится…». */
+export const variantsSummary = (axes: readonly (ModelAxis & { label: string })[]) =>
+  axes
+    .filter((a) => a.values.length)
+    .map((a) => `${a.label.toLowerCase()} ${a.values.join(", ")}`)
+    .join("; ");

@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getContext } from "@/lib/context";
-import { stockNumber } from "@/lib/stock";
+import { isProductUnit, stockNumber } from "@/lib/stock";
 import { isCurrency } from "@/lib/currency";
 import { refreshCatalog } from "@/lib/catalog-cache";
 import { MODEL_LIMITS, parseAxes } from "@/lib/product-model";
@@ -25,19 +25,20 @@ const json = (raw: string): unknown => {
 
 /** Код ошибки базы → код для формы (тексты — STOCK_ERROR_TEXT). */
 const failure = (message = "") =>
-  ["name_taken", "invalid_axes", "invalid_variants", "invalid_price", "invalid_currency", "invalid_name", "invalid_model"].find(
+  ["name_taken", "invalid_axes", "invalid_variants", "invalid_price", "invalid_currency", "invalid_name", "invalid_model", "invalid_unit", "invalid_qty"].find(
     (code) => message.includes(code),
   ) ?? (message.includes("shop_blocked") ? "blocked" : "save");
 
 /**
- * Модель с размерами и цветами (миграция 20261029100000): новая или новые
- * сочетания к ней. Каждое сочетание база создаёт обычным товаром; уже
- * существующие пропускает.
+ * Модель с размерами и цветами (миграции 20261029100000, 20261111100000):
+ * новая — из формы «Новый товар» с единицей и минимумом, или новые сочетания
+ * к ней. Каждое сочетание база создаёт обычным товаром; уже существующие
+ * пропускает, а новые берут единицу и минимум у товаров модели.
  */
 export async function saveProductModel(form: FormData) {
   const id = text(form, "model_id");
   if (id && !uuidPattern.test(id)) redirect("/stock?error=invalid");
-  const back = (error: string): never => redirect(`/stock/model/${id || "new"}?error=${error}`);
+  const back = (error: string): never => redirect(id ? `/stock/model/${id}?error=${error}` : `/stock/new?error=${error}`);
 
   const axes = parseAxes(json(text(form, "axes")));
   if (!axes.length || axes.length > MODEL_LIMITS.axes) back("invalid_axes");
@@ -54,6 +55,11 @@ export async function saveProductModel(form: FormData) {
   if (salePrice === null || purchasePrice === null) back("invalid_price");
   const purchaseCurrency = text(form, "purchase_currency");
   if (purchaseCurrency && !isCurrency(purchaseCurrency)) back("invalid_currency");
+  // Единица и минимум — у новой модели; к существующей база берёт их у её товаров.
+  const unit = id ? null : text(form, "unit") || "шт";
+  if (unit !== null && !isProductUnit(unit)) back("invalid_unit");
+  const minStock = id ? "0" : stockNumber(text(form, "min_stock") || "0", 3);
+  if (minStock === null) back("invalid_qty");
 
   const { db, organizationId } = await getContext();
   const result = await db.rpc("save_product_model", {
@@ -66,6 +72,8 @@ export async function saveProductModel(form: FormData) {
     p_purchase_price: purchasePrice,
     p_purchase_currency: purchaseCurrency || null,
     p_apply_prices: Boolean(id) && form.get("apply_prices") === "on",
+    p_unit: unit,
+    p_min_stock: minStock,
   });
   if (result.error || !result.data) {
     console.error("saveProductModel failed", { message: result.error?.message });
@@ -100,5 +108,6 @@ export async function saveProductModel(form: FormData) {
 
   await refreshCatalog(db, organizationId);
   revalidatePath("/", "layout");
-  redirect(`/stock/model/${saved}?saved=1`);
+  // «Добавить и ещё один» — сразу пустая форма.
+  redirect(!id && form.get("next") === "new" ? `/stock/new?added=${saved}&kind=model` : `/stock/model/${saved}?saved=1`);
 }

@@ -3,11 +3,8 @@ import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
 import { ModelForm, type ModelVariant } from "@/components/model-form";
 import { STOCK_ERROR_TEXT } from "@/lib/stock";
-import { VARIANT_AXES } from "@/lib/business";
+import { variantAxisField } from "@/lib/business";
 import { parseAxes, type VariantAttrs } from "@/lib/product-model";
-
-const AXIS_TEXT: Record<string, { label: string; placeholder: string; groups: readonly { label: string; values: readonly string[] }[] }> =
-  VARIANT_AXES;
 
 /** Модель: остатки по размерам и цветам, новые сочетания, цены всем сразу. */
 export default async function ModelPage({
@@ -25,7 +22,7 @@ export default async function ModelPage({
     db.from("product_models").select("id,name,axes").eq("organization_id", organizationId).eq("id", id).maybeSingle(),
     db
       .from("products")
-      .select("id,variant_attrs,archived_at,sale_price,purchase_price,purchase_currency")
+      .select("id,variant_attrs,archived_at,sale_price,purchase_price,purchase_currency,unit")
       .eq("organization_id", organizationId)
       .eq("model_id", id),
   ]);
@@ -39,6 +36,7 @@ export default async function ModelPage({
     sale_price: string;
     purchase_price: string;
     purchase_currency: string | null;
+    unit: string;
   }[];
   const balances = products.length
     ? await db.from("product_balances").select("id,stock").eq("organization_id", organizationId).in(
@@ -53,12 +51,7 @@ export default async function ModelPage({
     stock: stock.get(p.id) ?? "0",
     archived: Boolean(p.archived_at),
   }));
-  const axes = parseAxes(model.axes).map((a) => ({
-    ...a,
-    label: AXIS_TEXT[a.key]?.label ?? a.key,
-    placeholder: AXIS_TEXT[a.key]?.placeholder ?? "",
-    groups: AXIS_TEXT[a.key]?.groups ?? [],
-  }));
+  const axes = parseAxes(model.axes).map((a) => variantAxisField(a.key, a.values));
   const priced = products.find((p) => !p.archived_at) ?? products[0];
   return (
     <>
@@ -92,9 +85,8 @@ export default async function ModelPage({
               ? { sale: priced.sale_price, purchase: priced.purchase_price, purchaseCurrency: priced.purchase_currency }
               : undefined
           }
+          unit={priced?.unit ?? "шт"}
           currency={currency}
-          categories={[]}
-          hints={{}}
         />
       </section>
     </>

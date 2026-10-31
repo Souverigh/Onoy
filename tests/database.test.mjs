@@ -4118,6 +4118,33 @@ test("catalog: products of a model carry the model and size, models come with th
   assert.deepEqual(Object.keys(catalog).sort(), ["categories", "currency", "models", "products", "shop_name", "shop_phone"]);
 });
 
+test("product models: unit and minimum come from the form, new colors keep the model's unit", async () => {
+  const axes = (colors) => JSON.stringify([{ key: "color", values: colors }]);
+  const rows = (colors) => JSON.stringify(colors.map((color) => ({ attrs: { color }, qty: "0" })));
+  const save = (model, colors, unit, min = "0") =>
+    db.query("select save_product_model($1,$2,'Габардин',$3::jsonb,$4::jsonb,'450','300',null,false,$5,$6) as id", [
+      orgA, model, axes(colors), rows(colors), unit, min,
+    ]);
+  await user(a);
+  const model = (await save(null, ["Чёрный", "Белый"], "м", "5")).rows[0].id;
+  // К модели в метрах добавили цвет — тоже метры и тот же минимум, что бы ни прислала форма.
+  await save(model, ["Чёрный", "Белый", "Красный"], "шт");
+  await assert.rejects(save(null, ["Синий"], "ведро"), /invalid_unit/);
+  await assert.rejects(save(null, ["Синий"], "м", "-1"), /invalid_qty/);
+  await owner();
+  assert.deepEqual(
+    (await db.query("select name,unit,min_stock from products where model_id=$1 order by name", [model])).rows.map((r) => [
+      r.name, r.unit, Number(r.min_stock),
+    ]),
+    [
+      ["Габардин (Белый)", "м", 5],
+      ["Габардин (Красный)", "м", 5],
+      ["Габардин (Чёрный)", "м", 5],
+    ],
+  );
+  assert.equal((await db.query("select count(*)::int as n from product_models where organization_id=$1 and name='Габардин'", [orgA])).rows[0].n, 1);
+});
+
 test("push: each member subscribes own phone; only the server with the secret gets targets; orders to all, claims to owners", async () => {
   const seller = "44444444-4444-4444-8444-444444444444";
   const sub = (n) => [`https://push.example.com/${n}`, `key${n}`, `auth${n}`];

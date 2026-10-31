@@ -47,8 +47,6 @@ export type Preset = {
   navLabels?: Readonly<Record<string, string>>;
   /** Оси модели (VARIANT_AXES) по порядку; нет — размер и цвет. */
   variantAxes?: readonly VariantAxisKey[];
-  /** «Новый товар» сразу открывает форму с размерами и цветами (если модуль включён). */
-  newProduct?: "model";
   /**
    * Кнопки на главной по порядку: первая — главная (тёмная), дальше каждая в
    * свой блок по QUICK_ACTIONS.side. Кнопка модуля, который выключен,
@@ -122,7 +120,8 @@ const DEFAULT_QUICK: readonly QuickActionId[] = ["sales", "purchases", "payment_
 export const VARIANT_AXES = {
   size: {
     label: "Размеры",
-    placeholder: "Выберите размеры",
+    own: "Свой размер",
+    example: "Например, 4XL",
     groups: [
       { label: "Буквенные", values: ["XS", "S", "M", "L", "XL", "XXL", "3XL"] },
       { label: "Цифровые", values: ["40", "42", "44", "46", "48", "50", "52", "54", "56"] },
@@ -131,7 +130,8 @@ export const VARIANT_AXES = {
   },
   color: {
     label: "Цвета",
-    placeholder: "Без цвета",
+    own: "Свой цвет",
+    example: "Например, Бордовый",
     groups: [
       {
         label: "Цвета",
@@ -143,16 +143,31 @@ export const VARIANT_AXES = {
 
 export type VariantAxisKey = keyof typeof VARIANT_AXES;
 
+/** Ось для формы: выбранные значения, подписи и подсказки (группы — системы размеров). */
+export type VariantAxisField = {
+  key: string;
+  values: string[];
+  label: string;
+  own: string;
+  example: string;
+  groups: readonly { label: string; values: readonly string[] }[];
+};
+
+/** Поле оси по её ключу; незнакомая ось (из базы) — без подсказок. */
+export function variantAxisField(key: string, values: string[] = []): VariantAxisField {
+  const known = (VARIANT_AXES as Record<string, Omit<VariantAxisField, "key" | "values">>)[key];
+  return { key, values, ...(known ?? { label: key, own: "Свой вариант", example: "", groups: [] }) };
+}
+
 export const PRESETS = {
   shop: { label: "Магазин", modules: ["stock", "catalog"], slug: "magazin" },
   grocery: { label: "Продуктовый магазин", modules: ["stock", "catalog"], slug: "produkty" },
-  clothing: { label: "Одежда и обувь", modules: ["stock", "catalog", "variants"], newProduct: "model", slug: "odezhda" },
+  clothing: { label: "Одежда и обувь", modules: ["stock", "catalog", "variants"], slug: "odezhda" },
   // Прокат: главное — выдать и что на руках; продажа и закупки — в меню, не на виду.
   clothing_rental: {
     label: "Прокат одежды",
     modules: ["stock", "catalog", "variants", "rental"],
     navLabels: { "/stock": "Вещи" },
-    newProduct: "model",
     quickActions: ["rental_issue", "rentals", "payment_in", "expense"],
     mainAction: "rental_issue",
     words: { purchase: "Покупка вещей" },
@@ -206,10 +221,6 @@ export const navLabel = (type: BusinessType, href: string, label: string) =>
 /** Оси модели для вида бизнеса. */
 export const variantAxes = (type: BusinessType): readonly VariantAxisKey[] =>
   (PRESETS[type] as Preset).variantAxes ?? ["size", "color"];
-
-/** Новый товар этого магазина — сразу модель с размерами и цветами. */
-export const startsWithModel = (type: BusinessType, modules: readonly ModuleId[]) =>
-  (PRESETS[type] as Preset).newProduct === "model" && modules.includes("variants");
 
 /** Своё слово вида бизнеса; null — у вида его нет. */
 export const ownWord = (type: BusinessType, key: WordKey): string | null => (PRESETS[type] as Preset).words?.[key] ?? null;
