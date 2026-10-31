@@ -41,7 +41,7 @@ export default async function VerifySignup({
           </p>
           {sent && !error && (
             <p className="notice success" role="status">
-              Письмо отправлено ещё раз. Не видно - загляните в «Спам».
+              Письмо отправлено ещё раз. Не видно - загляните в «Спам», а на iPhone - в «Нежелательные».
             </p>
           )}
           {error && (
@@ -56,7 +56,7 @@ export default async function VerifySignup({
           {email && (
             <form action={resendSignup}>
               <small className="muted">
-                Письмо не пришло? Проверьте «Спам» или{" "}
+                Письмо не пришло? Проверьте «Спам» (на iPhone - «Нежелательные») или{" "}
                 <button type="submit" className="text-button">
                   отправьте его ещё раз
                 </button>

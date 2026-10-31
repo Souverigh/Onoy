@@ -793,6 +793,67 @@ textarea {
   background: var(--success-bg);
   color: var(--success-ink);
 }
+/* «Письмо отправлено» (макет 31.10.2026): галочка, шаги, ниже — «Письма нет?». */
+.mail-sent-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+.mail-sent-check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--green);
+  color: white;
+  font-size: 14px;
+}
+.mail-sent .teach-steps {
+  margin: 14px 0 0;
+}
+.mail-sent .teach-steps li {
+  line-height: 1.5;
+}
+.mail-sent .teach-steps li::before {
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  background: white;
+  border: 1px solid var(--green-border);
+  color: var(--success-ink);
+  font-size: 12px;
+}
+.mail-help {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.mail-help strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+}
+.mail-help p {
+  margin: 0;
+}
+.mail-help a {
+  color: var(--green);
+  font-weight: 700;
+}
+.mail-fine {
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
 .center {
   min-height: 100vh;
   display: grid;

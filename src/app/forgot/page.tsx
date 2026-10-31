@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requestPasswordReset } from "../auth/actions";
 import { Submit } from "@/components/submit";
 import { Turnstile } from "@/components/turnstile";
+import { TeachSteps } from "@/components/teach";
 
 const errors: Record<string, string> = {
   email: "Введите email, с которым входите в Depter.",
@@ -21,10 +22,24 @@ export default async function Forgot({ searchParams }: { searchParams: Promise<{
           <h2>Забыли пароль?</h2>
           <p className="muted">Введите email - пришлём ссылку, по которой можно задать новый пароль.</p>
           {sent ? (
-            <p className="notice success" role="status">
-              Если такой email есть в Depter, письмо уже отправлено. Откройте его и нажмите на ссылку - она
-              действует 1 час. Письма нет? Проверьте «Спам».
-            </p>
+            <>
+              <div className="notice success mail-sent" role="status">
+                <p className="mail-sent-title">
+                  <span className="mail-sent-check" aria-hidden="true">
+                    ✓
+                  </span>
+                  Письмо отправлено
+                </p>
+                <TeachSteps steps={["Откройте письмо от Depter", "Нажмите «Задать новый пароль» - ссылка действует 1 час"]} />
+              </div>
+              <div className="mail-help">
+                <strong>Письма нет через пару минут?</strong>
+                <p>Проверьте папку «Спам», а на iPhone - «Нежелательные».</p>
+                <Link href="/forgot">Отправить ещё раз</Link>
+              </div>
+              {/* Не говорим, есть ли такой email, — иначе по экрану можно проверять чужие адреса. */}
+              <p className="muted mail-fine">Письмо приходит, только если этот email есть в Depter.</p>
+            </>
           ) : (
             <>
               {error && errors[error] && (
