@@ -12497,7 +12497,8 @@ form label.consent {
   font-size: 22px;
   text-align: left;
 }
-.amount-currency {
+/* Только список в поле суммы — у клиента «В какой валюте перевели?» тот же класс на кнопках. */
+select.amount-currency {
   flex: none;
   width: 96px;
   min-height: 0;
