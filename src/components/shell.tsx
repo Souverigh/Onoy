@@ -19,6 +19,8 @@ const allNav: NavItem[] = [
   ["/customers", "Клиенты", "people"],
   ["/suppliers", "Поставщики", "truck"],
   ["/money", "Все записи", "wallet"],
+  // Меню кафе (модуль kitchen): блюда и их состав.
+  ["/menu", "Меню", "menu", "kitchen"],
   ["/stock", "Склад", "box", "stock"],
   // Прокат (модуль rental): что на руках, выдача и возврат.
   ["/rentals", "Прокат", "calendar", "rental"],
@@ -226,9 +228,11 @@ export function Shell({
   const waiting = nav.filter(allowed).filter(([href]) => WAITING.has(href));
 
   // Внизу у продавца вместо «Итога дня» (итоги — у владельца) — «Поставщики».
+  // У кафе (модуль kitchen) вторая кнопка — «Меню»: клиенты в долг там редкость, они в «Ещё».
+  const second: NavItem = modules.includes("kitchen") ? ["/menu", "Меню", "menu"] : ["/customers", "Клиенты", "people"];
   const bottom: NavItem[] = isOwner
-    ? [["/", "Главная", "home"], ["/customers", "Клиенты", "people"], ["/day", "Отчёты", "chart"]]
-    : [["/", "Главная", "home"], ["/customers", "Клиенты", "people"], ["/suppliers", "Поставщики", "truck"]];
+    ? [["/", "Главная", "home"], second, ["/day", "Отчёты", "chart"]]
+    : [["/", "Главная", "home"], second, ["/suppliers", "Поставщики", "truck"]];
   const more = nav.filter(allowed).filter(([href]) => !bottom.some(([b]) => b === href));
   const moreActive = more.some(([href]) => active(href));
   const pageTitle =

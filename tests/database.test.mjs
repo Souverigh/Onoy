@@ -33,7 +33,7 @@ test("foundation tables exist and all tenant tables have RLS", async () => {
   const { rows } = await db.query(
     `select relname,relrowsecurity from pg_class join pg_namespace n on n.oid=relnamespace where n.nspname='public' and relkind='r'`,
   );
-  assert.equal(rows.length, 33);
+  assert.equal(rows.length, 35);
   assert.ok(rows.every((r) => r.relrowsecurity));
 });
 test("organization creation is idempotent and cannot enroll another user", async () => {
@@ -4523,4 +4523,58 @@ test("admin requests: status, notes with a contact date, match with a Depter acc
   await owner();
   assert.equal((await db.query("select count(*)::int as n from private.admin_events where action='feedback.status'")).rows[0].n, 1);
   await db.query("delete from private.platform_admins where user_id=$1", [b]);
+});
+
+test("kitchen menu: a dish is made of this shop's products, its recipe is replaced on save, archive keeps it", async () => {
+  await owner();
+  const products = (
+    await db.query("select id from products where organization_id=$1 and archived_at is null and merged_into_id is null order by created_at limit 2", [orgA])
+  ).rows.map((r) => r.id);
+  assert.equal(products.length, 2);
+  await user(b);
+  const foreign = (await db.query("select save_product($1,null,'Чужой рис',null,'кг','0','100') as id", [orgB])).rows[0].id;
+  const lines = (list) => JSON.stringify(list.map(([product_id, qty]) => ({ product_id, qty })));
+  const save = (id, name, price, category, ls) => db.query("select save_dish($1,$2,$3,$4,$5,$6::jsonb) as id", [orgA, id, name, price, category, ls]);
+
+  // Продавец тоже правит меню; чужой магазин — нет.
+  await user(b);
+  await assert.rejects(save(null, "Плов", "350", null, lines([[products[0], "0.15"]])), /not_a_member/);
+  await user(a);
+  const plov = (await save(null, "  Плов  ", "350", " Горячее ", lines([[products[0], "0.15"], [products[1], "0.002"]]))).rows[0].id;
+  let dish = (await db.query("select name,price,category from dishes where id=$1", [plov])).rows[0];
+  assert.deepEqual([dish.name, dish.price, dish.category], ["Плов", "350.00", "Горячее"]);
+  assert.deepEqual(
+    (await db.query("select product_id,qty from dish_ingredients where dish_id=$1 order by position", [plov])).rows.map((r) => [r.product_id, r.qty]),
+    [[products[0], "0.1500"], [products[1], "0.0020"]],
+  );
+
+  // Правка заменяет состав целиком; блюдо без состава — можно (заполнят потом).
+  await save(plov, "Плов", "380", null, lines([[products[1], "0.3"]]));
+  assert.deepEqual((await db.query("select product_id from dish_ingredients where dish_id=$1", [plov])).rows.map((r) => r.product_id), [products[1]]);
+  const tea = (await save(null, "Чай", "80", null, "[]")).rows[0].id;
+  assert.equal((await db.query("select count(*)::int as n from dish_ingredients where dish_id=$1", [tea])).rows[0].n, 0);
+
+  // Мусор, чужой продукт, повтор продукта, занятое название — отказ.
+  await assert.rejects(save(null, "Лагман", "320", null, lines([[foreign, "0.1"]])), /invalid_product/);
+  await assert.rejects(save(null, "Лагман", "320", null, lines([[products[0], "0"]])), /invalid_lines/);
+  await assert.rejects(save(null, "Лагман", "320", null, lines([[products[0], "abc"]])), /invalid_lines/);
+  await assert.rejects(save(null, "Лагман", "320", null, lines([[products[0], "0.1"], [products[0], "0.2"]])), /invalid_lines/);
+  await assert.rejects(save(null, "Лагман", "-5", null, "[]"), /invalid_price/);
+  await assert.rejects(save(null, "плов", "300", null, "[]"), /name_taken/);
+
+  // Архив: название свободно, вернуть нельзя, пока есть такое же в меню.
+  await db.query("select set_dish_archived($1,$2,true)", [orgA, plov]);
+  const second = (await save(null, "Плов", "400", null, "[]")).rows[0].id;
+  await assert.rejects(db.query("select set_dish_archived($1,$2,false)", [orgA, plov]), /name_taken/);
+  await assert.rejects(save(plov, "Плов старый", "400", null, "[]"), /invalid_dish/);
+  await db.query("select set_dish_archived($1,$2,true)", [orgA, second]);
+  await db.query("select set_dish_archived($1,$2,false)", [orgA, plov]);
+
+  // Чужой магазин не видит меню; напрямую в таблицы не написать.
+  await user(b);
+  assert.equal((await db.query("select count(*)::int as n from dishes")).rows[0].n, 0);
+  assert.equal((await db.query("select count(*)::int as n from dish_ingredients")).rows[0].n, 0);
+  await assert.rejects(db.query("insert into dishes(organization_id,name) values ($1,'x')", [orgB]), /permission denied/);
+  await owner();
+  assert.ok((await db.query("select count(*)::int as n from audit_events where action like 'dish.%' and organization_id=$1", [orgA])).rows[0].n >= 6);
 });

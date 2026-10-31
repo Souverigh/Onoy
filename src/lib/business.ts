@@ -26,6 +26,11 @@ export const MODULES = {
     label: "Прокат",
     description: "Выдача вещей на несколько дней под залог: что на руках, до какого дня, возврат.",
   },
+  // Меню кафе: блюда с составом из продуктов склада (src/lib/dish.ts).
+  kitchen: {
+    label: "Кухня",
+    description: "Меню блюд с составом из продуктов склада: себестоимость и заработок с каждой порции.",
+  },
 } as const;
 
 export type ModuleId = keyof typeof MODULES;
@@ -175,7 +180,7 @@ export const PRESETS = {
   },
   restaurant: {
     label: "Кафе, ресторан",
-    modules: ["stock"],
+    modules: ["stock", "kitchen"],
     navLabels: { "/stock": "Продукты" },
     words: { purchase: "Закупка продуктов" },
     slug: "kafe",

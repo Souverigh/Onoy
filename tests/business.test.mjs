@@ -39,8 +39,9 @@ test("business: every preset names known modules and a label", () => {
 });
 
 test("business: owner overrides switch modules on and off, garbage is ignored", () => {
-  assert.deepEqual(resolveModules("restaurant", null), ["stock"]);
-  assert.deepEqual(resolveModules("restaurant", ["+catalog"]), ["stock", "catalog"]);
+  assert.deepEqual(resolveModules("restaurant", null), ["stock", "kitchen"]);
+  assert.deepEqual(resolveModules("restaurant", ["+catalog"]), ["stock", "catalog", "kitchen"]);
+  assert.deepEqual(resolveModules("restaurant", ["-kitchen"]), ["stock"]);
   assert.deepEqual(resolveModules("shop", ["-catalog"]), ["stock"]);
   assert.deepEqual(resolveModules("shop", ["-stock", "-catalog"]), []);
   assert.deepEqual(resolveModules("shop", ["+rocket", "catalog", "-", "-nothing"]), ["stock", "catalog"]);

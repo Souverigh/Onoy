@@ -16329,3 +16329,504 @@ button.first-steps-row {
 .help-faq + .support-card {
   margin-top: 16px;
 }
+
+/* Кухня: меню кафе (menu/page.tsx, макет 31.10.2026). Телефон — карточки
+   блюд, у цены — заработок; компьютер (от 900px) — таблица со сводкой. */
+.menu-heading .page-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.menu-search {
+  width: 280px;
+}
+.menu-stats {
+  display: none;
+}
+.menu-alert {
+  margin: 0 0 14px;
+}
+.menu-table {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: white;
+  overflow: hidden;
+}
+.menu-row.menu-head {
+  display: none;
+}
+.menu-category {
+  margin: 0;
+  padding: 10px 14px 6px;
+  background: var(--surface-soft);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.menu-group:first-of-type .menu-category {
+  border-top: 0;
+}
+.menu-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 14px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  text-decoration: none;
+}
+.menu-row:hover {
+  background: var(--hover);
+}
+.menu-name {
+  font-size: 16px;
+  font-weight: 600;
+  min-width: 0;
+}
+.menu-name small,
+.menu-price small {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.menu-price {
+  text-align: right;
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.menu-price small {
+  font-weight: 600;
+  color: var(--success-ink);
+}
+.menu-price small.high,
+.menu-share b.high {
+  color: var(--warning-ink);
+}
+.menu-price small.bad,
+.menu-share b.bad {
+  color: var(--danger-ink);
+}
+.menu-cost,
+.menu-gain,
+.menu-share {
+  display: none;
+}
+.menu-empty,
+.menu-name small.menu-empty {
+  color: var(--warning-ink);
+}
+.menu-archive-link {
+  display: inline-block;
+  margin-top: 16px;
+}
+@media (max-width: 560px) {
+  .menu-heading {
+    flex-wrap: wrap;
+  }
+  .menu-heading .page-heading-actions {
+    width: 100%;
+  }
+  .menu-search {
+    flex: 1;
+    width: auto;
+  }
+  .menu-heading .button {
+    min-height: var(--control-height);
+    font-size: 15px;
+  }
+}
+@media (min-width: 900px) {
+  .menu-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin: 0 0 16px;
+  }
+  .menu-stats > div {
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: white;
+  }
+  .menu-stats span {
+    display: block;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .menu-stats b {
+    display: block;
+    margin-top: 4px;
+    font-size: 22px;
+  }
+  .menu-stats .warn {
+    border-color: var(--warning-border);
+    background: var(--warning-bg);
+  }
+  .menu-stats .warn span,
+  .menu-stats .warn b {
+    color: var(--warning-ink);
+  }
+  .menu-alert {
+    display: none;
+  }
+  .menu-row,
+  .menu-head {
+    grid-template-columns: minmax(0, 2fr) 120px 120px 120px 180px;
+    gap: 16px;
+    padding: 12px 18px;
+  }
+  .menu-row.menu-head {
+    display: grid;
+    background: var(--surface-soft);
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .menu-head .menu-cost,
+  .menu-head .menu-gain,
+  .menu-head .menu-share {
+    display: block;
+  }
+  .menu-category {
+    padding: 8px 18px;
+  }
+  .menu-group:first-of-type .menu-category {
+    border-top: 1px solid var(--line);
+  }
+  .menu-name small,
+  .menu-price small {
+    display: none;
+  }
+  .menu-price,
+  .menu-cost,
+  .menu-gain {
+    font-size: 15px;
+    font-weight: 400;
+    text-align: right;
+  }
+  .menu-cost,
+  .menu-gain {
+    display: block;
+    white-space: nowrap;
+  }
+  .menu-gain {
+    color: var(--success-ink);
+    font-weight: 700;
+  }
+  .menu-head .menu-price,
+  .menu-head .menu-cost,
+  .menu-head .menu-gain {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .menu-share {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+  }
+  .menu-bar {
+    flex: 0 0 90px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--neutral-soft);
+    overflow: hidden;
+  }
+  .menu-bar i {
+    display: block;
+    height: 100%;
+    background: var(--green);
+  }
+  .menu-bar.high i {
+    background: var(--warning-ink);
+  }
+  .menu-bar.bad i {
+    background: var(--danger-ink);
+  }
+}
+
+/* Блюдо (dish-form.tsx): телефон — колонкой, «Сохранить» прилипает внизу
+   над меню; компьютер — слева поля и состав, справа сводка с кнопкой. */
+.dish-form {
+  display: grid;
+  gap: 12px;
+}
+.dish-form .panel {
+  margin: 0;
+}
+.dish-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  gap: 12px;
+}
+.dish-fields label {
+  margin: 0;
+}
+.dish-name input,
+.dish-price input {
+  font-weight: 700;
+}
+.dish-category {
+  grid-column: 1 / -1;
+}
+.dish-totals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.dish-totals > div {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+.dish-totals span {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+}
+.dish-totals b {
+  display: block;
+  margin-top: 2px;
+  font-size: 22px;
+}
+.dish-totals .gain {
+  border-color: var(--green-border);
+  background: var(--success-bg);
+}
+.dish-totals .gain span,
+.dish-totals .gain b {
+  color: var(--success-ink);
+}
+.dish-totals .loss {
+  background: var(--danger-bg);
+}
+.dish-totals .loss span,
+.dish-totals .loss b {
+  color: var(--danger-ink);
+}
+.dish-meter {
+  display: none;
+}
+.dish-share {
+  margin: 10px 0 0;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+.dish-share b {
+  color: var(--success-ink);
+}
+.dish-share.high b {
+  color: var(--warning-ink);
+}
+.dish-share.bad b {
+  color: var(--danger-ink);
+}
+.dish-note {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--warning-ink);
+}
+.dish-save-side {
+  display: none;
+}
+.dish-recipe h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+.dish-recipe h2 small {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.dish-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dish-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 28px;
+  grid-template-areas: "name name remove" "qty sum sum";
+  gap: 6px 8px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.dish-line:first-child {
+  border-top: 0;
+}
+.dish-line-name {
+  grid-area: name;
+  font-weight: 600;
+  min-width: 0;
+}
+.dish-line-qty {
+  grid-area: qty;
+  justify-self: start;
+  width: 130px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-sm);
+  background: white;
+}
+.dish-line.missing .dish-line-qty {
+  border-color: var(--danger-ink);
+}
+/* Фокус — рамкой всей ячейки «150 г», а не одного поля внутри. */
+.dish-line-qty:focus-within {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+form .dish-line-qty input:focus-visible {
+  outline: 0;
+}
+form .dish-line-qty input {
+  min-height: 40px;
+  min-width: 0;
+  padding: 0 4px 0 10px;
+  border: 0;
+  text-align: right;
+  font-weight: 600;
+}
+.dish-line-qty i {
+  padding-right: 10px;
+  font-style: normal;
+  font-size: 13px;
+  color: var(--muted);
+}
+.dish-line-price {
+  grid-area: price;
+  display: none;
+}
+.dish-line-sum {
+  grid-area: sum;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+.dish-line-remove {
+  grid-area: remove;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 15px;
+  cursor: pointer;
+}
+.dish-add {
+  position: relative;
+  margin-top: 10px;
+}
+.dish-results {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  max-height: 320px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(20, 30, 25, 0.14);
+}
+.dish-results-empty {
+  padding: 12px;
+  font-size: 14px;
+}
+.dish-save-bar {
+  position: sticky;
+  bottom: calc(var(--bottom-nav) + env(safe-area-inset-bottom) + 8px);
+  z-index: 15;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: white;
+  box-shadow: 0 8px 28px rgba(20, 30, 25, 0.16);
+}
+.dish-save-bar .button,
+.dish-save-side .button {
+  width: 100%;
+}
+@media (min-width: 900px) {
+  .dish-form {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-areas: "fields summary" "recipe summary";
+    align-items: start;
+    gap: 16px 20px;
+  }
+  .dish-fields {
+    grid-area: fields;
+    grid-template-columns: minmax(0, 1fr) 160px 200px;
+  }
+  .dish-category {
+    grid-column: auto;
+  }
+  .dish-summary {
+    grid-area: summary;
+    position: sticky;
+    top: 20px;
+  }
+  .dish-recipe {
+    grid-area: recipe;
+  }
+  .dish-recipe h2 small {
+    display: inline;
+    margin-left: 6px;
+  }
+  .dish-meter {
+    display: block;
+    position: relative;
+    height: 10px;
+    margin-top: 14px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--success-bg) 0 35%, var(--warning-bg) 35% 45%, var(--danger-bg) 45%);
+  }
+  .dish-meter i {
+    position: absolute;
+    top: -4px;
+    width: 4px;
+    height: 18px;
+    margin-left: -2px;
+    border-radius: 2px;
+    background: var(--green);
+  }
+  .dish-meter.high i {
+    background: var(--warning-ink);
+  }
+  .dish-meter.bad i {
+    background: var(--danger-ink);
+  }
+  .dish-save-side {
+    display: block;
+    margin-top: 16px;
+  }
+  .dish-save-bar {
+    display: none;
+  }
+  .dish-line {
+    grid-template-columns: minmax(0, 1fr) 120px 130px 90px 28px;
+    grid-template-areas: "name qty price sum remove";
+    gap: 12px;
+    padding: 8px 0;
+  }
+  .dish-line-qty {
+    width: auto;
+    justify-self: stretch;
+  }
+  .dish-line-price {
+    display: block;
+    text-align: right;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+}

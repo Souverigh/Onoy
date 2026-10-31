@@ -207,6 +207,14 @@
 - Наценка под ценами товара — `PriceMarkup` (`.price-markup`, в минус —
   `.loss`).
 
+- Меню кафе (модуль «kitchen») — `MenuStats` и `MenuTable`
+  (`components/menu-table.tsx`): одна разметка `.menu-row`, на телефоне
+  карточки (заработок под ценой), от 900px — таблица с полоской доли
+  продуктов `.menu-bar` (`.high`, `.bad`). Блюдо — `DishForm`
+  (`.dish-form`): телефон — колонкой с `.dish-save-bar` внизу над меню,
+  компьютер — две колонки, сводка `.dish-summary` с кнопкой справа.
+  Пороги доли продуктов — `SHARE_LIMITS` в `lib/dish.ts`.
+
 ## Сообщения
 
 - `.notice` — жёлтая подсказка; `.notice.success` — зелёное «готово».
